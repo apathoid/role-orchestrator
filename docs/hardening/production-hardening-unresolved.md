@@ -23,3 +23,9 @@
 ## Evidence policy
 
 No CI checks or live ACP execution were observed for this branch at the time of this entry. Regression test additions are **not** execution evidence. Never claim production readiness from mocks or from static review alone. Keep the Draft PR open and unmerged.
+
+## CI continuation (2026-10-28)
+
+- Added `.github/workflows/ci.yml` to run the full locked-dependency test suite with Node.js 22, explicit >=22.20 engine validation, read-only workflow token, and a job timeout.
+- Verified publication of the workflow file and branch HEAD via GitHub API. No passing CI run or test execution has been observed for this change; CI remains **NOT_VERIFIED** until a completed workflow run provides evidence.
+- CI alone cannot establish host-enforced ACP filesystem write isolation, live Zed integration or full production readiness. These P0/P1/P2 requirements remain open.
