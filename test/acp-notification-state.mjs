@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { captureAcpSessionUpdate, acpToolEventCaptureStatus } from '../src/providers/acp/notification-state.mjs';
+import { captureAcpSessionUpdate, acpToolEventCaptureStatus, captureAcpAnswerText, assertCompleteAcpAnswer, ACP_ANSWER_CAPTURE_LIMIT } from '../src/providers/acp/notification-state.mjs';
 
 const state = {
     notificationsReceived: 0, finalChunksReceived: 0, finalText: '', unphasedText: '',
@@ -60,4 +60,42 @@ assert.equal(bounded.toolEvents[0].toolCallId,'tool-44');
 assert(bounded.toolEventsBytes <= 1_048_576);
 const fresh = { toolEvents:[] };
 assert.equal(acpToolEventCaptureStatus(fresh).complete,true);
+
+const answer = () => ({
+    notificationsReceived: 0, finalChunksReceived: 0, finalText: '',
+    unphasedText: '', toolEvents: [],
+});
+const exact = answer();
+captureAcpSessionUpdate(exact, { sessionUpdate: 'agent_message_chunk',
+    content: { type: 'text', text: 'a'.repeat(ACP_ANSWER_CAPTURE_LIMIT) },
+    _meta: { codex: { phase: 'final_answer' } } },
+    { phaseOf: (u) => u?._meta?.codex?.phase });
+assert.equal(exact.finalText.length, ACP_ANSWER_CAPTURE_LIMIT);
+assert.doesNotThrow(() => assertCompleteAcpAnswer(exact));
+captureAcpSessionUpdate(exact, { sessionUpdate: 'agent_message_chunk',
+    content: { type: 'text', text: 'tail' }, _meta: { codex: { phase: 'final_answer' } } },
+    { phaseOf: (u) => u?._meta?.codex?.phase });
+assert.equal(exact.finalText.length, ACP_ANSWER_CAPTURE_LIMIT);
+assert.equal(exact.answerCaptureOmittedCharacters, 4);
+assert.throws(() => assertCompleteAcpAnswer(exact), (error) => {
+    assert.equal(error.code, 'PROVIDER_CRASH');
+    assert.equal(error.diagnostics?.reason, 'ACP_ANSWER_CAPTURE_LIMIT');
+    assert.equal(error.diagnostics?.complete, false);
+    assert.equal(error.diagnostics?.omittedCharacters, 4);
+    return true;
+});
+// A mixture of unphased and explicit final chunks shares one total budget.
+const mixed = answer();
+captureAcpAnswerText(mixed, null, 'u'.repeat(ACP_ANSWER_CAPTURE_LIMIT - 3));
+captureAcpAnswerText(mixed, 'final_answer', 'FINAL');
+captureAcpAnswerText(mixed, 'commentary', 'secret'.repeat(100000));
+assert.equal(mixed.unphasedText.length, ACP_ANSWER_CAPTURE_LIMIT - 3);
+assert.equal(mixed.finalText, 'FIN');
+assert.equal(mixed.answerCaptureOmittedCharacters, 2);
+assert.throws(() => assertCompleteAcpAnswer(mixed), { code: 'PROVIDER_CRASH' });
+// A fresh turn starts with a clean capture witness, not the previous failure.
+const restarted = answer();
+captureAcpAnswerText(restarted, 'final_answer', '{"ok":true}');
+assert.doesNotThrow(() => assertCompleteAcpAnswer(restarted));
+
 console.log('acp-notification-state: PASS');

@@ -1,9 +1,42 @@
+import { AgentProviderError } from '../errors.mjs';
+
 // This is a bounded diagnostic cache, not the ACP event stream used for live
 // presentation. Keep provenance when event snapshots are incomplete. The
 // provider still receives and forwards the original notification unchanged.
 const MAX_TOOL_EVENT_COUNT = 256;
 const MAX_TOOL_EVENT_BYTES = 1_048_576;
 const MAX_SINGLE_TOOL_EVENT_BYTES = 65_536;
+// Independent of tool diagnostics: model-answer accumulation must not retain
+// unbounded provider-controlled chunks (including structured responses).
+export const ACP_ANSWER_CAPTURE_LIMIT = 1_048_576;
+
+/** Synchronous, bounded data-plane capture. A partial answer is never valid evidence. */
+export function captureAcpAnswerText(state, phase, text) {
+    if (phase === 'commentary' || typeof text !== 'string' || !text) return;
+    const field = phase === 'final_answer' ? 'finalText' : 'unphasedText';
+    const used = (state.finalText?.length ?? 0) + (state.unphasedText?.length ?? 0);
+    const available = Math.max(0, ACP_ANSWER_CAPTURE_LIMIT - used);
+    if (text.length > available) {
+        state.answerCaptureIncomplete = true;
+        state.answerCaptureOmittedCharacters = (state.answerCaptureOmittedCharacters ?? 0) + text.length - available;
+    }
+    if (available) state[field] = (state[field] ?? '') + text.slice(0, available);
+}
+
+/** Call before parsing, reconciliation, or accepting a provider turn as complete. */
+export function assertCompleteAcpAnswer(state) {
+    if (!state.answerCaptureIncomplete) return;
+    throw new AgentProviderError('PROVIDER_CRASH',
+        'ACP answer exceeded the bounded response capture limit; incomplete output cannot be used for execution or structured parsing.', {
+            retryable: false,
+            diagnostics: {
+                source: 'orchestrator', reason: 'ACP_ANSWER_CAPTURE_LIMIT',
+                limitCharacters: ACP_ANSWER_CAPTURE_LIMIT,
+                omittedCharacters: state.answerCaptureOmittedCharacters ?? 0,
+                complete: false,
+            },
+        });
+}
 
 function eventSize(value) {
     try { return Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8'); }
@@ -60,10 +93,10 @@ export function captureAcpSessionUpdate(state, update, { phaseOf = () => null, u
         if (!text) return;
         const phase = phaseOf(update);
         if (phase === 'final_answer') {
-            state.finalText += text;
+            captureAcpAnswerText(state, 'final_answer', text);
             state.finalChunksReceived += 1;
         } else if (phase !== 'commentary') {
-            state.unphasedText += text;
+            captureAcpAnswerText(state, null, text);
         }
         return;
     }

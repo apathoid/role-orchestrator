@@ -15,6 +15,7 @@ import { AcpTurnDiagnostics } from './turn-diagnostics.mjs';
 import { AcpInvocationGuard, acpInvocationLimits } from './invocation-guard.mjs';
 import { terminateAcpChild } from './child-lifecycle.mjs';
 import { normalizeFinalMarkdown } from '../../response-normalization.mjs';
+import { captureAcpAnswerText, assertCompleteAcpAnswer } from './notification-state.mjs';
 
 function textOf(content) { return content?.type === 'text' && typeof content.text === 'string' ? content.text : ''; }
 function promptCaps(init) { return init?.agentCapabilities?.promptCapabilities ?? {}; }
@@ -138,8 +139,7 @@ export class GenericAcpProvider extends AgentProvider {
       if (text) {
         if (phase === 'commentary') await state.onProgress?.({type:'commentary',text});
         else {
-          if (phase === 'final_answer') state.finalText += text;
-          else state.unphasedText += text;
+          captureAcpAnswerText(state, phase, text);
           await state.onProgress?.({type:'activity',activity:'answer'});
         }
       }
@@ -249,6 +249,7 @@ export class GenericAcpProvider extends AgentProvider {
         elapsedMs: Date.now() - started,
         diagnostics: turnDiagnostics.snapshot(),
       });
+      assertCompleteAcpAnswer(state);
       const finalText = schemaKind ? state.finalText : normalizeFinalMarkdown(state.finalText || state.unphasedText, {
         preserveLiteral: /(?:show|display|return|выведи|покажи|верни).{0,45}(?:raw|literal|исходн|сыр(?:ой|ым))\s*markdown/i.test(prompt),
       });

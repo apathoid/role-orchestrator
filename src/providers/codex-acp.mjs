@@ -18,7 +18,7 @@ import { AgentProviderError, providerCancelledError } from './errors.mjs';
 import { cancellationDetails, cancellationErrorFromSignal, throwIfAborted } from '../cancellation.mjs';
 import { AcpTurnDiagnostics } from './acp/turn-diagnostics.mjs';
 import { AcpInvocationGuard, acpInvocationLimits } from './acp/invocation-guard.mjs';
-import { captureAcpSessionUpdate, acpToolEventCaptureStatus } from './acp/notification-state.mjs';
+import { captureAcpSessionUpdate, acpToolEventCaptureStatus, assertCompleteAcpAnswer } from './acp/notification-state.mjs';
 
 const require = createRequire(import.meta.url);
 const MAX_RECONCILIATION_TURNS = 3;
@@ -381,6 +381,9 @@ export class CodexAcpProvider {
 
         if (update.sessionUpdate === 'agent_message_chunk') {
             const phase = codexPhase(update);
+            // The synchronous capture has already marked an oversized answer.
+            // Never retain the offending raw chunk in deferred presentation.
+            if (state.answerCaptureIncomplete && phase !== 'commentary') return;
             if (text) {
                 await state.onProgress?.({ type: 'activity', activity: 'answer' });
                 if (phase === 'final_answer') {
@@ -576,6 +579,7 @@ export class CodexAcpProvider {
             const supplemental = passthroughPromptBlocks(promptBlocks, this.initializeResponse);
             try { await onProgress?.({type:'prompt_profile',profile:profileProviderPrompt(finalPrompt,supplemental.length)}); } catch { /* optional monitoring */ }
             let lastTurnResponse = await runTurn([{ type: 'text', text: finalPrompt }, ...supplemental]);
+            assertCompleteAcpAnswer(state);
 
             let reconciliation = null;
             let reconciliationTurns = 0;
@@ -607,9 +611,12 @@ export class CodexAcpProvider {
                     // a stale first or intermediate presentation.
                     state.finalText = '';
                     state.unphasedText = '';
+                    state.answerCaptureIncomplete = false;
+                    state.answerCaptureOmittedCharacters = 0;
                     state.pendingFinalUpdates = [];
                     state.pendingUnphasedUpdates = [];
                     lastTurnResponse = await runTurn([{ type: 'text', text: String(reconciliation.prompt) }]);
+                    assertCompleteAcpAnswer(state);
                 }
                 if (state.presentToUser && state.deferPresentation && state.pendingFinalUpdates.length) {
                     state.deferPresentation = false;
