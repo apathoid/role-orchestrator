@@ -81,23 +81,39 @@ export async function execFileSafe(program, args, {
     let stderrTruncated = false;
 
     const killChild = (signal) => {
-      if (child.exitCode !== null || child.signalCode !== null) return;
-      if (killProcessGroup && process.platform !== 'win32') {
-        try { process.kill(-child.pid, signal); return; } catch {}
+      if (killProcessGroup && process.platform !== 'win32' && Number.isSafeInteger(child.pid) && child.pid > 0) {
+        // The group leader may have exited while a grandchild still holds our
+        // stdout/stderr pipes open. A process group survives its leader, so
+        // never use the leader's exitCode as proof the group is gone.
+        try { process.kill(-child.pid, signal); return; } catch {
+          // Fall back to the leader if signalling the group is unsupported.
+        }
       }
+      if (child.exitCode !== null || child.signalCode !== null) return;
       try { child.kill(signal); } catch {}
+    };
+    let escalationTimer = null;
+    const terminateChild = () => {
+      killChild('SIGTERM');
+      // Do not schedule multiple escalations when cancellation and timeout race.
+      if (escalationTimer === null) {
+        escalationTimer = setTimeout(() => killChild('SIGKILL'), 2_000);
+        escalationTimer.unref();
+      }
+    };
+    const clearTimers = () => {
+      clearTimeout(timer);
+      if (escalationTimer !== null) clearTimeout(escalationTimer);
     };
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      killChild('SIGTERM');
-      setTimeout(() => killChild('SIGKILL'), 2_000).unref();
+      terminateChild();
     }, timeoutMs);
     let aborted = false;
     const onAbort = () => {
       aborted = true;
-      killChild('SIGTERM');
-      setTimeout(() => killChild('SIGKILL'), 2_000).unref();
+      terminateChild();
     };
     abortSignal?.addEventListener('abort', onAbort, { once: true });
 
@@ -141,10 +157,9 @@ export async function execFileSafe(program, args, {
     const failStream = (error) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearTimers();
       abortSignal?.removeEventListener('abort', onAbort);
-      killChild('SIGTERM');
-      setTimeout(() => killChild('SIGKILL'), 2_000).unref();
+      terminateChild();
       reject(error);
     };
     const safelyEmit = (chunk, kind) => {
@@ -157,7 +172,7 @@ export async function execFileSafe(program, args, {
     child.on('error', (error) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearTimers();
       abortSignal?.removeEventListener('abort', onAbort);
       reject(error);
     });
@@ -172,7 +187,7 @@ export async function execFileSafe(program, args, {
         if (onStderrLine && stderrLineBuffer) { onStderrLine(stderrLineBuffer); stderrLineBuffer = ''; }
       } catch (error) { failStream(error); return; }
       settled = true;
-      clearTimeout(timer);
+      clearTimers();
       abortSignal?.removeEventListener('abort', onAbort);
       if (aborted) {
         reject(cancellationErrorFromSignal(abortSignal));
@@ -215,8 +230,9 @@ export async function execFileSafe(program, args, {
         // the orchestrator process.
         if (error.code !== 'EPIPE' && !settled) {
           settled = true;
-          clearTimeout(timer);
+          clearTimers();
           abortSignal?.removeEventListener('abort', onAbort);
+          terminateChild();
           reject(error);
         }
       });
