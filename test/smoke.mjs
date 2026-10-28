@@ -387,7 +387,7 @@ async function scenarioUnstructuredRouterRejected() {
     const parsed = JSON.parse(result.stdout);
     // A malformed Router result cannot be treated as a successful semantic
     // interpretation, even for read-only Investigate.
-    if (parsed.status !== 'intent_unresolved' || parsed.errorCode !== 'missing_task_spec')
+    if (parsed.status !== 'intent_unresolved' || parsed.errorCode !== 'ROUTER_OUTPUT_UNSTRUCTURED')
       throw new Error(`unstructured-router: expected fail-closed intent_unresolved, got ${parsed.status}/${parsed.errorCode}`);
     const entries = parseLog(await readFile(log, 'utf8'));
     if (entries.length !== 1 || entries[0].role !== 'router')
