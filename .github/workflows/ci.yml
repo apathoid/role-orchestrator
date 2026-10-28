@@ -1,0 +1,30 @@
+name: Role Orchestrator CI
+
+on:
+  push:
+    branches:
+      - feature/production-hardening-completion-20261028
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Full test suite (Node 22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify Node engine requirement
+        run: node -e "const [major, minor] = process.versions.node.split('.').map(Number); if (major < 22 || (major === 22 && minor < 20)) process.exit(1)"
+      - name: Full test suite
+        run: npm test
