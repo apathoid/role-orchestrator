@@ -11,6 +11,9 @@ export function createOuterToolCallBridge({ publish, warn = console.error } = {}
   const lastPayloadHash = new Map();
   const terminalStatus = new Map();
   const terminalStatuses = new Set(['completed', 'failed', 'cancelled']);
+  const MAX_TRACKED_TOOLS = 4096;
+  const MAX_TOOL_ID_CHARS = 256;
+  let droppedToolUpdates = 0;
   const outerTurnId = randomUUID();
   let tail = Promise.resolve();
 
@@ -20,7 +23,8 @@ export function createOuterToolCallBridge({ publish, warn = console.error } = {}
 
   const outerId = (event, id) => {
     const scope = scopeFor(event);
-    return typeof scope === 'string' && scope && typeof id === 'string' && id
+    return typeof scope === 'string' && scope && scope.length <= MAX_TOOL_ID_CHARS &&
+      typeof id === 'string' && id.length > 0 && id.length <= MAX_TOOL_ID_CHARS
       ? `${outerTurnId}:${scope}:${id}` : null;
   };
 
@@ -56,6 +60,11 @@ export function createOuterToolCallBridge({ publish, warn = console.error } = {}
         return;
       }
       if (!published.has(id)) {
+        if (published.size >= MAX_TRACKED_TOOLS) {
+          droppedToolUpdates += 1;
+          if (droppedToolUpdates === 1) warn('[acp] outer tool-card tracking capacity reached; dropping new cards');
+          return;
+        }
         if (update.sessionUpdate === 'tool_call') {
           await publishDistinct(id, { ...update, toolCallId: id });
           published.add(id);
@@ -94,6 +103,12 @@ export function createOuterToolCallBridge({ publish, warn = console.error } = {}
       // The outer client must know the subject of permission, including when
       // the provider normally hides that kind of command card in its telemetry.
       if (!published.has(id)) {
+        // Refuse a permission request rather than forwarding an unmapped ID
+        // when a provider floods the bounded outer-card namespace.
+        if (published.size >= MAX_TRACKED_TOOLS) {
+          warn('[acp] permission denied: outer tool-card tracking capacity reached');
+          return null;
+        }
         const subject = innerParams.toolCall;
         const title = typeof subject.title === 'string' && subject.title.trim()
           ? subject.title : 'Tool permission request';

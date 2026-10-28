@@ -92,4 +92,30 @@ assert.equal(published.length, initial + 3, 'different content with same status 
 const secure = await bridge.permission({toolCall:{toolCallId:'oversize', title:'T'.repeat(10000)}},meta);
 assert(secure.toolCall.toolCallId.includes('oversize'));
 assert(published.at(-1).title.includes('ACP presentation truncated'), 'permission card bounded without changing actual permission input');
+// A malicious provider must not grow the outer-card identity map without bound.
+const overflowPublished = [];
+const overflowWarnings = [];
+const capped = createOuterToolCallBridge({
+  publish: async (update) => overflowPublished.push(update),
+  warn: (message) => overflowWarnings.push(message),
+});
+for (let i = 0; i < 4100; i++) {
+  await capped({ invocationId:'capacity', update:{
+    sessionUpdate:'tool_call', toolCallId:'id-'+i, title:'Read', kind:'read',
+  } });
+}
+assert.equal(overflowPublished.length, 4096);
+assert.equal(overflowWarnings.length, 1);
+assert.equal(await capped.permission({toolCall:{toolCallId:'overflow',title:'Command'}},
+  {invocationId:'capacity'}), null, 'permission cannot reference an unregistered card');
+assert.equal(overflowPublished.length, 4096);
+await capped({invocationId:'capacity',update:{
+  sessionUpdate:'tool_call_update',toolCallId:'id-0',status:'completed',
+}});
+assert.equal(overflowPublished.length,4097,'existing tool cards still receive terminal updates');
+const beforeInvalid = overflowPublished.length;
+await capped({invocationId:'capacity',update:{
+  sessionUpdate:'tool_call',toolCallId:'x'.repeat(300),title:'Bad ID',
+}});
+assert.equal(overflowPublished.length,beforeInvalid);
 console.log('acp-tool-bridge: passed');

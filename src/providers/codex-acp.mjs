@@ -383,7 +383,11 @@ export class CodexAcpProvider {
             const phase = codexPhase(update);
             // The synchronous capture has already marked an oversized answer.
             // Never retain the offending raw chunk in deferred presentation.
-            if (state.answerCaptureIncomplete && phase !== 'commentary') return;
+            if (state.answerCaptureIncomplete && phase !== 'commentary') {
+                state.pendingFinalUpdates = [];
+                state.pendingUnphasedUpdates = [];
+                return;
+            }
             if (text) {
                 await state.onProgress?.({ type: 'activity', activity: 'answer' });
                 if (phase === 'final_answer') {
