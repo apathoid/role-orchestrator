@@ -14,8 +14,8 @@ function canonicalAuditPath(path) {
   // Keep conservative on Windows/NTFS aliases even on case-sensitive hosts.
   return typeof path === 'string' && path.length > 0 && path.length <= 240 &&
     !path.startsWith('/') && !path.includes('\\') &&
-    !/[\\x00-\\x1f\\x7f]/.test(path) && !/^[A-Za-z]:/.test(path) &&
-    /^[\\p{L}\\p{N}_.+@/-]+$/u.test(path) &&
+    !/[\x00-\x1f\x7f]/.test(path) && !/^[A-Za-z]:/.test(path) &&
+    /^[\p{L}\p{N}_.+@/-]+$/u.test(path) &&
     path.split('/').every(part => part !== '' && part !== '.' &&
       part !== '..' && part.toLowerCase() !== '.git' &&
       !part.endsWith('.') && !part.endsWith(' ') &&
