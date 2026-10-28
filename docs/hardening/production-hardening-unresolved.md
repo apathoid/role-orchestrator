@@ -28,6 +28,12 @@
 - [CI run for that commit](https://github.com/apathoid/role-orchestrator/actions/runs/40722510894): launched; **PASS not yet verified** at the time of this registry update. Its result must be checked before removing the CI blocker.
 - `npm ci` also reported **one High-severity dependency advisory** in Run #4; package/advisory details and exploitability remain unverified. Do not silently run an unreviewed `npm audit fix`.
 
+## CI Run #5–#7 — subsequent regression discoveries
+
+- [Run 40722510894](https://github.com/apathoid/role-orchestrator/actions/runs/40722510894): **FAILURE**, `test:generic-acp` — direct `spawn` returned `EACCES` because the GitHub tree write for the previous test-fixture update accidentally changed `test/fake-codex-acp.mjs` from executable mode `100755` to `100644`. Fixed in [1f22062](https://github.com/apathoid/role-orchestrator/commit/1f220625d0680ed3dce56d6ccf37a6d09702b0ee) and verified as `100755` in the repository Git tree. This failure was introduced by publication, not production authorization logic.
+- [Run 40722702040](https://github.com/apathoid/role-orchestrator/actions/runs/40722702040): **FAILURE** at smoke scenario `existing-node-modules`. Its `vitest` script is correctly classified `ENVIRONMENT_ERROR / INTERACTIVE_VERIFICATION` by the project's watch-mode guard. Fixed the test fixture to request finite `vitest run` in [b52f1f1](https://github.com/apathoid/role-orchestrator/commit/b52f1f108200aa5080cb48463f103b5cfcd41285), preserving its test for local binary resolution.
+- [Run 40723075505](https://github.com/apathoid/role-orchestrator/actions/runs/40723075505): launched for `b52f1f1`; full-suite PASS **not yet verified** at this entry. Further failures must be processed separately.
+
 ## Evidence policy
 
 At the time of the original entry, no CI checks or live ACP execution were observed for this branch. CI Run #4 has since failed; see the correction above. Regression test additions are **not** execution evidence. Never claim production readiness from mocks or from static review alone. Keep the Draft PR open and unmerged.
