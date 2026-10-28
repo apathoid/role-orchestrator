@@ -383,7 +383,7 @@ export class CodexAcpProvider {
         }
 
         if (update.sessionUpdate === 'agent_thought_chunk' && text) {
-            await state.onProgress?.({ type: 'reasoning', text });
+            await state.onProgress?.({ type: 'reasoning', text: text.slice(0, 65_536) });
             return;
         }
 
@@ -407,7 +407,7 @@ export class CodexAcpProvider {
                         }
                     }
                 } else if (phase === 'commentary') {
-                    await state.onProgress?.({ type: 'commentary', text });
+                    await state.onProgress?.({ type: 'commentary', text: text.slice(0, 65_536) });
                 } else if (state.presentToUser) {
                     // Unphased content is already captured; defer presentation
                     // until we know that no explicitly phased final arrived.
