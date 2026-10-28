@@ -25,6 +25,10 @@ try {
   assert.equal(caps.workspaceModes.readOnly, true);
   assert.equal(caps.workspaceModes.write, true);
 
+  await assert.rejects(() => provider.invoke({ sandboxMode:'danger-full-access' }),
+    { code:'CAPABILITY_UNSUPPORTED' }, 'invalid sandbox mode must fail before provider RPC');
+  assert.equal(provider.activeSessions.size, 0);
+
   const sentConfigs = [];
   const originalSetConfig = provider.setConfig.bind(provider);
   provider.setConfig = async (sessionId, id, value) => {

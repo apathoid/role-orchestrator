@@ -56,7 +56,10 @@ export function assertTaskWriteScopes(paths, scopes = []) {
 // Do not accept a model-supplied capability or claim that instructions alone
 // make a provider enforce a path allowlist.
 export function assessPreWriteBoundary(taskSpecs = [], { sandboxMode = 'workspace-write' } = {}) {
-  if (sandboxMode !== 'workspace-write') return {
+  if (sandboxMode !== 'read-only' && sandboxMode !== 'workspace-write') return {
+    accepted: false, enforcement: 'NOT_ENFORCEABLE', reason: 'unsupported_sandbox_mode',
+  };
+  if (sandboxMode === 'read-only') return {
     accepted: true, enforcement: 'READ_ONLY_MODE_REQUESTED_NOT_VERIFIED', reason: null,
   };
   if (!Array.isArray(taskSpecs) || taskSpecs.length === 0) return {

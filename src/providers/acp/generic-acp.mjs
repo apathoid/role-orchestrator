@@ -3,7 +3,7 @@ import { profileProviderPrompt } from '../../efficiency/profiling.mjs';
 import { spawn } from 'node:child_process';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
-import { AgentProvider } from '../provider.mjs';
+import { AgentProvider, assertSupportedSandboxMode } from '../provider.mjs';
 import { genericAcpCapabilities } from '../capabilities.mjs';
 import { minimalChildEnv } from '../process-env.mjs';
 import { parseStructuredStateOrText } from '../../structured-output.mjs';
@@ -171,6 +171,7 @@ export class GenericAcpProvider extends AgentProvider {
   }
 
   async invoke({ profileName, profile, role, prompt, schemaKind, schema, cwd, sandboxMode='read-only', signal, onProgress, taskPlan=null, promptBlocks=[], mcpServers=[], additionalDirectories=[], presentToUser=false, providerOptions={} }) {
+    assertSupportedSandboxMode(sandboxMode, this.name);
     const started = Date.now();
     const turnDiagnostics = new AcpTurnDiagnostics();
     let sessionId = null;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { assertInvocationCapabilities, normalizeCapabilities } from '../src/providers/provider.mjs';
+import { assertInvocationCapabilities, assertSupportedSandboxMode, normalizeCapabilities } from '../src/providers/provider.mjs';
 import { normalizeProviderError, AgentProviderError } from '../src/providers/errors.mjs';
 import { normalizeAgentEvent } from '../src/providers/events.mjs';
 
@@ -14,6 +14,11 @@ const readOnlyProvider = {
   }),
 };
 assert.doesNotThrow(() => assertInvocationCapabilities(readOnlyProvider, { sandboxMode: 'read-only' }));
+for (const invalid of ['', 'danger-full-access', 'read-only ', 'unknown', null, 42]) {
+  assert.throws(() => assertSupportedSandboxMode(invalid, 'fake-readonly'), { code:'CAPABILITY_UNSUPPORTED' });
+  if (invalid !== null) assert.throws(() => assertInvocationCapabilities(readOnlyProvider, { sandboxMode: invalid }),
+    { code:'CAPABILITY_UNSUPPORTED' });
+}
 assert.throws(() => assertInvocationCapabilities(readOnlyProvider, { sandboxMode: 'workspace-write' }), /cannot enforce workspace-write/i);
 assert.throws(() => assertInvocationCapabilities(readOnlyProvider, { sandboxMode: 'read-only', promptBlocks: [{ type: 'image' }] }), /does not support image/i);
 assert.deepEqual(normalizeAgentEvent({ type: 'reasoning', text: 'x' }), { type: 'reasoning', text: 'x' });

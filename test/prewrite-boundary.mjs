@@ -25,6 +25,12 @@ assert.equal(assessPreWriteBoundary([change,restricted[0]]).accepted, false,
 assert.equal(assessPreWriteBoundary([restricted[0],change]).accepted, false);
 assert.equal(assessPreWriteBoundary([restricted[0]],{sandboxMode:'read-only'}).accepted,true,
   'read-only analysis may still proceed');
+for (const mode of ['', 'danger-full-access', 'workspace-write ', 'unknown']) {
+  const decision = assessPreWriteBoundary([change], { sandboxMode: mode });
+  assert.deepEqual(decision, { accepted:false, enforcement:'NOT_ENFORCEABLE', reason:'unsupported_sandbox_mode' });
+  assert.throws(() => assertPreWriteBoundary([change], { sandboxMode: mode }),
+    { code:'WRITE_AUTHORIZATION_BOUNDARY_UNAVAILABLE', reasonCode:'unsupported_sandbox_mode' });
+}
 assert.equal(assessPreWriteBoundary([change,{...change,writeIntent:'ambiguous'}]).accepted,true);
 assert.equal(assessPreWriteBoundary([change,{...change,constraints:{...change.constraints,writeScope:'invalid'}}]).accepted,false);
 console.log('prewrite-boundary: PASS');

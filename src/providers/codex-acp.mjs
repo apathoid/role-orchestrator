@@ -11,6 +11,7 @@ import { safeUpstreamErrorData, upstreamErrorDiagnostic } from '../errors.mjs';
 import { passthroughPromptBlocks } from '../acp-content.mjs';
 import { buildTaskPlanProgressContract } from '../task-plan-progress.mjs';
 import { codexAcpCapabilities } from './capabilities.mjs';
+import { assertSupportedSandboxMode } from './provider.mjs';
 import { minimalChildEnv } from './process-env.mjs';
 import { resolveTurnTiming, TurnTimingGuard } from './turn-timing.mjs';
 import { AgentProviderError, providerCancelledError } from './errors.mjs';
@@ -446,6 +447,7 @@ export class CodexAcpProvider {
     }
 
     async configureSession(sessionId, profile, sandboxMode, codexAgentMode = 'agent', codexCollaborationMode = 'default') {
+        assertSupportedSandboxMode(sandboxMode, this.name);
         // Keep native codex-acp semantics native. The outer orchestrator only
         // carries the selected IDs between its persistent session and each inner
         // role session. A true orchestration read-only role is always constrained
@@ -472,6 +474,7 @@ export class CodexAcpProvider {
         promptBlocks = [], mcpServers = [], additionalDirectories = [], reconcile = null, presentToUser = false,
         codexAgentMode = 'agent', codexCollaborationMode = 'default', providerOptions = {},
     }) {
+        assertSupportedSandboxMode(sandboxMode, this.name);
         codexAgentMode = providerOptions?.agentMode ?? codexAgentMode;
         codexCollaborationMode = providerOptions?.collaborationMode ?? codexCollaborationMode;
         const started = Date.now();

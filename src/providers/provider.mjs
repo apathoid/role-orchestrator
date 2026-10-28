@@ -65,9 +65,19 @@ export function normalizeCapabilities(input = {}) {
   });
 }
 
+// The sandbox selector is a security boundary, never an open-ended provider
+// option. Unknown values must fail before starting a provider subprocess.
+export function assertSupportedSandboxMode(mode, providerName = 'provider') {
+  if (mode !== 'read-only' && mode !== 'workspace-write') {
+    throw Object.assign(new Error(`${providerName}: unsupported sandbox mode; refusing provider invocation.`),
+      { code: 'CAPABILITY_UNSUPPORTED' });
+  }
+  return mode;
+}
+
 export function assertInvocationCapabilities(provider, request) {
+  const mode = assertSupportedSandboxMode(request.sandboxMode ?? 'read-only', provider.name);
   const caps = normalizeCapabilities(provider.capabilities?.() ?? {});
-  const mode = request.sandboxMode ?? 'read-only';
   if (mode === 'read-only' && !caps.workspaceModes.readOnly) {
     throw Object.assign(new Error(`${provider.name}: provider cannot enforce read-only workspace access.`), { code: 'CAPABILITY_UNSUPPORTED' });
   }

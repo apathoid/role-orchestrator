@@ -7,6 +7,7 @@ import { parseStructuredStateOrText } from '../structured-output.mjs';
 import { projectName } from '../project.mjs';
 import { buildTaskPlanProgressContract } from '../task-plan-progress.mjs';
 import { codexCliCapabilities } from './capabilities.mjs';
+import { assertSupportedSandboxMode } from './provider.mjs';
 import { minimalChildEnv } from './process-env.mjs';
 
 function tomlString(value) {
@@ -82,6 +83,7 @@ export class CodexCliProvider {
   }
 
   async invoke({ profileName, profile, role, prompt, schemaKind, schema, cwd, sandboxMode = 'read-only', signal, onProgress, taskPlan = null }) {
+    assertSupportedSandboxMode(sandboxMode, this.name);
     await this.preflight();
     const temp = await mkdtemp(join(tmpdir(), `${projectName}-codex-`));
     const schemaPath = join(temp, 'schema.json');
