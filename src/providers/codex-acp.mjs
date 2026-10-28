@@ -359,6 +359,8 @@ export class CodexAcpProvider {
             state.queuedPresentationUpdates -= 1;
             return state.updateQueue;
         }
+        // Do not keep scheduling raw provider updates after an overflow.
+        if (state.presentationQueueIncomplete) return state.updateQueue;
         const delivered = state.updateQueue.then(() => this.deliverSessionUpdate(params, state))
             .finally(() => { state.queuedPresentationUpdates -= 1; });
         state.updateQueue = delivered.catch((error) => {
