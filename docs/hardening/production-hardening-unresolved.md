@@ -49,3 +49,9 @@ At the time of the original entry, no CI checks or live ACP execution were obser
 - Added `.github/workflows/ci.yml` to run the full locked-dependency test suite with Node.js 22, explicit >=22.20 engine validation, read-only workflow token, and a job timeout.
 - Verified publication of the workflow file and branch HEAD via GitHub API. CI Run #4 failed in the smoke suite. The new fix-commit run is pending; full-suite CI remains **NOT_VERIFIED** until a completed successful run provides evidence.
 - CI alone cannot establish host-enforced ACP filesystem write isolation, live Zed integration or full production readiness. These P0/P1/P2 requirements remain open.
+
+## Continuation — pre-invocation Task Spec validation (2026-10-28)
+
+- Defense in depth: revalidate current and persisted Task Specs at the provider pre-write boundary. Reject malformed, incomplete, unauthorized or ambiguous current write intent before a writable invocation; retain optional absent saved Plans and the existing refusal of restricted write scopes. Negative regression cases cover malformed exclusions, conflicting target and ambiguous intent.
+- This does **not** establish trusted user authorization or host-enforced filesystem isolation. A valid Router Task Spec is model-derived data, and the legacy unrestricted `NO_PER_PATH_ENFORCEMENT` path remains exposed to provider-owned writes. P0 trusted authorization/enforcement remains **OPEN**.
+- **Verification of this continuation:** new GitHub Actions run for the resulting SHA must be checked; do not transfer earlier green CI evidence. Live host/provider tests remain unexecuted. **Readiness: NOT PRODUCTION-READY.**

@@ -16,8 +16,10 @@ attribution of concurrent external mutations.
   only as strong as the host and provider; the orchestrator reconciles visible
   workspace drift and checks protected paths.
 - Before **preparation**, mutating agent turns, and subsequent provider calls,
-  the change workflow checks the current typed Task Spec and any saved Plan
-  restrictions. A missing or non-explicit change authorization fails closed.
+  the change workflow revalidates the complete current typed Task Spec and any
+  saved Plan restrictions. Malformed, incomplete, or ambiguous current intent
+  fails closed. This is a defense-in-depth validation of model-interpreted data,
+  **not** trusted user authorization or a host-enforced filesystem permission.
 - `tests_only`, `production_only`, or any nonempty `excludedPaths` restriction
   blocks writable execution **before** invoking potentially mutating commands.
   The error is `WRITE_AUTHORIZATION_BOUNDARY_UNAVAILABLE`.

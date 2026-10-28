@@ -2,6 +2,7 @@
 // this guard can refuse acceptance/continuation but CANNOT prevent writes that
 // already occurred. Provider-side write interception is a separate requirement.
 import { classifyTestCandidate } from '../testing/discovery.mjs';
+import { validateTaskSpec } from '../routing/task-spec.mjs';
 const SCOPES = new Set(['unspecified','tests_only','production_only','combined']);
 export const WRITE_SCOPES = Object.freeze([...SCOPES]);
 
@@ -65,14 +66,27 @@ export function assessPreWriteBoundary(taskSpecs = [], { sandboxMode = 'workspac
   if (!Array.isArray(taskSpecs) || taskSpecs.length === 0) return {
     accepted: false, enforcement: 'NOT_ENFORCEABLE', reason: 'missing_task_authorization',
   };
-  // Only the CURRENT trusted execution decision can authorize a write.
-  // Saved Plan Task Specs normally have operation=plan/writeIntent=not_requested:
-  // those records constrain scope but are not new user authorization decisions.
-  const current = taskSpecs[0];
-  if (!current || current.operation !== 'change' || current.writeIntent !== 'explicit') return {
+  // Revalidate all model-interpreted and persisted Task Specs at the last
+  // pre-invocation boundary. A caller must not bypass structural constraints
+  // with a partial object, an ambiguous intent or a malformed saved Plan.
+  // This validates DATA; it does not turn a Router response into a trusted
+  // user grant or provide filesystem enforcement.
+  const active = [];
+  for (const [index, spec] of taskSpecs.entries()) {
+    if (index > 0 && spec == null) continue; // optional saved Plan
+    try { active.push(validateTaskSpec(spec)); }
+    catch {
+      return { accepted: false, enforcement: 'NOT_ENFORCEABLE', reason: 'invalid_task_authorization' };
+    }
+  }
+  // Only the current turn can authorize a write; a saved Plan restricts scope.
+  const current = active[0];
+  if (current.operation !== 'change' || current.writeIntent !== 'explicit') return {
     accepted: false, enforcement: 'NOT_ENFORCEABLE', reason: 'write_not_authorized',
   };
-  const active = taskSpecs.filter(Boolean);
+  if (current.ambiguities.length) return {
+    accepted: false, enforcement: 'NOT_ENFORCEABLE', reason: 'ambiguous_write_authorization',
+  };
   for (const spec of active) {
     const scope = spec.constraints?.writeScope ?? 'unspecified';
     if (!SCOPES.has(scope)) return {
