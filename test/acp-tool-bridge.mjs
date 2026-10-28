@@ -1,0 +1,69 @@
+import assert from 'node:assert/strict';
+import { createOuterToolCallBridge } from '../src/acp-tool-bridge.mjs';
+
+const published = [];
+const warnings = [];
+const bridge = createOuterToolCallBridge({
+  publish: async (update) => published.push(update),
+  warn: (message) => warnings.push(message),
+});
+const send = (scope, type, id, extra = {}) => bridge({
+  role: 'explorer', invocationId: scope,
+  update: { sessionUpdate: type, toolCallId: id, ...extra },
+});
+
+await send('turn-a', 'tool_call_update', 'missing', { status: 'completed' });
+assert.equal(published.length, 0, 'orphan updates must not reach Zed');
+assert.equal(warnings.length, 1);
+await send('turn-a', 'tool_call', 'id', { title: 'Read first file', kind: 'read' });
+await send('turn-a', 'tool_call_update', 'id', { status: 'completed' });
+await send('turn-b', 'tool_call', 'id', { title: 'Read another file', kind: 'read' });
+await send('turn-b', 'tool_call_update', 'id', { status: 'failed' });
+assert.equal(published.length, 4);
+assert.equal(published[0].sessionUpdate, 'tool_call');
+assert.equal(published[1].sessionUpdate, 'tool_call_update');
+assert.equal(published[1].toolCallId, published[0].toolCallId);
+assert.notEqual(published[0].toolCallId, published[2].toolCallId, 'inner sessions must not collide');
+assert.equal(published[2].toolCallId, published[3].toolCallId);
+assert.equal(published[0].title, 'Read first file');
+assert.equal(published[3].status, 'failed');
+await send('turn-a', 'tool_call', 'id', { title: 'Updated title' });
+assert.equal(published.at(-1).sessionUpdate, 'tool_call_update', 'duplicate creates must not create cards');
+await bridge({ invocationId: 'turn-x', update: { sessionUpdate: 'tool_call', title: 'No id' } });
+assert.equal(warnings.length, 2);
+assert.ok(published.every((x) => x.toolCallId !== 'id'));
+
+// ACP v2-style first update with a title is a valid v1 creation source.
+await send('turn-v2', 'tool_call_update', 'upsert-1', { title: 'Inspect code', kind: 'read' });
+assert.equal(published.at(-1).sessionUpdate, 'tool_call');
+await send('turn-v2', 'tool_call_update', 'upsert-1', { status: 'completed' });
+assert.equal(published.at(-1).sessionUpdate, 'tool_call_update');
+
+// Permissions must refer to the exact ID used by the public tool card.
+const meta = { provider: 'subscription', innerSessionId: 'inner-123' };
+const inner = { sessionId: 'inner-123', toolCall: { toolCallId: 'exec-1', title: 'Run a command', kind: 'execute' }, options: [] };
+const mapped = await bridge.permission(inner, meta);
+assert.equal(mapped.sessionId, 'inner-123', 'outer session rewrite belongs to the ACP agent boundary');
+assert.equal(published.at(-1).sessionUpdate, 'tool_call');
+assert.equal(mapped.toolCall.toolCallId, published.at(-1).toolCallId);
+const again = await bridge.permission(inner, meta);
+assert.equal(again.toolCall.toolCallId, mapped.toolCall.toolCallId);
+assert.equal(published.filter((item) => item.toolCallId === mapped.toolCall.toolCallId).length, 1);
+await bridge({ ...meta, update: { sessionUpdate: 'tool_call_update', toolCallId: 'exec-1', status: 'completed' } });
+assert.equal(published.at(-1).toolCallId, mapped.toolCall.toolCallId);
+assert.equal(published.at(-1).sessionUpdate, 'tool_call_update');
+assert.equal(await bridge.permission({ toolCall: { toolCallId: 'missing' } }, {}), null);
+
+// Concurrent arrivals must not overtake their creation.
+await Promise.all([
+  send('parallel', 'tool_call', 'f-1', { title: 'Read file' }),
+  send('parallel', 'tool_call_update', 'f-1', { status: 'completed' }),
+]);
+assert.equal(published.at(-2).sessionUpdate, 'tool_call');
+assert.equal(published.at(-1).sessionUpdate, 'tool_call_update');
+// Reusing the same inner IDs on the next outer turn must not reuse Zed IDs.
+const secondTurn = [];
+const newBridge = createOuterToolCallBridge({ publish: async (update) => secondTurn.push(update) });
+await newBridge({ ...meta, update: { sessionUpdate: 'tool_call', toolCallId: 'exec-1', title: 'New turn' } });
+assert.notEqual(secondTurn[0].toolCallId, mapped.toolCall.toolCallId);
+console.log('acp-tool-bridge: passed');

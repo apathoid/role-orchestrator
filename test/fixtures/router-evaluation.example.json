@@ -1,0 +1,106 @@
+[
+  {
+    "id": "basic_investigation",
+    "task": "Объясни назначение модуля обработки конфигурации, ничего не меняй.",
+    "expected": {
+      "mode": "investigate",
+      "writeIntent": "not_requested",
+      "complexity": "low",
+      "risk": "normal"
+    }
+  },
+  {
+    "id": "small_explicit_change",
+    "task": "Исправь опечатку в комментарии файла README и сохрани изменения.",
+    "expected": {
+      "mode": "change",
+      "writeIntent": "explicit",
+      "complexity": "low",
+      "risk": "normal"
+    }
+  },
+  {
+    "id": "plan_only",
+    "task": "Разработай подробный план миграции механизма управления сессиями, пока не меняй код.",
+    "planOnly": true,
+    "expected": {
+      "mode": "plan",
+      "writeIntent": "not_requested",
+      "complexity": "high",
+      "risk": "architecture"
+    }
+  },
+  {
+    "id": "security_review",
+    "task": "Проведи только аудит безопасности проверки прав доступа и выдачи токенов. Не меняй файлы.",
+    "modeOverride": "review",
+    "expected": {
+      "mode": "review",
+      "writeIntent": "not_requested",
+      "complexity": "high",
+      "risk": "security_or_data"
+    }
+  },
+  {
+    "id": "security_change",
+    "task": "Внеси изменения в проверку пользовательских полномочий и верификацию токенов. Обязательно проверь безопасность.",
+    "expected": {
+      "mode": "change",
+      "writeIntent": "explicit",
+      "complexity": "high",
+      "risk": "security_or_data"
+    }
+  },
+  {
+    "id": "architecture_change",
+    "task": "Рефакторинг: измени контракты между провайдерами и ядром, сохрани обратную совместимость и тесты.",
+    "expected": {
+      "mode": "change",
+      "writeIntent": "explicit",
+      "complexity": "high",
+      "risk": "architecture"
+    }
+  },
+  {
+    "id": "explicit_read_only",
+    "task": "Какие ошибки ты видишь в реализации репозитория? Только диагностика, без исправлений.",
+    "modeOverride": "investigate",
+    "expected": {
+      "mode": "investigate",
+      "writeIntent": "not_requested",
+      "complexity": "medium",
+      "risk": "normal"
+    }
+  },
+  {
+    "id": "data_migration",
+    "task": "Реализуй миграцию таблиц БД с контролем целостности данных и откатом.",
+    "expected": {
+      "mode": "change",
+      "writeIntent": "explicit",
+      "complexity": "high",
+      "risk": "security_or_data"
+    }
+  },
+  {
+    "id": "readme_review",
+    "task": "Посмотри изменения в README, оцени ошибки документации, никаких правок.",
+    "modeOverride": "review",
+    "expected": {
+      "mode": "review",
+      "writeIntent": "not_requested",
+      "complexity": "low",
+      "risk": "normal"
+    }
+  },
+  {
+    "id": "investigate_bug",
+    "task": "Почему текущий тест падает после запуска? Найди причину, но ничего не меняй.",
+    "expected": {
+      "mode": "investigate",
+      "writeIntent": "not_requested",
+      "complexity": "medium",
+      "risk": "normal"
+    }
+  }
+]

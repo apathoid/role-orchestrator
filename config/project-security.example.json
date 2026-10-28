@@ -1,0 +1,15 @@
+{
+  "security": {
+    "denyPaths": [
+      "config/development.json",
+      "config/local-secrets.json"
+    ],
+    "denyGlobs": [
+      "**/*.private.json",
+      "internal/credentials/**"
+    ],
+    "allowPaths": [
+      "fixtures/public.private.json"
+    ]
+  }
+}

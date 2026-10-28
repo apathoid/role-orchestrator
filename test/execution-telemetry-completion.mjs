@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {createEfficiencyRun} from '../src/efficiency/analytics.mjs';
+const meter=createEfficiencyRun('run1');
+meter.onEvent({type:'verification_command_result',status:'PASS',cacheHit:false,cacheEligible:true});
+meter.onEvent({type:'verification_command_result',status:'PASS',cacheHit:true,cacheEligible:true});
+meter.onEvent({type:'verification_command_result',status:'INFRA_FAILURE',cacheHit:false,cacheEligible:false,reasonCode:'VERIFICATION_TIMEOUT'});
+const result=meter.finish({status:'UNVERIFIED'});
+assert.equal(result.verificationCommandsObserved,3);
+assert.equal(result.verificationCacheHits,1);
+assert.equal(result.verificationCacheMisses,1);
+assert.equal(result.verificationFailureReasons.VERIFICATION_TIMEOUT,1);
+assert.equal(result.invocations.length,0);
+assert(!JSON.stringify(result).includes('source.txt'));
+console.log('execution-telemetry-completion: PASS');

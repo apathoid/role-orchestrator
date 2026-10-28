@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { evaluateBenchmarkSuite } from '../src/evaluation/benchmark-suite.mjs';
+const adjudication={expectedFindings:['F1','F2'],blockerMajorIds:['F1'],mandatoryObligations:['O1']};
+const task={reportedFindings:['F1','F2'],verifiedObligations:['O1'],measurements:{invocations:4,inputTokens:100,outputTokens:20}};
+const candidate={...task,measurements:{invocations:2,inputTokens:50,outputTokens:10}};
+const suite=evaluateBenchmarkSuite({scenarios:[{id:'review',adjudication,baselineRuns:[task,task],candidateRuns:[candidate,candidate]}]});
+assert.equal(suite.status,'accepted');
+assert.equal(suite.scenarios[0].reductions.tokens,0.5);
+assert.equal(evaluateBenchmarkSuite({scenarios:[{id:'review',adjudication,baselineRuns:[task],candidateRuns:[candidate]}]}).status,'insufficient_evidence');
+const degraded=evaluateBenchmarkSuite({minRuns:1,scenarios:[{id:'review',adjudication,baselineRuns:[task],candidateRuns:[{...candidate,reportedFindings:['F2']}]}]});
+assert.equal(degraded.status,'rejected');
+assert.equal(suite.scenarios[0].reductions.quota,null);
+assert.throws(()=>evaluateBenchmarkSuite({scenarios:[{id:'../other'}]}),/Invalid/);
+console.log('efficiency-benchmark-suite: PASS');

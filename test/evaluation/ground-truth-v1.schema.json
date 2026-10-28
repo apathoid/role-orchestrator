@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/role-orchestrator/ground-truth-v1.schema.json",
+  "title": "Role Orchestrator Ground Truth v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "task", "taskDigest", "labelStatus", "recordedAt"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$"},
+    "task": {"type": "string", "minLength": 1, "maxLength": 12000},
+    "taskDigest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "recordedAt": {"type": "string", "format": "date-time"},
+    "labelStatus": {"enum": ["confirmed", "unlabeled"]},
+    "expected": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/expected"}]},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "hostConstraints": {"type": "object", "additionalProperties": false,
+      "properties": {"modeOverride": {"enum": ["investigate", "review", "change", "plan"]}, "planOnly": {"type": "boolean"}}},
+    "routerInput": {"type": "object", "additionalProperties": false,
+      "properties": {"sessionHistoryText": {"type": "string"}, "reviewTargetText": {"type": "string"},
+        "modeOverride": {"enum": ["investigate", "review", "change", "plan"]}, "planOnly": {"type": "boolean"},
+        "savedOperationMetadata": {"type": "array"}}},
+    "projectContext": {"type": "object", "additionalProperties": false,
+      "properties": {"fixtureId": {"type": "string"}, "description": {"type": "string"}}}
+  },
+  "allOf": [
+    {"if": {"properties": {"labelStatus": {"const": "confirmed"}}},
+      "then": {"required": ["expected", "provenance"], "properties": {"expected": {"$ref": "#/$defs/expected"}}}},
+    {"if": {"properties": {"labelStatus": {"const": "unlabeled"}}},
+      "then": {"properties": {"expected": {"type": "null"}}, "not": {"required": ["provenance"]}}}
+  ],
+  "$defs": {
+    "provenance": {"type": "object", "additionalProperties": false,
+      "required": ["method", "confirmedBy", "confirmedAt"],
+      "properties": {"method": {"const": "manual_review"}, "confirmedBy": {"enum": ["user", "operator"]},
+        "confirmedAt": {"type": "string", "format": "date-time"}}},
+    "selector": {"type": "object", "required": ["type"],
+      "properties": {"type": {"enum": ["recent_commits", "commit", "range", "relative_ref", "worktree", "staged", "unstaged", "ticket_commits", "union"]},
+        "count": {"type": "integer", "minimum": 1, "maximum": 128}, "ref": {"type": "string"},
+        "left": {"type": "string"}, "right": {"type": "string"}, "notation": {"enum": ["..", "..."]},
+        "mergeParentIndex": {"type": "integer", "minimum": 1, "maximum": 16},
+        "ticket": {"type": "string"}, "selectors": {"type": "array", "minItems": 2, "maxItems": 4}}},
+    "expected": {"type": "object", "additionalProperties": false,
+      "required": ["operation", "writeIntent", "selector", "continuation", "ambiguity"],
+      "properties": {"operation": {"enum": ["investigate", "review", "change", "plan"]},
+        "writeIntent": {"enum": ["explicit", "ambiguous", "not_requested"]},
+        "selector": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/selector"}]},
+        "continuation": {"enum": ["new", "current_review", "current_implementation", "saved_implementation", "saved_review", "information", "revise_plan", "reconcile", "ambiguous"]},
+        "ambiguity": {"type": "boolean"}}}
+  }
+}

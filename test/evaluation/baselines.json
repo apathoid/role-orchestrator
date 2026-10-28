@@ -1,0 +1,10 @@
+{
+  "readOnlyRealWorkflow": {
+    "roleInvocations": { "min": 3, "max": 3 },
+    "reconciliationTurns": { "max": 0 },
+    "fixRounds": { "max": 0 },
+    "failedVerifications": { "max": 0 },
+    "sequenceViolations": { "max": 0 },
+    "unfinishedRoleInvocations": { "max": 0 }
+  }
+}

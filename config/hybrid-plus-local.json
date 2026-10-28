@@ -1,0 +1,65 @@
+{
+    "providers": {
+        "local": {
+            "type": "codex-acp",
+            "auth": "none",
+            "modelProvider": {
+                "id": "llamacpp",
+                "name": "llama.cpp",
+                "baseURL": "http://127.0.0.1:8080/v1"
+            },
+            "supportsFastMode": false,
+            "models": [
+                {
+                    "id": "small",
+                    "name": "small",
+                    "reasoningEfforts": [
+                        "low",
+                        "medium",
+                        "high"
+                    ],
+                    "supportsFastMode": false
+                },
+                {
+                    "id": "medium",
+                    "name": "medium",
+                    "reasoningEfforts": [
+                        "low",
+                        "medium",
+                        "high"
+                    ],
+                    "supportsFastMode": false
+                }
+            ]
+        }
+    },
+    "profiles": {
+        "localFast": {
+            "provider": "local",
+            "model": "small"
+        },
+        "localWorker": {
+            "provider": "local",
+            "model": "medium"
+        }
+    },
+    "roles": {
+        "router": "localFast",
+        "explorer": "localFast",
+        "planner": "frontier",
+        "coderLow": "localWorker",
+        "coderMedium": "localWorker",
+        "coderHigh": "strong",
+        "reviewerLow": "localWorker",
+        "reviewerMedium": "strong",
+        "reviewerHigh": "strong",
+        "finalValidator": "frontier",
+        "investigator": "localWorker",
+        "responderLow": "localWorker",
+        "responderMedium": "strong",
+        "responderHigh": "strong"
+    },
+    "policy": {
+        "reviewVerification": false
+    }
+}

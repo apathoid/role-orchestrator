@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,rm,symlink} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createHash} from 'node:crypto';
+import {projectRoleInstructions} from '../src/execution/instruction-projection.mjs';
+import {resolveReviewSourceLocation,resolveReviewFindingLocations} from '../src/review-source-location.mjs';
+import {renderReviewFindings,reconcileReviewFindings} from '../src/review-findings.mjs';
+import {findingHypothesisGroups} from '../src/evidence/findings.mjs';
+import {adjudicateReviewFindings,reviewWitnessSubject} from '../src/evidence/adjudication.mjs';
+import {reviewOutputHeadings,renderReviewSections} from '../src/review-output-contract.mjs';
+import {createEfficiencyRun} from '../src/efficiency/analytics.mjs';
+import {normalizeEfficiencyRuns} from '../src/session-store.mjs';
+
+const sha=text=>createHash('sha256').update(text).digest('hex');
+const root=await mkdtemp(join(tmpdir(),'ro-review-v2-'));
+try {
+  await mkdir(join(root,'.agents','role-orchestrator'),{recursive:true});
+  await mkdir(join(root,'src'),{recursive:true});
+  await writeFile(join(root,'src','hello world.ts'),'line 1\nline 2\n');
+  const essential={scope:'project',path:'AGENTS.md',body:'Mandatory policy: no writes.'};
+  const optional={scope:'project-reference',path:'.agents/rules/only-other-subsystem.md',body:'Details on unrelated subsystem behavior.'.repeat(40)};
+  const context={instructions:[essential,optional],skill:{scope:'project',name:'review-code',path:'SKILL.md',body:'Always produce a complete review.'},availableRules:[]};
+  const manifest={version:1,reviewed:true,defer:[{scope:optional.scope,path:optional.path,sha256:sha(optional.body),roles:['reviewerMedium']}]};
+  const path=join(root,'.agents','role-orchestrator','review-context.json');
+  await writeFile(path,JSON.stringify(manifest));
+  let projection=await projectRoleInstructions({repoRoot:root,invocationContext:context,role:'reviewerMedium',mode:'optimized'});
+  assert.equal(projection.manifest.selected,'optimized');
+  assert(projection.manifest.projectedCharacters<projection.manifest.originalCharacters);
+  assert.match(projection.text,/Mandatory policy: no writes/);
+  assert.match(projection.text,/Always produce a complete review/);
+  assert.doesNotMatch(projection.text,/Details on unrelated subsystem behavior/);
+  assert.match(projection.text,/only-other-subsystem\.md/);
+  const observed=await projectRoleInstructions({repoRoot:root,invocationContext:context,role:'reviewerMedium',mode:'observe'});
+  assert.equal(observed.manifest.selected,'legacy');
+  assert.match(observed.text,/Details on unrelated subsystem behavior/);
+  assert.equal((await projectRoleInstructions({repoRoot:root,invocationContext:context,role:'planner',mode:'optimized'})).manifest.selected,'legacy');
+  assert.equal((await projectRoleInstructions({repoRoot:root,invocationContext:context,role:'reviewerLow',mode:'optimized'})).manifest.reason,'no_applicable_documents');
+  await writeFile(path,JSON.stringify({...manifest,defer:[{...manifest.defer[0],sha256:sha('stale')}]}));
+  assert.equal((await projectRoleInstructions({repoRoot:root,invocationContext:context,role:'reviewerMedium',mode:'optimized'})).manifest.reason,'digest_mismatch');
+  await writeFile(path,JSON.stringify({...manifest,reviewed:false}));
+  assert.equal((await projectRoleInstructions({repoRoot:root,invocationContext:context,role:'reviewerMedium',mode:'optimized'})).manifest.selected,'legacy');
+  const location=await resolveReviewSourceLocation({path:'src/hello world.ts',startLine:2},root);
+  assert.match(location.url,/^file:\/\/\/.+hello%20world\.ts#L2$/);
+  assert.equal((await resolveReviewSourceLocation({path:'../../etc/passwd'},root)).url,null);
+  assert.equal((await resolveReviewSourceLocation({path:'src/hello world.ts',startLine:1},root,{sourceKind:'commit'})).url,null);
+  assert.match((await resolveReviewSourceLocation({path:'src/hello world.ts',message:'Строки 1–2: bug'},root)).url,/#L1$/);
+  const outside=await mkdtemp(join(tmpdir(),'ro-review-outside-'));
+  try {await writeFile(join(outside,'secret.ts'),'do not link');await symlink(join(outside,'secret.ts'),join(root,'src','leak.ts'));
+    assert.equal((await resolveReviewSourceLocation({path:'src/leak.ts'},root)).url,null);
+  } finally {await rm(outside,{recursive:true,force:true});}
+  const a={path:'src/hello world.ts',severity:'major',message:'First issue',reproductionKey:'same',contractId:'diagnostics'};
+  const b={path:'src/other.ts',severity:'major',message:'Different wording',reproductionKey:'same',contractId:'diagnostics'};
+  const baseline=reconcileReviewFindings([a,b]);
+  assert.equal(baseline.unique,2);
+  const groups=findingHypothesisGroups([a,b]);
+  assert.equal(groups.length,1);
+  assert.equal(groups[0].paths.length,2);
+  assert.equal(groups[0].relation,'potential_duplicate');
+  const pair=groups[0].findingIds;
+  const witness=sha('Independent verifier checked both paths and equivalent root cause');
+  const decision={left:pair[0],right:pair[1],relation:'equivalent',authority:'independently_verified',witnessDigest:witness,
+    crossFile:true,rootCauseKey:'diagnostics/recovery/last-milestone'};
+  assert.equal(adjudicateReviewFindings([a,b],[decision]).unique,2,'model certificate alone never merges findings');
+  const sourceKey='d'.repeat(64),scopeKey='e'.repeat(64);
+  const options={sourceKey,scopeKey,verifiedWitnesses:[{digest:witness,
+    subjectDigest:reviewWitnessSubject({left:baseline.ledger.find(x=>x.findingId===decision.left),
+      right:baseline.ledger.find(x=>x.findingId===decision.right),decision,scopeKey,sourceKey}),
+    origin:'trusted_host_verifier',verifierId:'test-host',evidenceRefs:['fixture']}]};
+  const merged=adjudicateReviewFindings([a,b],[decision],options);
+  assert.equal(merged.unique,1);
+  assert.equal(merged.ledger[0].relatedPaths.length,2);
+  const distinct=adjudicateReviewFindings([a,{...b,reproductionKey:'other'}],[decision],options);
+  assert.equal(distinct.unique,2,'distinct explicit reproductions are not merged');
+  const locs=await resolveReviewFindingLocations(baseline.ledger,root);
+  const rendered=renderReviewFindings(baseline.ledger,{locations:locs});
+  assert.match(rendered,/\[src\/hello world\.ts\]\(file:\/\//);
+  assert.match(rendered,/`src\/other\.ts`/);
+  const skill={body:'```md\n### Краткое резюме\n### Что хорошо\n### Замечания и проблемы\n### Рекомендации улучшений\n```'};
+  const heads=reviewOutputHeadings(skill);
+  assert.deepEqual(heads,['Краткое резюме','Что хорошо','Замечания и проблемы','Рекомендации улучшений']);
+  const sections=Object.fromEntries(heads.map(x=>[x,`Content for ${x}`]));
+  const report=renderReviewSections(sections,{skill});
+  assert(report.indexOf('### Что хорошо')<report.indexOf('### Замечания и проблемы'));
+  const telemetry=createEfficiencyRun('run-review-v2');
+  telemetry.onEvent({type:'role_context_block_sizes',invocationId:'role-1',blocks:[{sha256:sha('identical block'),characters:15}]});
+  telemetry.onEvent({type:'role_context_block_sizes',invocationId:'role-2',blocks:[{sha256:sha('identical block'),characters:15}]});
+  telemetry.onEvent({type:'role_instruction_projection',selected:'optimized',savedCharacters:900,deferredDocuments:1});
+  telemetry.onEvent({type:'review_source_locations',resolved:1,total:2});
+  const record=normalizeEfficiencyRuns([telemetry.finish({status:'review_findings'})])[0];
+  assert.equal(record.contextCrossInvocationRepeatedCharacters,15);
+  assert.equal(record.reviewInstructionCharactersSaved,900);
+  assert.equal(record.reviewInstructionDocumentsDeferred,1);
+  assert.equal(record.reviewLocationsResolved,1);
+} finally {await rm(root,{recursive:true,force:true});}
+console.log('review-optimization-v2: PASS');

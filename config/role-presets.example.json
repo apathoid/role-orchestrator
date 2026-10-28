@@ -1,0 +1,100 @@
+{
+    "profiles": {
+        "gpt56Fast": {
+            "provider": "subscription",
+            "model": "gpt-5.6-luna",
+            "reasoningEffort": "low"
+        },
+        "gpt56Balanced": {
+            "provider": "subscription",
+            "model": "gpt-5.6-terra",
+            "reasoningEffort": "medium"
+        },
+        "gpt56Strong": {
+            "provider": "subscription",
+            "model": "gpt-5.6-sol",
+            "reasoningEffort": "high"
+        }
+    },
+    "rolePresets": [
+        {
+            "id": "gpt56",
+            "label": "GPT 5.6",
+            "description": "5.6-generation profiles",
+            "roles": {
+                "router": "gpt56Fast",
+                "explorer": "gpt56Fast",
+                "planner": "gpt56Strong",
+                "investigator": "gpt56Balanced",
+                "coderLow": "gpt56Fast",
+                "coderMedium": "gpt56Balanced",
+                "coderHigh": "gpt56Strong",
+                "reviewerLow": "gpt56Balanced",
+                "reviewerMedium": "gpt56Strong",
+                "reviewerHigh": "gpt56Strong",
+                "responderLow": "gpt56Fast",
+                "responderMedium": "gpt56Balanced",
+                "responderHigh": "gpt56Strong",
+                "finalValidator": "gpt56Strong"
+            }
+        },
+        {
+            "id": "highPerformance",
+            "label": "High Performance",
+            "description": "Existing strong and frontier profiles",
+            "roles": {
+                "router": "triage",
+                "explorer": "balanced",
+                "planner": "frontier",
+                "investigator": "strong",
+                "coderLow": "balanced",
+                "coderMedium": "strong",
+                "coderHigh": "frontier",
+                "reviewerLow": "balanced",
+                "reviewerMedium": "strongReview",
+                "reviewerHigh": "frontier",
+                "responderLow": "swift",
+                "responderMedium": "balanced",
+                "responderHigh": "strong",
+                "finalValidator": "frontier"
+            }
+        },
+        {
+            "id": "efficient",
+            "label": "Efficient",
+            "description": "Cost-conscious assignments",
+            "roles": {
+                "router": "economyFast",
+                "explorer": "economyFast",
+                "planner": "balanced",
+                "investigator": "economy",
+                "coderLow": "economyFast",
+                "coderMedium": "economy",
+                "coderHigh": "balanced",
+                "reviewerLow": "economy",
+                "reviewerMedium": "balanced",
+                "reviewerHigh": "strong",
+                "responderLow": "economyFast",
+                "responderMedium": "economyFast",
+                "responderHigh": "balanced",
+                "finalValidator": "balanced"
+            }
+        },
+        {
+            "id": "inlineExperimental",
+            "label": "Inline Experimental",
+            "description": "Use models in a preset without defining additional profiles",
+            "roles": {
+                "reviewerMedium": {
+                    "model": "gpt-6.1-sol",
+                    "reasoningEffort": "medium"
+                },
+                "coderHigh": {
+                    "provider": "subscription",
+                    "model": "gpt-6-astra",
+                    "reasoningEffort": "high"
+                }
+            }
+        }
+    ]
+}

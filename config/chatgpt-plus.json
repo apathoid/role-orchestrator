@@ -1,0 +1,374 @@
+{
+    "providers": {
+        "opencode-local": {
+            "adapter": "acp-agent",
+            "command": "opencode",
+            "args": [
+                "--log-level",
+                "debug",
+                "acp"
+            ],
+            "workspaceModes": {
+                "readOnly": "plan",
+                "write": "build"
+            },
+            "models": [
+                {
+                    "id": "llamacpp/small",
+                    "name": "Small Model",
+                    "contextWindow": 65536
+                },
+                {
+                    "id": "llamacpp/medium",
+                    "name": "Medium Model",
+                    "contextWindow": 16384
+                },
+                {
+                    "id": "llamacpp/high",
+                    "name": "High Model",
+                    "contextWindow": 32768
+                }
+            ]
+        },
+        "subscription": {
+            "auth": "chatgpt",
+            "idleTimeoutMs": 600000,
+            "turnDeadlineMs": 2700000,
+            "supportsFastMode": true,
+            "models": [
+                {
+                    "id": "gpt-5.6-luna",
+                    "name": "5.6 Luna",
+                    "contextWindow": 1050000,
+                    "reasoningEfforts": [
+                        "none",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                    ],
+                    "supportsFastMode": true
+                },
+                {
+                    "id": "gpt-5.6-terra",
+                    "name": "5.6 Terra",
+                    "contextWindow": 1050000,
+                    "reasoningEfforts": [
+                        "none",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                    ],
+                    "supportsFastMode": true
+                },
+                {
+                    "id": "gpt-5.6-sol",
+                    "name": "5.6 Sol",
+                    "contextWindow": 1050000,
+                    "reasoningEfforts": [
+                        "none",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                    ],
+                    "supportsFastMode": true
+                },
+                {
+                    "id": "gpt-6-luna",
+                    "name": "6 Luna",
+                    "contextWindow": 1050000,
+                    "reasoningEfforts": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                    ],
+                    "supportsFastMode": true
+                },
+                {
+                    "id": "gpt-6-sol",
+                    "name": "6 Sol",
+                    "contextWindow": 1050000,
+                    "reasoningEfforts": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                    ],
+                    "supportsFastMode": true
+                },
+                {
+                    "id": "gpt-6.1-sol",
+                    "name": "6.1 Sol",
+                    "contextWindow": 1050000,
+                    "reasoningEfforts": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                    ],
+                    "supportsFastMode": true
+                },
+                {
+                    "id": "gpt-6-astra",
+                    "name": "6 Astra",
+                    "contextWindow": 1050000,
+                    "reasoningEfforts": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                    ],
+                    "supportsFastMode": true
+                }
+            ],
+            "adapter": "codex-acp"
+        }
+    },
+    "profiles": {
+        "economy": {
+            "provider": "subscription",
+            "model": "gpt-6-luna",
+            "reasoningEffort": "medium"
+        },
+        "economyFast": {
+            "provider": "subscription",
+            "model": "gpt-6-luna",
+            "reasoningEffort": "low"
+        },
+        "triage": {
+            "provider": "subscription",
+            "model": "gpt-6-luna",
+            "reasoningEffort": "high"
+        },
+        "swift": {
+            "provider": "subscription",
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "low"
+        },
+        "balanced": {
+            "provider": "subscription",
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "medium"
+        },
+        "strong": {
+            "provider": "subscription",
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "high"
+        },
+        "strongReview": {
+            "provider": "subscription",
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "xhigh"
+        },
+        "frontier": {
+            "provider": "subscription",
+            "model": "gpt-6-astra",
+            "reasoningEffort": "high"
+        },
+        "lowSol-5.6": {
+            "provider": "subscription",
+            "model": "gpt-5.6-sol",
+            "reasoningEffort": "low"
+        },
+        "mediumSol-5.6": {
+            "provider": "subscription",
+            "model": "gpt-5.6-sol",
+            "reasoningEffort": "medium"
+        },
+        "highSol-5.6": {
+            "provider": "subscription",
+            "model": "gpt-5.6-sol",
+            "reasoningEffort": "high"
+        },
+        "xhighSol-5.6": {
+            "provider": "subscription",
+            "model": "gpt-5.6-sol",
+            "reasoningEffort": "xhigh"
+        },
+        "local-small": {
+            "provider": "opencode-local",
+            "model": "llamacpp/small"
+        },
+        "local-medium": {
+            "provider": "opencode-local",
+            "model": "llamacpp/medium"
+        },
+        "local-high": {
+            "provider": "opencode-local",
+            "model": "llamacpp/high"
+        }
+    },
+    "roles": {
+        "router": "triage",
+        "explorer": "triage",
+        "planner": "frontier",
+        "investigator": "balanced",
+        "coderLow": "economy",
+        "coderMedium": "balanced",
+        "coderHigh": "strong",
+        "reviewerLow": "balanced",
+        "reviewerMedium": "strong",
+        "reviewerHigh": "strongReview",
+        "finalValidator": "frontier",
+        "responderLow": "economyFast",
+        "responderMedium": "swift",
+        "responderHigh": "balanced"
+    },
+    "rolePresets": [
+        {
+            "id": "latest",
+            "label": "latest",
+            "description": "Latest models",
+            "roles": {}
+        },
+        {
+            "id": "sol-5-6",
+            "label": "sol-5.6",
+            "description": "Latest models with Sol 5.6",
+            "roles": {
+                "investigator": "mediumSol-5.6",
+                "coderMedium": "mediumSol-5.6",
+                "coderHigh": "highSol-5.6",
+                "reviewerLow": "mediumSol-5.6",
+                "reviewerMedium": "highSol-5.6",
+                "reviewerHigh": "xhighSol-5.6",
+                "responderMedium": "lowSol-5.6",
+                "responderHigh": "mediumSol-5.6"
+            }
+        },
+        {
+            "id": "balanced",
+            "label": "balanced",
+            "description": "Lower token consumption but still effective",
+            "roles": {
+                "planner": "strong",
+                "finalValidator": "strongReview"
+            }
+        },
+        {
+            "id": "local",
+            "label": "local",
+            "description": "Local models",
+            "roles": {
+                "router": "local-small",
+                "explorer": "local-high",
+                "planner": "local-high",
+                "investigator": "local-high",
+                "coderLow": "local-medium",
+                "coderMedium": "local-high",
+                "coderHigh": "local-high",
+                "reviewerLow": "local-medium",
+                "reviewerMedium": "local-medium",
+                "reviewerHigh": "local-high",
+                "finalValidator": "local-high",
+                "responderLow": "local-small",
+                "responderMedium": "local-medium",
+                "responderHigh": "local-high"
+            }
+        },
+        {
+            "id": "changed",
+            "label": "changed",
+            "description": "Describe changes",
+            "roles": {
+                "router": "local-small",
+                "explorer": "local-medium",
+                "planner": "local-medium",
+                "investigator": "local-medium",
+                "coderLow": "local-medium",
+                "coderMedium": "local-medium",
+                "coderHigh": "local-medium",
+                "reviewerLow": "local-medium",
+                "reviewerMedium": "local-medium",
+                "reviewerHigh": "local-medium",
+                "finalValidator": "local-medium",
+                "responderLow": "local-small",
+                "responderMedium": "local-medium",
+                "responderHigh": "local-medium"
+            }
+        }
+    ],
+    "policy": {
+        "maxFixRounds": 2,
+        "finalValidationForHighRisk": true,
+        "routerContext": {
+            "mode": "legacy"
+        },
+        "reviewVerification": false,
+        "reviewEfficiency": {
+            "enabled": true,
+            "contextMode": "bounded_history",
+            "maxHistoryCharacters": 10000,
+            "qualityDepth": {
+                "mode": "observe",
+                "followUpPolicy": "material_only",
+                "maxAdditionalInvocations": 1
+            },
+            "executionBudget": {
+                "maxInvocations": 4
+            },
+            "projectContext": {
+                "mode": "legacy"
+            },
+            "findingReconciliation": {
+                "mode": "conservative"
+            }
+        },
+        "workflowEfficiency": {
+            "investigationDirect": false
+        },
+        "evidence": {
+            "persistentStore": true
+        },
+        "verificationEfficiency": {
+            "autoExecute": false,
+            "safeCommands": []
+        }
+    },
+    "security": {
+        "caseSensitive": false,
+        "denyPaths": [
+            ".env",
+            "credentials.json",
+            "secret.json",
+            "secrets.json",
+            "id_rsa",
+            "id_ed25519"
+        ],
+        "denyGlobs": [
+            "**/.env",
+            "**/.env.*",
+            "**/*.pem",
+            "**/*.key",
+            "**/*.p12",
+            "**/*.pfx",
+            "**/*.jks",
+            "**/*.keystore",
+            "**/id_rsa",
+            "**/id_ed25519",
+            "**/credentials.json",
+            "**/secret.json",
+            "**/secrets.json"
+        ],
+        "allowPaths": [
+            ".env.example"
+        ],
+        "allowGlobs": [
+            "**/.env.example",
+            "**/.env.*.example"
+        ]
+    },
+    "ui": {
+        "defaultProfile": "balanced"
+    }
+}

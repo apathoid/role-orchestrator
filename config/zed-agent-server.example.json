@@ -1,0 +1,12 @@
+{
+  "agent_servers": {
+    "Role Orchestrator": {
+      "type": "custom",
+      "command": "node",
+      "args": ["/absolute/path/to/role-orchestrator/src/acp.mjs"],
+      "env": {
+        "AGENT_CONFIG": "/absolute/path/to/role-orchestrator/config/chatgpt-plus.json"
+      }
+    }
+  }
+}
