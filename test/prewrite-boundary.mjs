@@ -50,6 +50,7 @@ for (const mode of ['', 'danger-full-access', 'workspace-write ', 'unknown']) {
   assert.throws(() => assertPreWriteBoundary([change], { sandboxMode: mode }),
     { code:'WRITE_AUTHORIZATION_BOUNDARY_UNAVAILABLE', reasonCode:'unsupported_sandbox_mode' });
 }
-assert.equal(assessPreWriteBoundary([change,{...change,writeIntent:'ambiguous'}]).accepted,true);
+assert.equal(assessPreWriteBoundary([change,{...change,writeIntent:'ambiguous'}]).accepted,false,
+  'a malformed saved Task Spec must fail closed instead of silently being ignored');
 assert.equal(assessPreWriteBoundary([change,{...change,constraints:{...change.constraints,writeScope:'invalid'}}]).accepted,false);
 console.log('prewrite-boundary: PASS');
