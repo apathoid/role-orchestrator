@@ -20,12 +20,20 @@
 - Context and Git evidence freshness, resource-efficiency benchmarking, cross-host architecture acceptance.
 - Full dependency-installed automated test run with supported Node.js, real ACP/Codex/Zed acceptance, security adversarial tests, and production-readiness signoff.
 
+## CI Run #4 failure — regression fixture correction (2026-10-28)
+
+- [GitHub Actions Run #4](https://github.com/apathoid/role-orchestrator/actions/runs/40714328536): **FAILURE** at `test/smoke.mjs` (`fix: expected hello world!, got hello world`). Earlier steps in the sequential `npm test` script passed; all later suites remained unexecuted for that run.
+- Root cause in the simulated provider: `NEEDS_FIX` and `ESCALATE` findings omitted `origin`, `taskRelation`, `remediationScope` and concrete `evidence`. The current production fix-decision policy appropriately treated those claims as insufficient evidence, withholding automatic scope authorization.
+- Commit [06b774d](https://github.com/apathoid/role-orchestrator/commit/06b774d87db719d5a4486fe68e96a619e2970000) updates the **test fixture** to validate its actual greeting-file state before emitting evidence-backed in-scope findings. Smoke tests additionally require exactly two coder invocations for both fix/escalation cases. Production fix authorization was not relaxed.
+- [CI run for that commit](https://github.com/apathoid/role-orchestrator/actions/runs/40722510894): launched; **PASS not yet verified** at the time of this registry update. Its result must be checked before removing the CI blocker.
+- `npm ci` also reported **one High-severity dependency advisory** in Run #4; package/advisory details and exploitability remain unverified. Do not silently run an unreviewed `npm audit fix`.
+
 ## Evidence policy
 
-No CI checks or live ACP execution were observed for this branch at the time of this entry. Regression test additions are **not** execution evidence. Never claim production readiness from mocks or from static review alone. Keep the Draft PR open and unmerged.
+At the time of the original entry, no CI checks or live ACP execution were observed for this branch. CI Run #4 has since failed; see the correction above. Regression test additions are **not** execution evidence. Never claim production readiness from mocks or from static review alone. Keep the Draft PR open and unmerged.
 
 ## CI continuation (2026-10-28)
 
 - Added `.github/workflows/ci.yml` to run the full locked-dependency test suite with Node.js 22, explicit >=22.20 engine validation, read-only workflow token, and a job timeout.
-- Verified publication of the workflow file and branch HEAD via GitHub API. No passing CI run or test execution has been observed for this change; CI remains **NOT_VERIFIED** until a completed workflow run provides evidence.
+- Verified publication of the workflow file and branch HEAD via GitHub API. CI Run #4 failed in the smoke suite. The new fix-commit run is pending; full-suite CI remains **NOT_VERIFIED** until a completed successful run provides evidence.
 - CI alone cannot establish host-enforced ACP filesystem write isolation, live Zed integration or full production readiness. These P0/P1/P2 requirements remain open.
