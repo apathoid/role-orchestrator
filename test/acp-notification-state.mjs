@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { captureAcpSessionUpdate, acpToolEventCaptureStatus, captureAcpAnswerText, assertCompleteAcpAnswer, ACP_ANSWER_CAPTURE_LIMIT } from '../src/providers/acp/notification-state.mjs';
+import { captureAcpSessionUpdate, acpToolEventCaptureStatus, captureAcpAnswerText, assertCompleteAcpAnswer, ACP_ANSWER_CAPTURE_LIMIT, captureDeferredAcpUpdate, assertCompleteDeferredAcpPresentation, ACP_DEFERRED_PRESENTATION_LIMIT } from '../src/providers/acp/notification-state.mjs';
 
 const state = {
     notificationsReceived: 0, finalChunksReceived: 0, finalText: '', unphasedText: '',
@@ -98,4 +98,15 @@ const restarted = answer();
 captureAcpAnswerText(restarted, 'final_answer', '{"ok":true}');
 assert.doesNotThrow(() => assertCompleteAcpAnswer(restarted));
 
+const deferred = { pendingFinalUpdates: [], pendingUnphasedUpdates: [] };
+captureDeferredAcpUpdate(deferred, 'pendingFinalUpdates', { content: { type:'text', text:'ok' } });
+assert.equal(deferred.pendingFinalUpdates.length, 1);
+assert.doesNotThrow(() => assertCompleteDeferredAcpPresentation(deferred));
+captureDeferredAcpUpdate(deferred, 'pendingUnphasedUpdates',
+    { content: { type:'text', text:'x'.repeat(ACP_DEFERRED_PRESENTATION_LIMIT) } });
+assert.equal(deferred.deferredPresentationIncomplete, true);
+assert.equal(deferred.pendingFinalUpdates.length, 0);
+assert.equal(deferred.pendingUnphasedUpdates.length, 0);
+assert.throws(() => assertCompleteDeferredAcpPresentation(deferred), (error) =>
+    error.code === 'PROVIDER_CRASH' && error.diagnostics?.complete === false);
 console.log('acp-notification-state: PASS');

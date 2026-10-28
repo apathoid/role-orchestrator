@@ -18,7 +18,7 @@ import { AgentProviderError, providerCancelledError } from './errors.mjs';
 import { cancellationDetails, cancellationErrorFromSignal, throwIfAborted } from '../cancellation.mjs';
 import { AcpTurnDiagnostics } from './acp/turn-diagnostics.mjs';
 import { AcpInvocationGuard, acpInvocationLimits } from './acp/invocation-guard.mjs';
-import { captureAcpSessionUpdate, acpToolEventCaptureStatus, assertCompleteAcpAnswer } from './acp/notification-state.mjs';
+import { captureAcpSessionUpdate, acpToolEventCaptureStatus, assertCompleteAcpAnswer, captureDeferredAcpUpdate, assertCompleteDeferredAcpPresentation } from './acp/notification-state.mjs';
 
 const require = createRequire(import.meta.url);
 const MAX_RECONCILIATION_TURNS = 3;
@@ -400,7 +400,7 @@ export class CodexAcpProvider {
                 await state.onProgress?.({ type: 'activity', activity: 'answer' });
                 if (phase === 'final_answer') {
                     if (state.presentToUser) {
-                        if (state.deferPresentation) state.pendingFinalUpdates.push(update);
+                        if (state.deferPresentation) captureDeferredAcpUpdate(state, 'pendingFinalUpdates', update);
                         else {
                             await state.onProgress?.({ type: 'content_block', update });
                             state.finalAnswerPresented = true;
@@ -411,10 +411,10 @@ export class CodexAcpProvider {
                 } else if (state.presentToUser) {
                     // Unphased content is already captured; defer presentation
                     // until we know that no explicitly phased final arrived.
-                    state.pendingUnphasedUpdates.push(update);
+                    captureDeferredAcpUpdate(state, 'pendingUnphasedUpdates', update);
                 }
             } else {
-                if (state.presentToUser && state.deferPresentation) state.pendingFinalUpdates.push(update);
+                if (state.presentToUser && state.deferPresentation) captureDeferredAcpUpdate(state, 'pendingFinalUpdates', update);
                 else {
                     await state.onProgress?.({ type: 'content_block', update });
                     if (state.presentToUser) state.finalAnswerPresented = true;
@@ -592,6 +592,7 @@ export class CodexAcpProvider {
             try { await onProgress?.({type:'prompt_profile',profile:profileProviderPrompt(finalPrompt,supplemental.length)}); } catch { /* optional monitoring */ }
             let lastTurnResponse = await runTurn([{ type: 'text', text: finalPrompt }, ...supplemental]);
             assertCompleteAcpAnswer(state);
+                    assertCompleteDeferredAcpPresentation(state);
             if (state.presentationQueueIncomplete) throw new AgentProviderError('PROVIDER_CRASH',
                 'ACP presentation queue exceeded 2048 pending notifications; turn output is incomplete.', {
                     diagnostics: { source: 'orchestrator', reason: 'ACP_PRESENTATION_QUEUE_LIMIT', complete: false },
@@ -629,11 +630,14 @@ export class CodexAcpProvider {
                     state.unphasedText = '';
                     state.answerCaptureIncomplete = false;
                     state.presentationQueueIncomplete = false;
+                    state.deferredPresentationIncomplete = false;
+                    state.deferredPresentationBytes = 0;
                     state.answerCaptureOmittedCharacters = 0;
                     state.pendingFinalUpdates = [];
                     state.pendingUnphasedUpdates = [];
                     lastTurnResponse = await runTurn([{ type: 'text', text: String(reconciliation.prompt) }]);
                     assertCompleteAcpAnswer(state);
+                    assertCompleteDeferredAcpPresentation(state);
                     if (state.presentationQueueIncomplete) throw new AgentProviderError('PROVIDER_CRASH',
                         'ACP presentation queue exceeded 2048 pending notifications; turn output is incomplete.', {
                             diagnostics: { source: 'orchestrator', reason: 'ACP_PRESENTATION_QUEUE_LIMIT', complete: false },

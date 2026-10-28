@@ -38,6 +38,30 @@ export function assertCompleteAcpAnswer(state) {
         });
 }
 
+export const ACP_DEFERRED_PRESENTATION_LIMIT = 1_048_576;
+// Deferred native media and metadata are not accounted for by text capture.
+export function captureDeferredAcpUpdate(state, field, update) {
+    if (state.deferredPresentationIncomplete) return;
+    const size = eventSize(update);
+    const used = state.deferredPresentationBytes ?? 0;
+    if (!Number.isFinite(size) || size > ACP_DEFERRED_PRESENTATION_LIMIT - used) {
+        state.deferredPresentationIncomplete = true;
+        state.pendingFinalUpdates = [];
+        state.pendingUnphasedUpdates = [];
+        return;
+    }
+    state.deferredPresentationBytes = used + size;
+    state[field].push(update);
+}
+export function assertCompleteDeferredAcpPresentation(state) {
+    if (!state.deferredPresentationIncomplete) return;
+    throw new AgentProviderError('PROVIDER_CRASH',
+        'ACP deferred presentation exceeded its byte limit; incomplete output cannot be accepted.', {
+            diagnostics: { source: 'orchestrator', reason: 'ACP_DEFERRED_PRESENTATION_LIMIT',
+                limitBytes: ACP_DEFERRED_PRESENTATION_LIMIT, complete: false },
+        });
+}
+
 function eventSize(value) {
     try { return Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8'); }
     catch { return Infinity; }
