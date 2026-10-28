@@ -88,5 +88,14 @@ for (const unsafe of ['src/a\\nb', 'src/a\\tb', 'src/a\\rb', 'src/CON',
     /invalid_task_write_paths/, 'unsafe exclusion: ' + JSON.stringify(unsafe));
 }
 assert.equal(assessTaskWriteScope(['src/valid-file.ts'],change).accepted,true);
+// The typed task spec must reject the same dangerous aliases as the audit;
+// otherwise an exclusion could pass routing but fail only after execution.
+for (const unsafe of ['src/aux.txt','src/CON','src/lpt9.log','src/name.']) {
+  const result = assessPreWriteBoundary([withConstraints('combined',[unsafe])]);
+  assert.equal(result.accepted,false);
+  assert.equal(result.reason,'invalid_task_authorization');
+}
+assert.equal(assessPreWriteBoundary([withConstraints('combined',['src/valid-file.ts'])]).reason,
+  'excluded_paths_require_enforced_sandbox');
 
 console.log('prewrite-boundary: PASS');

@@ -54,7 +54,9 @@ const ref = (value) => typeof value === 'string' && SHA_OR_REF.test(value) &&
 // a restrictive selector/exclusion into an ineffective string comparison.
 const path = (value) => typeof value === 'string' && PATH.test(value) &&
   !value.startsWith('/') && value.split('/').every(part =>
-    part !== '' && part !== '.' && part !== '..' && part.toLowerCase() !== '.git');
+    part !== '' && part !== '.' && part !== '..' && part.toLowerCase() !== '.git' &&
+    !part.endsWith('.') &&
+    !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$/i.test(part));
 
 function validateSelectorCandidate(selector) {
   try { validateTaskSpec({...emptyTaskSpec('review'),target:{kind:'git',selector}}); return true; }

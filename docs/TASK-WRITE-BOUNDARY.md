@@ -9,6 +9,7 @@ an atomic provider-owned per-path enforcement layer.
 The existing post-write audit still detects some visible changes and preserves
 user edits. It rejects ambiguous audit paths, including control characters,
 Windows device-name aliases, trailing-dot names and noncanonical exclusions,
+at both typed Task Spec validation and post-write audit,
 rather than treating them as allowed writes. It does not guarantee prevention, isolation of ignored files, or
 attribution of concurrent external mutations.
 
