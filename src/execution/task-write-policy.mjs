@@ -3,24 +3,13 @@
 // already occurred. Provider-side write interception is a separate requirement.
 import { classifyTestCandidate } from '../testing/discovery.mjs';
 import { validateTaskSpec } from '../routing/task-spec.mjs';
+import { canonicalTaskPath } from '../routing/task-path.mjs';
 const SCOPES = new Set(['unspecified','tests_only','production_only','combined']);
 export const WRITE_SCOPES = Object.freeze([...SCOPES]);
 
 // Git paths are slash-separated and canonical. Reject ambiguous spellings
 // before any post-write comparison, including independently invoked audits.
-function canonicalAuditPath(path) {
-  // The post-write auditor must not accept spellings that the typed Task Spec
-  // validator would reject. A malformed path is a violation, never an allow.
-  // Keep conservative on Windows/NTFS aliases even on case-sensitive hosts.
-  return typeof path === 'string' && path.length > 0 && path.length <= 240 &&
-    !path.startsWith('/') && !path.includes('\\') &&
-    !/[\x00-\x1f\x7f]/.test(path) && !/^[A-Za-z]:/.test(path) &&
-    /^[\p{L}\p{N}_.+@/-]+$/u.test(path) &&
-    path.split('/').every(part => part !== '' && part !== '.' &&
-      part !== '..' && part.toLowerCase() !== '.git' &&
-      !part.endsWith('.') && !part.endsWith(' ') &&
-      !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(part));
-}
+const canonicalAuditPath = canonicalTaskPath;
 
 export function assessTaskWriteScope(changedPaths, taskSpec) {
   const scope = taskSpec?.constraints?.writeScope ?? 'unspecified';

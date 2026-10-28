@@ -1,5 +1,6 @@
 // Semantic Router is the sole interpreter of natural-language task intent.
 // The normalized task spec is DATA, never permission, a Git command or a scheduler.
+import { canonicalTaskPath } from './task-path.mjs';
 export const TASK_SPEC_VERSION = 1;
 const OPERATIONS = new Set(['investigate','review','change','plan']);
 const WRITE = new Set(['explicit','not_requested','ambiguous']);
@@ -52,11 +53,7 @@ const ref = (value) => typeof value === 'string' && SHA_OR_REF.test(value) &&
 // Only canonical repository-relative paths are safe for exact post-write audit.
 // A model-supplied ./private, private//file or mixed-case .GIT must not turn
 // a restrictive selector/exclusion into an ineffective string comparison.
-const path = (value) => typeof value === 'string' && PATH.test(value) &&
-  !value.startsWith('/') && value.split('/').every(part =>
-    part !== '' && part !== '.' && part !== '..' && part.toLowerCase() !== '.git' &&
-    !part.endsWith('.') &&
-    !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$/i.test(part));
+const path = canonicalTaskPath;
 
 function validateSelectorCandidate(selector) {
   try { validateTaskSpec({...emptyTaskSpec('review'),target:{kind:'git',selector}}); return true; }
