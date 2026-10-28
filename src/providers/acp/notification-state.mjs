@@ -16,11 +16,25 @@ export const ACP_ANSWER_CAPTURE_LIMIT = 1_048_576;
 export function reserveAcpPresentationSlot(state, limit = 2048) {
     if (state.presentationQueueIncomplete) return false;
     const pending = state.queuedPresentationUpdates ?? 0;
-    if (!Number.isSafeInteger(pending) || pending < 0 || pending >= limit) {
+    if (!Number.isSafeInteger(limit) || limit < 1 ||
+        !Number.isSafeInteger(pending) || pending < 0 || pending >= limit) {
         state.presentationQueueIncomplete = true;
         return false;
     }
     state.queuedPresentationUpdates = pending + 1;
+    return true;
+}
+
+// Release only slots that were actually reserved. A double release or an
+// invalid counter is diagnostic corruption, never permission to enqueue more.
+export function releaseAcpPresentationSlot(state) {
+    const pending = state.queuedPresentationUpdates;
+    if (!Number.isSafeInteger(pending) || pending < 1) {
+        state.presentationQueueIncomplete = true;
+        state.queuedPresentationUpdates = 0;
+        return false;
+    }
+    state.queuedPresentationUpdates = pending - 1;
     return true;
 }
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { reserveAcpPresentationSlot } from '../src/providers/acp/notification-state.mjs';
+import { reserveAcpPresentationSlot, releaseAcpPresentationSlot } from '../src/providers/acp/notification-state.mjs';
 import { captureAcpSessionUpdate, acpToolEventCaptureStatus, captureAcpAnswerText, assertCompleteAcpAnswer, ACP_ANSWER_CAPTURE_LIMIT, captureDeferredAcpUpdate, assertCompleteDeferredAcpPresentation, ACP_DEFERRED_PRESENTATION_LIMIT } from '../src/providers/acp/notification-state.mjs';
 
 const state = {
@@ -122,3 +122,13 @@ queue.queuedPresentationUpdates = 0; // slow host callbacks finally drained
 assert.equal(reserveAcpPresentationSlot(queue, 2), false, 'overflow must remain sticky');
 assert.equal(queue.queuedPresentationUpdates, 0, 'dropped notifications cannot leak queue slots');
 assert.equal(reserveAcpPresentationSlot({ queuedPresentationUpdates: -1 }), false);
+
+const releases = { queuedPresentationUpdates: 0, presentationQueueIncomplete: false };
+assert.equal(reserveAcpPresentationSlot(releases, 2), true);
+assert.equal(releaseAcpPresentationSlot(releases), true);
+assert.equal(releases.queuedPresentationUpdates, 0);
+assert.equal(releaseAcpPresentationSlot(releases), false, 'double release is not a valid slot');
+assert.equal(releases.presentationQueueIncomplete, true);
+assert.equal(reserveAcpPresentationSlot(releases, 2), false, 'corrupt accounting must fail closed');
+assert.equal(reserveAcpPresentationSlot({ queuedPresentationUpdates: 0 }, 0), false,
+  'invalid limits must fail closed');

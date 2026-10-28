@@ -19,7 +19,7 @@ import { cancellationDetails, cancellationErrorFromSignal, throwIfAborted } from
 import { AcpTurnDiagnostics } from './acp/turn-diagnostics.mjs';
 import { AcpInvocationGuard, acpInvocationLimits } from './acp/invocation-guard.mjs';
 import { captureAcpSessionUpdate, acpToolEventCaptureStatus, assertCompleteAcpAnswer, captureDeferredAcpUpdate, assertCompleteDeferredAcpPresentation } from './acp/notification-state.mjs';
-import { reserveAcpPresentationSlot } from './acp/notification-state.mjs';
+import { reserveAcpPresentationSlot, releaseAcpPresentationSlot } from './acp/notification-state.mjs';
 
 const require = createRequire(import.meta.url);
 const MAX_RECONCILIATION_TURNS = 3;
@@ -356,7 +356,7 @@ export class CodexAcpProvider {
         // Bound the number of raw notifications retained behind slow host callbacks.
         if (!reserveAcpPresentationSlot(state)) return state.updateQueue;
         const delivered = state.updateQueue.then(() => this.deliverSessionUpdate(params, state))
-            .finally(() => { state.queuedPresentationUpdates -= 1; });
+            .finally(() => { releaseAcpPresentationSlot(state); });
         state.updateQueue = delivered.catch((error) => {
             state.progressErrors += 1;
             // Progress errors are diagnostic, not permission to discard model text.
