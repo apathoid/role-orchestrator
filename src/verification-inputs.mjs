@@ -6,9 +6,13 @@ import { isAbsolute } from 'node:path';
 const safeEnvironmentKey = (name) => typeof name === 'string' && /^[A-Z_][A-Z0-9_]{0,79}$/i.test(name) &&
   !/(?:TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE|AUTH|CREDENTIAL|COOKIE|API_KEY|ACCESS_KEY)/i.test(name);
 
+// Path spellings are canonical and independent of the host OS. A path like
+// a//b, a/./b or C:relative must not create duplicate/ambiguous cache inputs.
 const safePath = (name) => typeof name === 'string' && name.length > 0 && name.length <= 500 &&
-  !isAbsolute(name) && !name.includes('\0') &&
-  !name.split(/[\\/]/).some((part) => part === '..' || part === '.git');
+  !isAbsolute(name) && !/^[A-Za-z]:/.test(name) &&
+  !/[\\\\\x00-\x1f\x7f]/.test(name) &&
+  name.split('/').every(part => part && part !== '.' && part !== '..' &&
+    part.toLowerCase() !== '.git');
 
 export function configuredVerificationInputClosures(raw = process.env.AGENT_VERIFY_INPUT_CLOSURES) {
   if (!raw) return {};
@@ -39,30 +43,39 @@ export function configuredVerificationInputClosures(raw = process.env.AGENT_VERI
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import path from 'node:path';
+import { withWorkspaceEntry } from './workspace-fs-boundary.mjs';
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 export const verificationCheckId = (command) => sha(String(command));
 export const verificationSuiteId = (commands) => sha(JSON.stringify(commands.map(verificationCheckId)));
 export const verificationAttemptId = () => randomUUID();
+// Read through a pinned, no-symlink directory chain. Checking parent names
+// with lstat followed by an ordinary pathname open is vulnerable to renames
+// between those operations. Fail closed where safe directory-fd access is absent.
 async function fingerprintFile(root, relative) {
   if (!safePath(relative)) return null;
-  const base = path.resolve(root), filename = path.resolve(base, relative);
-  if (!filename.startsWith(`${base}${path.sep}`)) return null;
   try {
-    const parts = path.relative(base, filename).split(path.sep);
-    for (let i = 1; i < parts.length; i++) {
-      const parent = await lstat(path.join(base, ...parts.slice(0, i)));
-      if (!parent.isDirectory() || parent.isSymbolicLink()) return null;
-    }
-    const before = await lstat(filename);
-    if (!before.isFile() || before.isSymbolicLink() || before.size > 8_000_000) return null;
-    const file = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      const stat = await file.stat();
-      if (!stat.isFile() || stat.dev !== before.dev || stat.ino !== before.ino || stat.size > 8_000_000) return null;
-      return sha(await file.readFile());
-    } finally { await file.close(); }
-  } catch (error) { return error?.code === 'ENOENT' ? 'missing' : null; }
+    return await withWorkspaceEntry(root, relative, {}, async (filename) => {
+      const before = await lstat(filename, { bigint: true });
+      if (!before.isFile() || before.isSymbolicLink() ||
+          before.nlink !== 1n || before.size > 8_000_000n) return null;
+      const file = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        const opened = await file.stat({ bigint: true });
+        if (!opened.isFile() || opened.nlink !== 1n ||
+            opened.dev !== before.dev || opened.ino !== before.ino ||
+            opened.size !== before.size || opened.mtimeNs !== before.mtimeNs ||
+            opened.ctimeNs !== before.ctimeNs) return null;
+        const data = await file.readFile();
+        const after = await file.stat({ bigint: true });
+        if (data.length > 8_000_000 || after.size !== opened.size ||
+            after.mtimeNs !== opened.mtimeNs || after.ctimeNs !== opened.ctimeNs ||
+            after.nlink !== 1n) return null;
+        return sha(data);
+      } finally { await file.close(); }
+    });
+  } catch (error) {
+    return error?.code === 'ENOENT' ? 'missing' : null;
+  }
 }
 export async function witnessVerificationInputs(root, declaration) {
   if (!declaration || declaration.complete !== true || !Array.isArray(declaration.paths) ||
