@@ -352,7 +352,15 @@ export class CodexAcpProvider {
 
         // Use a non-rejecting tail so an optional host callback cannot suppress
         // subsequent ACP updates. Preserve delivery order for plans and UI events.
-        const delivered = state.updateQueue.then(() => this.deliverSessionUpdate(params, state));
+        // Bound the number of raw notifications retained behind slow host callbacks.
+        state.queuedPresentationUpdates = (state.queuedPresentationUpdates ?? 0) + 1;
+        if (state.queuedPresentationUpdates > 2048) {
+            state.presentationQueueIncomplete = true;
+            state.queuedPresentationUpdates -= 1;
+            return state.updateQueue;
+        }
+        const delivered = state.updateQueue.then(() => this.deliverSessionUpdate(params, state))
+            .finally(() => { state.queuedPresentationUpdates -= 1; });
         state.updateQueue = delivered.catch((error) => {
             state.progressErrors += 1;
             // Progress errors are diagnostic, not permission to discard model text.
@@ -584,6 +592,10 @@ export class CodexAcpProvider {
             try { await onProgress?.({type:'prompt_profile',profile:profileProviderPrompt(finalPrompt,supplemental.length)}); } catch { /* optional monitoring */ }
             let lastTurnResponse = await runTurn([{ type: 'text', text: finalPrompt }, ...supplemental]);
             assertCompleteAcpAnswer(state);
+            if (state.presentationQueueIncomplete) throw new AgentProviderError('PROVIDER_CRASH',
+                'ACP presentation queue exceeded 2048 pending notifications; turn output is incomplete.', {
+                    diagnostics: { source: 'orchestrator', reason: 'ACP_PRESENTATION_QUEUE_LIMIT', complete: false },
+                });
 
             let reconciliation = null;
             let reconciliationTurns = 0;
@@ -616,11 +628,16 @@ export class CodexAcpProvider {
                     state.finalText = '';
                     state.unphasedText = '';
                     state.answerCaptureIncomplete = false;
+                    state.presentationQueueIncomplete = false;
                     state.answerCaptureOmittedCharacters = 0;
                     state.pendingFinalUpdates = [];
                     state.pendingUnphasedUpdates = [];
                     lastTurnResponse = await runTurn([{ type: 'text', text: String(reconciliation.prompt) }]);
                     assertCompleteAcpAnswer(state);
+                    if (state.presentationQueueIncomplete) throw new AgentProviderError('PROVIDER_CRASH',
+                        'ACP presentation queue exceeded 2048 pending notifications; turn output is incomplete.', {
+                            diagnostics: { source: 'orchestrator', reason: 'ACP_PRESENTATION_QUEUE_LIMIT', complete: false },
+                        });
                 }
                 if (state.presentToUser && state.deferPresentation && state.pendingFinalUpdates.length) {
                     state.deferPresentation = false;

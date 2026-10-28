@@ -130,14 +130,14 @@ export class GenericAcpProvider extends AgentProvider {
     state.turnTiming?.touch();
     state.turnDiagnostics?.recordUpdate(update.sessionUpdate);
     const text = textOf(update.content);
-    if (update.sessionUpdate === 'agent_thought_chunk' && text) return state.onProgress?.({ type: 'reasoning', text });
+    if (update.sessionUpdate === 'agent_thought_chunk' && text) return state.onProgress?.({ type: 'reasoning', text: text.slice(0, 65_536) });
     if (update.sessionUpdate === 'agent_message_chunk') {
       // ACP message chunks are ordinarily final messages. Preserve optional
       // provider phase markers instead of blending commentary with a later
       // explicitly marked final answer (same contract as Codex ACP).
       const phase = update?._meta?.codex?.phase ?? null;
       if (text) {
-        if (phase === 'commentary') await state.onProgress?.({type:'commentary',text});
+        if (phase === 'commentary') await state.onProgress?.({type:'commentary',text:text.slice(0,65_536)});
         else {
           captureAcpAnswerText(state, phase, text);
           await state.onProgress?.({type:'activity',activity:'answer'});
