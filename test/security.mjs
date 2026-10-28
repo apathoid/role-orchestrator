@@ -49,6 +49,8 @@ assert.equal(evaluateSecurityPath('config/development.json', merged).denied, tru
 assert.equal(evaluateSecurityPath('internal/credentials/token.txt', merged).denied, true);
 assert.equal(evaluateSecurityPath('fixtures/public.private.json', merged).denied, false);
 
+assert.throws(() => validateSecurityConfig({ denyPaths: ['C:/Windows/secret'] }), /repository-relative/);
+assert.throws(() => validateSecurityConfig({ denyGlobs: ['C:relative'] }), /repository-relative/);
 assert.throws(() => validateSecurityConfig({ denyPaths: ['../outside'] }), /parent-directory|inside the repository/);
 assert.throws(() => validateSecurityConfig({ denyPaths: ['foo/../outside'] }), /parent-directory/);
 assert.throws(() => validateSecurityConfig({ denyGlobs: ['/absolute/**'] }), /repository-relative/);

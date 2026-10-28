@@ -6,18 +6,29 @@ import { validateTaskSpec } from '../routing/task-spec.mjs';
 const SCOPES = new Set(['unspecified','tests_only','production_only','combined']);
 export const WRITE_SCOPES = Object.freeze([...SCOPES]);
 
+// Git paths are slash-separated and canonical. Reject ambiguous spellings
+// before any post-write comparison, including independently invoked audits.
+function canonicalAuditPath(path) {
+  return typeof path === 'string' && path.length > 0 && !path.startsWith('/') &&
+    !path.includes('\\') && !path.includes('\0') && !/^[A-Za-z]:/.test(path) &&
+    path.split('/').every(part => part !== '' && part !== '.' &&
+      part !== '..' && part.toLowerCase() !== '.git');
+}
+
 export function assessTaskWriteScope(changedPaths, taskSpec) {
   const scope = taskSpec?.constraints?.writeScope ?? 'unspecified';
   if (!SCOPES.has(scope)) throw new Error('invalid_task_write_scope');
   const excludes = taskSpec?.constraints?.excludedPaths ?? [];
-  if (!Array.isArray(changedPaths) || !Array.isArray(excludes)) throw new Error('invalid_task_write_paths');
+  if (!Array.isArray(changedPaths) || !Array.isArray(excludes) ||
+      excludes.some(prefix => !canonicalAuditPath(prefix))) throw new Error('invalid_task_write_paths');
+  const foldedExclusions = excludes.map(prefix => prefix.toLowerCase());
   const violations=[];
   for (const path of changedPaths) {
-    if (typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.includes('\0') ||
-        path.split('/').some(part => !part || part === '.' || part === '..' || part === '.git') || /^[A-Za-z]:/.test(path)) {
+    if (!canonicalAuditPath(path)) {
       violations.push({path:'[invalid]',reason:'unsafe_path'}); continue;
     }
-    if (excludes.some(prefix => path === prefix || path.startsWith(`${prefix}/`))) {
+    const foldedPath = path.toLowerCase();
+    if (foldedExclusions.some(prefix => foldedPath === prefix || foldedPath.startsWith(prefix + '/'))) {
       violations.push({path,reason:'explicit_exclusion'}); continue;
     }
     if (scope==='tests_only' || scope==='production_only') {

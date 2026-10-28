@@ -49,8 +49,12 @@ const OBJECT = (v, name, keys) => {
 };
 const ref = (value) => typeof value === 'string' && SHA_OR_REF.test(value) &&
   !value.startsWith('-') && !value.includes('..') && !value.endsWith('.lock') && !value.includes('@{');
+// Only canonical repository-relative paths are safe for exact post-write audit.
+// A model-supplied ./private, private//file or mixed-case .GIT must not turn
+// a restrictive selector/exclusion into an ineffective string comparison.
 const path = (value) => typeof value === 'string' && PATH.test(value) &&
-  !value.startsWith('/') && !value.split('/').includes('..') && !value.split('/').includes('.git');
+  !value.startsWith('/') && value.split('/').every(part =>
+    part !== '' && part !== '.' && part !== '..' && part.toLowerCase() !== '.git');
 
 function validateSelectorCandidate(selector) {
   try { validateTaskSpec({...emptyTaskSpec('review'),target:{kind:'git',selector}}); return true; }

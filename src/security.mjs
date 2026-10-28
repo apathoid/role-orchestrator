@@ -13,7 +13,9 @@ function normalizeRepoPath(value, label = 'path') {
 
   let normalized = value.replaceAll('\\', '/');
   while (normalized.startsWith('./')) normalized = normalized.slice(2);
-  if (normalized.startsWith('/')) throw new Error(`${label} must be repository-relative: ${value}`);
+  if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) {
+    throw new Error(`${label} must be repository-relative: ${value}`);
+  }
   if (normalized.split('/').includes('..')) {
     throw new Error(`${label} must not contain parent-directory segments: ${value}`);
   }

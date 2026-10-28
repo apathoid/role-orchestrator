@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { assessPreWriteBoundary, assertPreWriteBoundary } from '../src/execution/task-write-policy.mjs';
+import { assessPreWriteBoundary, assertPreWriteBoundary, assessTaskWriteScope, assertTaskWriteScope } from '../src/execution/task-write-policy.mjs';
 import { emptyTaskSpec } from '../src/routing/task-spec.mjs';
 
 const change = emptyTaskSpec('change','explicit');
@@ -53,4 +53,28 @@ for (const mode of ['', 'danger-full-access', 'workspace-write ', 'unknown']) {
 assert.equal(assessPreWriteBoundary([change,{...change,writeIntent:'ambiguous'}]).accepted,false,
   'a malformed saved Task Spec must fail closed instead of silently being ignored');
 assert.equal(assessPreWriteBoundary([change,{...change,constraints:{...change.constraints,writeScope:'invalid'}}]).accepted,false);
+
+for (const forbidden of ['./src/private', 'src//private', 'src/./private',
+  'src/private/', 'src/.GIT/config', 'src/../private']) {
+  const malformed = { ...change, constraints: { ...change.constraints, excludedPaths:[forbidden] }};
+  assert.deepEqual(assessPreWriteBoundary([malformed]),
+    { accepted:false, enforcement:'NOT_ENFORCEABLE', reason:'invalid_task_authorization' },
+    'noncanonical exclusion ' + forbidden + ' must not reach a writable invocation');
+}
+const inScope = withConstraints('combined',['src/secret']);
+assert.equal(assessTaskWriteScope(['src/secret/item.txt'],inScope).accepted,false);
+assert.equal(assessTaskWriteScope(['SRC/SECRET/item.txt'],inScope).violations[0].reason,
+  'explicit_exclusion', 'case-insensitive audit is conservative on case-folding hosts');
+assert.equal(assessTaskWriteScope(['src/secretary/item.txt'],inScope).accepted,true,
+  'an exclusion must match complete path components, not substrings');
+for (const changed of ['src//secret/item.txt','src/.GIT/config','src/./secret.txt','C:/windows/file']) {
+  assert.equal(assessTaskWriteScope([changed],change).violations[0].reason,'unsafe_path');
+}
+for (const exclusion of ['./src/secret','src//secret','src/.GIT/config']) {
+  assert.throws(() => assessTaskWriteScope(['src/secret/item.txt'],
+    withConstraints('combined',[exclusion])),/invalid_task_write_paths/);
+}
+assert.throws(() => assertTaskWriteScope(['SRC/SECRET/file'],inScope),
+  {code:'TASK_WRITE_SCOPE_VIOLATION'});
+
 console.log('prewrite-boundary: PASS');
