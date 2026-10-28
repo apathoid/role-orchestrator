@@ -66,4 +66,30 @@ const secondTurn = [];
 const newBridge = createOuterToolCallBridge({ publish: async (update) => secondTurn.push(update) });
 await newBridge({ ...meta, update: { sessionUpdate: 'tool_call', toolCallId: 'exec-1', title: 'New turn' } });
 assert.notEqual(secondTurn[0].toolCallId, mapped.toolCall.toolCallId);
+// Identical ACP notifications are idempotent within a single inner session.
+// A new inner session with the same tool ID still creates a distinct card.
+const countBeforeDedup = published.length;
+await send('turn-b', 'tool_call_update', 'id', { status: 'failed' });
+assert.equal(published.length, countBeforeDedup, 'duplicate status payload not published twice');
+await send('turn-b', 'tool_call_update', 'id', { status: 'in_progress' });
+assert.equal(published.length, countBeforeDedup, 'delayed running status cannot reopen failed card');
+await send('turn-b', 'tool_call_update', 'id', { status: 'failed', content: [
+  { type:'content', content:{type:'text',text:'new error evidence'} },
+] });
+assert.equal(published.length, countBeforeDedup + 1, 'new failure content is not discarded');
+assert.equal(published.at(-1).status, 'failed');
+const initial = published.length;
+await send('turn-new', 'tool_call', 'repeat', { title: 'Read', kind: 'read' });
+await send('turn-new', 'tool_call', 'repeat', { title: 'Read', kind: 'read' });
+assert.equal(published.length, initial + 1, 'duplicate create is not forwarded as redundant update');
+await send('turn-new', 'tool_call_update', 'repeat', { status: 'completed' });
+await send('turn-new', 'tool_call_update', 'repeat', { status: 'completed' });
+assert.equal(published.length, initial + 2, 'duplicate terminal update is not forwarded');
+await send('turn-new', 'tool_call_update', 'repeat', { status: 'completed', content: [
+  { type:'content', content:{type:'text',text:'added evidence'} },
+] });
+assert.equal(published.length, initial + 3, 'different content with same status is material');
+const secure = await bridge.permission({toolCall:{toolCallId:'oversize', title:'T'.repeat(10000)}},meta);
+assert(secure.toolCall.toolCallId.includes('oversize'));
+assert(published.at(-1).title.includes('ACP presentation truncated'), 'permission card bounded without changing actual permission input');
 console.log('acp-tool-bridge: passed');
