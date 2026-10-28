@@ -19,7 +19,7 @@ function canonicalAuditPath(path) {
     path.split('/').every(part => part !== '' && part !== '.' &&
       part !== '..' && part.toLowerCase() !== '.git' &&
       !part.endsWith('.') && !part.endsWith(' ') &&
-      !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$/i.test(part));
+      !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(part));
 }
 
 export function assessTaskWriteScope(changedPaths, taskSpec) {
