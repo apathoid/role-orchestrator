@@ -77,4 +77,16 @@ for (const exclusion of ['./src/secret','src//secret','src/.GIT/config']) {
 assert.throws(() => assertTaskWriteScope(['SRC/SECRET/file'],inScope),
   {code:'TASK_WRITE_SCOPE_VIOLATION'});
 
+// Host-specific path aliases and control characters must never be treated as
+// safe post-write evidence. These cannot establish a trusted pre-write sandbox.
+for (const unsafe of ['src/a\\nb', 'src/a\\tb', 'src/a\\rb', 'src/CON',
+  'src/aux.txt', 'src/file.', 'src/file ', 'src/file:stream',
+  'src/' + 'a'.repeat(241), 'src/one?two']) {
+  assert.equal(assessTaskWriteScope([unsafe],change).violations[0]?.reason,
+    'unsafe_path', 'unsafe post-write path: ' + JSON.stringify(unsafe));
+  assert.throws(() => assessTaskWriteScope(['src/ok'],withConstraints('combined',[unsafe])),
+    /invalid_task_write_paths/, 'unsafe exclusion: ' + JSON.stringify(unsafe));
+}
+assert.equal(assessTaskWriteScope(['src/valid-file.ts'],change).accepted,true);
+
 console.log('prewrite-boundary: PASS');

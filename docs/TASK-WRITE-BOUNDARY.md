@@ -7,7 +7,9 @@ intercepts all filesystem writes by an ACP agent. This project does not claim
 an atomic provider-owned per-path enforcement layer.
 
 The existing post-write audit still detects some visible changes and preserves
-user edits. It does not guarantee prevention, isolation of ignored files, or
+user edits. It rejects ambiguous audit paths, including control characters,
+Windows device-name aliases, trailing-dot names and noncanonical exclusions,
+rather than treating them as allowed writes. It does not guarantee prevention, isolation of ignored files, or
 attribution of concurrent external mutations.
 
 ## Current execution contract

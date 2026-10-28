@@ -9,10 +9,17 @@ export const WRITE_SCOPES = Object.freeze([...SCOPES]);
 // Git paths are slash-separated and canonical. Reject ambiguous spellings
 // before any post-write comparison, including independently invoked audits.
 function canonicalAuditPath(path) {
-  return typeof path === 'string' && path.length > 0 && !path.startsWith('/') &&
-    !path.includes('\\') && !path.includes('\0') && !/^[A-Za-z]:/.test(path) &&
+  // The post-write auditor must not accept spellings that the typed Task Spec
+  // validator would reject. A malformed path is a violation, never an allow.
+  // Keep conservative on Windows/NTFS aliases even on case-sensitive hosts.
+  return typeof path === 'string' && path.length > 0 && path.length <= 240 &&
+    !path.startsWith('/') && !path.includes('\\') &&
+    !/[\\x00-\\x1f\\x7f]/.test(path) && !/^[A-Za-z]:/.test(path) &&
+    /^[\\p{L}\\p{N}_.+@/-]+$/u.test(path) &&
     path.split('/').every(part => part !== '' && part !== '.' &&
-      part !== '..' && part.toLowerCase() !== '.git');
+      part !== '..' && part.toLowerCase() !== '.git' &&
+      !part.endsWith('.') && !part.endsWith(' ') &&
+      !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$/i.test(part));
 }
 
 export function assessTaskWriteScope(changedPaths, taskSpec) {
