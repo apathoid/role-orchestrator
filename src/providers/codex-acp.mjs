@@ -18,7 +18,7 @@ import { AgentProviderError, providerCancelledError } from './errors.mjs';
 import { cancellationDetails, cancellationErrorFromSignal, throwIfAborted } from '../cancellation.mjs';
 import { AcpTurnDiagnostics } from './acp/turn-diagnostics.mjs';
 import { AcpInvocationGuard, acpInvocationLimits } from './acp/invocation-guard.mjs';
-import { captureAcpSessionUpdate } from './acp/notification-state.mjs';
+import { captureAcpSessionUpdate, acpToolEventCaptureStatus } from './acp/notification-state.mjs';
 
 const require = createRequire(import.meta.url);
 const MAX_RECONCILIATION_TURNS = 3;
@@ -586,6 +586,7 @@ export class CodexAcpProvider {
                         innerSessionId: sessionId,
                         finalText: state.finalText || state.unphasedText,
                         toolEvents: state.toolEvents,
+                        toolEventCapture: acpToolEventCaptureStatus(state),
                         reconciliationTurns,
                     }), 'reconcile');
                     if (!reconciliation?.prompt) break;
@@ -650,6 +651,7 @@ export class CodexAcpProvider {
                     timing: turnTiming,
                     usage: state.usage,
                     toolEvents: state.toolEvents,
+                    toolEventCapture: acpToolEventCaptureStatus(state),
                     innerSessionId: sessionId,
                     reconciliation: typeof reconcile === 'function' ? { performed: reconciliationTurns > 0, turns: reconciliationTurns } : null,
                     finalAnswerPresented: state.finalAnswerPresented || (state.presentToUser && Boolean(state.finalText || state.unphasedText)),

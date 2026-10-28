@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { captureAcpSessionUpdate } from '../src/providers/acp/notification-state.mjs';
+import { captureAcpSessionUpdate, acpToolEventCaptureStatus } from '../src/providers/acp/notification-state.mjs';
 
 const state = {
     notificationsReceived: 0, finalChunksReceived: 0, finalText: '', unphasedText: '',
@@ -35,4 +35,29 @@ const unphased = { notificationsReceived: 0, finalChunksReceived: 0, finalText: 
 captureAcpSessionUpdate(unphased, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '{"mode":"review"}' } });
 assert.deepEqual(JSON.parse(unphased.unphasedText), { mode: 'review' });
 assert.equal(unphased.finalChunksReceived, 0);
+// Diagnostic capture cannot retain arbitrary, provider-controlled tool payloads.
+// Presentation callbacks still receive the original update independently.
+const bounded = { notificationsReceived:0, finalChunksReceived:0, finalText:'',
+    unphasedText:'', usage:null, toolEvents:[] };
+const sample = {sessionUpdate:'tool_call_update',toolCallId:'first',status:'completed'};
+captureAcpSessionUpdate(bounded,sample);
+assert.equal(bounded.toolEvents[0],sample);
+const huge = {sessionUpdate:'tool_call_update',toolCallId:'huge',
+    content:[{type:'content',content:{type:'text',text:'X'.repeat(100000)}}]};
+captureAcpSessionUpdate(bounded,huge);
+assert.equal(bounded.toolEvents.some(x=>x.toolCallId==='huge'),false,
+    'huge provider output must not be retained in the diagnostic event list');
+for (let i=0;i<300;i++) captureAcpSessionUpdate(bounded,{
+    sessionUpdate:'tool_call_update',toolCallId:`tool-${i}`,status:'in_progress'
+});
+let retention=acpToolEventCaptureStatus(bounded);
+assert.equal(retention.received,302);
+assert.equal(retention.retained,256);
+assert.equal(retention.omitted,46);
+assert.equal(retention.complete,false);
+assert.equal(bounded.toolEvents.at(-1).toolCallId,'tool-299');
+assert.equal(bounded.toolEvents[0].toolCallId,'tool-44');
+assert(bounded.toolEventsBytes <= 1_048_576);
+const fresh = { toolEvents:[] };
+assert.equal(acpToolEventCaptureStatus(fresh).complete,true);
 console.log('acp-notification-state: PASS');
