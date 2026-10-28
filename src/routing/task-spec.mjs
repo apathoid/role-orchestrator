@@ -35,7 +35,6 @@ export const taskSpecFailureCode = value => {
   return taskSpecFailureCodes.has(code) ? code : null;
 };
 const SHA_OR_REF = /^[a-zA-Z0-9_./~^-]{1,160}$/;
-const PATH = /^[\p{L}\p{N}_.+@/-]{1,240}$/u;
 // Priority areas are human-readable subject labels, not Git selectors or paths.
 // Keep the pattern shared with the advertised JSON Schema so a valid prompt
 // response cannot fail because a natural-language label contains spaces.

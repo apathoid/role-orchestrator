@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { assessPreWriteBoundary, assertPreWriteBoundary, assessTaskWriteScope, assertTaskWriteScope } from '../src/execution/task-write-policy.mjs';
 import { emptyTaskSpec } from '../src/routing/task-spec.mjs';
+import { canonicalTaskPath } from '../src/routing/task-path.mjs';
 
 const change = emptyTaskSpec('change','explicit');
 const withConstraints = (scope, exclusions = []) => ({ ...change, constraints: {
@@ -88,6 +89,23 @@ for (const unsafe of ['src/a\\nb', 'src/a\\tb', 'src/a\\rb', 'src/CON',
     /invalid_task_write_paths/, 'unsafe exclusion: ' + JSON.stringify(unsafe));
 }
 assert.equal(assessTaskWriteScope(['src/valid-file.ts'],change).accepted,true);
+// The same canonical predicate must drive both typed authorization and audit.
+for (const candidate of ['src/valid-file.ts', 'tests/example.test.mjs', 'docs/README.md',
+  'src/aux.txt', 'src/CON', 'src/name.', 'src/../escape',
+  'src//file', 'src/.git/config', 'src/file:stream', 'src/one?two',
+  'src/' + 'x'.repeat(241)]) {
+  const audited = assessTaskWriteScope([candidate],change);
+  assert.equal(audited.accepted, canonicalTaskPath(candidate),
+    'typed/audit path predicate mismatch for ' + JSON.stringify(candidate));
+}
+// Ensure real control characters are rejected, not only literal backslash
+// sequences from escaped fixture strings.
+for (const candidate of ['src/line' + String.fromCharCode(10) + 'break',
+  'src/tab' + String.fromCharCode(9) + 'name',
+  'src/nul' + String.fromCharCode(0) + 'name']) {
+  assert.equal(canonicalTaskPath(candidate),false);
+  assert.equal(assessTaskWriteScope([candidate],change).violations[0]?.reason,'unsafe_path');
+}
 // The typed task spec must reject the same dangerous aliases as the audit;
 // otherwise an exclusion could pass routing but fail only after execution.
 for (const unsafe of ['src/aux.txt','src/CON','src/lpt9.log','src/name.']) {
