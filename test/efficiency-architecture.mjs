@@ -44,6 +44,16 @@ assert.equal(reconcileEvidenceGraph(graph,'base2').reusable,false);
 assert.equal(toolObservation({invocationId:'run1',commandDigest:'hash',exitCode:0,sourceKey:'base1'}).level,'tool_observed');
 assert.equal(toolObservation({invocationId:'run1',commandDigest:'hash',exitCode:'PASS',sourceKey:'base1'}),null);
 assert.equal(chooseVerification({obligations:graph.obligations,evidence:[],risk:{concurrency:true}}).strategy,'independent_review');
+const pendingChecks = [{id:'custom-check',status:'pending'}];
+assert.equal(chooseVerification({obligations:pendingChecks,availableCommands:['cargo check'],evidence:[]}).strategy,
+  'targeted_test', 'command labels are not tied to a particular toolchain');
+assert.equal(chooseVerification({obligations:pendingChecks,availableCommands:['./verify'],evidence:[]}).strategy,'targeted_test');
+assert.equal(chooseVerification({obligations:pendingChecks,availableCommands:['  '],evidence:[]}).strategy,'source_inspection');
+assert.equal(chooseVerification({obligations:pendingChecks,availableCommands:[],evidence:[]}).strategy,'source_inspection');
+assert.equal(chooseVerification({obligations:pendingChecks,availableCommands:['cargo check'],
+  evidence:[{kind:'tool_result',level:'tool_observed',passed:true}]}).strategy,'source_inspection');
+assert.equal(chooseVerification({obligations:pendingChecks,availableCommands:['./verify'],
+  risk:{security:true}}).strategy,'independent_review');
 const contradictory=findingHypothesisGroups([{path:'a.ts',failureMode:'race',reproductionKey:'t1'},
   {path:'a.ts',failureMode:'race',reproductionKey:'t2'}]);
 assert.equal(contradictory.length,0,'incompatible explicit reproductions are not ambiguous candidates');

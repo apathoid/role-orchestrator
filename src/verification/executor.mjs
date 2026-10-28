@@ -12,8 +12,11 @@ export async function executeVerificationDecision({ decision, configuredCommands
     throw new Error('Invalid targeted verification context');
   const configured = [...new Set(configuredCommands.map(command =>
     Array.isArray(command) && command.every(x => typeof x === 'string') ? command.join(' ') : null).filter(Boolean))];
-  const permitted = configured.filter(command => approvedCommands.includes(command) &&
-    /(?:^|\s)(?:test|vitest|jest|pytest)(?:\s|$)|(?:npm|pnpm|yarn)\s+(?:run\s+)?test(?::[\w-]+)?(?:\s|$)/i.test(command));
+  // Exact intersection of host-configured and operator-approved commands.
+  // Names such as "test", "pytest" or "cargo" confer no authority, and no
+  // command is synthesized from model content or a skill.
+  const permitted = configured.filter(command =>
+    Array.isArray(approvedCommands) && approvedCommands.includes(command));
   if (!permitted.length) return { disposition:'no_operator_approved_command', observations:[] };
   // Execute one targeted command; running a full suite or an uncertain command
   // needs a separate host decision, not LLM policy inference.
@@ -24,7 +27,7 @@ export async function executeVerificationDecision({ decision, configuredCommands
     origin:'review_verification_executor',exitCode:item.exitCode,
     inputDigest:item.inputsStable === true && item.inputBinding?.kind === 'paths' &&
       item.inputBinding.completeness === 'complete' ? sha(JSON.stringify(item.inputBinding)) : null,
-    commandDigest:sha(command),passed:item.status === 'PASS' && item.exitCode === 0,
+    commandDigest:sha(command),passed:item.status === 'PASS' && item.exitCode === 0 && item.inputsStable !== false,
     status:['PASS','TEST_FAILED','TOOL_UNAVAILABLE','ENVIRONMENT_ERROR','INFRA_FAILURE'].includes(item.status)
       ? item.status : 'UNKNOWN',
   }));

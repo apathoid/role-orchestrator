@@ -2140,13 +2140,19 @@ ${boundedHistory.text}`].filter(Boolean).join('\n\n') : contextText;
     const evidenceGraph = projectReviewEvidence({ plan: workPlan, records: checkedRecords, reports: reviewReports, sourceKey: baselineKey });
     const availableReviewChecks = config.policy?.verificationEfficiency?.autoExecute === true && !activeReviewTarget
       ? await configuredVerificationCommands(repoRoot) : [];
+    // Only the host-configured AND operator-approved commands may influence
+    // scheduling. Unapproved configured commands are not a model suggestion
+    // to execute checks and never become eligible by a naming heuristic.
+    const approvedReviewCommands = config.policy?.verificationEfficiency?.safeCommands ?? [];
+    const eligibleReviewCommands = availableReviewChecks.map(args => args.join(' '))
+      .filter(command => approvedReviewCommands.includes(command));
     const verificationDecision = chooseVerification({ obligations: evidenceGraph.obligations,
-      evidence:evidenceGraph.evidence, availableCommands:availableReviewChecks.map(args => args.join(' ')),
+      evidence:evidenceGraph.evidence, availableCommands:eligibleReviewCommands,
       risk: reviewWorkload.riskFlags });
     if (config.policy?.verificationEfficiency?.autoExecute === true && !activeReviewTarget) {
       try {
-        const approved = config.policy.verificationEfficiency.safeCommands ?? [];
-        const candidate = availableReviewChecks.map(row => row.join(' ')).find(command => approved.includes(command));
+        const approved = approvedReviewCommands;
+        const candidate = eligibleReviewCommands[0];
         // A Git/source fingerprint alone is insufficient for test reuse:
         // the host-owned complete input closure also fingerprints dependency
         // files and environment. Unknown closures disable cache reuse.

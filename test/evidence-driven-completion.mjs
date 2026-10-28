@@ -86,5 +86,40 @@ try {
   assert.equal(verified.disposition,'executed');
   assert.equal(verified.observations[0].level,'tool_observed');
   assert.equal(executed,1);
+  // Language/tool/skill names cannot confer authority. The host approves the
+  // exact configured command; custom commands are equally eligible.
+  for (const approvedCommand of ['cargo check', './verify', 'python -m custom.audit']) {
+    const args = approvedCommand.split(' ');
+    const observed = await executeVerificationDecision({
+      decision:{strategy:'targeted_test',required:true},
+      configuredCommands:[args],approvedCommands:[approvedCommand],allowed:true,
+      sourceKey:'sha',invocationId:'trusted-host',
+      run: async commands => {
+        assert.deepEqual(commands,[approvedCommand]);
+        return {results:[{command:approvedCommand,status:'PASS',exitCode:0,inputsStable:true}]};
+      },
+    });
+    assert.equal(observed.disposition,'executed');
+    assert.equal(observed.observations[0].passed,true);
+  }
+  let unwantedRuns=0;
+  const notAuthorized=await executeVerificationDecision({
+    decision:{strategy:'targeted_test',required:true},
+    configuredCommands:[['cargo','check']],approvedCommands:['npm run test'],allowed:true,
+    sourceKey:'sha',invocationId:'trusted-host',
+    run: async()=>{unwantedRuns++;return {results:[]};},
+  });
+  assert.equal(notAuthorized.disposition,'no_operator_approved_command');
+  assert.equal(unwantedRuns,0,'unapproved checks must never run');
+  const changedInput=await executeVerificationDecision({
+    decision:{strategy:'targeted_test',required:true},
+    configuredCommands:[['cargo','check']],approvedCommands:['cargo check'],allowed:true,
+    sourceKey:'sha',invocationId:'trusted-host',
+    run:async()=>({results:[{command:'cargo check',status:'PASS',exitCode:0,inputsStable:false}]}),
+  });
+  assert.equal(changedInput.disposition,'executed');
+  assert.equal(changedInput.observations[0].status,'PASS','retain raw process classification');
+  assert.equal(changedInput.observations[0].passed,false,
+    'command success after mutated inputs is not a trusted PASS observation');
   console.log('evidence-driven-completion: PASS');
 } finally { await rm(dir,{recursive:true,force:true}); }
