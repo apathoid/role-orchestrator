@@ -258,7 +258,7 @@ async function scenarioUsesExistingNodeModules() {
   const repo = join(root, 'repo');
   await mkdir(join(repo, 'node_modules', '.bin'), { recursive: true });
   await writeFile(join(repo, 'greeting.txt'), 'hello\n');
-  await writeFile(join(repo, 'package.json'), JSON.stringify({ scripts: { test: 'vitest' } }, null, 2));
+  await writeFile(join(repo, 'package.json'), JSON.stringify({ scripts: { test: 'vitest run' } }, null, 2));
   const vitest = join(repo, 'node_modules', '.bin', 'vitest');
   await writeFile(vitest, '#!/bin/sh\necho existing-node-modules-vitest\nexit 0\n');
   await chmod(vitest, 0o755);
