@@ -61,7 +61,7 @@ function assertProviderRuns(entries, { expectChatGPT = true, expectCustomProvide
 }
 
 
-async function scenarioChange(name, task, expected, { highHistory = false, configPatch = {}, expectChatGPT = true, expectCustomProvider = false, extraEnv = {} } = {}) {
+async function scenarioChange(name, task, expected, { highHistory = false, configPatch = {}, expectChatGPT = true, expectCustomProvider = false, extraEnv = {}, expectedCoderCalls = null } = {}) {
   const root = await mkdtemp(join(tmpdir(), `role-orchestrator-${name}-`));
   const repo = join(root, 'repo');
   await mkdir(repo, { recursive: true });
@@ -85,6 +85,8 @@ async function scenarioChange(name, task, expected, { highHistory = false, confi
     assertProviderRuns(entries, { expectChatGPT, expectCustomProvider });
     const coderEntries = entries.filter((x) => x.role === 'coder');
     if (!coderEntries.length) throw new Error(`${name}: coder was not invoked`);
+    if (expectedCoderCalls !== null && coderEntries.length !== expectedCoderCalls)
+      throw new Error(`${name}: expected ${expectedCoderCalls} coder calls including remediation, got ${coderEntries.length}`);
     if (coderEntries.some((x) => x.sandboxMode !== 'workspace-write')) throw new Error(`${name}: coder did not use workspace-write`);
     if (coderEntries.some((x) => x.cwd !== repo)) throw new Error(`${name}: coder was not run in the real project workspace`);
     if (entries.filter((x) => x.role !== 'coder').some((x) => x.sandboxMode !== 'read-only')) throw new Error(`${name}: non-coder role was not read-only`);
@@ -480,8 +482,8 @@ const reviewCommit = await scenarioReviewSpecificCommit();
 const investigateOnly = await scenarioInvestigateOnly();
 const low = await scenarioChange('low', 'Change the greeting.', 'hello world', { highHistory: true });
 const high = await scenarioChange('high', 'HIGH_RISK Change the greeting.', 'hello world', { highHistory: true });
-const fix = await scenarioChange('fix', 'NEEDS_FIX Change the greeting.', 'hello world!', { highHistory: true });
-const escalation = await scenarioChange('escalation', 'ESCALATE Change the greeting.', 'hello world!', { highHistory: true });
+const fix = await scenarioChange('fix', 'NEEDS_FIX Change the greeting.', 'hello world!', { highHistory: true, expectedCoderCalls: 2 });
+const escalation = await scenarioChange('escalation', 'ESCALATE Change the greeting.', 'hello world!', { highHistory: true, expectedCoderCalls: 2 });
 const deniedWrite = await scenarioRejectsDeniedWrite();
 const toolUnavailable = await scenarioToolUnavailableDoesNotFixLoop();
 const existingNodeModules = await scenarioUsesExistingNodeModules();

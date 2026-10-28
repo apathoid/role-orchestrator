@@ -31,6 +31,21 @@ function roleForPrompt(prompt) {
   return 'unknown';
 }
 
+// Fake findings must satisfy the same evidence and task-scope contract as real
+// reviewer results. They describe observed test-workspace state, not authority
+// to expand the user's write scope.
+async function groundedPunctuationFinding(cwd, message, suggestedFix) {
+  const observed = (await readFile(join(cwd, 'greeting.txt'), 'utf8')).trim();
+  if (observed !== 'hello world') {
+    throw new Error(`Punctuation fixture expected an unfixed greeting, observed ${JSON.stringify(observed)}`);
+  }
+  return {
+    severity: 'major', path: 'greeting.txt', message, suggestedFix,
+    origin: 'introduced', taskRelation: 'requirement', remediationScope: 'in_scope',
+    evidence: `The smoke-task punctuation requirement is "hello world!"; greeting.txt currently contains ${JSON.stringify(observed)} after the initial coder change.`,
+  };
+}
+
 async function produceOutput(session, prompt) {
   const detectedRole = roleForPrompt(prompt);
   const role = detectedRole === 'unknown' ? session.lastRole ?? 'unknown' : detectedRole;
@@ -187,7 +202,7 @@ async function produceOutput(session, prompt) {
       : escalate && !fixed
         ? { verdict: 'escalate', summary: 'Smoke-test requests stronger validation.', issues: [{ severity: 'major', path: 'greeting.txt', message: 'Escalated decision.', suggestedFix: 'Decide whether punctuation is required.' }] }
         : needsFix && !fixed
-          ? { verdict: 'fix', summary: 'Smoke-test requests one fix.', issues: [{ severity: 'major', path: 'greeting.txt', message: 'Missing exclamation mark.', suggestedFix: 'Append !.' }] }
+          ? { verdict: 'fix', summary: 'Smoke-test requests one fix.', issues: [await groundedPunctuationFinding(session.cwd, 'Missing exclamation mark.', 'Append !.')] }
           : { verdict: 'pass', summary: 'No blocking issues.', issues: [] };
     const scopedFixture = fakeReviewCoverage(prompt);
     if (scopedFixture) output = { ...output, ...scopedFixture };
@@ -197,7 +212,7 @@ async function produceOutput(session, prompt) {
     output = reviewFinding
       ? { verdict: 'fix', summary: 'Review-only smoke finding.', issues: [{ severity: 'major', path: 'greeting.txt', message: 'Example review finding.', suggestedFix: 'Consider changing the greeting.' }] }
       : escalate && !fixed
-        ? { verdict: 'fix', summary: 'Escalation resolved: punctuation is required.', issues: [{ severity: 'major', path: 'greeting.txt', message: 'Add required punctuation.', suggestedFix: 'Append !.' }] }
+        ? { verdict: 'fix', summary: 'Escalation resolved: punctuation is required.', issues: [await groundedPunctuationFinding(session.cwd, 'Add required punctuation.', 'Append !.')] }
         : { verdict: 'pass', summary: 'High-risk smoke validation passed.', issues: [] };
   } else if (role === 'responder') {
     if (prompt.includes('ACTIVE SKILL') && prompt.includes('REVIEW_FINDING')) {
