@@ -29,6 +29,68 @@ export function userFacingRoleUpdate(event) {
   return null;
 }
 
+
+// These are presentation limits, NOT execution/verification limits. Never
+// modify provider results, ACP permission decisions, exit codes or status.
+// Native tool payloads may contain large stdout/stderr, binary media or diffs.
+const TOOL_PRESENTATION_TEXT_LIMIT = 12_000;
+const TOOL_PRESENTATION_TOTAL_LIMIT = 32_000;
+const TOOL_PRESENTATION_ITEM_LIMIT = 64;
+const truncation = (omitted) => `[ACP presentation truncated: ${omitted} characters omitted; original tool output is not fully displayed]`;
+function boundedText(value, limit = TOOL_PRESENTATION_TEXT_LIMIT) {
+  if (typeof value !== 'string' || value.length <= limit) return value;
+  const keep = Math.max(1, Math.floor((limit - 160) / 2));
+  return `${value.slice(0, keep)}\n${truncation(value.length - 2 * keep)}\n${value.slice(-keep)}`;
+}
+function presentationSize(value) {
+  try { return JSON.stringify(value)?.length ?? 0; }
+  catch { return Infinity; }
+}
+function boundedPayload(value, limit) {
+  if (typeof value === 'string') return boundedText(value, limit);
+  if (presentationSize(value) <= limit) return value;
+  return truncation(presentationSize(value));
+}
+function boundedContent(value) {
+  if (!Array.isArray(value)) return boundedPayload(value, TOOL_PRESENTATION_TOTAL_LIMIT);
+  const output = [];
+  let remaining = TOOL_PRESENTATION_TOTAL_LIMIT;
+  const marker = (message) => ({ type: 'content', content: { type: 'text', text: message } });
+  for (const item of value.slice(0, TOOL_PRESENTATION_ITEM_LIMIT)) {
+    if (remaining <= 0) { output.push(marker('[ACP presentation truncated: additional tool content omitted]')); break; }
+    let bounded = item;
+    if (item?.type === 'content' && item.content?.type === 'text' && typeof item.content.text === 'string') {
+      const text = boundedText(item.content.text, Math.min(remaining, TOOL_PRESENTATION_TEXT_LIMIT));
+      bounded = { ...item, content: { ...item.content, text } };
+    } else if (item?.type === 'diff' && presentationSize(item) > Math.min(remaining, TOOL_PRESENTATION_TEXT_LIMIT)) {
+      // A partial diff would misleadingly look applicable; omit it instead.
+      bounded = marker('[ACP presentation truncated: oversized native diff omitted; inspect the repository for the full change]');
+    } else if (presentationSize(item) > remaining) {
+      bounded = marker('[ACP presentation truncated: oversized non-text tool block omitted]');
+    }
+    output.push(bounded);
+    remaining -= presentationSize(bounded);
+  }
+  if (value.length > TOOL_PRESENTATION_ITEM_LIMIT) output.push(marker(`[ACP presentation truncated: ${value.length - TOOL_PRESENTATION_ITEM_LIMIT} additional content items omitted]`));
+  return output;
+}
+/** Bound the outward ACP card only; never use this object as tool evidence. */
+export function boundToolUpdateForUi(update) {
+  if (!update || typeof update !== 'object') return update;
+  const bounded = { ...update };
+  if (typeof bounded.title === 'string') bounded.title = boundedText(bounded.title, 2048);
+  if (Object.prototype.hasOwnProperty.call(bounded, 'content')) bounded.content = boundedContent(bounded.content);
+  if (Object.prototype.hasOwnProperty.call(bounded, 'rawInput')) bounded.rawInput = boundedPayload(bounded.rawInput, 4096);
+  if (Object.prototype.hasOwnProperty.call(bounded, 'rawOutput')) {
+    const raw = bounded.rawOutput;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      bounded.rawOutput = Object.fromEntries(Object.entries(raw).map(([key, value]) =>
+        [key, boundedPayload(value, 8192)]));
+    } else bounded.rawOutput = boundedPayload(raw, 8192);
+  }
+  return bounded;
+}
+
 function diffContentOnly(content) {
   if (!Array.isArray(content)) return null;
   return content.filter((item) => item?.type === 'diff');
@@ -55,7 +117,7 @@ export function sanitizeToolUpdateForUi(update, {
   if (kind === 'execute' && !showCommandToolCalls) return null;
 
   if (kind !== 'execute' || showSuccessfulCommandOutput || update?.status === 'failed') {
-    return update;
+    return boundToolUpdateForUi(update);
   }
 
   const sanitized = { ...update };
@@ -65,7 +127,7 @@ export function sanitizeToolUpdateForUi(update, {
   if (Object.prototype.hasOwnProperty.call(update, 'rawOutput')) {
     delete sanitized.rawOutput;
   }
-  return sanitized;
+  return boundToolUpdateForUi(sanitized);
 }
 
 // Host-neutral implementation stage data -> compact ACP transcript labels.

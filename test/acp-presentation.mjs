@@ -3,6 +3,7 @@ import {
   agentMessageChunk,
   agentThoughtChunk,
   sanitizeToolUpdateForUi,
+  boundToolUpdateForUi,
   userFacingRoleUpdate,
 } from '../src/acp-presentation.mjs';
 
@@ -113,4 +114,30 @@ const editDone = sanitizeToolUpdateForUi({
 }, { toolKinds });
 assert.equal(editDone.content[0].type, 'diff');
 
+// Native outer-tool presentation is bounded but must keep failure classification,
+// exit status and both the beginning and tail of an error, not invent a full diff.
+const huge = 'BEGIN_FAILURE\\n' + 'x'.repeat(60000) + '\\nEND_FAILURE';
+const boundedFailed = sanitizeToolUpdateForUi({
+  sessionUpdate: 'tool_call_update', toolCallId: 'exec-visible',
+  kind: 'execute', status: 'failed', title: 'Failure',
+  content: [{ type: 'content', content: { type: 'text', text: huge } }],
+  rawOutput: { stdout: huge, stderr: huge, exitCode: 73 },
+  rawInput: { command: huge },
+}, { toolKinds: visibleToolKinds, showCommandToolCalls: true });
+assert.equal(boundedFailed.status, 'failed');
+assert.equal(boundedFailed.rawOutput.exitCode, 73);
+assert(boundedFailed.rawOutput.stderr.includes('BEGIN_FAILURE'));
+assert(boundedFailed.rawOutput.stderr.includes('END_FAILURE'));
+assert(boundedFailed.rawOutput.stderr.includes('ACP presentation truncated'));
+assert(boundedFailed.content[0].content.text.length < 14000);
+assert(boundedFailed.content[0].content.text.includes('END_FAILURE'));
+assert.equal(typeof boundedFailed.rawInput, 'string', 'large command input must not escape the presentation limit');
+const boundedDiff = boundToolUpdateForUi({ sessionUpdate:'tool_call_update',toolCallId:'diff',
+  status:'completed', content: [{ type:'diff', path:'file', oldText:huge, newText:huge }] });
+assert.equal(boundedDiff.content[0].type, 'content', 'never publish a misleading partial native diff');
+assert(boundedDiff.content[0].content.text.includes('oversized native diff'));
+assert.equal(boundedDiff.status,'completed');
+const overflow = boundToolUpdateForUi({content:Array.from({length:100},()=>({type:'content',content:{type:'text',text:'ok'}}))});
+assert(overflow.content.length <= 65);
+assert(overflow.content.at(-1).content.text.includes('additional content items omitted'));
 console.log('acp-presentation: passed');
