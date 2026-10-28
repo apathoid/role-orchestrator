@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { reserveAcpPresentationSlot } from '../src/providers/acp/notification-state.mjs';
 import { captureAcpSessionUpdate, acpToolEventCaptureStatus, captureAcpAnswerText, assertCompleteAcpAnswer, ACP_ANSWER_CAPTURE_LIMIT, captureDeferredAcpUpdate, assertCompleteDeferredAcpPresentation, ACP_DEFERRED_PRESENTATION_LIMIT } from '../src/providers/acp/notification-state.mjs';
 
 const state = {
@@ -110,3 +111,14 @@ assert.equal(deferred.pendingUnphasedUpdates.length, 0);
 assert.throws(() => assertCompleteDeferredAcpPresentation(deferred), (error) =>
     error.code === 'PROVIDER_CRASH' && error.diagnostics?.complete === false);
 console.log('acp-notification-state: PASS');
+
+const queue = { queuedPresentationUpdates: 0, presentationQueueIncomplete: false };
+assert.equal(reserveAcpPresentationSlot(queue, 2), true);
+assert.equal(reserveAcpPresentationSlot(queue, 2), true);
+assert.equal(reserveAcpPresentationSlot(queue, 2), false);
+assert.equal(queue.queuedPresentationUpdates, 2, 'overflow must not increment retained count');
+assert.equal(queue.presentationQueueIncomplete, true);
+queue.queuedPresentationUpdates = 0; // slow host callbacks finally drained
+assert.equal(reserveAcpPresentationSlot(queue, 2), false, 'overflow must remain sticky');
+assert.equal(queue.queuedPresentationUpdates, 0, 'dropped notifications cannot leak queue slots');
+assert.equal(reserveAcpPresentationSlot({ queuedPresentationUpdates: -1 }), false);

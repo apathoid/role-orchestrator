@@ -19,6 +19,7 @@ import { cancellationDetails, cancellationErrorFromSignal, throwIfAborted } from
 import { AcpTurnDiagnostics } from './acp/turn-diagnostics.mjs';
 import { AcpInvocationGuard, acpInvocationLimits } from './acp/invocation-guard.mjs';
 import { captureAcpSessionUpdate, acpToolEventCaptureStatus, assertCompleteAcpAnswer, captureDeferredAcpUpdate, assertCompleteDeferredAcpPresentation } from './acp/notification-state.mjs';
+import { reserveAcpPresentationSlot } from './acp/notification-state.mjs';
 
 const require = createRequire(import.meta.url);
 const MAX_RECONCILIATION_TURNS = 3;
@@ -353,14 +354,7 @@ export class CodexAcpProvider {
         // Use a non-rejecting tail so an optional host callback cannot suppress
         // subsequent ACP updates. Preserve delivery order for plans and UI events.
         // Bound the number of raw notifications retained behind slow host callbacks.
-        state.queuedPresentationUpdates = (state.queuedPresentationUpdates ?? 0) + 1;
-        if (state.queuedPresentationUpdates > 2048) {
-            state.presentationQueueIncomplete = true;
-            state.queuedPresentationUpdates -= 1;
-            return state.updateQueue;
-        }
-        // Do not keep scheduling raw provider updates after an overflow.
-        if (state.presentationQueueIncomplete) return state.updateQueue;
+        if (!reserveAcpPresentationSlot(state)) return state.updateQueue;
         const delivered = state.updateQueue.then(() => this.deliverSessionUpdate(params, state))
             .finally(() => { state.queuedPresentationUpdates -= 1; });
         state.updateQueue = delivered.catch((error) => {

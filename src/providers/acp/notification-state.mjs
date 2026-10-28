@@ -10,6 +10,20 @@ const MAX_SINGLE_TOOL_EVENT_BYTES = 65_536;
 // unbounded provider-controlled chunks (including structured responses).
 export const ACP_ANSWER_CAPTURE_LIMIT = 1_048_576;
 
+// Reserve a presentation slot before retaining a provider notification.
+// Overflow is sticky: once delivery is incomplete, later updates cannot
+// silently resume or inflate the outstanding counter as the queue drains.
+export function reserveAcpPresentationSlot(state, limit = 2048) {
+    if (state.presentationQueueIncomplete) return false;
+    const pending = state.queuedPresentationUpdates ?? 0;
+    if (!Number.isSafeInteger(pending) || pending < 0 || pending >= limit) {
+        state.presentationQueueIncomplete = true;
+        return false;
+    }
+    state.queuedPresentationUpdates = pending + 1;
+    return true;
+}
+
 /** Synchronous, bounded data-plane capture. A partial answer is never valid evidence. */
 export function captureAcpAnswerText(state, phase, text) {
     if (phase === 'commentary' || typeof text !== 'string' || !text) return;
