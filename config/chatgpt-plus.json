@@ -105,6 +105,19 @@
                     "supportsFastMode": true
                 },
                 {
+                    "id": "gpt-6.1-terra",
+                    "name": "6.1 Terra",
+                    "contextWindow": 1050000,
+                    "reasoningEfforts": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                    ],
+                    "supportsFastMode": true
+                },
+                {
                     "id": "gpt-6.1-sol",
                     "name": "6.1 Sol",
                     "contextWindow": 1050000,
@@ -147,13 +160,13 @@
         },
         "triage": {
             "provider": "subscription",
-            "model": "gpt-6-luna",
-            "reasoningEffort": "high"
+            "model": "gpt-6.1-terra",
+            "reasoningEffort": "medium"
         },
         "swift": {
             "provider": "subscription",
-            "model": "gpt-6.1-sol",
-            "reasoningEffort": "low"
+            "model": "gpt-6.1-terra",
+            "reasoningEffort": "high"
         },
         "balanced": {
             "provider": "subscription",
@@ -214,15 +227,15 @@
         "planner": "frontier",
         "investigator": "balanced",
         "coderLow": "economy",
-        "coderMedium": "balanced",
+        "coderMedium": "swift",
         "coderHigh": "strong",
-        "reviewerLow": "balanced",
-        "reviewerMedium": "strong",
-        "reviewerHigh": "strongReview",
+        "reviewerLow": "triage",
+        "reviewerMedium": "swift",
+        "reviewerHigh": "strong",
         "finalValidator": "frontier",
-        "responderLow": "economyFast",
-        "responderMedium": "swift",
-        "responderHigh": "balanced"
+        "responderLow": "economy",
+        "responderMedium": "triage",
+        "responderHigh": "swift"
     },
     "rolePresets": [
         {
