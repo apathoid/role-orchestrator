@@ -13,7 +13,7 @@ export function final(invocation, overrides = {}) {
   };
 }
 
-export function setup({ respond = invocation => final(invocation), open, maxInvocations = 3, schedule } = {}) {
+export function setup({ respond = invocation => final(invocation), open, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [] } = {}) {
   const states = new Map();
   const invocations = [];
   const events = [];
@@ -38,11 +38,11 @@ export function setup({ respond = invocation => final(invocation), open, maxInvo
     diagnostics: { emit(event) { events.push(event); }, flush() {} },
     clock: { now: () => 100, monotonicNow: () => 100 },
     ids: { newId: () => 'id-' + ++sequence },
-    limits: { maxInvocations, maxConcurrentInvocations: 1 },
+    limits: { maxInvocations, maxConcurrentInvocations },
     invocationTimeoutMs: 10000, schedule,
-    catalog: { async list() { return [{ kind: 'profile', value: profile }]; }, async resolve() {} },
+    catalog: { async list() { return [{ kind: 'profile', value: profile }, ...extraCatalog]; }, async resolve() {} },
     provider: {
-      async describe() { return { providerId: 'fixture', maxConcurrency: 1, capabilities: {} }; },
+      async describe() { return { providerId: 'fixture', maxConcurrency: maxConcurrentInvocations, capabilities: {} }; },
       async open(profile, signal) {
         if (open) await open(signal);
         return { sessionId: 'session-' + ++sessionSequence };

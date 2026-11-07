@@ -1,6 +1,7 @@
 /** @import {Assessment, CancellationSource, Decision, Outcome, ReasonCode, Request} from './contracts.js' */
 /** @import {DiagnosticEvent} from './diagnostics.js' */
 /** @import {ContextItem} from './ports.js' */
+/** @import {Admission} from './action-graph.js' */
 
 /**
  * @typedef {'not_sent' | 'sent' | 'unknown'} DispatchCertainty
@@ -24,7 +25,8 @@
  *   {kind: 'attempt.dispatched', attemptId: string} |
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
  *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly ContextItem[]} |
- *   {kind: 'controller.responded', decision: Decision} |
+ *   {kind: 'controller.responded', decision: Decision, admissions?: readonly Admission[]} |
+   {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
  *   {kind: 'operation.continued', input: {requestId: string, text: string, questionId?: string}} |
  *   {kind: 'operation.finished', assessment: Assessment} |
@@ -180,6 +182,9 @@ export function applyEvent(state, event) {
       if (state.status !== 'active') return reject(state.status === 'cancelled' ? 'CANCELLED' : 'INVALID_PROPOSAL');
       return apply({}, 'ACCEPTED');
     }
+    case 'action.rejected':
+    case 'action.deferred':
+      return apply({}, event.code);
     case 'operation.waiting':
       if (state.status !== 'active') return reject('INVALID_PROPOSAL');
       return apply({ status: 'waiting', waiting: event.waiting }, event.waiting.kind === 'question' ? 'USER_INPUT' : event.waiting.reason.code);

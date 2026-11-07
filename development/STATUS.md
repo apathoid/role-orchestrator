@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C03.2, чистая проверка графа зависимостей |
-| Следующий шаг | C03.3, подключить handoff и граф к dispatch scheduler |
+| Последний локально проверенный шаг | C03.4, параллельный dispatch и обе wait policies |
+| Следующий шаг | C03.5, перепланирование и отмена выбранных actions |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C02 и контрактов C03.1–C03.2 |
+| Local regression verified | OBSERVED для C00–C02 и C03.1–C03.4 с тестовыми портами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -38,8 +38,11 @@
 - OBSERVED: `npm --prefix development run check`, `test:core` и `test:integration`, exit 0. 6 core и 12 application-тестов. OBSERVED: [CI для C02](https://github.com/apathoid/role-orchestrator/actions/runs/42388867936) завершился success на `2f5bd90`.
 - Ограничения: отмена и deadline проверены с cooperative ProviderPort. Реальные transport/process lifecycle, durable replay и crash matrix относятся к последующим кластерам. Native acceptance UNVERIFIED.
 
-## C03 — делегирование, начальные контракты
+## C03 — делегирование
 
 - C03.1 — materializeHandoff передаёт выбранный профиль, цель, ожидаемую форму, инструкции и буквальные ограничения. Контекст ограничен указанными refs, недоступные refs явно обозначаются, полномочия передаются от Host.
 - C03.2 — чистый граф принимает независимые actions, адресно отклоняет отсутствующие/циклические зависимости и конфликт id. Terminal и model acceptance — разные условия готовности.
-- OBSERVED: `npm --prefix development run check`, `test:core` (9), `test:integration` (14), exit 0. A08 и A09 проверены для handoff/графа; сквозной worker dispatch и ожидание результатов ещё не подтверждены.
+- OBSERVED: `npm --prefix development run check`, `test:core` (9), `test:integration` (14), exit 0. A08 и A09 проверены для handoff/графа.
+
+- C03.3–C03.4 — application запускает выбранных специалистов параллельно в пределах общего лимита. Проверено освобождение одного из двух слотов для третьего worker, независимость операций, terminal failure и явная модельная оценка для разных типов зависимостей. `next_completion` возвращает первый результат и pending attempts; `all_requested` ждёт указанные действия/попытки. Повторное ожидание уже виденного результата получает ошибку поля.
+- OBSERVED: `check`, `test:core` (9), `test:integration` (20), exit 0. [CI для handoff/графа](https://github.com/apathoid/role-orchestrator/actions/runs/42389043626) success на `ed33e7f`. Сквозная проверка использует тестовый ProviderPort. Адресная отмена actions, перепланирование и финал при pending effects требуют C03.5–C03.9.

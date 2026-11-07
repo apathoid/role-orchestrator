@@ -1,0 +1,178 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { final, setup } from '../../fixtures/application.js';
+import { outcome, request } from '../../fixtures/core.js';
+
+const delegate = (actionId, dependencies = [], overrides) => ({
+  actionId, kind: 'delegate', objective: 'Inspect ' + actionId, profileId: 'primary',
+  expectedResult: 'A finding', contextRefs: ['request-1'], dependsOn: dependencies, ...overrides,
+});
+const wait = (...ids) => ({ kind: 'all_requested', targets: ids.map(id => ({ kind: 'action', id })) });
+const propose = (invocation, additions, overrides) => final(invocation, {
+  finalAssessment: undefined, additions, waitPolicy: wait(...additions.map(action => action.actionId)), ...overrides,
+});
+const report = (invocation, overrides) => ({
+  dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId, overrides), output: 'result-' + invocation.actionId,
+});
+
+test('two independent workers run in parallel, a third starts when one slot is released', { timeout: 3000 }, async () => {
+  const active = new Map(['a', 'b', 'c'].map(id => [id, { started: Promise.withResolvers(), done: Promise.withResolvers() }]));
+  const { api, invocations, closed } = setup({
+    maxInvocations: 5, maxConcurrentInvocations: 2,
+    async respond(invocation, count) {
+      if (count === 1) return propose(invocation, [delegate('a'), delegate('b'), delegate('c')]);
+      if (invocation.kind === 'controller') return final(invocation);
+      const gate = active.get(invocation.actionId);
+      gate.started.resolve();
+      await gate.done.promise;
+      return report(invocation);
+    },
+  });
+  const submission = await api.submit(request());
+  await Promise.all([active.get('a').started.promise, active.get('b').started.promise]);
+  assert.equal(invocations.length, 3);
+  assert.deepEqual(invocations[1].context, [{
+    ref: 'request-1', source: 'user', completeness: 'complete', value: 'Literal task',
+  }]);
+  assert.equal(invocations[1].authorityRef, 'fixture-authority');
+  active.get('b').done.resolve();
+  await active.get('c').started.promise;
+  assert.equal(invocations.length, 4);
+  active.get('a').done.resolve();
+  active.get('c').done.resolve();
+  const state = await submission.completion;
+  assert.equal(state.status, 'finished');
+  assert.deepEqual(invocations.map(item => item.kind), ['controller', 'delegate', 'delegate', 'delegate', 'controller']);
+  assert.equal(closed.length, 5);
+  const context = invocations.at(-1).context;
+  assert.deepEqual(context.filter(item => item.source === 'model_claim').map(item => item.value).sort(),
+    ['result-a', 'result-b', 'result-c']);
+});
+
+test('terminal failure releases a dependency while model acceptance requires an explicit decision', async () => {
+  let controllers = 0;
+  const worker = delegate('a');
+  const ordinary = delegate('b', [{ actionId: 'a', kind: 'after_terminal' }]);
+  const assessed = delegate('c', [{ actionId: 'a', kind: 'after_model_acceptance' }]);
+  const { api, invocations } = setup({
+    maxInvocations: 6, maxConcurrentInvocations: 2,
+    respond(invocation) {
+      if (invocation.kind === 'delegate') return report(invocation,
+        invocation.actionId === 'a' ? { terminal: 'failed' } : undefined);
+      if (++controllers === 1) return propose(invocation, [ordinary, assessed, worker]);
+      if (controllers === 2) {
+        assert.equal(invocation.context[1].value.outcomes.find(item => item.actionId === 'a').terminal, 'failed');
+        return propose(invocation, [], { waitPolicy: wait('c'), acceptedActionIds: ['a'] });
+      }
+      return final(invocation);
+    },
+  });
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status, 'finished');
+  assert.deepEqual(invocations.map(item => item.kind === 'delegate' ? item.actionId : 'controller'),
+    ['controller', 'a', 'b', 'controller', 'c', 'controller']);
+});
+
+test('unavailable profiles and bad graph edges leave an independent worker dispatchable', async () => {
+  const { api, invocations } = setup({
+    maxInvocations: 3,
+    respond(invocation, count) {
+      if (count === 1) return propose(invocation, [
+        delegate('wrong-profile', [], { profileId: 'missing' }),
+        delegate('unknown-edge', [{ actionId: 'unknown', kind: 'after_terminal' }]),
+        delegate('independent'),
+      ]);
+      return invocation.kind === 'delegate' ? report(invocation) : final(invocation);
+    },
+  });
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status, 'finished');
+  assert.equal(invocations[1].actionId, 'independent');
+  assert.equal(invocations.length, 3);
+  assert.equal(invocations[2].context[1].value.actions.find(item => item.actionId === 'wrong-profile').code,
+    'CAPABILITY_UNAVAILABLE');
+  assert.equal(invocations[2].context[1].value.actions.find(item => item.actionId === 'unknown-edge').reason,
+    'unknown_dependency');
+});
+
+test('an operation waiting for a shared slot makes progress after an unrelated operation settles', { timeout: 3000 }, async () => {
+  const firstRunning = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const { api, invocations } = setup({
+    async respond(invocation, count) {
+      if (count === 1) { firstRunning.resolve(); await release.promise; }
+      return final(invocation);
+    },
+  });
+  const first = await api.submit(request());
+  await firstRunning.promise;
+  const second = await api.submit(request({ requestId: 'request-2' }));
+  assert.equal(invocations.length, 1);
+  release.resolve();
+  const states = await Promise.all([first.completion, second.completion]);
+  assert.ok(states.every(state => state.status === 'finished'));
+  assert.equal(invocations.length, 2);
+});
+
+test('next_completion observes the first result and the remaining pending attempt', { timeout: 3000 }, async () => {
+  const first = Promise.withResolvers();
+  const second = Promise.withResolvers();
+  const both = Promise.withResolvers();
+  const checked = Promise.withResolvers();
+  let workers = 0;
+  let controllers = 0;
+  const { api, invocations } = setup({
+    maxInvocations: 5, maxConcurrentInvocations: 3,
+    async respond(invocation) {
+      if (invocation.kind === 'delegate') {
+        if (++workers === 2) both.resolve();
+        await (invocation.actionId === 'first' ? first.promise : second.promise);
+        return report(invocation);
+      }
+      const cursor = invocation.context[1].value;
+      if (++controllers === 1) return propose(invocation, [delegate('first'), delegate('second')], {
+        contextCursor: cursor.contextCursor,
+        waitPolicy: { ...wait('first', 'second'), kind: 'next_completion' },
+      });
+      if (controllers === 2) {
+        assert.ok(cursor.outcomes.some(item => item.actionId === 'second'));
+        assert.ok(!cursor.outcomes.some(item => item.actionId === 'first'));
+        const pending = cursor.pendingAttempts.find(item => item.actionId === 'first');
+        assert.equal(pending.status, 'dispatched');
+        checked.resolve();
+        return propose(invocation, [], {
+          contextCursor: cursor.contextCursor,
+          waitPolicy: { kind: 'all_requested', targets: [{ kind: 'attempt', id: pending.attemptId }] },
+        });
+      }
+      assert.ok(cursor.outcomes.some(item => item.actionId === 'first'));
+      return final(invocation);
+    },
+  });
+  const submission = await api.submit(request());
+  await both.promise;
+  second.resolve();
+  await checked.promise;
+  first.resolve();
+  const state = await submission.completion;
+  assert.equal(state.status, 'finished');
+  assert.equal(invocations.length, 5);
+});
+
+test('waiting on a result the Controller has already seen returns a field error', async () => {
+  let controllers = 0;
+  const { api, invocations } = setup({
+    maxInvocations: 4,
+    respond(invocation) {
+      if (invocation.kind === 'delegate') return report(invocation);
+      const { contextCursor } = invocation.context[1].value;
+      if (++controllers === 1) return propose(invocation, [delegate('worker')], { contextCursor });
+      if (controllers === 2) return propose(invocation, [], { waitPolicy: wait('worker'), contextCursor });
+      assert.equal(invocation.context.at(-1).value.path, '$.waitPolicy.targets');
+      return final(invocation);
+    },
+  });
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status, 'finished');
+  assert.equal(invocations.filter(item => item.kind === 'delegate').length, 1);
+});

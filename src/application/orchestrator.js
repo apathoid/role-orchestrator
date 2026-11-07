@@ -2,18 +2,23 @@ import { decodeDecision, decodeOutcome, decodeRequest } from '../core/contracts.
 import { decode, id, optional, record, text } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { applyEvent, createOperation, resourceSnapshot, sameRecord } from '../core/operation.js';
+import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
+import { materializeHandoff } from './handoff.js';
+import { runActionRound } from './action-round.js';
 
-/** @import {CancellationSource, Outcome, ReasonCode} from '../core/contracts.js' */
+/** @import {Action, CancellationSource, Decision, Outcome, ReasonCode} from '../core/contracts.js' */
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {Clock, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
 /** @import {Event, Limits, Operation, Reason} from '../core/operation.js' */
+/** @import {Handoff} from './handoff.js' */
 /** @import {Catalog, ContextItem, Profile, ProviderPort, ProviderSession, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{
  *   store: StateStore, provider: ProviderPort, catalog: Catalog, profile: Profile,
  *   clock: Clock, ids: IdFactory, limits: Limits, invocationTimeoutMs: number,
+ *   providerFor?: (profile: Profile) => ProviderPort | undefined,
  *   diagnostics?: DiagnosticPort, authorityRef: string, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
  * }} Dependencies
@@ -55,6 +60,7 @@ export function createOrchestrator(deps) {
   const {
     store, provider, catalog, profile, clock, ids, limits, invocationTimeoutMs, authorityRef, configurationRef,
     diagnostics = noopDiagnostics, schedule = scheduleDeadline,
+    providerFor = selected => selected.providerId === profile.providerId ? provider : undefined,
   } = deps;
   if (!Number.isSafeInteger(invocationTimeoutMs) || invocationTimeoutMs < 1 || invocationTimeoutMs > 2_147_483_647) {
     throw new RangeError('invocationTimeoutMs must be an integer from 1 to 2147483647');
@@ -62,6 +68,13 @@ export function createOrchestrator(deps) {
   /** @type {Map<string, Running>} */
   const running = new Map();
   let writes = Promise.resolve();
+  /** @type {{promise: Promise<void>, resolve: () => void}} */
+  let slot = Promise.withResolvers();
+
+  function releaseSlot() {
+    slot.resolve();
+    slot = Promise.withResolvers();
+  }
 
   // The application owns mutation order. Provider I/O never holds this queue.
   /** @template T @param {() => Promise<T>} task */
@@ -191,18 +204,23 @@ export function createOrchestrator(deps) {
       const state = await inspect(operationId);
       const next = await transition(state, { kind: 'operation.cancelled', source });
       running.get(operationId)?.signal.abort(source);
+      releaseSlot();
       return next;
     });
   }
 
-  /** @param {Operation} state @param {string} attemptId @param {AbortSignal} stop @param {FieldError | undefined} correction */
-  async function invoke(state, attemptId, stop, correction) {
+  /**
+   * @param {Operation} state @param {string} attemptId @param {AbortSignal} stop
+   * @param {FieldError | undefined} correction @param {Handoff} [handoff] @param {ProviderPort} [executor]
+   */
+  async function invoke(state, attemptId, stop, correction, handoff, executor = provider) {
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal]);
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
     /** @type {ProviderSession | undefined} */
     let session;
     let mayHaveSent = false;
+    let contextCursor = state.revision;
     /** @type {ContextItem[]} */
     const observations = [];
     let acceptingObservations = true;
@@ -216,31 +234,34 @@ export function createOrchestrator(deps) {
     const abort = () => {
       const owned = session;
       if (mayHaveSent && owned) {
-        requestedCancel = Promise.resolve().then(() => provider.cancel(owned, attemptId)).catch(() => {
+        requestedCancel = Promise.resolve().then(() => executor.cancel(owned, attemptId)).catch(() => {
           trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId);
         });
       }
     };
     signal.addEventListener('abort', abort, { once: true });
     try {
-      const entries = await catalog.list();
+      const entries = handoff ? [] : await catalog.list();
       signal.throwIfAborted();
-      session = await provider.open(profile, signal);
+      session = await executor.open(handoff?.profile ?? profile, signal);
       const owned = session;
       const invocation = await serialize(async () => {
         const current = await inspect(state.operationId);
         signal.throwIfAborted();
         const dispatched = await transition(current, { kind: 'attempt.dispatched', attemptId });
+        contextCursor = dispatched.revision;
         signal.throwIfAborted();
         mayHaveSent = true;
-        trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
+        if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
         // Keep the dispatch decision and actual provider call in the same turn.
-        return { response: provider.invoke(owned, {
-          attemptId, operationId: state.operationId, actionId: attemptId, kind: 'controller',
+        const context = handoff ?? {
+          operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
           objective: state.request.text, instructions: controllerInstructions, profile,
           workspaceContext: state.request.workspaceContext, userConstraints: state.request.userConstraints,
           context: controllerContext(dispatched, entries, correction), authorityRef: state.authorityRef,
-          timeoutMs: invocationTimeoutMs, signal,
+        };
+        return { response: executor.invoke(owned, {
+          ...context, attemptId, timeoutMs: invocationTimeoutMs, signal,
         }, item => { if (acceptingObservations) observations.push(item); }) };
       });
       const reply = await invocation.response;
@@ -266,77 +287,206 @@ export function createOrchestrator(deps) {
       signal.removeEventListener('abort', abort);
       await requestedCancel;
       if (session) {
-        try { await provider.close(session); } catch { trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId); }
+        try { await executor.close(session); } catch { trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId); }
       }
     }
-    return { outcome, certainty, output, observations };
+    return { outcome, certainty, output, observations, contextCursor };
+  }
+
+  /** @param {string} operationId @param {AbortSignal} stop @param {string} [actionId] */
+  async function reserve(operationId, stop, actionId) {
+    let notified = false;
+    while (true) {
+      const result = await serialize(async () => {
+        const state = await inspect(operationId);
+        if (stop.aborted || state.status !== 'active') return { state };
+        if (actionId && state.attempts.some(attempt => attempt.actionId === actionId)) return { state, known: true };
+        const resources = resourceSnapshot(state);
+        if (resources.remaining <= 0) {
+          return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
+        }
+        const all = await store.list();
+        const active = all.reduce((count, item) => count + resourceSnapshot(item).active, 0);
+        if (active >= limits.maxConcurrentInvocations) {
+          if (!notified && actionId) {
+            notified = true;
+            await transition(state, { kind: 'action.deferred', actionId, code: 'RESOURCE_LIMIT', resource: 'concurrency' });
+          }
+          return { state, ready: slot.promise };
+        }
+        const attemptId = ids.newId();
+        return {
+          attemptId, state: await transition(state, { kind: 'attempt.reserved', attemptId, actionId: actionId ?? attemptId }),
+        };
+      });
+      if (!result.ready) return result;
+      await result.ready;
+    }
+  }
+
+  /** @param {Operation} state @param {Action} action @param {AbortSignal} stop */
+  async function dispatchDelegate(state, action, stop) {
+    const current = await inspect(state.operationId);
+    if (stop.aborted || current.status !== 'active') return false;
+    const entries = await catalog.list();
+    const handoff = materializeHandoff(current, action, entries, controllerContext(current, entries, undefined));
+    const executor = handoff.kind === 'accepted' ? providerFor(handoff.handoff.profile) : undefined;
+    if (handoff.kind === 'rejected' || !executor) {
+      await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
+        handoff.kind === 'rejected' ? handoff.resource : action.profileId);
+      return false;
+    }
+    const reserved = await reserve(state.operationId, stop, action.actionId);
+    if (!reserved.attemptId) {
+      if (reserved.known) return true;
+      if (!stop.aborted) await recordAction(state.operationId, action, 'action.deferred', 'RESOURCE_LIMIT');
+      return false;
+    }
+    const attemptId = reserved.attemptId;
+    try {
+      const response = await invoke(reserved.state, attemptId, stop, undefined, handoff.handoff, executor);
+      const observations = response.observations;
+      if (response.output !== undefined) {
+        observations.push({ ref: 'attempt-output:' + attemptId, source: 'model_claim', completeness: 'complete', value: response.output });
+      }
+      await serialize(async () => transition(await inspect(state.operationId), {
+        kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations,
+      }));
+      return true;
+    } finally {
+      releaseSlot();
+    }
+  }
+
+  /** @param {string} operationId @param {Action} action @param {'action.rejected' | 'action.deferred'} kind
+   * @param {ReasonCode} code @param {string} [resource]
+   */
+  async function recordAction(operationId, action, kind, code, resource) {
+    await serialize(async () => transition(await inspect(operationId), {
+      kind, actionId: action.actionId, code, resource,
+    }));
+  }
+
+  /** @param {Operation} state @param {Decision} decision */
+  function planRound(state, decision) {
+    const known = state.events.flatMap(event => event.kind === 'controller.responded'
+      ? event.admissions?.flatMap(item => item.kind === 'accepted' ? [item.action] : []) ?? [] : []);
+    const admissions = admitActions(known, decision.additions);
+    const actions = new Map([...known, ...admissions.flatMap(item => item.kind === 'accepted' ? [item.action] : [])]
+      .map(action => [action.actionId, action]));
+    const rejected = new Set(admissions.flatMap(item => item.kind === 'rejected' ? [item.actionId] : []));
+    const selected = [];
+    const waitingFor = new Set();
+    const terminals = new Set(state.attempts.filter(attempt => attempt.status === 'terminal').map(attempt => attempt.actionId));
+    for (const target of decision.waitPolicy?.targets ?? []) {
+      const actionId = target.kind === 'attempt'
+        ? state.attempts.find(attempt => attempt.attemptId === target.id)?.actionId : target.id;
+      const action = actionId === undefined ? undefined : actions.get(actionId);
+      if (actionId === undefined || (!action && !rejected.has(actionId))) {
+        return { error: /** @type {FieldError} */ ({
+          code: 'INVALID_PROPOSAL', path: '$.waitPolicy.targets', expected: 'ids of known or proposed actions or their attempts',
+        }) };
+      }
+      waitingFor.add(actionId);
+      if (action && !rejected.has(actionId)) selected.push(action);
+    }
+    const newResult = state.events.some((event, index) => index + 1 > decision.contextCursor && event.kind === 'attempt.outcome' &&
+      state.attempts.some(attempt => attempt.attemptId === event.outcome.attemptId && waitingFor.has(attempt.actionId)));
+    if (decision.waitPolicy && !newResult && !rejected.size && [...waitingFor].every(id => terminals.has(id))) {
+      return { error: /** @type {FieldError} */ ({
+        code: 'INVALID_PROPOSAL', path: '$.waitPolicy.targets', expected: 'at least one pending action or unseen result',
+      }) };
+    }
+    return { admissions, selected: [...new Set(selected)], newResult };
   }
 
   /** @param {string} operationId @param {AbortSignal} stop */
   async function drive(operationId, stop) {
     /** @type {FieldError | undefined} */
     let correction;
-    while (!stop.aborted) {
-      const reserved = await serialize(async () => {
-        const state = await inspect(operationId);
-        if (state.status !== 'active') return { state };
-        if (resourceSnapshot(state).remaining === 0) {
-          return { state: await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
-        }
-        const attemptId = ids.newId();
-        return { attemptId, state: await transition(state, { kind: 'attempt.reserved', attemptId, actionId: attemptId }) };
-      });
-      if (!reserved.attemptId) return reserved.state;
-      const attemptId = reserved.attemptId;
-      const response = await invoke(reserved.state, attemptId, stop, correction);
-      const next = await serialize(async () => {
-        let state = await transition(await inspect(operationId), {
-          kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
-        });
-        if (state.status !== 'active') return state;
-        if (response.outcome.terminal !== 'completed') {
-          return technicalWait(state, {
-            code: response.outcome.diagnostics[0]?.code ?? 'PROTOCOL_ERROR',
-            operationId, attemptId, actionId: attemptId, effect: response.outcome.effect, dispatchCertainty: response.certainty,
-          });
-        }
-        const parsed = decodeDecision(response.output);
-        correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
-        if (parsed.kind === 'accepted') {
-          const value = parsed.value;
-          const availableRefs = new Set([
-            ...state.attempts.flatMap(item => item.outcome?.outputRefs.map(ref => ref.ref) ?? []),
-            ...state.events.flatMap(event => event.kind === 'attempt.outcome' ? event.observations?.map(item => item.ref) ?? [] : []),
-          ]);
-          const assessment = value.finalAssessment;
-          const references = assessment ? [
-            ...assessment.observationRefs, ...assessment.findingRefs,
-            ...assessment.requirements.flatMap(item => [...item.observationRefs, ...item.findingRefs]),
-          ] : [];
-          if (value.operationId !== operationId) {
-            correction = { code: 'INVALID_PROPOSAL', path: '$.operationId', expected: 'the current operation id' };
-          } else if (value.contextCursor > state.revision) {
-            correction = { code: 'INVALID_PROPOSAL', path: '$.contextCursor', expected: 'an observed revision' };
-          } else if (value.additions.length || value.cancellations.length || value.waitPolicy) {
-            correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'a clarification or final assessment on the direct path' };
-          } else if (references.some(ref => !availableRefs.has(ref))) {
-            correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'references to available observations and findings' };
-          } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
-            correction = { code: 'INVALID_PROPOSAL', path: '$.decisionId', expected: 'a fresh decision id' };
-          } else {
-            state = await transition(state, { kind: 'controller.responded', decision: value });
-            if (assessment) return transition(state, { kind: 'operation.finished', assessment });
-            if (value.clarification) return transition(state, { kind: 'operation.waiting', waiting: {
-              kind: 'question', questionId: ids.newId(), question: value.clarification.question,
-            } });
-          }
-        }
-        trace(state, 'controller.invalid_proposal', correction?.code ?? 'INVALID_PROPOSAL', attemptId);
-        return state;
-      });
-      if (next.status !== 'active') return next;
+    /** @type {Map<string, Promise<boolean>>} */
+    const pending = new Map();
+    try {
+      return await loop();
+    } finally {
+      await Promise.allSettled([...pending.values()]);
     }
-    return inspect(operationId);
+
+    async function loop() {
+      while (!stop.aborted) {
+        const reserved = await reserve(operationId, stop);
+        if (!reserved.attemptId) return reserved.state;
+        const attemptId = reserved.attemptId;
+        /** @type {{selected: Action[], policy: 'all_requested' | 'next_completion', newResult: boolean} | undefined} */
+        let selection;
+        const response = await invoke(reserved.state, attemptId, stop, correction);
+        const next = await serialize(async () => {
+          let state = await transition(await inspect(operationId), {
+            kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
+          });
+          releaseSlot();
+          if (state.status !== 'active') return state;
+          if (response.outcome.terminal !== 'completed') {
+            return technicalWait(state, {
+              code: response.outcome.diagnostics[0]?.code ?? 'PROTOCOL_ERROR',
+              operationId, attemptId, actionId: attemptId, effect: response.outcome.effect, dispatchCertainty: response.certainty,
+            });
+          }
+          const parsed = decodeDecision(response.output);
+          correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
+          if (parsed.kind === 'accepted') {
+            const value = parsed.value;
+            const availableRefs = new Set([
+              ...state.attempts.flatMap(item => item.outcome?.outputRefs.map(ref => ref.ref) ?? []),
+              ...state.events.flatMap(event => event.kind === 'attempt.outcome' ? event.observations?.map(item => item.ref) ?? [] : []),
+            ]);
+            const assessment = value.finalAssessment;
+            const references = assessment ? [
+              ...assessment.observationRefs, ...assessment.findingRefs,
+              ...assessment.requirements.flatMap(item => [...item.observationRefs, ...item.findingRefs]),
+            ] : [];
+            if (value.operationId !== operationId) {
+              correction = { code: 'INVALID_PROPOSAL', path: '$.operationId', expected: 'the current operation id' };
+            } else if (value.contextCursor > response.contextCursor) {
+              correction = { code: 'INVALID_PROPOSAL', path: '$.contextCursor', expected: 'an observed revision' };
+            } else if (value.cancellations.length ||
+              (value.waitPolicy && (value.clarification || assessment)) ||
+              (value.additions.length && !value.waitPolicy)) {
+              correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'a clarification, final assessment or action wait policy' };
+            } else if ((assessment || value.clarification) &&
+                (pending.size || state.attempts.some(attempt => attempt.status !== 'terminal'))) {
+              correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'an explicit wait for pending actions before a final or clarification' };
+            } else if (value.acceptedActionIds?.some(id => !state.attempts.some(attempt =>
+              attempt.actionId === id && attempt.status === 'terminal' && attempt.attemptId !== attempt.actionId))) {
+              correction = { code: 'INVALID_PROPOSAL', path: '$.acceptedActionIds', expected: 'ids of terminal actions' };
+            } else if (references.some(ref => !availableRefs.has(ref))) {
+              correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'references to available observations and findings' };
+            } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
+              correction = { code: 'INVALID_PROPOSAL', path: '$.decisionId', expected: 'a fresh decision id' };
+            } else {
+              const round = planRound(state, value);
+              if (round.error) correction = round.error;
+              else {
+                state = await transition(state, { kind: 'controller.responded', decision: value, admissions: round.admissions });
+                if (assessment) return transition(state, { kind: 'operation.finished', assessment });
+                if (value.clarification) return transition(state, { kind: 'operation.waiting', waiting: {
+                  kind: 'question', questionId: ids.newId(), question: value.clarification.question,
+                } });
+                if (value.waitPolicy) selection = { selected: round.selected, policy: value.waitPolicy.kind, newResult: round.newResult };
+                return state;
+              }
+            }
+          }
+          trace(state, 'controller.invalid_proposal', correction?.code ?? 'INVALID_PROPOSAL', attemptId);
+          return state;
+        });
+        if (next.status !== 'active') return next;
+        if (selection) await runActionRound(selection.selected, next, action => dispatchDelegate(next, action, stop),
+          (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
+          pending, selection.policy, selection.newResult);
+      }
+      return inspect(operationId);
+    }
   }
 
   return { submit, resume, inspect, cancel };

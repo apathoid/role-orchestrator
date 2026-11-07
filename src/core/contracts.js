@@ -36,7 +36,7 @@ const assessment = record({
 
 const proposal = record({
   schemaVersion: version, decisionId: id, operationId: id, contextCursor: count,
-  additions: arrayOf(action), cancellations: ids,
+  additions: arrayOf(action), cancellations: ids, acceptedActionIds: optional(ids),
   waitPolicy: optional(record({
     kind: oneOf('all_requested', 'next_completion'),
     targets: arrayOf(record({ kind: oneOf('action', 'attempt'), id })),
