@@ -93,7 +93,12 @@ test('clarification waits for a matching reply and redelivery spends no second a
   const finished = await result.completion;
   assert.equal(finished.operationId, waiting.operationId);
   assert.equal(resourceSnapshot(finished).charged, 2);
-  assert.equal(invocations[1].context.at(-1).value, 'Target A');
+  assert.deepEqual(invocations[1].context.slice(-2), [
+    { ref: waiting.waiting.questionId, source: 'model_claim', completeness: 'complete', value: 'Which target?' },
+    { ref: 'reply-1', source: 'user', completeness: 'complete', value: 'Target A' },
+  ]);
+  assert.equal(invocations[1].context.find(item => item.ref.startsWith('decision:')).value.clarification.question,
+    'Which target?');
   assert.equal((await api.resume(waiting.operationId, reply)).operation.status, 'finished');
   await assert.rejects(api.resume(waiting.operationId, { ...reply, requestId: 'another' }), { path: '$.questionId' });
   assert.equal(invocations.length, 2);
@@ -182,4 +187,82 @@ test('a reply can continue past unknown effects without replaying the prior atte
   assert.equal(resourceSnapshot(finished).charged, 2);
   assert.notEqual(invocations[0].attemptId, invocations[1].attemptId);
   assert.equal(invocations[1].context[1].value.outcomes[0].effect, 'unknown');
+});
+
+test('a continuation sees the previous delivered answer as a model record', async () => {
+  const { api, invocations } = setup();
+  const original = await (await api.submit(request())).completion;
+  const continued = await api.resume(original.operationId, { requestId: 'explain', text: 'Explain that answer' });
+  assert.equal((await continued.completion).status, 'finished');
+  const history = invocations[1].context;
+  const previous = history.find(item => item.ref.startsWith('assessment:'));
+  assert.equal(previous.source, 'model_claim');
+  assert.deepEqual(previous.value, original.assessment);
+  assert.equal(history.at(-1).value, 'Explain that answer');
+});
+
+test('deadline bounds an uncooperative invoke and cancel; a late reply cannot finish the operation', { timeout: 3000 }, async () => {
+  const dispatched = Promise.withResolvers();
+  const reply = Promise.withResolvers();
+  let expire;
+  let observed;
+  const { api, invocations, cancellations, closed } = setup({
+    schedule(ms, callback) { expire = callback; return () => {}; },
+    cancel: () => new Promise(() => {}),
+    respond(invocation, count, observe) {
+      if (count > 1) return final(invocation);
+      observed = observe;
+      dispatched.resolve();
+      return reply.promise;
+    },
+  });
+  const submitted = await api.submit(request());
+  await dispatched.promise;
+  expire();
+  const waiting = await submitted.completion;
+  assert.equal(waiting.waiting.reason.code, 'DEADLINE_EXCEEDED');
+  assert.equal(waiting.attempts[0].dispatchCertainty, 'unknown');
+  assert.equal(waiting.attempts[0].outcome.terminal, 'unknown');
+  assert.deepEqual(cancellations, [invocations[0].attemptId]);
+  assert.equal(closed.length, 1);
+  observed({ ref: 'late', source: 'provider_reported', completeness: 'complete', value: 'late' });
+  reply.resolve(final(invocations[0]));
+  const next = await (await api.submit(request({ requestId: 'independent' }))).completion;
+  assert.equal(next.status, 'finished');
+  assert.deepEqual(await api.inspect(waiting.operationId), waiting);
+});
+
+test('an undetached connection keeps its slot until late cleanup completes', { timeout: 3000 }, async () => {
+  const dispatched = Promise.withResolvers();
+  const cleanup = Promise.withResolvers();
+  const closing = Promise.withResolvers();
+  let expire;
+  let closes = 0;
+  const { api, invocations } = setup({
+    schedule(ms, callback) { expire = callback; return () => {}; },
+    close() {
+      if (++closes > 1) return;
+      closing.resolve();
+      return cleanup.promise;
+    },
+    respond(invocation, count) {
+      if (count > 1) return final(invocation);
+      dispatched.resolve();
+      return new Promise(() => {});
+    },
+  });
+  const submitted = await api.submit(request());
+  await dispatched.promise;
+  expire();
+  await closing.promise;
+  expire();
+  const waiting = await submitted.completion;
+  assert.equal(waiting.attempts[0].outcome.effect, 'unknown');
+  const blocked = await (await api.submit(request({ requestId: 'other' }))).completion;
+  assert.equal(blocked.waiting.reason.code, 'RESOURCE_LIMIT');
+  assert.equal(invocations.length, 1);
+  cleanup.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  const resumed = await api.resume(blocked.operationId, { requestId: 'continue-other', text: 'Continue' });
+  assert.equal((await resumed.completion).status, 'finished');
 });

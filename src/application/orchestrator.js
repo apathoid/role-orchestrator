@@ -11,6 +11,7 @@ import { runActionRound } from './action-round.js';
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {Clock, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
 /** @import {Event, Limits, Operation, Reason} from '../core/operation.js' */
+/** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
 /** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderSession, StateStore} from '../core/ports.js' */
 
@@ -67,8 +68,11 @@ export function createOrchestrator(deps) {
   }
   /** @type {Map<string, Running>} */
   const running = new Map();
-  /** @type {Map<string, Map<string, AbortController>>} */
-  const workerStops = new Map();
+  /** @type {Map<string, Map<string, PendingAction>>} */
+  const workers = new Map();
+  // Terminal logical outcomes can coexist with a connection the adapter has
+  // yet to detach. Such a connection still consumes its concurrency slot.
+  const undetached = new Set();
   let writes = Promise.resolve();
   /** @type {{promise: Promise<void>, resolve: () => void}} */
   let slot = Promise.withResolvers();
@@ -137,8 +141,15 @@ export function createOrchestrator(deps) {
   /** @param {Operation} state @returns {Submission} */
   function launch(state) {
     const signal = new AbortController();
-    const completion = drive(state.operationId, signal.signal).finally(() => {
+    const pending = workers.get(state.operationId) ?? new Map();
+    workers.set(state.operationId, pending);
+    const completion = drive(state.operationId, signal.signal, pending).finally(() => {
       if (running.get(state.operationId)?.signal === signal) running.delete(state.operationId);
+      void Promise.allSettled([...pending.values()].map(worker => worker.completion)).then(() => {
+        if (!pending.size && !running.has(state.operationId) && workers.get(state.operationId) === pending) {
+          workers.delete(state.operationId);
+        }
+      });
     });
     running.set(state.operationId, { signal, completion });
     void completion.catch(() => {});
@@ -206,7 +217,7 @@ export function createOrchestrator(deps) {
       const state = await inspect(operationId);
       const next = await transition(state, { kind: 'operation.cancelled', source });
       running.get(operationId)?.signal.abort(source);
-      for (const stop of workerStops.get(operationId)?.values() ?? []) stop.abort(source);
+      for (const worker of workers.get(operationId)?.values() ?? []) worker.stop.abort(source);
       releaseSlot();
       return next;
     });
@@ -220,6 +231,8 @@ export function createOrchestrator(deps) {
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal]);
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
+    /** @type {Promise<ProviderSession> | undefined} */
+    let opening;
     /** @type {ProviderSession | undefined} */
     let session;
     /** @type {AttemptPermissions | undefined} */
@@ -231,7 +244,10 @@ export function createOrchestrator(deps) {
     /** @type {ContextItem[]} */
     const observations = [];
     let acceptingObservations = true;
-    let requestedCancel = Promise.resolve();
+    const interrupted = Promise.withResolvers();
+    void interrupted.promise.catch(() => {});
+    /** @template T @param {Promise<T>} work @returns {Promise<T>} */
+    const withinDeadline = work => Promise.race([work, interrupted.promise]);
     /** @type {unknown} */
     let output;
     /** @type {Outcome} */
@@ -239,16 +255,20 @@ export function createOrchestrator(deps) {
     /** @type {'sent' | 'not_sent' | 'unknown'} */
     let certainty = 'not_sent';
     const abort = () => {
+      acceptingObservations = false;
+      interrupted.reject(signal.reason);
       const owned = session;
       if (mayHaveSent && owned) {
-        requestedCancel = Promise.resolve().then(() => executor.cancel(owned, attemptId)).catch(() => {
+        void Promise.resolve().then(() => executor.cancel(owned, attemptId)).catch(() => {
           trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId);
         });
       }
     };
     signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
     try {
-      const entries = handoff ? [] : await catalog.list();
+      signal.throwIfAborted();
+      const entries = handoff ? [] : await withinDeadline(catalog.list());
       const selectedProfile = handoff?.profile ?? profile;
       function requireAuthority() {
         const decision = authority.authorize(state.authorityRef, selectedProfile.profileId);
@@ -266,7 +286,7 @@ export function createOrchestrator(deps) {
       }
       if (requiredCapabilities.size) {
         signal.throwIfAborted();
-        const capabilities = selectedProfile.capabilities ?? (await executor.describe()).capabilities;
+        const capabilities = selectedProfile.capabilities ?? (await withinDeadline(executor.describe())).capabilities;
         if ([...requiredCapabilities].some(key => !Object.hasOwn(capabilities, key) ||
             capabilities[key].support !== 'supported')) {
           return {
@@ -276,7 +296,8 @@ export function createOrchestrator(deps) {
         }
       }
       signal.throwIfAborted();
-      session = await executor.open(selectedProfile, signal);
+      opening = executor.open(selectedProfile, signal);
+      session = await withinDeadline(opening);
       const owned = session;
       const invocation = await serialize(async () => {
         const current = await inspect(state.operationId);
@@ -299,12 +320,13 @@ export function createOrchestrator(deps) {
           workspaceContext: state.request.workspaceContext, userConstraints: state.request.userConstraints,
           context: controllerContext(dispatched, entries, correction), authorityRef: state.authorityRef,
         };
-        return { response: executor.invoke(owned, {
+        return { response: withinDeadline(executor.invoke(owned, {
           ...context, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
-        }, item => { if (acceptingObservations) observations.push(item); }) };
+        }, item => { if (acceptingObservations) observations.push(item); })) };
       });
       const reply = await invocation.response;
+      signal.throwIfAborted();
       const parsed = decodeOutcome(reply.outcome);
       if (parsed.kind === 'rejected' || parsed.value.attemptId !== attemptId ||
           !['not_sent', 'sent', 'unknown'].includes(reply.dispatchCertainty) ||
@@ -326,9 +348,22 @@ export function createOrchestrator(deps) {
       boundPermissions?.close();
       clear();
       signal.removeEventListener('abort', abort);
-      await requestedCancel;
-      if (session) {
-        try { await executor.close(session); } catch { trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId); }
+      if (opening) {
+        let closed = false;
+        // A late open still transfers a session to this cleanup path.
+        const detached = opening.then(owned => executor.close(owned), () => {}).then(() => {
+          closed = true;
+          if (undetached.delete(attemptId)) releaseSlot();
+        }).catch(() => trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId));
+        /** @type {{promise: Promise<void>, resolve: () => void}} */
+        const cleanupDeadline = Promise.withResolvers();
+        const clearCleanup = schedule(invocationTimeoutMs, () => {
+          trace(state, 'provider.cleanup', 'DEADLINE_EXCEEDED', attemptId);
+          cleanupDeadline.resolve();
+        });
+        await Promise.race([detached, cleanupDeadline.promise]);
+        clearCleanup();
+        if (!closed) undetached.add(attemptId);
       }
     }
     return { outcome, certainty, output, observations, contextCursor };
@@ -350,8 +385,16 @@ export function createOrchestrator(deps) {
           return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
         }
         const all = await store.list();
-        const active = all.reduce((count, item) => count + resourceSnapshot(item).active, 0);
-        if (active >= limits.maxConcurrentInvocations) {
+        const active = new Set(undetached);
+        for (const operation of all) {
+          for (const attempt of operation.attempts) {
+            if (attempt.status !== 'terminal') active.add(attempt.attemptId);
+          }
+        }
+        if (undetached.size >= limits.maxConcurrentInvocations) {
+          return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
+        }
+        if (active.size >= limits.maxConcurrentInvocations) {
           if (!notified && actionId) {
             notified = true;
             await transition(state, { kind: 'action.deferred', actionId, code: 'RESOURCE_LIMIT', resource: 'concurrency' });
@@ -365,21 +408,6 @@ export function createOrchestrator(deps) {
       });
       if (!result.ready) return result;
       await result.ready;
-    }
-  }
-
-  /** @param {Operation} state @param {Action} action @param {AbortSignal} stop */
-  async function dispatchDelegate(state, action, stop) {
-    const owned = workerStops.get(state.operationId) ?? new Map();
-    if (owned.has(action.actionId)) return false;
-    const local = new AbortController();
-    owned.set(action.actionId, local);
-    workerStops.set(state.operationId, owned);
-    try {
-      return await dispatchWorker(state, action, AbortSignal.any([stop, local.signal]));
-    } finally {
-      owned.delete(action.actionId);
-      if (!owned.size) workerStops.delete(state.operationId);
     }
   }
 
@@ -465,108 +493,98 @@ export function createOrchestrator(deps) {
     return { admissions, selected: [...new Set(selected)], newlyAdmitted, actions, newResult };
   }
 
-  /** @param {string} operationId @param {AbortSignal} stop */
-  async function drive(operationId, stop) {
+  /** @param {string} operationId @param {AbortSignal} stop @param {Map<string, PendingAction>} pending */
+  async function drive(operationId, stop, pending) {
     /** @type {FieldError | undefined} */
     let correction;
-    /** @type {Map<string, Promise<boolean>>} */
-    const pending = new Map();
-    try {
-      return await loop();
-    } finally {
-      await Promise.allSettled([...pending.values()]);
-    }
-
-    async function loop() {
-      while (!stop.aborted) {
-        const reserved = await reserve(operationId, stop);
-        if (!reserved.attemptId) return reserved.state;
-        const attemptId = reserved.attemptId;
-        /** @type {{selected: Action[], newlyAdmitted: Action[], actions: ReadonlyMap<string, Action>,
-         *   policy: 'all_requested' | 'next_completion', newResult: boolean} | undefined} */
-        let selection;
-        /** @type {Promise<boolean>[]} */
-        let settleCancellation = [];
-        const response = await invoke(reserved.state, attemptId, stop, correction);
-        const next = await serialize(async () => {
-          let state = await transition(await inspect(operationId), {
-            kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
+    while (!stop.aborted) {
+      const reserved = await reserve(operationId, stop);
+      if (!reserved.attemptId) return reserved.state;
+      const attemptId = reserved.attemptId;
+      /** @type {{selected: Action[], newlyAdmitted: Action[], actions: ReadonlyMap<string, Action>,
+       *   policy: 'all_requested' | 'next_completion', newResult: boolean} | undefined} */
+      let selection;
+      /** @type {Promise<boolean>[]} */
+      let settleCancellation = [];
+      const response = await invoke(reserved.state, attemptId, stop, correction);
+      const next = await serialize(async () => {
+        let state = await transition(await inspect(operationId), {
+          kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
+        });
+        releaseSlot();
+        if (state.status !== 'active') return state;
+        if (response.outcome.terminal !== 'completed') {
+          return technicalWait(state, {
+            code: response.outcome.diagnostics[0]?.code ?? 'PROTOCOL_ERROR',
+            operationId, attemptId, actionId: attemptId, effect: response.outcome.effect, dispatchCertainty: response.certainty,
           });
-          releaseSlot();
-          if (state.status !== 'active') return state;
-          if (response.outcome.terminal !== 'completed') {
-            return technicalWait(state, {
-              code: response.outcome.diagnostics[0]?.code ?? 'PROTOCOL_ERROR',
-              operationId, attemptId, actionId: attemptId, effect: response.outcome.effect, dispatchCertainty: response.certainty,
-            });
-          }
-          const parsed = decodeDecision(response.output);
-          correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
-          if (parsed.kind === 'accepted') {
-            const value = parsed.value;
-            const availableRefs = new Set([
-              ...state.attempts.flatMap(item => item.outcome?.outputRefs.map(ref => ref.ref) ?? []),
-              ...state.events.flatMap(event => event.kind === 'attempt.outcome' ? event.observations?.map(item => item.ref) ?? [] : []),
-            ]);
-            const assessment = value.finalAssessment;
-            const references = assessment ? [
-              ...assessment.observationRefs, ...assessment.findingRefs,
-              ...assessment.requirements.flatMap(item => [...item.observationRefs, ...item.findingRefs]),
-            ] : [];
-            const live = new Set([...pending.keys(), ...(workerStops.get(operationId)?.keys() ?? [])]);
-            if (value.operationId !== operationId) {
-              correction = { code: 'INVALID_PROPOSAL', path: '$.operationId', expected: 'the current operation id' };
-            } else if (value.contextCursor > response.contextCursor) {
-              correction = { code: 'INVALID_PROPOSAL', path: '$.contextCursor', expected: 'an observed revision' };
-            } else if ((value.waitPolicy && value.clarification) ||
-              (value.additions.length && !value.waitPolicy)) {
-              correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'a clarification, final assessment or action wait policy' };
-            } else if (assessment && !value.waitPolicy && [...live].some(id => !value.cancellations.includes(id))) {
-              correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'an explicit wait or cancellation for each pending action' };
-            } else if (value.acceptedActionIds?.some(id => !state.attempts.some(attempt =>
-              attempt.actionId === id && attempt.status === 'terminal' && attempt.attemptId !== attempt.actionId))) {
-              correction = { code: 'INVALID_PROPOSAL', path: '$.acceptedActionIds', expected: 'ids of terminal actions' };
-            } else if (references.some(ref => !availableRefs.has(ref))) {
-              correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'references to available observations and findings' };
-            } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
-              correction = { code: 'INVALID_PROPOSAL', path: '$.decisionId', expected: 'a fresh decision id' };
-            } else {
-              const round = planRound(state, value);
-              if (round.error) correction = round.error;
-              else {
-                state = await transition(state, { kind: 'controller.responded', decision: value, admissions: round.admissions });
-                for (const actionId of new Set(value.cancellations)) {
-                  state = await transition(state, { kind: 'action.cancelled', actionId, source: 'superseded' });
-                  workerStops.get(operationId)?.get(actionId)?.abort('superseded');
-                }
-                if (value.cancellations.length) releaseSlot();
-                if (assessment && !live.size) return transition(state, { kind: 'operation.finished', assessment });
-                if (assessment) {
-                  settleCancellation = [...pending.entries()].flatMap(([id, task]) =>
-                    value.cancellations.includes(id) ? [task] : []);
-                }
-                if (value.clarification) return transition(state, { kind: 'operation.waiting', waiting: {
-                  kind: 'question', questionId: ids.newId(), question: value.clarification.question,
-                } });
-                if (value.waitPolicy) selection = {
-                  ...round, policy: value.waitPolicy.kind,
-                };
-                return state;
+        }
+        const parsed = decodeDecision(response.output);
+        correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
+        if (parsed.kind === 'accepted') {
+          const value = parsed.value;
+          const availableRefs = new Set([
+            ...state.attempts.flatMap(item => item.outcome?.outputRefs.map(ref => ref.ref) ?? []),
+            ...state.events.flatMap(event => event.kind === 'attempt.outcome' ? event.observations?.map(item => item.ref) ?? [] : []),
+          ]);
+          const assessment = value.finalAssessment;
+          const references = assessment ? [
+            ...assessment.observationRefs, ...assessment.findingRefs,
+            ...assessment.requirements.flatMap(item => [...item.observationRefs, ...item.findingRefs]),
+          ] : [];
+          const live = new Set(pending.keys());
+          if (value.operationId !== operationId) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.operationId', expected: 'the current operation id' };
+          } else if (value.contextCursor > response.contextCursor) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.contextCursor', expected: 'an observed revision' };
+          } else if ((value.waitPolicy && value.clarification) ||
+            (value.additions.length && !value.waitPolicy)) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'a clarification, final assessment or action wait policy' };
+          } else if (assessment && !value.waitPolicy && [...live].some(id => !value.cancellations.includes(id))) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'an explicit wait or cancellation for each pending action' };
+          } else if (value.acceptedActionIds?.some(id => !state.attempts.some(attempt =>
+            attempt.actionId === id && attempt.status === 'terminal' && attempt.attemptId !== attempt.actionId))) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.acceptedActionIds', expected: 'ids of terminal actions' };
+          } else if (references.some(ref => !availableRefs.has(ref))) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'references to available observations and findings' };
+          } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.decisionId', expected: 'a fresh decision id' };
+          } else {
+            const round = planRound(state, value);
+            if (round.error) correction = round.error;
+            else {
+              state = await transition(state, { kind: 'controller.responded', decision: value, admissions: round.admissions });
+              for (const actionId of new Set(value.cancellations)) {
+                state = await transition(state, { kind: 'action.cancelled', actionId, source: 'superseded' });
+                pending.get(actionId)?.stop.abort('superseded');
               }
+              if (value.cancellations.length) releaseSlot();
+              if (assessment && !live.size) return transition(state, { kind: 'operation.finished', assessment });
+              if (assessment) {
+                settleCancellation = [...pending.entries()].flatMap(([id, task]) =>
+                  value.cancellations.includes(id) ? [task.completion] : []);
+              }
+              if (value.clarification) return transition(state, { kind: 'operation.waiting', waiting: {
+                kind: 'question', questionId: ids.newId(), question: value.clarification.question,
+              } });
+              if (value.waitPolicy) selection = {
+                ...round, policy: value.waitPolicy.kind,
+              };
+              return state;
             }
           }
-          trace(state, 'controller.invalid_proposal', correction?.code ?? 'INVALID_PROPOSAL', attemptId);
-          return state;
-        });
-        if (next.status !== 'active') return next;
-        if (settleCancellation.length) await Promise.all(settleCancellation);
-        if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
-          action => dispatchDelegate(next, action, stop),
-          (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
-          pending, selection.policy, selection.newResult);
-      }
-      return inspect(operationId);
+        }
+        trace(state, 'controller.invalid_proposal', correction?.code ?? 'INVALID_PROPOSAL', attemptId);
+        return state;
+      });
+      if (next.status !== 'active') return next;
+      if (settleCancellation.length) await Promise.all(settleCancellation);
+      if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
+        (action, signal) => dispatchWorker(next, action, signal),
+        (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
+        pending, selection.policy, selection.newResult);
     }
+    return inspect(operationId);
   }
 
   return { submit, resume, inspect, cancel };

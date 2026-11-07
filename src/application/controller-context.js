@@ -43,6 +43,15 @@ export function controllerContext(state, catalog, correction) {
   for (const event of state.events) {
     if (event.kind === 'attempt.outcome' && event.observations) {
       items.push(...event.observations);
+    } else if (event.kind === 'controller.responded') {
+      items.push({ ref: 'decision:' + event.decision.decisionId, source: 'model_claim',
+        completeness: 'complete', value: event.decision });
+    } else if (event.kind === 'operation.waiting' && event.waiting.kind === 'question') {
+      items.push({ ref: event.waiting.questionId, source: 'model_claim',
+        completeness: 'complete', value: event.waiting.question });
+    } else if (event.kind === 'operation.finished') {
+      items.push({ ref: 'assessment:' + event.eventId, source: 'model_claim',
+        completeness: 'complete', value: event.assessment });
     } else if (event.kind === 'operation.continued') {
       items.push({ ref: event.input.requestId, source: 'user', completeness: 'complete', value: event.input.text });
     }

@@ -45,7 +45,7 @@ test('two independent workers run in parallel, a third starts when one slot is r
   assert.deepEqual(invocations.map(item => item.kind), ['controller', 'delegate', 'delegate', 'delegate', 'controller']);
   assert.equal(closed.length, 5);
   const context = invocations.at(-1).context;
-  assert.deepEqual(context.filter(item => item.source === 'model_claim').map(item => item.value).sort(),
+  assert.deepEqual(context.filter(item => item.source === 'model_claim' && item.ref.startsWith('attempt-output:')).map(item => item.value).sort(),
     ['result-a', 'result-b', 'result-c']);
 });
 
@@ -255,7 +255,7 @@ test('disagreement and a failed check leave the next action to the Controller', 
       const { contextCursor } = invocation.context[1].value;
       if (++controllers === 1) return propose(invocation, [delegate('left'), delegate('right')], { contextCursor });
       if (controllers === 2) {
-        const claims = invocation.context.filter(item => item.source === 'model_claim');
+        const claims = invocation.context.filter(item => item.ref.startsWith('attempt-output:'));
         assert.deepEqual(claims.map(item => item.value).sort(), ['The check failed', 'The check passed']);
         return propose(invocation, [delegate('investigate', [], { contextRefs: claims.map(item => item.ref) })], { contextCursor });
       }
@@ -301,4 +301,54 @@ test('all_requested waits on its target while an independent action outside that
   await controllerSawPending.promise;
   backgroundRelease.resolve();
   assert.equal((await submission.completion).status, 'finished');
+});
+
+test('a clarification can resume and wait for an existing background attempt', { timeout: 3000 }, async () => {
+  const background = Promise.withResolvers();
+  const waitingForBackground = Promise.withResolvers();
+  let controllers = 0;
+  const { api, invocations } = setup({
+    maxInvocations: 8, maxConcurrentInvocations: 3,
+    async respond(invocation) {
+      if (invocation.kind === 'delegate') {
+        if (invocation.actionId === 'background') await background.promise;
+        return report(invocation);
+      }
+      const { contextCursor, pendingAttempts, outcomes } = invocation.context[1].value;
+      switch (++controllers) {
+        case 1: return propose(invocation, [delegate('background'), delegate('quick')], {
+          contextCursor, waitPolicy: { ...wait('quick'), kind: 'next_completion' },
+        });
+        case 2: return final(invocation, {
+          contextCursor, finalAssessment: undefined, clarification: { question: 'Choose A or B?' },
+        });
+        case 3: {
+          const pending = pendingAttempts.find(item => item.actionId === 'background');
+          assert.equal(pending.status, 'dispatched');
+          waitingForBackground.resolve();
+          return propose(invocation, [], {
+            contextCursor, waitPolicy: { kind: 'all_requested', targets: [{ kind: 'attempt', id: pending.attemptId }] },
+          });
+        }
+        default:
+          assert.ok(outcomes.some(item => item.actionId === 'background'));
+          return final(invocation);
+      }
+    },
+  });
+  const waiting = await (await api.submit(request())).completion;
+  const original = waiting.attempts.find(item => item.actionId === 'background');
+  const resumed = await api.resume(waiting.operationId, {
+    requestId: 'reply', questionId: waiting.waiting.questionId, text: 'B',
+  });
+  await waitingForBackground.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(controllers, 3);
+  assert.equal((await api.inspect(waiting.operationId)).status, 'active');
+  background.resolve();
+  const finished = await resumed.completion;
+  assert.equal(finished.status, 'finished');
+  assert.equal(finished.attempts.find(item => item.actionId === 'background').attemptId, original.attemptId);
+  assert.equal(invocations.filter(item => item.actionId === 'background').length, 1);
+  assert.equal(controllers, 4);
 });

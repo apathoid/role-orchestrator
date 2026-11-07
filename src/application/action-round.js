@@ -2,6 +2,7 @@ import { pendingDependencies } from '../core/action-graph.js';
 
 /** @import {Action, ReasonCode} from '../core/contracts.js' */
 /** @import {Operation} from '../core/operation.js' */
+/** @typedef {{stop: AbortController, completion: Promise<boolean>}} PendingAction */
 
 /**
  * Run the model's selected action set. Wait for predecessor
@@ -10,9 +11,9 @@ import { pendingDependencies } from '../core/action-graph.js';
  * @param {readonly Action[]} newlyAdmitted
  * @param {ReadonlyMap<string, Action>} actions
  * @param {Operation} state
- * @param {(action: Action) => Promise<boolean>} dispatch
+ * @param {(action: Action, stop: AbortSignal) => Promise<boolean>} dispatch
  * @param {(action: Action, code: ReasonCode, resource?: string) => Promise<void>} defer
- * @param {Map<string, Promise<boolean>>} pending
+ * @param {Map<string, PendingAction>} pending
  * @param {'all_requested' | 'next_completion'} policy
  * @param {boolean} newUnseenResult
  */
@@ -25,19 +26,20 @@ export async function runActionRound(selected, newlyAdmitted, actions, state, di
   function run(action) {
     if (terminal.has(action.actionId)) return Promise.resolve(true);
     const current = pending.get(action.actionId);
-    if (current) return current;
+    if (current) return current.completion;
+    const stop = new AbortController();
     // The admission graph is acyclic. Defer recursion to a microtask for long chains.
     const task = Promise.resolve().then(async () => {
       for (const edge of pendingDependencies(action, terminal, accepted)) {
         const predecessor = actions.get(edge.actionId);
         if (edge.kind === 'after_model_acceptance' || !predecessor || !await run(predecessor)) {
-          await defer(action, 'INVALID_PROPOSAL', edge.actionId);
+          if (!stop.signal.aborted) await defer(action, 'INVALID_PROPOSAL', edge.actionId);
           return false;
         }
       }
-      return dispatch(action);
+      return dispatch(action, stop.signal);
     }).finally(() => pending.delete(action.actionId));
-    pending.set(action.actionId, task);
+    pending.set(action.actionId, { stop, completion: task });
     return task;
   }
 

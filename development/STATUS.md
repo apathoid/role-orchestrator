@@ -63,3 +63,10 @@
 - Итоговый локальный набор: `check`, `test:foundation` (4), `test:core` (9), `test:integration` (38), `check:package`, `check:removal`, exit 0. Removal smoke также загружает схему из реального npm tarball. Durable state/recovery, context retention, реальные адаптеры, CLI/ACP hosts, эксплуатационные и native acceptance checks относятся к C05–C12.
 
 После C04.8 добавлен regression на независимое делегирование: `all_requested` задаёт момент следующего ответа Controller, а ready action вне списка ожидания выполняется параллельно.
+
+### Исправления после ревью C02–C04
+
+- Активные делегаты принадлежат operation и сохраняют один handle ожидания и отмены между уточнением и resume. Проверено, что Controller дожидается прежнего attempt и не тратит бюджет на повторные вызовы, пока тот выполняется.
+- Контекст нового Controller содержит прежние решения, заданный вопрос и доставленный ответ с модельной атрибуцией. Текст пользователя сохраняет отдельную атрибуцию.
+- Coordinator завершает ограниченное ожидание даже при зависшем invoke или cancel. После возможной отправки остаётся unknown, поздний результат не завершает operation, а неподтверждённое закрытие удерживает слот. Проверено с тестовым адаптером; нативный cleanup UNVERIFIED.
+- Локально: `check`, `test:foundation` (4), `test:core` (9), `test:integration` (42), `check:package`, `check:removal`.

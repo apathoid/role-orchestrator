@@ -13,7 +13,7 @@ export function final(invocation, overrides = {}) {
   };
 }
 
-export function setup({ respond = invocation => final(invocation), open, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions } = {}) {
+export function setup({ respond = invocation => final(invocation), open, cancel, close, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions } = {}) {
   const states = new Map();
   const invocations = [];
   const events = [];
@@ -53,8 +53,8 @@ export function setup({ respond = invocation => final(invocation), open, maxInvo
         invocations.push(invocation);
         return respond(invocation, invocations.length, observe);
       },
-      async cancel(session, attemptId) { cancellations.push(attemptId); },
-      async close(session) { closed.push(session.sessionId); },
+      async cancel(session, attemptId) { cancellations.push(attemptId); await cancel?.(); },
+      async close(session) { closed.push(session.sessionId); await close?.(); },
     },
   });
   return { api, invocations, events, closed, cancellations };
