@@ -161,10 +161,14 @@ test('writer ownership excludes live peers and recovers after close or process d
   const id = 'operation-1';
   assert.deepEqual(await store.commit(id, null, initial(id)), { kind: 'committed' });
   // A stale-looking lock file cannot displace a live owner.
+  const workspace = await fs.mkdtemp(join(tmpdir(), 'role-orchestrator-unlocked-workspace-'));
+  t.after(() => fs.rm(workspace, { recursive: true, force: true }));
   const old = new Date(0);
   await fs.utimes(join(directory, '.writer.sqlite'), old, old);
   const blocked = start();
   assert.deepEqual(await blocked.message, { kind: 'error', code: 'STATE_STORE_IN_USE' });
+  await fs.writeFile(join(workspace, 'edit.txt'), 'unrelated edit');
+  assert.equal(await fs.readFile(join(workspace, 'edit.txt'), 'utf8'), 'unrelated edit');
   await blocked.exit;
   await store.close();
 
@@ -286,6 +290,12 @@ test('snapshots written before request-keyed filenames still load and commit in 
   assert.deepEqual(await store.commit(state.operationId, 0, reserved), { kind: 'committed' });
   assert.ok(sameRecord(await store.load(state.operationId), reserved));
   assert.deepEqual((await fs.readdir(directory)).filter(item => item.endsWith('.json')), [originalName]);
+  const { api, invocations } = setup({ store });
+  const healthy = await (await api.submit(request({ requestId: 'healthy' }))).completion;
+  await fs.writeFile(join(directory, originalName), '{"schemaVersion":');
+  assert.equal((await (await api.resume(healthy.operationId)).completion).status, 'finished');
+  await assert.rejects(api.submit(request()), { code: 'STORE_UNAVAILABLE' });
+  assert.equal(invocations.length, 1);
 });
 
 test('read-only storage prevents dispatch and disk recovery does not replay a previously sent effect', async t => {

@@ -13,9 +13,13 @@ import { request } from '../../fixtures/core.js';
 for (const [boundary, status, effects] of [
   ['before_reservation', undefined, 0],
   ['after_reservation', 'reserved', 0],
+  ['before_dispatch_record', 'reserved', 0],
   ['after_dispatch_record', 'dispatched', 0],
   ['after_provider_dispatch', 'dispatched', 1],
+  ['after_result_before_outcome_commit', 'dispatched', 1],
+  ['after_outcome_commit', 'terminal', 1],
   ['after_terminal_commit', 'terminal', 1],
+  ['after_delivery', 'terminal', 1],
 ]) {
   test('durable dispatch crash boundary: ' + boundary, { timeout: 5000 }, async t => {
     const directory = await fs.mkdtemp(join(tmpdir(), 'role-orchestrator-crash-'));
@@ -23,10 +27,11 @@ for (const [boundary, status, effects] of [
     const child = fork(new URL('../../fixtures/dispatch-crash.js', import.meta.url), [directory, boundary], { silent: true });
     const exit = once(child, 'exit');
     t.after(async () => { child.kill('SIGKILL'); await exit; });
-    const { operationId } = await Promise.race([
+    const { operationId, delivered } = await Promise.race([
       once(child, 'message').then(([message]) => message),
       exit.then(() => assert.fail('Child exited before its crash boundary')),
     ]);
+    assert.equal(delivered, boundary === 'after_delivery');
     child.kill('SIGKILL');
     assert.deepEqual(await exit, [null, 'SIGKILL']);
 
@@ -36,18 +41,43 @@ for (const [boundary, status, effects] of [
     const persisted = await durable.load(operationId);
     const attempt = persisted.attempts[0];
     assert.equal(attempt?.status, status);
-    assert.equal(resourceSnapshot(persisted).charged, status ? 1 : 0);
+    const chargedBefore = status ? 1 : 0;
+    assert.equal(resourceSnapshot(persisted).charged, chargedBefore);
+    assert.equal(resourceSnapshot(persisted).remaining, 3 - chargedBefore);
     if (status === 'dispatched') assert.equal(attempt.dispatchCertainty, 'unknown');
 
-    const { api, invocations } = setup({ store: durable });
+    const { api, invocations, events } = setup({ store: durable, idPrefix: 'recovered-' });
     const duplicate = await api.submit(request());
     const redelivered = await duplicate.completion;
     assert.equal(redelivered.operationId, operationId);
-    if (status === 'terminal') {
+    if (boundary === 'after_terminal_commit' || boundary === 'after_delivery') {
       assert.equal(redelivered.status, 'finished');
       assert.equal(redelivered.assessment.answer, 'Direct answer');
     }
     assert.equal(invocations.length, 0);
+    const completed = await (await api.resume(operationId)).completion;
+    assert.equal(completed.status, 'finished');
+    if (persisted.status === 'active') {
+      assert.equal(invocations.length, 1);
+      assert.notEqual(invocations[0].attemptId, attempt?.attemptId);
+      assert.equal(resourceSnapshot(completed).remaining, 2 - chargedBefore);
+      const old = completed.attempts.find(item => item.attemptId === attempt?.attemptId);
+      if (status === 'dispatched') assert.equal(old.outcome.effect, 'unknown');
+      if (status === 'reserved') {
+        assert.equal(old.dispatchCertainty, 'not_sent');
+        assert.equal(old.outcome.effect, 'none');
+      }
+      if (status === 'terminal') assert.deepEqual(old.outcome, attempt.outcome);
+      for (const [index, record] of completed.events.entries()) {
+        if (index < persisted.revision || record.kind !== 'attempt.outcome') continue;
+        const diagnostic = events.find(item => item.eventId === record.eventId);
+        assert.equal(diagnostic.sequence, index + 1);
+        assert.equal(diagnostic.attemptId, record.outcome.attemptId);
+      }
+    } else {
+      assert.equal(invocations.length, 0);
+      assert.equal(completed.revision, persisted.revision);
+    }
     const recorded = await fs.readFile(join(directory, 'external-effects'), 'utf8').catch(error => {
       if (error.code !== 'ENOENT') throw error;
       return '';
@@ -85,7 +115,10 @@ test('an unacknowledged durable dispatch record is read but does not send an inv
   assert.equal(loadsAfterFailure, 1);
   assert.equal(invocations.length, 0);
   assert.equal((await durable.load(submitted.operation.operationId)).attempts[0].dispatchCertainty, 'unknown');
-  assert.ok(events.some(event => event.eventName === 'store.unconfirmed_revision_visible'));
+  const persisted = await durable.load(submitted.operation.operationId);
+  const trace = events.find(event => event.eventName === 'store.unconfirmed_revision_visible');
+  assert.equal(trace.sequence, persisted.revision);
+  assert.equal(trace.attemptId, persisted.attempts[0].attemptId);
 });
 
 test('a provider disconnect round-trips its exact terminal uncertainty through the durable store', async t => {
@@ -160,5 +193,30 @@ test('outcome CAS conflict and lost final ACK retry only the local record', asyn
   const duplicate = await (await restarted.api.submit(request())).completion;
   assert.equal(duplicate.assessment.answer, first.assessment.answer);
   assert.equal(duplicate.revision, first.revision);
+  assert.equal(restarted.invocations.length, 0);
+});
+
+test('durable outcome and final delivery survive a failing diagnostic sink', async t => {
+  const directory = await fs.mkdtemp(join(tmpdir(), 'role-orchestrator-diagnostics-'));
+  const store = createLocalStateStore(directory);
+  await store.open();
+  t.after(async () => { await store.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  let failedEmits = 0;
+  const first = setup({
+    store, emit(event) {
+      failedEmits++;
+      if (event.eventName === 'attempt.outcome') return Promise.reject(new Error('sink unavailable'));
+      throw new Error('sink unavailable');
+    },
+  });
+  const completed = await (await first.api.submit(request())).completion;
+  assert.ok(failedEmits > 0);
+  assert.equal(completed.status, 'finished');
+  await store.close();
+  await store.open();
+  const restarted = setup({ store });
+  const redelivered = await (await restarted.api.resume(completed.operationId)).completion;
+  assert.equal(redelivered.assessment.answer, completed.assessment.answer);
+  assert.equal(redelivered.attempts[0].outcome.terminal, 'completed');
   assert.equal(restarted.invocations.length, 0);
 });

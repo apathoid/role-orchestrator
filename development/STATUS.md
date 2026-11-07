@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.9, область неисправности store |
-| Следующий шаг | C05.10, crash matrix |
+| Последний локально проверенный шаг | C05.10, crash matrix |
+| Следующий шаг | C06.1, provenance |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05.9 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C05 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -97,3 +97,6 @@
 
 - C05.9 — list различает здоровые, повреждённые и несовместимые snapshots. Адресный отказ защищает повторную доставку начального requestId повреждённой операции, а другие операции работают. Проверены сохранность повреждённых байтов, чтение и commit раннего имени файла, инъекция EROFS и продолжение после восстановления записи без повторения внешнего эффекта.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (70), `check:package`, `check:removal`. Следующий шаг — C05.10, итоговая crash matrix.
+
+- C05.10 — девять subprocess crash boundaries от reservation до доставки. Проверены число внешних эффектов, сохранённый расход, явный resume, повторная доставка, корреляция commit revision и attemptId и сохранность результата при отказе diagnostic sink. C05 закрыт на уровне локального Linux store и тестовых портов. A23–A28 отражены в acceptance matrix с границами доказательства.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (76), `check:package`, `check:removal`. Следующий шаг — C06.1, provenance. Нативные адаптеры, CLI/ACP delivery и NixOS остаются UNVERIFIED.

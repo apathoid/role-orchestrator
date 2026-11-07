@@ -71,3 +71,9 @@ Mock Controller fixtures задают решения, позволяющие п�
 | A11, A13–A14, A19, A21–A22 | OBSERVED, core/application-часть | `test:core` и `test:integration`; отмена, перепланирование, неизвестные эффекты, общие лимиты и модельное разрешение разногласий |
 | A18, A30 | OBSERVED, конфиг и синтетические capabilities | `quality/tests/integration/configuration.test.js`; ограниченные project preferences, обязательный image input и неизвестный usage |
 | A15–A17 | OBSERVED, Host и синтетический ProviderPort | `quality/tests/integration/permissions.test.js`, `configuration.test.js`; отзыв grant, корреляция ответа, отмена и изменение рабочей среды |
+| `A23` | OBSERVED, C05, Linux subprocess | `durable-dispatch.test.js`, девять границ SIGKILL вокруг reserve, dispatch, result, commit и delivery; фактический счётчик внешних эффектов, бюджет и корреляция revision/attemptId |
+| `A24` | OBSERVED, C05 application/store | `durable-dispatch.test.js`, `resume.test.js`; сохранённый итог, новый input, текущий grant и сохранённый расход. CLI/ACP delivery относится к C10 |
+| `A25` | OBSERVED, C05, синтетический провайдер | `resume.test.js`, `retry.test.js`; независимое действие при unknown и проверяемые основания retry |
+| `A26` | OBSERVED, C05, Linux | `durable-dispatch.test.js`, `local-store.test.js`; повтор записи после CAS conflict и межпроцессный writer lock в state directory |
+| `A27` | OBSERVED, C05, Linux и fault injection | `local-store.test.js`; повреждение/версия локальны, EROFS останавливает dispatch, запись восстанавливается без повторения эффекта |
+| `A28` | OBSERVED, C05, Linux и fault injection | `durable-dispatch.test.js`; видимый неподтверждённый commit, повтор подтверждения исхода, отказ sync/async diagnostic sink |

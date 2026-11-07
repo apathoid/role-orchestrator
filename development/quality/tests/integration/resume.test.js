@@ -148,3 +148,26 @@ test('a stuck lookup is bounded and does not suppress the uncertainty passed to 
   expire();
   assert.equal((await resumed.completion).status, 'finished');
 });
+
+test('a lookup result naming a different attempt cannot settle the recorded uncertainty', async t => {
+  const { store } = await durableFixture(t);
+  await store.open();
+  const old = setup({ store, respond() { throw Error('connection lost'); } });
+  const lost = await (await old.api.submit(request())).completion;
+  const current = setup({
+    store, idPrefix: 'later-', capabilities: { 'attempt.status': { support: 'supported', source: 'negotiated' } },
+    async lookupStatus() {
+      return { outcome: outcome('foreign-attempt', { effect: 'confirmed' }), dispatchCertainty: 'sent' };
+    },
+    respond(invocation) {
+      const [unresolved] = invocation.context[1].value.unresolvedAttempts;
+      assert.equal(unresolved.attemptId, lost.attempts[0].attemptId);
+      assert.equal(unresolved.statusLookup, 'unavailable');
+      return final(invocation);
+    },
+  });
+  const result = await (await current.api.resume(lost.operationId, { requestId: 'follow', text: 'Continue' })).completion;
+  assert.equal(result.status, 'finished');
+  assert.equal(result.attempts[0].outcome.effect, 'unknown');
+  assert.ok(!result.events.some(event => event.kind === 'attempt.outcome' && event.outcome.attemptId === 'foreign-attempt'));
+});

@@ -113,8 +113,8 @@ export function createOrchestrator(deps) {
     return state;
   }
 
-  /** @param {Operation} next @param {number | null} revision */
-  async function commit(next, revision) {
+  /** @param {Operation} next @param {number | null} revision @param {string} [attemptId] */
+  async function commit(next, revision, attemptId) {
     const result = await store.commit(next.operationId, revision, next);
     if (result.kind !== 'committed') {
       const code = result.kind === 'conflict' ? 'STORE_CONFLICT' : 'STORE_UNAVAILABLE';
@@ -122,7 +122,7 @@ export function createOrchestrator(deps) {
       // correlation, but only an acknowledged commit authorizes dispatch.
       const observed = await store.load(next.operationId).catch(() => undefined);
       trace(observed ?? next, observed && sameRecord(observed, next)
-        ? 'store.unconfirmed_revision_visible' : 'store.commit_unconfirmed', code);
+        ? 'store.unconfirmed_revision_visible' : 'store.commit_unconfirmed', code, attemptId);
       return { error: new OrchestrationError(code, 'Unable to persist operation state'), observed };
     }
   }
@@ -136,7 +136,9 @@ export function createOrchestrator(deps) {
     if (result.kind === 'rejected') throw new OrchestrationError(result.reason.code, 'Invalid transition: ' + data.kind);
     if (result.kind === 'duplicate') return result.state;
 
-    const failure = await commit(result.state, state.revision);
+    const attemptId = event.kind === 'attempt.outcome' ? event.outcome.attemptId
+      : 'attemptId' in event ? event.attemptId : undefined;
+    const failure = await commit(result.state, state.revision, attemptId);
     if (failure) {
       const { observed, error } = failure;
       if (!observed || (event.kind !== 'attempt.outcome' && event.kind !== 'operation.finished')) throw error;
@@ -144,7 +146,7 @@ export function createOrchestrator(deps) {
       // An already visible record still needs a durability acknowledgement.
       result = applyEvent(observed, event);
       if (result.kind === 'rejected') throw error;
-      const retry = await commit(result.state, observed.revision);
+      const retry = await commit(result.state, observed.revision, attemptId);
       if (retry) throw retry.error;
     }
     if (result.kind === 'applied') emitDiagnostic(diagnostics, result.diagnostic);
