@@ -69,3 +69,4 @@ Mock Controller fixtures задают решения, позволяющие п�
 | A08, A09 | OBSERVED, контракты handoff и графа | `quality/tests/integration/handoff.test.js`, `quality/tests/core/action-graph.test.js` |
 | A08–A10, A12 | OBSERVED, сквозной scheduler с синтетическими портами | `quality/tests/integration/delegation.test.js`; два параллельных workers, независимые операции и обе wait policies |
 | A11, A13–A14, A19, A21–A22 | OBSERVED, core/application-часть | `test:core` и `test:integration`; отмена, перепланирование, неизвестные эффекты, общие лимиты и модельное разрешение разногласий |
+| A18, A30 | OBSERVED, конфиг и синтетические capabilities | `quality/tests/integration/configuration.test.js`; ограниченные project preferences, обязательный image input и неизвестный usage |

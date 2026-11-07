@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Role Orchestrator trusted configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "providers", "profiles", "controllerProfile"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "providers": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/definitions/provider" } },
+    "profiles": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/definitions/profile" } },
+    "controllerProfile": { "$ref": "#/definitions/id" },
+    "roles": { "type": "object", "additionalProperties": { "$ref": "#/definitions/role" } },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxConcurrentInvocations": { "$ref": "#/definitions/limit" },
+        "maxInvocationsPerOperation": { "$ref": "#/definitions/limit" },
+        "invocationTimeoutMs": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory"],
+      "properties": { "directory": { "$ref": "#/definitions/id" } }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "enum": ["debug", "info", "warn", "error"] },
+        "maxFileBytes": { "$ref": "#/definitions/limit" },
+        "retainedFiles": { "$ref": "#/definitions/limit" },
+        "captureBodies": { "type": "boolean" }
+      }
+    },
+    "plugins": { "type": "array", "items": { "$ref": "#/definitions/plugin" } },
+    "skills": { "type": "array", "items": { "$ref": "#/definitions/skill" } },
+    "tools": { "type": "array", "items": { "$ref": "#/definitions/tool" } }
+  },
+  "definitions": {
+    "id": { "type": "string", "pattern": "\\S" },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "secretRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromEnv"],
+      "properties": { "fromEnv": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" } }
+    },
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": { "$ref": "#/definitions/id" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "env": { "type": "object", "additionalProperties": { "$ref": "#/definitions/secretRef" } }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter"],
+      "properties": {
+        "adapter": { "$ref": "#/definitions/id" },
+        "launch": { "$ref": "#/definitions/launch" },
+        "nativeSettings": { "type": "object" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": { "$ref": "#/definitions/id" },
+        "model": { "$ref": "#/definitions/id" }
+      }
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instructions"],
+      "properties": {
+        "purpose": { "type": "string" },
+        "instructions": { "$ref": "#/definitions/id" },
+        "preferredProfiles": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/id" } }
+      }
+    },
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "module"],
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "module": { "$ref": "#/definitions/id" }
+      }
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source"],
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "source": { "$ref": "#/definitions/id" }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": { "id": { "$ref": "#/definitions/id" } }
+    }
+  }
+}

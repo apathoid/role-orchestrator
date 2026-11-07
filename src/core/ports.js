@@ -5,12 +5,13 @@
  * @typedef {'supported' | 'unsupported' | 'unknown'} Support
  * @typedef {{support: Support, source: 'configured' | 'negotiated'}} Capability
  * @typedef {{providerId: string, maxConcurrency: number | null, capabilities: Readonly<Record<string, Capability>>}} ProviderDescription
- * @typedef {{profileId: string, providerId: string, model: string}} Profile
+ * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>}} Profile
  * @typedef {{sessionId: string}} ProviderSession
  * @typedef {{ref: string, value?: unknown, completeness: 'complete' | 'truncated' | 'unavailable',
  *   source: 'user' | 'host_observed' | 'provider_reported' | 'model_claim'}} ContextItem
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
+ *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
  *   userConstraints: readonly string[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
  *   signal: AbortSignal}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
@@ -32,7 +33,7 @@
  * }} StateStore
  *
  * @typedef {{kind: 'profile', value: Profile} |
- *   {kind: 'role' | 'skill', value: {id: string, instructions: string}} |
+ *   {kind: 'role' | 'skill', value: {id: string, instructions: string, purpose?: string, preferredProfiles?: readonly string[]}} |
  *   {kind: 'tool', value: {id: string, description: string}}} CatalogEntry
  * @typedef {{
  *   list: () => Promise<readonly CatalogEntry[]>,

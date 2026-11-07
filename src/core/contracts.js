@@ -20,7 +20,7 @@ const request = record({
 
 const action = record({
   actionId: id, kind: oneOf('delegate'), objective: text, profileId: id,
-  roleId: optional(id), skills: optional(ids), contextRefs: ids,
+  roleId: optional(id), skills: optional(ids), contextRefs: ids, requiredCapabilities: optional(ids),
   dependsOn: arrayOf(record({ actionId: id, kind: oneOf('after_terminal', 'after_model_acceptance') })),
   expectedResult: text, continuationReference: optional(id),
 });

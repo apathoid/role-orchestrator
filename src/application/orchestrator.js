@@ -245,8 +245,25 @@ export function createOrchestrator(deps) {
     signal.addEventListener('abort', abort, { once: true });
     try {
       const entries = handoff ? [] : await catalog.list();
+      const selectedProfile = handoff?.profile ?? profile;
+      const attachments = handoff ? handoff.attachments ?? [] : state.request.attachments;
+      const requiredCapabilities = new Set(handoff?.requiredCapabilities);
+      if (attachments.some(item => item.mediaType.toLowerCase().startsWith('image/'))) {
+        requiredCapabilities.add('input.image');
+      }
+      if (requiredCapabilities.size) {
+        signal.throwIfAborted();
+        const capabilities = selectedProfile.capabilities ?? (await executor.describe()).capabilities;
+        if ([...requiredCapabilities].some(key => !Object.hasOwn(capabilities, key) ||
+            capabilities[key].support !== 'supported')) {
+          return {
+            outcome: failedOutcome(attemptId, 'CAPABILITY_UNAVAILABLE', false),
+            certainty: /** @type {const} */ ('not_sent'), output, observations, contextCursor,
+          };
+        }
+      }
       signal.throwIfAborted();
-      session = await executor.open(handoff?.profile ?? profile, signal);
+      session = await executor.open(selectedProfile, signal);
       const owned = session;
       const invocation = await serialize(async () => {
         const current = await inspect(state.operationId);
@@ -264,7 +281,7 @@ export function createOrchestrator(deps) {
           context: controllerContext(dispatched, entries, correction), authorityRef: state.authorityRef,
         };
         return { response: executor.invoke(owned, {
-          ...context, attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
         }, item => { if (acceptingObservations) observations.push(item); }) };
       });
       const reply = await invocation.response;

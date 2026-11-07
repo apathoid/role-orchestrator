@@ -44,6 +44,8 @@ export function materializeHandoff(operation, action, catalog, availableContext)
       kind: 'delegate', operationId: operation.operationId, actionId: action.actionId,
       objective: action.objective, instructions, profile: profile.value, workspaceContext: operation.request.workspaceContext,
       userConstraints: operation.request.userConstraints, context, authorityRef: operation.authorityRef,
+      attachments: operation.request.attachments.filter(attachment => action.contextRefs.includes(attachment.ref)),
+      requiredCapabilities: action.requiredCapabilities,
       expectedResult: action.expectedResult, continuationReference: action.continuationReference,
     },
   };

@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C03.10, сценарии модельного выбора |
-| Следующий шаг | C04.1, строгий конфиг v1 и доверенные источники |
+| Последний локально проверенный шаг | C04.4, capability requirements |
+| Следующий шаг | C04.5, trusted authority и revocation |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C03 с тестовыми портами |
+| Local regression verified | OBSERVED для C00–C03 и C04.1–C04.4 с тестовыми портами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -48,4 +48,12 @@
 - OBSERVED: `check`, `test:core` (9), `test:integration` (20), exit 0. [CI для handoff/графа](https://github.com/apathoid/role-orchestrator/actions/runs/42389043626) success на `ed33e7f`. OBSERVED: [CI для параллельного dispatch](https://github.com/apathoid/role-orchestrator/actions/runs/42389581263) success на `c28c516`.
 
 - C03.5–C03.10 — модель может отменить конкретное действие и предложить новый id, сохраняя прежнюю попытку и её эффект. Дедупликация защищает от повторного dispatch, а поздний результат не меняет смысл более нового решения. При финале с запросом отмены Controller получает исход отмены до подтверждения оценки. Разногласие и ошибка проверки передаются Controller, который выбирает дальнейшее исследование.
-- OBSERVED: итоговый локальный прогон `check`, `test:foundation` (4), `test:core` (9), `test:integration` (23), `check:package`, `check:removal`, exit 0. Полные permission/configuration, durable restart и нативные провайдеры UNVERIFIED, следующие кластеры C04–C12.
+- OBSERVED: итоговый локальный прогон `check`, `test:foundation` (4), `test:core` (9), `test:integration` (23), `check:package`, `check:removal`, exit 0. [CI для C03.10](https://github.com/apathoid/role-orchestrator/actions/runs/42389823781) success на `b5adc03`. Durable restart и нативные провайдеры UNVERIFIED.
+
+## C04 — конфигурация и полномочия
+
+- C04.1 — JSON Schema v1 и runtime validation. Ajv 8.20.0 закреплён в npm lock как реализация стандартного валидатора; исходные ACP версии и Nix lock сохранены. Ошибки формы содержат JSON Pointer и имя ограничения без входного значения. Ссылки провайдеров, профилей и ролей проверяются после схемы.
+- C04.2 — merge по отдельным полям: defaults → trusted user config → ограниченные project preferences → trusted launch options. Project preferences могут выбрать существующие profile/role/skills и снизить лимиты. Читается только явно указанный файл или `.role-orchestrator.json` из выбранной директории.
+- C04.3 — immutable model-facing catalog отделяет профиль, модель и capability provenance от launch/settings и secret refs. Две модели могут использовать один provider port.
+- C04.4 — обязательные capability проверяются до открытия сессии. Недоступный image input даёт `CAPABILITY_UNAVAILABLE` с `not_sent`; необязательный usage сохраняется как unknown.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (9), `test:integration` (31), `check:package`, `check:removal`, exit 0. Результат относится к синтетическим портам. C04.5–C04.8, durable state, реальные исполнители и публичные CLI/ACP поверхности остаются открыты.
