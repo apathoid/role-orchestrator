@@ -57,3 +57,11 @@ Mock Controller fixtures задают решения, позволяющие п�
 Отрицательные проверки должны контролировать forbidden effect: количество dispatch, отсутствие Git call, отсутствие повторного side effect, отсутствие секретов в экспортируемых данных. Только совпадения финального текста недостаточно.
 
 Проверка протокола с fake ACP agent — C/I, даже если название fixture содержит native. Любой непроведённый обязательный сценарий остаётся UNVERIFIED с причиной. Нельзя менять ожидаемый результат ради прохождения, если он следует из утверждённого контракта.
+
+## Наблюдения реализации
+
+| ID | Состояние | Проверка |
+|---|---|---|
+| A01, A37, A41 | OBSERVED, foundation-часть | `check:package`, `check:removal`, `test:foundation`, в том числе отрицательная JSDoc fixture |
+| A02, A03, A19, A22, A29 | OBSERVED, core-часть | `test:core`, `quality/tests/core/core.test.js`, 6 тестов, exit 0 |
+| A42, A43 | OBSERVED, Linux foundation-часть | [Foundation CI](https://github.com/apathoid/role-orchestrator/actions/runs/42388026539) |

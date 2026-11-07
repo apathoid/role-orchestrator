@@ -49,6 +49,9 @@ jobs:
           nix develop --no-update-lock-file --command npm --prefix development run test:foundation
           nix develop --no-update-lock-file --command npm --prefix development run check:package
           nix develop --no-update-lock-file --command npm --prefix development run check:removal
+      - name: Run core behavior tests
+        if: ${{ hashFiles('development/package-lock.json') != '' }}
+        run: nix develop --no-update-lock-file --command npm --prefix development run test:core
       - name: Report unavailable development checks
         if: ${{ hashFiles('development/package-lock.json') == '' }}
         run: echo 'Development harness absent. Development checks skipped.'
