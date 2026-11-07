@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.6, outcome commit и доставка |
-| Следующий шаг | C05.7, resume после перезапуска |
+| Последний локально проверенный шаг | C05.7, resume после перезапуска |
+| Следующий шаг | C05.8, независимое продолжение при unknown |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05.6 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C05.7 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -88,3 +88,6 @@
 
 - C05.6 — при CAS conflict исход повторно применяется к сохранённой revision с тем же eventId. Если итог уже виден после потерянного ACK store, точное совпадение позволяет повторно подтвердить запись без изменения revision. Проверены реальный конфликт CAS, повторная доставка requestId после SIGKILL между final commit и доставкой, сохранение единственного outcome и отсутствие повторного вызова провайдера.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (57), `check:package`, `check:removal`. Следующий шаг — C05.7, активный resume после перезапуска с текущей доверенной конфигурацией и capability status lookup.
+
+- C05.7 — явный resume восстанавливает ledger и историю, применяет текущий grant, лимиты и каталог. Unresolved attempts передаются Controller. Status lookup требует действующей авторизации, совпадающего маршрута и negotiated capability; ожидание ограничено. Проверены SIGKILL, другой провайдер и конфигурация, изменившийся файл вне Git, успешный и зависший lookup и configured-only capability.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (61), `check:package`, `check:removal`. Следующий шаг — C05.8, явный retry и независимые действия при unknown. Нативная интеграция UNVERIFIED.

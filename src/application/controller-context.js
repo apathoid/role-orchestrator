@@ -1,5 +1,7 @@
 /** @import {CatalogEntry, ContextItem} from '../core/ports.js' */
 /** @import {FieldError} from '../core/decode.js' */
+/** @import {LookupStatus} from './recovery.js' */
+import { resourceSnapshot } from '../core/operation.js';
 /** @import {Operation} from '../core/operation.js' */
 
 export const controllerInstructions = [
@@ -15,15 +17,24 @@ export const controllerInstructions = [
  * @param {Operation} state
  * @param {readonly CatalogEntry[]} catalog
  * @param {FieldError | undefined} correction
+ * @param {ReadonlyMap<string, LookupStatus>} [lookups]
  * @returns {ContextItem[]}
  */
-export function controllerContext(state, catalog, correction) {
+export function controllerContext(state, catalog, correction, lookups) {
   /** @type {ContextItem[]} */
   const items = [
     { ref: state.request.requestId, source: 'user', completeness: 'complete', value: state.request.text },
     { ref: 'host:invocation-context', source: 'host_observed', completeness: 'complete', value: {
       operationId: state.operationId, contextCursor: state.revision, catalog,
-      limits: state.limits, attachments: state.request.attachments,
+      limits: state.limits, resources: resourceSnapshot(state),
+      unresolvedAttempts: state.attempts.filter(attempt =>
+        attempt.outcome?.terminal === 'unknown' || attempt.outcome?.effect === 'possible' || attempt.outcome?.effect === 'unknown'
+      ).map(attempt => ({
+        attemptId: attempt.attemptId, actionId: attempt.actionId, route: attempt.route,
+        dispatchCertainty: attempt.dispatchCertainty, effect: attempt.outcome?.effect,
+        statusLookup: lookups?.get(attempt.attemptId) ?? 'not_checked',
+      })),
+      attachments: state.request.attachments,
       outcomes: state.attempts.flatMap(attempt => attempt.outcome ? [{
         actionId: attempt.actionId, ...attempt.outcome,
       }] : []),

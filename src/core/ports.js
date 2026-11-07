@@ -19,6 +19,8 @@
  *   describe: () => Promise<ProviderDescription>,
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
  *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ContextItem) => void) => Promise<ProviderResult>,
+ *   lookupStatus?: (query: {operationId: string, attemptId: string, profile: Profile, signal: AbortSignal}) =>
+ *     Promise<Pick<ProviderResult, 'outcome' | 'dispatchCertainty'> | undefined>,
  *   cancel: (session: ProviderSession, attemptId: string) => Promise<void>,
  *   close: (session: ProviderSession) => Promise<void>
  * }} ProviderPort

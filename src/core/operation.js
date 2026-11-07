@@ -5,8 +5,10 @@
 
 /**
  * @typedef {'not_sent' | 'sent' | 'unknown'} DispatchCertainty
+ * @typedef {{configurationRef: string, profileId: string, providerId: string, model: string}} DispatchRoute
+ * @typedef {{authorityRef: string, configurationRef: string, limits: Limits}} ResumeAuthority
  * @typedef {{attemptId: string, actionId: string, generation: number, reservedAt: number,
- *   dispatchedAt?: number, dispatchCertainty: DispatchCertainty, cancellation?: CancellationSource}} AttemptRecord
+ *   dispatchedAt?: number, route?: DispatchRoute, dispatchCertainty: DispatchCertainty, cancellation?: CancellationSource}} AttemptRecord
  * @typedef {AttemptRecord & (
  *   {status: 'reserved' | 'dispatched', outcome?: never, endedAt?: never} |
  *   {status: 'terminal', outcome: Outcome, endedAt: number}
@@ -22,14 +24,15 @@
  *
  * @typedef {{eventId: string, receivedAt: number, operationId: string} & (
  *   {kind: 'attempt.reserved', actionId: string, attemptId: string} |
- *   {kind: 'attempt.dispatched', attemptId: string} |
+ *   {kind: 'attempt.dispatched', attemptId: string, route?: DispatchRoute} |
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
  *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly ContextItem[]} |
  *   {kind: 'controller.responded', decision: Decision, admissions?: readonly Admission[]} |
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
- *   {kind: 'operation.continued', input: {requestId: string, text: string, questionId?: string}} |
+ *   {kind: 'operation.continued', input: {requestId: string, text: string, questionId?: string}, trusted?: ResumeAuthority} |
+ *   {kind: 'operation.recovered', trusted: ResumeAuthority} |
  *   {kind: 'operation.finished', assessment: Assessment} |
  *   {kind: 'operation.cancelled', source: CancellationSource}
  * )} Event
@@ -80,7 +83,7 @@ export function resourceSnapshot(state) {
     return { known, unknown };
   }
   return {
-    active, charged, remaining: state.limits.maxInvocations - charged,
+    active, charged, remaining: Math.max(0, state.limits.maxInvocations - charged),
     usage: { inputTokens: total('inputTokens'), outputTokens: total('outputTokens'), cost: total('cost') },
   };
 }
@@ -145,7 +148,7 @@ export function applyEvent(state, event) {
       if (state.status === 'cancelled' || attempt.cancellation) return reject('CANCELLED');
       if (state.status === 'finished') return reject('INVALID_PROPOSAL');
       return apply(updateAttempt({
-        ...attempt, status: 'dispatched', dispatchedAt: event.receivedAt, dispatchCertainty: 'unknown',
+        ...attempt, status: 'dispatched', dispatchedAt: event.receivedAt, route: event.route, dispatchCertainty: 'unknown',
       }), 'DISPATCH_STARTED');
     case 'attempt.cancel_requested':
       if (!attempt) return reject('INVALID_PROPOSAL');
@@ -203,9 +206,12 @@ export function applyEvent(state, event) {
     case 'operation.continued':
       if (state.status !== 'waiting' && state.status !== 'finished') return reject('INVALID_PROPOSAL');
       return apply({
-        status: 'active', waiting: undefined, generation: state.generation + 1,
+        ...resumeAuthority(event.trusted), status: 'active', waiting: undefined, generation: state.generation + 1,
         transcriptRefs: [...state.transcriptRefs, event.input.requestId],
       }, 'USER_INPUT');
+    case 'operation.recovered':
+      if (state.status !== 'active') return reject('INVALID_PROPOSAL');
+      return apply({ ...resumeAuthority(event.trusted), generation: state.generation + 1 }, 'RECOVERED');
     case 'operation.finished':
       if (state.status !== 'active') return reject('INVALID_PROPOSAL');
       if (state.attempts.some(item => item.status !== 'terminal')) return reject('INVALID_PROPOSAL');
@@ -225,4 +231,9 @@ export function applyEvent(state, event) {
       return apply({ status: 'cancelled', cancellation: event.source, waiting: undefined, attempts }, 'CANCELLED', intents);
     }
   }
+}
+
+/** @param {ResumeAuthority | undefined} trusted */
+function resumeAuthority(trusted) {
+  return trusted ? { authorityRef: trusted.authorityRef, limits: { ...trusted.limits } } : {};
 }

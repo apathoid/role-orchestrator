@@ -69,9 +69,14 @@ const waiting = tagged('kind', {
   question: record({ kind: oneOf('question'), questionId: id, question: id }),
   technical: record({ kind: oneOf('technical'), reason }),
 });
+/** @type {Decoder<number>} */
+const limit = (input, path) => count(input, path) || invalid(path, 'a positive safe integer');
+const limits = record({ maxInvocations: limit, maxConcurrentInvocations: limit });
+const trusted = record({ authorityRef: id, configurationRef: id, limits });
+const route = record({ configurationRef: id, profileId: id, providerId: id, model: id });
 const attemptFields = {
   attemptId: id, actionId: id, generation: count, reservedAt: measurement,
-  dispatchedAt: optional(measurement), dispatchCertainty: certainty, cancellation: optional(cancellation),
+  dispatchedAt: optional(measurement), route: optional(route), dispatchCertainty: certainty, cancellation: optional(cancellation),
 };
 /** @type {Decoder<Attempt>} */
 const attempt = tagged('status', {
@@ -96,7 +101,7 @@ const eventFields = { eventId: id, operationId: id, receivedAt: measurement };
 /** @type {Decoder<Event>} */
 const event = tagged('kind', {
   'attempt.reserved': record({ ...eventFields, kind: oneOf('attempt.reserved'), attemptId: id, actionId: id }),
-  'attempt.dispatched': record({ ...eventFields, kind: oneOf('attempt.dispatched'), attemptId: id }),
+  'attempt.dispatched': record({ ...eventFields, kind: oneOf('attempt.dispatched'), attemptId: id, route: optional(route) }),
   'attempt.cancel_requested': record({
     ...eventFields, kind: oneOf('attempt.cancel_requested'), attemptId: id, source: cancellation,
   }),
@@ -115,16 +120,15 @@ const event = tagged('kind', {
   }),
   'action.cancelled': record({ ...eventFields, kind: oneOf('action.cancelled'), actionId: id, source: cancellation }),
   'operation.waiting': record({ ...eventFields, kind: oneOf('operation.waiting'), waiting }),
-  'operation.continued': record({ ...eventFields, kind: oneOf('operation.continued'), input: followup }),
+  'operation.continued': record({ ...eventFields, kind: oneOf('operation.continued'), input: followup, trusted: optional(trusted) }),
+  'operation.recovered': record({ ...eventFields, kind: oneOf('operation.recovered'), trusted }),
   'operation.finished': record({ ...eventFields, kind: oneOf('operation.finished'), assessment }),
   'operation.cancelled': record({ ...eventFields, kind: oneOf('operation.cancelled'), source: cancellation }),
 });
-/** @type {Decoder<number>} */
-const limit = (input, path) => count(input, path) || invalid(path, 'a positive safe integer');
 const operation = record({
   schemaVersion: version, operationId: id, request, generation: count, revision: count,
   authorityRef: id, transcriptRefs: arrayOf(id),
-  limits: record({ maxInvocations: limit, maxConcurrentInvocations: limit }),
+  limits,
   attempts: arrayOf(attempt), events: arrayOf(event), assessment: optional(assessment),
   waiting: optional(waiting), cancellation: optional(cancellation), status,
 });

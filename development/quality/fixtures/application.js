@@ -13,7 +13,8 @@ export function final(invocation, overrides = {}) {
   };
 }
 
-export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions } = {}) {
+export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions, lookupStatus, providerFor,
+  configurationRef = 'test-config', idPrefix = 'id-', profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' } } = {}) {
   const states = new Map();
   const invocations = [];
   const events = [];
@@ -32,19 +33,19 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
       return { kind: 'committed' };
     },
   };
-  const profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' };
   const api = createOrchestrator({
     store: injectedStore ?? store, profile, authority: authority ?? createAuthorityGrant({
-      reference: 'fixture-authority', origin: 'user', profileIds: ['primary'],
-    }), configurationRef: 'test-config', permissions,
+      reference: 'fixture-authority', origin: 'user', profileIds: [profile.profileId],
+    }), configurationRef, permissions, providerFor,
     diagnostics: { emit(event) { events.push(event); }, flush() {} },
     clock: { now: () => 100, monotonicNow: () => 100 },
-    ids: { newId: () => 'id-' + ++sequence },
+    ids: { newId: () => idPrefix + ++sequence },
     limits: { maxInvocations, maxConcurrentInvocations },
     invocationTimeoutMs: 10000, schedule,
     catalog: { async list() { return [{ kind: 'profile', value: profile }, ...extraCatalog]; }, async resolve() {} },
     provider: {
-      async describe() { return { providerId: 'fixture', maxConcurrency: maxConcurrentInvocations, capabilities }; },
+      lookupStatus,
+      async describe() { return { providerId: profile.providerId, maxConcurrency: maxConcurrentInvocations, capabilities }; },
       async open(profile, signal) {
         if (open) await open(signal);
         return { sessionId: 'session-' + ++sessionSequence };

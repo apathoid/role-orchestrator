@@ -4,7 +4,7 @@ import { createLocalStateStore } from '../../../src/adapters/state/local-store.j
 import { final, setup } from './application.js';
 import { request } from './core.js';
 
-const [, , directory, boundary] = process.argv;
+const [, , directory, boundary, cwd] = process.argv;
 const durable = createLocalStateStore(directory);
 await durable.open();
 const pause = operationId => {
@@ -32,7 +32,7 @@ const { api } = setup({
     return boundary === 'after_provider_dispatch' ? pause(operationId) : final(invocation);
   },
 });
-const submitted = await api.submit(request());
+const submitted = await api.submit(request(cwd ? { workspaceContext: { cwd } } : undefined));
 // A live IPC channel keeps the child alive at the selected boundary.
 process.on('message', () => {});
 await submitted.completion;

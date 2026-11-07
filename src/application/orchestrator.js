@@ -5,12 +5,14 @@ import { applyEvent, createOperation, resourceSnapshot, sameRecord } from '../co
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
 import { materializeHandoff } from './handoff.js';
+import { lookupAttempt } from './recovery.js';
 import { runActionRound } from './action-round.js';
 
 /** @import {Action, CancellationSource, Decision, Outcome, ReasonCode} from '../core/contracts.js' */
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {Clock, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
 /** @import {Event, Limits, Operation, Reason} from '../core/operation.js' */
+/** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
 /** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderSession, StateStore} from '../core/ports.js' */
@@ -70,7 +72,17 @@ export function createOrchestrator(deps) {
   const workers = new Map();
   // Terminal logical outcomes can coexist with a connection the adapter has
   // yet to detach. Such a connection still consumes its concurrency slot.
+  /** @type {Set<string>} */
   const undetached = new Set();
+  /** @type {Set<string>} */
+  const liveAttempts = new Set();
+  const trusted = { authorityRef: authority.reference, configurationRef, limits: { ...limits } };
+
+  /** @param {string} attemptId */
+  function releaseAttempt(attemptId) {
+    liveAttempts.delete(attemptId);
+    releaseSlot();
+  }
   let writes = Promise.resolve();
   /** @type {{promise: Promise<void>, resolve: () => void}} */
   let slot = Promise.withResolvers();
@@ -152,12 +164,15 @@ export function createOrchestrator(deps) {
     return { operation: state, completion: running.get(state.operationId)?.completion ?? Promise.resolve(state) };
   }
 
-  /** @param {Operation} state @returns {Submission} */
-  function launch(state) {
+  /** @param {Operation} state @param {boolean} [recover] @returns {Submission} */
+  function launch(state, recover = false) {
     const signal = new AbortController();
     const pending = workers.get(state.operationId) ?? new Map();
     workers.set(state.operationId, pending);
-    const completion = drive(state.operationId, signal.signal, pending).finally(() => {
+    const completion = (async () => {
+      const lookups = recover ? await recoverAttempts(state.operationId, signal.signal) : undefined;
+      return drive(state.operationId, signal.signal, pending, lookups);
+    })().finally(() => {
       if (running.get(state.operationId)?.signal === signal) running.delete(state.operationId);
       void Promise.allSettled([...pending.values()].map(worker => worker.completion)).then(() => {
         if (!pending.size && !running.has(state.operationId) && workers.get(state.operationId) === pending) {
@@ -200,7 +215,13 @@ export function createOrchestrator(deps) {
 
   /** @param {string} operationId @param {unknown} [input] @returns {Promise<Submission>} */
   async function resume(operationId, input) {
-    if (input === undefined) return activeSubmission(await inspect(operationId));
+    if (input === undefined) {
+      return serialize(async () => {
+        const state = await inspect(operationId);
+        if (state.status !== 'active' || running.has(operationId)) return activeSubmission(state);
+        return launch(await transition(state, { kind: 'operation.recovered', trusted }), true);
+      });
+    }
     const parsed = decode(followup, input);
     if (parsed.kind === 'rejected') {
       throw new OrchestrationError(parsed.reason.code, parsed.reason.expected, parsed.reason.path);
@@ -221,9 +242,70 @@ export function createOrchestrator(deps) {
       if (follow.questionId !== question?.questionId) {
         throw new OrchestrationError('INVALID_PROPOSAL', 'Question is missing, closed or belongs to another operation', '$.questionId');
       }
-      const next = await transition(state, { kind: 'operation.continued', input: follow });
-      return launch(next);
+      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted });
+      return launch(next, true);
     });
+  }
+
+  /** @param {Operation} state */
+  async function settleOrphans(state) {
+    let current = state;
+    for (const attempt of state.attempts) {
+      if (attempt.status === 'terminal' || liveAttempts.has(attempt.attemptId)) continue;
+      const dispatched = attempt.status === 'dispatched';
+      current = await transition(current, {
+        kind: 'attempt.outcome', dispatchCertainty: dispatched ? 'unknown' : 'not_sent',
+        outcome: failedOutcome(attempt.attemptId, 'PROVIDER_DISCONNECTED', dispatched),
+      });
+    }
+    return current;
+  }
+
+  /** @param {string} operationId @param {AbortSignal} stop */
+  async function recoverAttempts(operationId, stop) {
+    const state = await serialize(async () => {
+      const current = await inspect(operationId);
+      return stop.aborted ? current : settleOrphans(current);
+    });
+    /** @type {Map<string, LookupStatus>} */
+    const lookups = new Map();
+    const unknown = state.attempts.filter(attempt => attempt.outcome?.terminal === 'unknown');
+    if (!unknown.length || stop.aborted) return lookups;
+    const local = new AbortController();
+    const signal = AbortSignal.any([local.signal, stop]);
+    const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
+    /** @type {PromiseWithResolvers<Lookup>} */
+    const interrupted = Promise.withResolvers();
+    const abort = () => interrupted.resolve({ status: 'unavailable' });
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      for (const attempt of unknown) {
+        if (signal.aborted) break;
+        const { status, result } = await Promise.race([
+          lookupAttempt(state, attempt, { configurationRef, authority, catalog, providerFor }, signal)
+            .catch(() => /** @type {Lookup} */ ({ status: 'unavailable' })),
+          interrupted.promise,
+        ]);
+        lookups.set(attempt.attemptId, status);
+        if (stop.aborted) break;
+        await serialize(async () => {
+          const current = await inspect(operationId);
+          if (stop.aborted) return;
+          trace(current, 'attempt.status_lookup', status.toUpperCase(), attempt.attemptId);
+          if (result) await transition(current, {
+            kind: 'attempt.outcome', outcome: result.outcome, dispatchCertainty: result.dispatchCertainty,
+            observations: [{
+              ref: 'attempt-status:' + attempt.attemptId, source: 'provider_reported',
+              completeness: 'complete', value: result,
+            }],
+          });
+        });
+      }
+    } finally {
+      signal.removeEventListener('abort', abort);
+      clear();
+    }
+    return lookups;
   }
 
   /** @param {string} operationId @param {CancellationSource} [source] */
@@ -234,15 +316,16 @@ export function createOrchestrator(deps) {
       running.get(operationId)?.signal.abort(source);
       for (const worker of workers.get(operationId)?.values() ?? []) worker.stop.abort(source);
       releaseSlot();
-      return next;
+      return settleOrphans(next);
     });
   }
 
   /**
    * @param {Operation} state @param {string} attemptId @param {AbortSignal} stop
    * @param {FieldError | undefined} correction @param {Handoff} [handoff] @param {ProviderPort} [executor]
+   * @param {ReadonlyMap<string, LookupStatus>} [lookups]
    */
-  async function invoke(state, attemptId, stop, correction, handoff, executor = provider) {
+  async function invoke(state, attemptId, stop, correction, handoff, executor = provider, lookups) {
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal]);
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
@@ -318,7 +401,11 @@ export function createOrchestrator(deps) {
         const current = await inspect(state.operationId);
         signal.throwIfAborted();
         requireAuthority();
-        const dispatched = await transition(current, { kind: 'attempt.dispatched', attemptId });
+        const dispatched = await transition(current, {
+          kind: 'attempt.dispatched', attemptId, route: {
+            configurationRef, profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, model: selectedProfile.model,
+          },
+        });
         contextCursor = dispatched.revision;
         signal.throwIfAborted();
         requireAuthority();
@@ -333,7 +420,7 @@ export function createOrchestrator(deps) {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
           objective: state.request.text, instructions: controllerInstructions, profile,
           workspaceContext: state.request.workspaceContext, userConstraints: state.request.userConstraints,
-          context: controllerContext(dispatched, entries, correction), authorityRef: state.authorityRef,
+          context: controllerContext(dispatched, entries, correction, lookups), authorityRef: state.authorityRef,
         };
         return { response: withinDeadline(executor.invoke(owned, {
           ...context, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
@@ -399,13 +486,7 @@ export function createOrchestrator(deps) {
         if (resources.remaining <= 0) {
           return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
         }
-        const all = await store.list();
-        const active = new Set(undetached);
-        for (const operation of all) {
-          for (const attempt of operation.attempts) {
-            if (attempt.status !== 'terminal') active.add(attempt.attemptId);
-          }
-        }
+        const active = new Set([...undetached, ...liveAttempts]);
         if (undetached.size >= limits.maxConcurrentInvocations) {
           return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
         }
@@ -417,9 +498,9 @@ export function createOrchestrator(deps) {
           return { state, ready: slot.promise };
         }
         const attemptId = ids.newId();
-        return {
-          attemptId, state: await transition(state, { kind: 'attempt.reserved', attemptId, actionId: actionId ?? attemptId }),
-        };
+        const reserved = await transition(state, { kind: 'attempt.reserved', attemptId, actionId: actionId ?? attemptId });
+        liveAttempts.add(attemptId);
+        return { attemptId, state: reserved };
       });
       if (!result.ready) return result;
       await result.ready;
@@ -457,7 +538,7 @@ export function createOrchestrator(deps) {
       }));
       return true;
     } finally {
-      releaseSlot();
+      releaseAttempt(attemptId);
     }
   }
 
@@ -508,8 +589,10 @@ export function createOrchestrator(deps) {
     return { admissions, selected: [...new Set(selected)], newlyAdmitted, actions, newResult };
   }
 
-  /** @param {string} operationId @param {AbortSignal} stop @param {Map<string, PendingAction>} pending */
-  async function drive(operationId, stop, pending) {
+  /** @param {string} operationId @param {AbortSignal} stop @param {Map<string, PendingAction>} pending
+   * @param {ReadonlyMap<string, LookupStatus>} [lookups]
+   */
+  async function drive(operationId, stop, pending, lookups) {
     /** @type {FieldError | undefined} */
     let correction;
     while (!stop.aborted) {
@@ -521,12 +604,15 @@ export function createOrchestrator(deps) {
       let selection;
       /** @type {Promise<boolean>[]} */
       let settleCancellation = [];
-      const response = await invoke(reserved.state, attemptId, stop, correction);
+      const response = await invoke(reserved.state, attemptId, stop, correction, undefined, provider, lookups)
+        .catch(error => {
+          releaseAttempt(attemptId);
+          throw error;
+        });
       const next = await serialize(async () => {
         let state = await transition(await inspect(operationId), {
           kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
         });
-        releaseSlot();
         if (state.status !== 'active') return state;
         if (response.outcome.terminal !== 'completed') {
           return technicalWait(state, {
@@ -591,7 +677,7 @@ export function createOrchestrator(deps) {
         }
         trace(state, 'controller.invalid_proposal', correction?.code ?? 'INVALID_PROPOSAL', attemptId);
         return state;
-      });
+      }).finally(() => releaseAttempt(attemptId));
       if (next.status !== 'active') return next;
       if (settleCancellation.length) await Promise.all(settleCancellation);
       if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
