@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.4, bounded artifacts |
-| Следующий шаг | C05.5, commit перед dispatch |
+| Последний локально проверенный шаг | C05.5, commit перед dispatch |
+| Следующий шаг | C05.6, outcome commit и доставка |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05.4 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C05.5 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -82,3 +82,6 @@
 
 - C05.4 — bounded artifacts публикуются до выдачи ссылки с SHA-256, размером и truncation metadata. Чтение ограничено байтами и различает unavailable и integrity_error. Инъекция частичной записи проверяет отсутствие опубликованной ссылки. Повторное открытие под writer lock очищает только именованные временные файлы; проверено сохранение blob, на который ссылается snapshot.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (49), `check:package`, `check:removal`. Следующий шаг — C05.5, durable reservation и crash gap до dispatch.
+
+- C05.5 — координатор допускает внешний вызов после подтверждённых commit reservation и dispatch. При неподтверждённой записи перечитывает snapshot для корреляции и прекращает текущую попытку dispatch. Проверены четыре subprocess crash boundaries вокруг reserve и dispatch, сохранённый остаток бюджета и фактическое число внешних эффектов после повторной доставки requestId. Отдельный тест читает terminal unknown после закрытия и повторного открытия durable store.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (55), `check:package`, `check:removal`. Следующий шаг — C05.6, подтверждение outcome commit и повторная доставка. Активное возобновление после сбоя и статус прежнего провайдера относятся к C05.7.

@@ -13,7 +13,7 @@ export function final(invocation, overrides = {}) {
   };
 }
 
-export function setup({ respond = invocation => final(invocation), open, cancel, close, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions } = {}) {
+export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions } = {}) {
   const states = new Map();
   const invocations = [];
   const events = [];
@@ -34,7 +34,7 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
   };
   const profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' };
   const api = createOrchestrator({
-    store, profile, authority: authority ?? createAuthorityGrant({
+    store: injectedStore ?? store, profile, authority: authority ?? createAuthorityGrant({
       reference: 'fixture-authority', origin: 'user', profileIds: ['primary'],
     }), configurationRef: 'test-config', permissions,
     diagnostics: { emit(event) { events.push(event); }, flush() {} },

@@ -99,8 +99,13 @@ export function createOrchestrator(deps) {
   async function commit(next, revision) {
     const result = await store.commit(next.operationId, revision, next);
     if (result.kind !== 'committed') {
-      throw new OrchestrationError(result.kind === 'conflict' ? 'STORE_CONFLICT' : 'STORE_UNAVAILABLE',
-        'Unable to persist operation state');
+      const code = result.kind === 'conflict' ? 'STORE_CONFLICT' : 'STORE_UNAVAILABLE';
+      // A failed acknowledgement can follow a visible rename. Read for
+      // correlation, but only an acknowledged commit authorizes dispatch.
+      const observed = await store.load(next.operationId).catch(() => undefined);
+      trace(observed ?? next, observed && sameRecord(observed, next)
+        ? 'store.unconfirmed_revision_visible' : 'store.commit_unconfirmed', code);
+      throw new OrchestrationError(code, 'Unable to persist operation state');
     }
   }
 
