@@ -10,7 +10,7 @@ Production-код пишется на JavaScript `.js` с ESM (`type: module`), 
 
 ## Flake сейчас и готовый продукт
 
-В корне находится `flake.nix`. Nixpkgs input указывает точную upstream revision; `flake.lock` должен хранить результат её разрешения с настоящим narHash. Lock-файлы не составляются из придуманных hashes. При изменении dependency обновить lock явно и проверить воспроизводимость.
+В корне находятся `flake.nix` и `flake.lock`, полученный настоящим Nix на CI-раннере. Nixpkgs input указывает точную upstream revision; lock хранит результат её разрешения с настоящим narHash. Lock-файлы не составляются из придуманных hashes. При изменении dependency обновить lock явно и проверить воспроизводимость.
 
 Текущие outputs: `devShells.<system>.default` с Node 24 и `checks.<system>.package-metadata`, проверяющий manifest/lock. Объявлены x86_64/aarch64 Linux и Darwin; наличие output не является заявлением о native проверке каждой платформы. CI первоначально выполняет Linux-проверку.
 
@@ -21,7 +21,7 @@ nix develop
 nix flake check --no-update-lock-file
 ```
 
-Если начальная поставка ещё не содержит flake.lock, сначала выполнить `nix flake lock` и сохранить созданный файл. CI bootstrap может разрешить исключительно уже pinned revision, но постоянный CI должен использовать committed lock без обновления.
+Обычный CI использует committed lock без обновления. Для осознанного обновления Nixpkgs изменить pinned input, разрешить его настоящим Nix, сохранить новый flake.lock и выполнить проверки. CI сам не обновляет зависимости.
 
 **До появления реального CLI `nix build`/`nix run` для приложения не заявлены работающими.** Завершённая реализация MUST предоставить:
 
@@ -55,7 +55,7 @@ Nix-сборка и immutable store не меняют архитектурный
 
 ## GitHub CI
 
-Постоянный entrypoint — `.github/workflows/ci.yml`; permissions `contents: read`, Actions закреплены полными commit SHA. Начальные checks: Markdown/specification при наличии development, npm package listing, Nix flake metadata и Node devShell. Это **foundation checks**, не бизнес-regression и не native integration.
+Постоянный entrypoint — `.github/workflows/ci.yml`; permissions `contents: read`, Actions закреплены полными commit SHA. Начальные checks: Markdown/specification при наличии development, npm package listing, Nix flake metadata, Node devShell, установка npm из lock без lifecycle scripts и неизменность lock-файлов. Это **foundation checks**, не бизнес-regression и не native integration.
 
 При C00 подключить синтаксические и JSDoc type checks, install из lock и harness. По появлению функций подключать соответствующие core/contract/integration suites; при C10 добавить `nix build` и CLI smoke. При C12 обязательны package/removal/regression checks. Не использовать пустые успешные suites или `continue-on-error` для обязательных проверок. Отсутствующий development означает явный skip только dev suites; сборка и установка продукта продолжают проверяться.
 

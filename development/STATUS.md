@@ -4,7 +4,7 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | NO |
-| Package / Nix / CI foundation | PREPARED; проверка инфраструктуры отдельно от runtime |
+| Package / Nix / CI foundation | VERIFIED для начальных Linux checks; реальное приложение ещё отсутствует |
 | Последний завершённый implementation step | Нет |
 | Следующий шаг | C00.1 |
 | Functional implementation complete | NO |
