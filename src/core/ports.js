@@ -10,7 +10,7 @@
  * @typedef {{ref: string, value?: unknown, completeness: 'complete' | 'truncated' | 'unavailable',
  *   source: 'user' | 'host_observed' | 'provider_reported' | 'model_claim'}} ContextItem
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
- *   objective: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
+ *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   userConstraints: readonly string[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
  *   signal: AbortSignal}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult

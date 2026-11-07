@@ -66,3 +66,4 @@ Mock Controller fixtures задают решения, позволяющие п�
 | A02, A03, A19, A22, A29 | OBSERVED, core-часть | `test:core`, `quality/tests/core/core.test.js`, 6 тестов, exit 0 |
 | A42, A43 | OBSERVED, Linux foundation-часть | [Foundation CI](https://github.com/apathoid/role-orchestrator/actions/runs/42388026539) |
 | A04–A07, A19, A21, A24, A29 | OBSERVED, application-часть, синтетические порты | `test:integration`, `quality/tests/integration/orchestrator.test.js`, 12 тестов, exit 0 |
+| A08, A09 | OBSERVED, контракты handoff и графа | `quality/tests/integration/handoff.test.js`, `quality/tests/core/action-graph.test.js` |
