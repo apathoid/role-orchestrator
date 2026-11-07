@@ -1,0 +1,182 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { fork } from 'node:child_process';
+import { once } from 'node:events';
+import * as fs from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createLocalStateStore } from '../../../../src/adapters/state/local-store.js';
+import { applyEvent, createOperation, sameRecord } from '../../../../src/core/operation.js';
+import { request } from '../../fixtures/core.js';
+
+async function setupStore(t, overrides) {
+  const directory = await fs.mkdtemp(join(tmpdir(), 'role-orchestrator-state-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = createLocalStateStore(directory, { ...fs, ...overrides });
+  t.after(() => store.close());
+  await store.open();
+  return { directory, store };
+}
+
+const initial = (id = 'operation-1') => createOperation(id, request(), 'grant-ref', {
+  maxInvocations: 5, maxConcurrentInvocations: 2,
+});
+
+function reserve(state, id = 'attempt-1') {
+  const result = applyEvent(state, {
+    kind: 'attempt.reserved', eventId: 'reserve-' + id, operationId: state.operationId,
+    receivedAt: 100, attemptId: id, actionId: id,
+  });
+  assert.equal(result.kind, 'applied');
+  return result.state;
+}
+
+test('local store persists complete revisions and serializes competing CAS writes', async t => {
+  const { store, directory } = await setupStore(t);
+  const state = initial('../../opaque');
+  const id = state.operationId;
+  assert.equal(await store.load(id), undefined);
+  assert.deepEqual(await store.commit(id, null, state), { kind: 'committed' });
+  const first = reserve(state);
+  const competing = reserve(state, 'other-attempt');
+  const results = await Promise.all([store.commit(id, 0, first), store.commit(id, 0, competing)]);
+  assert.deepEqual(results, [{ kind: 'committed' }, { kind: 'conflict' }]);
+  assert.deepEqual(await store.commit(id, 1, state), { kind: 'unavailable' });
+  await store.close();
+  const reopened = createLocalStateStore(directory);
+  t.after(() => reopened.close());
+  await reopened.open();
+  assert.ok(sameRecord(await reopened.load(id), first));
+  assert.deepEqual((await reopened.list()).map(operation => operation.operationId), [id]);
+  const names = (await fs.readdir(directory)).filter(name => !name.startsWith('.writer.sqlite'));
+  assert.equal(names.length, 1);
+  assert.match(names[0], /^[a-f0-9]{64}\.json$/u);
+});
+
+test('partial temp writes and rejected rename leave the previous JSON intact', async t => {
+  let fault;
+  const { store, directory } = await setupStore(t, {
+    async open(path, ...args) {
+      const file = await fs.open(path, ...args);
+      if (fault === 'write' && String(path).endsWith('.tmp')) {
+        file.writeFile = async () => {
+          await file.write('{"partial":');
+          throw Object.assign(new Error('fault'), { code: 'ENOSPC' });
+        };
+      }
+      return file;
+    },
+    async rename(from, to) {
+      if (fault === 'rename') throw Object.assign(new Error('fault'), { code: 'EIO' });
+      return fs.rename(from, to);
+    },
+  });
+  const state = initial();
+  const id = state.operationId;
+  await store.commit(id, null, state);
+  const next = reserve(state);
+  for (const phase of ['write', 'rename']) {
+    fault = phase;
+    assert.deepEqual(await store.commit(id, 0, next), { kind: 'unavailable' });
+    assert.ok(sameRecord(await store.load(id), state));
+    assert.equal((await fs.readdir(directory)).filter(name => !name.startsWith('.writer.sqlite')).length, 1);
+  }
+});
+
+test('readers see old or new complete JSON, and post-rename sync failure is resolved by load', async t => {
+  const ready = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  let phase = 'initial';
+  const { store, directory } = await setupStore(t, {
+    async open(path, ...args) {
+      const file = await fs.open(path, ...args);
+      if (typeof args[0] === 'number') {
+        const sync = file.sync.bind(file);
+        file.sync = () => {
+          if (phase === 'after_rename') throw Object.assign(new Error('fault'), { code: 'EIO' });
+          return sync();
+        };
+      }
+      return file;
+    },
+    async rename(from, to) {
+      if (phase === 'before_rename') {
+        ready.resolve();
+        await release.promise;
+        phase = 'after_rename';
+      }
+      return fs.rename(from, to);
+    },
+  });
+  const state = initial();
+  const id = state.operationId;
+  await store.commit(id, null, state);
+  const next = reserve(state);
+  phase = 'before_rename';
+  const writing = store.commit(id, 0, next);
+  try {
+    await ready.promise;
+    assert.ok(sameRecord(await store.load(id), state));
+    assert.equal((await store.list()).length, 1);
+  } finally {
+    release.resolve();
+  }
+  assert.deepEqual(await writing, { kind: 'unavailable' });
+  assert.ok(sameRecord(await store.load(id), next));
+  assert.deepEqual(await store.commit(id, 0, next), { kind: 'conflict' });
+  assert.equal((await fs.readdir(directory)).filter(name => !name.startsWith('.writer.sqlite')).length, 1);
+});
+
+test('unreadable snapshots are never treated as an empty slot for a new commit', async t => {
+  const { store, directory } = await setupStore(t);
+  const state = initial();
+  const id = state.operationId;
+  await store.commit(id, null, state);
+  const name = (await fs.readdir(directory)).find(name => name.endsWith('.json'));
+  const path = join(directory, name);
+  for (const [content, reason] of [
+    ['{"schemaVersion":2}', 'unsupported_version'],
+    ['{"schemaVersion":', 'corrupt_snapshot'],
+  ]) {
+    await fs.writeFile(path, content);
+    await assert.rejects(store.load(id), { code: 'STORE_UNAVAILABLE', reason });
+    assert.deepEqual(await store.commit(id, null, state), { kind: 'unavailable' });
+    assert.equal(await fs.readFile(path, 'utf8'), content);
+  }
+});
+
+test('writer ownership excludes live peers and recovers after close or process death', { timeout: 5000 }, async t => {
+  const { directory, store } = await setupStore(t);
+  const start = () => {
+    const child = fork(new URL('../../fixtures/state-writer.js', import.meta.url), [directory], { silent: true });
+    const message = once(child, 'message').then(([value]) => value);
+    const exit = once(child, 'exit');
+    t.after(async () => {
+      child.kill('SIGKILL');
+      await exit;
+    });
+    return { child, message, exit };
+  };
+  const id = 'operation-1';
+  assert.deepEqual(await store.commit(id, null, initial(id)), { kind: 'committed' });
+  // A stale-looking lock file cannot displace a live owner.
+  const old = new Date(0);
+  await fs.utimes(join(directory, '.writer.sqlite'), old, old);
+  const blocked = start();
+  assert.deepEqual(await blocked.message, { kind: 'error', code: 'STATE_STORE_IN_USE' });
+  await blocked.exit;
+  await store.close();
+
+  const graceful = start();
+  assert.deepEqual(await graceful.message, { kind: 'opened' });
+  await assert.rejects(store.open(), { code: 'STATE_STORE_IN_USE' });
+  graceful.child.send('close');
+  assert.deepEqual(await graceful.exit, [0, null]);
+
+  const crashed = start();
+  assert.deepEqual(await crashed.message, { kind: 'opened' });
+  crashed.child.kill('SIGKILL');
+  assert.deepEqual(await crashed.exit, [null, 'SIGKILL']);
+  await store.open();
+  assert.ok(sameRecord(await store.load(id), initial(id)));
+});

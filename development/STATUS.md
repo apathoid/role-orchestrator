@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.1, версионированный snapshot codec и round-trip |
-| Следующий шаг | C05.2, atomic local store |
+| Последний локально проверенный шаг | C05.3, writer ownership |
+| Следующий шаг | C05.4, bounded artifacts |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05.1 с тестовыми портами |
+| Local regression verified | OBSERVED для C00–C05.3 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -75,3 +75,7 @@
 
 - C05.1 — snapshot codec v1 сохраняет operation, историю действий и контекста, reservations и точные unknown outcomes. Проверены round-trip, отсутствующие optional поля, неизвестная версия, повреждённый ledger и отказ от runtime handles. Null usage отличается от нуля.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (42), `check:package`, `check:removal`, exit 0. Следующий шаг — C05.2, atomic local store.
+
+- C05.2 — локальный StateStore загружает и перечисляет целые snapshots, сравнивает ожидаемую revision и публикует следующую через temp write, file sync, rename и directory sync. Инъекции ошибок проверяют частичную запись, сбой rename и видимую новую revision после ошибки directory sync.
+- C05.3 — writer удерживает SQLite-блокировку собственного state directory через встроенный `node:sqlite`. Проверено на Linux с двумя процессами: отказ живому конкуренту, повторное открытие после close и SIGKILL, отсутствие takeover по возрасту файла. State directory должен существовать к открытию.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (47), `check:package`, `check:removal`. Следующий шаг — C05.4, bounded artifacts. Применение durable store в сценариях reserve/dispatch и recovery проверяется в следующих шагах. NixOS и нативные провайдеры UNVERIFIED.
