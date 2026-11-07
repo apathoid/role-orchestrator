@@ -1,5 +1,5 @@
-import { decodeDecision, decodeOutcome, decodeRequest } from '../core/contracts.js';
-import { decode, id, optional, record, text } from '../core/decode.js';
+import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
+import { decode } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { applyEvent, createOperation, resourceSnapshot, sameRecord } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
@@ -28,8 +28,6 @@ import { runActionRound } from './action-round.js';
  */
 
 /** @template T @typedef {T extends Event ? Omit<T, 'operationId' | 'eventId' | 'receivedAt'> : never} EventData */
-
-const followup = record({ requestId: id, text, questionId: optional(id) });
 
 export class OrchestrationError extends Error {
   /** @param {ReasonCode} code @param {string} message @param {string} [path] */

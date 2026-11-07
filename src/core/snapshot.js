@@ -1,0 +1,197 @@
+import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
+import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
+
+/** @import {Decoder, FieldError} from './decode.js' */
+/** @import {Attempt, Event, Operation} from './operation.js' */
+/** @import {Admission} from './action-graph.js' */
+
+/** @typedef {{kind: 'accepted', value: Operation} |
+ *   {kind: 'corrupt', reason: FieldError} | {kind: 'unsupported_version', version: number}} SnapshotResult
+ */
+
+/**
+ * Copy context data without calling toJSON or serializing runtime handles.
+ * Undefined object fields represent absent optional values.
+ * @type {Decoder<unknown>}
+ */
+const jsonValue = (input, path) => {
+  const ancestors = new Set();
+  return visit(input, path);
+
+  /** @param {unknown} value @param {string} at @returns {unknown} */
+  function visit(value, at) {
+    if (value === null || typeof value === 'boolean' || typeof value === 'string') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (!value || typeof value !== 'object' || ancestors.has(value)) return invalid(at, 'acyclic JSON data');
+    ancestors.add(value);
+    try {
+      if (Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype) return arrayOf(visit)(value, at);
+      if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+        return invalid(at, 'JSON data');
+      }
+      return Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(value)).flatMap(([key, field]) => {
+        if (!field.enumerable) return [];
+        if (!('value' in field)) invalid(at + '.' + key, 'JSON data');
+        return field.value === undefined ? [] : [[key, visit(field.value, at + '.' + key)]];
+      }));
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+};
+
+/**
+ * @template {Record<string, Decoder<unknown>>} Variants
+ * @param {string} discriminator @param {Variants} variants
+ * @returns {Decoder<ReturnType<Variants[keyof Variants]>>}
+ */
+function tagged(discriminator, variants) {
+  return (input, path) => {
+    if (!input || typeof input !== 'object') return invalid(path, 'an object');
+    const kind = Object.getOwnPropertyDescriptor(input, discriminator)?.value;
+    if (typeof kind !== 'string' || !Object.hasOwn(variants, kind)) {
+      return invalid(path + '.' + discriminator, Object.keys(variants).join(' | '));
+    }
+    return /** @type {ReturnType<Variants[keyof Variants]>} */ (variants[kind](input, path));
+  };
+}
+
+const version = oneOf(1);
+const cancellation = oneOf('client', 'user', 'shutdown', 'superseded', 'provider');
+const certainty = oneOf('sent', 'not_sent', 'unknown');
+const status = oneOf('active', 'waiting', 'finished', 'cancelled');
+const effect = oneOf('none', 'possible', 'confirmed', 'unknown');
+const reason = record({
+  code: reasonCode, operationId: id, actionId: optional(id), attemptId: optional(id),
+  dispatchCertainty: optional(certainty), effect: optional(effect),
+});
+const waiting = tagged('kind', {
+  question: record({ kind: oneOf('question'), questionId: id, question: id }),
+  technical: record({ kind: oneOf('technical'), reason }),
+});
+const attemptFields = {
+  attemptId: id, actionId: id, generation: count, reservedAt: measurement,
+  dispatchedAt: optional(measurement), dispatchCertainty: certainty, cancellation: optional(cancellation),
+};
+/** @type {Decoder<Attempt>} */
+const attempt = tagged('status', {
+  reserved: record({ ...attemptFields, status: oneOf('reserved') }),
+  dispatched: record({ ...attemptFields, status: oneOf('dispatched') }),
+  terminal: record({ ...attemptFields, status: oneOf('terminal'), outcome, endedAt: measurement }),
+});
+/** @type {Decoder<Admission>} */
+const admission = tagged('kind', {
+  accepted: record({ kind: oneOf('accepted'), action }),
+  duplicate: record({ kind: oneOf('duplicate'), actionId: id }),
+  rejected: record({
+    kind: oneOf('rejected'), actionId: id, code: reasonCode, dependencyId: optional(id),
+    reason: oneOf('identity', 'unknown_dependency', 'unavailable_dependency', 'cyclic_dependency'),
+  }),
+});
+const contextItem = record({
+  ref: id, source: oneOf('user', 'host_observed', 'provider_reported', 'model_claim'),
+  completeness: oneOf('complete', 'truncated', 'unavailable'), value: optional(jsonValue),
+});
+const eventFields = { eventId: id, operationId: id, receivedAt: measurement };
+/** @type {Decoder<Event>} */
+const event = tagged('kind', {
+  'attempt.reserved': record({ ...eventFields, kind: oneOf('attempt.reserved'), attemptId: id, actionId: id }),
+  'attempt.dispatched': record({ ...eventFields, kind: oneOf('attempt.dispatched'), attemptId: id }),
+  'attempt.cancel_requested': record({
+    ...eventFields, kind: oneOf('attempt.cancel_requested'), attemptId: id, source: cancellation,
+  }),
+  'attempt.outcome': record({
+    ...eventFields, kind: oneOf('attempt.outcome'), outcome, dispatchCertainty: certainty,
+    observations: optional(arrayOf(contextItem)),
+  }),
+  'controller.responded': record({
+    ...eventFields, kind: oneOf('controller.responded'), decision, admissions: optional(arrayOf(admission)),
+  }),
+  'action.rejected': record({
+    ...eventFields, kind: oneOf('action.rejected'), actionId: id, code: reasonCode, resource: optional(id),
+  }),
+  'action.deferred': record({
+    ...eventFields, kind: oneOf('action.deferred'), actionId: id, code: reasonCode, resource: optional(id),
+  }),
+  'action.cancelled': record({ ...eventFields, kind: oneOf('action.cancelled'), actionId: id, source: cancellation }),
+  'operation.waiting': record({ ...eventFields, kind: oneOf('operation.waiting'), waiting }),
+  'operation.continued': record({ ...eventFields, kind: oneOf('operation.continued'), input: followup }),
+  'operation.finished': record({ ...eventFields, kind: oneOf('operation.finished'), assessment }),
+  'operation.cancelled': record({ ...eventFields, kind: oneOf('operation.cancelled'), source: cancellation }),
+});
+/** @type {Decoder<number>} */
+const limit = (input, path) => count(input, path) || invalid(path, 'a positive safe integer');
+const operation = record({
+  schemaVersion: version, operationId: id, request, generation: count, revision: count,
+  authorityRef: id, transcriptRefs: arrayOf(id),
+  limits: record({ maxInvocations: limit, maxConcurrentInvocations: limit }),
+  attempts: arrayOf(attempt), events: arrayOf(event), assessment: optional(assessment),
+  waiting: optional(waiting), cancellation: optional(cancellation), status,
+});
+
+/** @type {Decoder<Operation>} */
+function snapshot(input, path) {
+  const value = operation(input, path);
+  if (value.revision !== value.events.length) invalid(path + '.revision', 'the committed event count');
+  if ((value.status === 'waiting') !== Boolean(value.waiting)) invalid(path + '.waiting', 'a reason only for waiting');
+  if (value.status === 'finished' && !value.assessment) invalid(path + '.assessment', 'the final assessment');
+  const attempts = new Set();
+  for (const [index, item] of value.attempts.entries()) {
+    const at = path + '.attempts[' + index + ']';
+    if (attempts.has(item.attemptId)) invalid(at + '.attemptId', 'a unique attempt id');
+    attempts.add(item.attemptId);
+    if (item.status === 'terminal' && item.outcome.attemptId !== item.attemptId) {
+      invalid(at + '.outcome.attemptId', 'the enclosing attempt id');
+    }
+    if (item.dispatchCertainty === 'not_sent' && item.outcome && item.outcome.effect !== 'none') {
+      invalid(at + '.outcome.effect', 'none for an unsent attempt');
+    }
+  }
+  const events = new Set();
+  for (const [index, item] of value.events.entries()) {
+    const at = path + '.events[' + index + ']';
+    if (item.operationId !== value.operationId) invalid(at + '.operationId', 'the enclosing operation id');
+    if (events.has(item.eventId)) invalid(at + '.eventId', 'a unique event id');
+    events.add(item.eventId);
+    const attemptId = item.kind === 'attempt.outcome' ? item.outcome.attemptId : 'attemptId' in item ? item.attemptId : undefined;
+    if (attemptId && !attempts.has(attemptId)) invalid(at + '.attemptId', 'an attempt in this snapshot');
+  }
+  return value;
+}
+
+export class SnapshotFormatError extends Error {
+  /** @param {FieldError} reason */
+  constructor(reason) {
+    super(reason.path + ' must be ' + reason.expected);
+    this.reason = reason;
+  }
+}
+
+/** @param {Operation} value */
+export function encodeSnapshot(value) {
+  const checked = decode(snapshot, value);
+  if (checked.kind === 'rejected') throw new SnapshotFormatError(checked.reason);
+  return JSON.stringify(checked.value);
+}
+
+/** @param {string} serialized @returns {SnapshotResult} */
+export function decodeSnapshot(serialized) {
+  /** @type {unknown} */
+  let input;
+  try {
+    input = JSON.parse(serialized);
+  } catch {
+    return { kind: 'corrupt', reason: { code: 'INVALID_PROPOSAL', path: '$', expected: 'a JSON snapshot' } };
+  }
+  const major = input && typeof input === 'object' && Object.getOwnPropertyDescriptor(input, 'schemaVersion')?.value;
+  if (Number.isSafeInteger(major) && major > 0 && major !== 1) {
+    return { kind: 'unsupported_version', version: major };
+  }
+  try {
+    const checked = decode(snapshot, input);
+    return checked.kind === 'accepted' ? checked : { kind: 'corrupt', reason: checked.reason };
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    return { kind: 'corrupt', reason: { code: 'INVALID_PROPOSAL', path: '$', expected: 'a decodable snapshot' } };
+  }
+}

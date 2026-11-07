@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C04.8, границы полномочий и regression workspace drift |
-| Следующий шаг | C05.1, версионированный snapshot codec и round-trip |
+| Последний локально проверенный шаг | C05.1, версионированный snapshot codec и round-trip |
+| Следующий шаг | C05.2, atomic local store |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C04 с тестовыми портами |
+| Local regression verified | OBSERVED для C00–C05.1 с тестовыми портами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -70,3 +70,8 @@
 - Контекст нового Controller содержит прежние решения, заданный вопрос и доставленный ответ с модельной атрибуцией. Текст пользователя сохраняет отдельную атрибуцию.
 - Coordinator завершает ограниченное ожидание даже при зависшем invoke или cancel. После возможной отправки остаётся unknown, поздний результат не завершает operation, а неподтверждённое закрытие удерживает слот. Проверено с тестовым адаптером; нативный cleanup UNVERIFIED.
 - Локально: `check`, `test:foundation` (4), `test:core` (9), `test:integration` (42), `check:package`, `check:removal`.
+
+## C05 — долговременное состояние и recovery
+
+- C05.1 — snapshot codec v1 сохраняет operation, историю действий и контекста, reservations и точные unknown outcomes. Проверены round-trip, отсутствующие optional поля, неизвестная версия, повреждённый ledger и отказ от runtime handles. Null usage отличается от нуля.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (42), `check:package`, `check:removal`, exit 0. Следующий шаг — C05.2, atomic local store.

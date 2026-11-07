@@ -11,21 +11,21 @@ import { arrayOf, count, decode, id, invalid, measurement, nullable, oneOf, opti
 
 const version = oneOf(1);
 const ids = arrayOf(id);
-const request = record({
+export const request = record({
   schemaVersion: version, requestId: id, text,
   attachments: arrayOf(record({ ref: id, mediaType: id })),
   workspaceContext: optional(record({ cwd: optional(id) })),
   userConstraints: arrayOf(text), configurationRef: id,
 });
 
-const action = record({
+export const action = record({
   actionId: id, kind: oneOf('delegate'), objective: text, profileId: id,
   roleId: optional(id), skills: optional(ids), contextRefs: ids, requiredCapabilities: optional(ids),
   dependsOn: arrayOf(record({ actionId: id, kind: oneOf('after_terminal', 'after_model_acceptance') })),
   expectedResult: text, continuationReference: optional(id),
 });
 
-const assessment = record({
+export const assessment = record({
   author: id, overall: oneOf('complete', 'partial', 'unresolved'),
   requirements: arrayOf(record({
     requirementId: id, status: oneOf('fulfilled', 'partial', 'unverified', 'unavailable'),
@@ -34,6 +34,7 @@ const assessment = record({
   observationRefs: ids, findingRefs: ids, unresolvedQuestions: arrayOf(text), answer: text,
 });
 
+export const followup = record({ requestId: id, text, questionId: optional(id) });
 const proposal = record({
   schemaVersion: version, decisionId: id, operationId: id, contextCursor: count,
   additions: arrayOf(action), cancellations: ids, acceptedActionIds: optional(ids),
@@ -60,7 +61,7 @@ const outputRef = record({
   ref: id, source: oneOf('host_observed', 'provider_reported', 'model_claim'),
   kind: oneOf('output', 'agent_exit', 'tool_exit', 'observation', 'finding'),
 });
-const outcome = record({
+export const outcome = record({
   schemaVersion: version, attemptId: id,
   terminal: oneOf('completed', 'failed', 'cancelled', 'unknown'),
   effect: oneOf('none', 'possible', 'confirmed', 'unknown'),
@@ -77,7 +78,10 @@ const outcome = record({
 export const decodeRequest = input => decode(request, input);
 
 /** @param {unknown} input */
-export const decodeDecision = input => decode((value, path) => {
+export const decodeDecision = input => decode(decision, input);
+
+/** @type {import('./decode.js').Decoder<Decision>} */
+export const decision = (value, path) => {
   const decision = proposal(value, path);
   if (decision.waitPolicy?.targets.length === 0) invalid(path + '.waitPolicy.targets', 'at least one target');
   if (decision.finalAssessment && (decision.clarification || decision.additions.length)) {
@@ -88,7 +92,7 @@ export const decodeDecision = input => decode((value, path) => {
     invalid(path, 'a decision with an action, wait policy, question or assessment');
   }
   return decision;
-}, input);
+};
 
 /** @param {unknown} input */
 export const decodeOutcome = input => decode(outcome, input);
