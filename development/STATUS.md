@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.3, writer ownership |
-| Следующий шаг | C05.4, bounded artifacts |
+| Последний локально проверенный шаг | C05.4, bounded artifacts |
+| Следующий шаг | C05.5, commit перед dispatch |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05.3 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C05.4 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -79,3 +79,6 @@
 - C05.2 — локальный StateStore загружает и перечисляет целые snapshots, сравнивает ожидаемую revision и публикует следующую через temp write, file sync, rename и directory sync. Инъекции ошибок проверяют частичную запись, сбой rename и видимую новую revision после ошибки directory sync.
 - C05.3 — writer удерживает SQLite-блокировку собственного state directory через встроенный `node:sqlite`. Проверено на Linux с двумя процессами: отказ живому конкуренту, повторное открытие после close и SIGKILL, отсутствие takeover по возрасту файла. State directory должен существовать к открытию.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (47), `check:package`, `check:removal`. Следующий шаг — C05.4, bounded artifacts. Применение durable store в сценариях reserve/dispatch и recovery проверяется в следующих шагах. NixOS и нативные провайдеры UNVERIFIED.
+
+- C05.4 — bounded artifacts публикуются до выдачи ссылки с SHA-256, размером и truncation metadata. Чтение ограничено байтами и различает unavailable и integrity_error. Инъекция частичной записи проверяет отсутствие опубликованной ссылки. Повторное открытие под writer lock очищает только именованные временные файлы; проверено сохранение blob, на который ссылается snapshot.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (49), `check:package`, `check:removal`. Следующий шаг — C05.5, durable reservation и crash gap до dispatch.

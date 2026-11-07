@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLocalStateStore } from '../../../../src/adapters/state/local-store.js';
 import { applyEvent, createOperation, sameRecord } from '../../../../src/core/operation.js';
-import { request } from '../../fixtures/core.js';
+import { outcome, request } from '../../fixtures/core.js';
 
 async function setupStore(t, overrides) {
   const directory = await fs.mkdtemp(join(tmpdir(), 'role-orchestrator-state-'));
@@ -179,4 +179,68 @@ test('writer ownership excludes live peers and recovers after close or process d
   assert.deepEqual(await crashed.exit, [null, 'SIGKILL']);
   await store.open();
   assert.ok(sameRecord(await store.load(id), initial(id)));
+});
+
+test('artifacts expose truncation and verify the bounded stored bytes', async t => {
+  const { store, directory } = await setupStore(t);
+  const source = Buffer.from('abcdef');
+  const ref = await store.writeArtifact(source, 3);
+  assert.equal(ref.originalSize, 6);
+  assert.equal(ref.size, 3);
+  assert.equal(ref.truncated, true);
+  const content = await store.readArtifact(ref, 3);
+  assert.equal(content.kind, 'available');
+  assert.equal(Buffer.from(content.bytes).toString(), 'abc');
+  assert.deepEqual(await store.readArtifact(ref, 2), { kind: 'unavailable' });
+  const file = (await fs.readdir(directory)).find(name => name.endsWith('.blob'));
+  const path = join(directory, file);
+  for (const corrupted of ['ab', 'aBc', 'abcd']) {
+    await fs.writeFile(path, corrupted);
+    assert.deepEqual(await store.readArtifact(ref, 3), { kind: 'integrity_error' });
+  }
+  await fs.unlink(path);
+  assert.deepEqual(await store.readArtifact(ref, 3), { kind: 'unavailable' });
+});
+
+test('partial artifact writes publish no ref and reopen removes only owned temp names', async t => {
+  let fail = true;
+  const { store, directory } = await setupStore(t, {
+    async open(path, ...args) {
+      const file = await fs.open(path, ...args);
+      if (fail && String(path).endsWith('.tmp')) {
+        file.writeFile = async () => {
+          await file.write('incomplete');
+          throw new Error('failed write');
+        };
+      }
+      return file;
+    },
+  });
+  await assert.rejects(store.writeArtifact(Buffer.from('actual data'), 10), { code: 'STORE_UNAVAILABLE' });
+  assert.ok(!(await fs.readdir(directory)).some(name => name.endsWith('.tmp') || name.endsWith('.blob')));
+  fail = false;
+  const ref = await store.writeArtifact(Buffer.from('actual data'), 10);
+  const state = initial();
+  const reserved = reserve(state);
+  const terminal = applyEvent(reserved, {
+    kind: 'attempt.outcome', operationId: state.operationId, eventId: 'artifact-outcome', receivedAt: 101,
+    outcome: outcome('attempt-1', { terminal: 'failed', outputRefs: [{ ref: ref.ref, source: 'host_observed', kind: 'output' }] }),
+    dispatchCertainty: 'not_sent',
+    observations: [{ ref: ref.ref, value: ref, completeness: 'truncated', source: 'host_observed' }],
+  });
+  assert.equal(terminal.kind, 'applied');
+  assert.deepEqual(await store.commit(state.operationId, null, state), { kind: 'committed' });
+  assert.deepEqual(await store.commit(state.operationId, 0, reserved), { kind: 'committed' });
+  assert.deepEqual(await store.commit(state.operationId, 1, terminal.state), { kind: 'committed' });
+  await store.close();
+  const orphan = '.state-00000000-0000-4000-8000-000000000000.tmp';
+  await fs.writeFile(join(directory, orphan), 'incomplete');
+  await fs.writeFile(join(directory, '.unrelated.tmp'), 'keep');
+  await store.open();
+  assert.ok(!(await fs.readdir(directory)).includes(orphan));
+  assert.equal(await fs.readFile(join(directory, '.unrelated.tmp'), 'utf8'), 'keep');
+  const restored = await store.load(state.operationId);
+  assert.ok(sameRecord(restored, terminal.state));
+  const artifact = restored.events.at(-1).observations[0].value;
+  assert.equal((await store.readArtifact(artifact, 10)).kind, 'available');
 });
