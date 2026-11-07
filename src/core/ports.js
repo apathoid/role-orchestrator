@@ -13,10 +13,11 @@
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
  *   userConstraints: readonly string[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
+ *   signal: AbortSignal, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
+ *   supportsIdempotency?: true,
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
  *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ContextItem) => void) => Promise<ProviderResult>,
  *   lookupStatus?: (query: {operationId: string, attemptId: string, profile: Profile, signal: AbortSignal}) =>
@@ -46,6 +47,7 @@
  *   append: (items: readonly ContextItem[]) => Promise<void>,
  *   fetchArtifact: (ref: string) => Promise<ContextItem>
  * }} ContextPort
+ * @typedef {(retry: {operationId: string, attemptId: string, actionId: string, profileId: string}) => boolean} RetryApproval
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>
  *   'ALLOWED' | 'PERMISSION_DENIED' | 'REVOKED'}} AuthorityPort
  * @typedef {{id: string, kind: 'allow' | 'deny'}} PermissionOption

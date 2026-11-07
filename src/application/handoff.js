@@ -2,7 +2,7 @@
 /** @import {Operation, Reason} from '../core/operation.js' */
 /** @import {CatalogEntry, ContextItem, Invocation} from '../core/ports.js' */
 
-/** @typedef {Omit<Invocation, 'attemptId' | 'signal' | 'timeoutMs'>} Handoff */
+/** @typedef {Omit<Invocation, 'attemptId' | 'signal' | 'timeoutMs' | 'idempotencyKey'>} Handoff */
 
 /**
  * The catalog and authority reference are supplied by the Host. Role and skill

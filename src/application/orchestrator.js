@@ -15,13 +15,14 @@ import { runActionRound } from './action-round.js';
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
-/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderSession, StateStore} from '../core/ports.js' */
+/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderSession, RetryApproval, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{
  *   store: StateStore, provider: ProviderPort, catalog: Catalog, profile: Profile,
  *   clock: Clock, ids: IdFactory, limits: Limits, invocationTimeoutMs: number,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
+ *   approveRetry?: RetryApproval,
  *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
  * }} Dependencies
@@ -60,7 +61,7 @@ function failedOutcome(attemptId, code, mayHaveSent) {
 export function createOrchestrator(deps) {
   const {
     store, provider, catalog, profile, clock, ids, limits, invocationTimeoutMs, authority, permissions, configurationRef,
-    diagnostics = noopDiagnostics, schedule = scheduleDeadline,
+    diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry,
     providerFor = selected => selected.providerId === profile.providerId ? provider : undefined,
   } = deps;
   if (!Number.isSafeInteger(invocationTimeoutMs) || invocationTimeoutMs < 1 || invocationTimeoutMs > 2_147_483_647) {
@@ -323,9 +324,9 @@ export function createOrchestrator(deps) {
   /**
    * @param {Operation} state @param {string} attemptId @param {AbortSignal} stop
    * @param {FieldError | undefined} correction @param {Handoff} [handoff] @param {ProviderPort} [executor]
-   * @param {ReadonlyMap<string, LookupStatus>} [lookups]
+   * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {Action} [action]
    */
-  async function invoke(state, attemptId, stop, correction, handoff, executor = provider, lookups) {
+  async function invoke(state, attemptId, stop, correction, handoff, executor = provider, lookups, action) {
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal]);
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
@@ -337,7 +338,7 @@ export function createOrchestrator(deps) {
     let boundPermissions;
     let mayHaveSent = false;
     let contextCursor = state.revision;
-    /** @type {'PERMISSION_DENIED' | 'REVOKED' | undefined} */
+    /** @type {'PERMISSION_DENIED' | 'REVOKED' | 'RETRY_NOT_AUTHORIZED' | undefined} */
     let denied;
     /** @type {ContextItem[]} */
     const observations = [];
@@ -375,8 +376,30 @@ export function createOrchestrator(deps) {
           throw new OrchestrationError(decision, 'Invocation is outside the active grant');
         }
       }
+      /** @param {Operation} current */
+      function retryKey(current) {
+        if (!action?.retryOf) return executor.supportsIdempotency ? attemptId : undefined;
+        const prior = current.attempts.find(item => item.attemptId === action.retryOf);
+        if (prior?.status === 'terminal') {
+          if (action.retryBasis === 'no_effect' && prior.outcome.effect === 'none' &&
+              prior.outcome.terminal !== 'unknown') return executor.supportsIdempotency ? attemptId : undefined;
+          if (action.retryBasis === 'user_approval' && approveRetry?.({
+            operationId: current.operationId, attemptId: prior.attemptId,
+            actionId: action.actionId, profileId: selectedProfile.profileId,
+          }) === true) return executor.supportsIdempotency ? attemptId : undefined;
+          const route = prior.route;
+          if (action.retryBasis === 'provider_idempotency' && executor.supportsIdempotency && route?.idempotencyKey &&
+              route.configurationRef === configurationRef && route.profileId === selectedProfile.profileId &&
+              route.providerId === selectedProfile.providerId && route.model === selectedProfile.model) {
+            return route.idempotencyKey;
+          }
+        }
+        denied = 'RETRY_NOT_AUTHORIZED';
+        throw new OrchestrationError(denied, 'Retry is outside the available authorization');
+      }
       signal.throwIfAborted();
       requireAuthority();
+      retryKey(state);
       const attachments = handoff ? handoff.attachments ?? [] : state.request.attachments;
       const requiredCapabilities = new Set(handoff?.requiredCapabilities);
       if (attachments.some(item => item.mediaType.toLowerCase().startsWith('image/'))) {
@@ -401,14 +424,17 @@ export function createOrchestrator(deps) {
         const current = await inspect(state.operationId);
         signal.throwIfAborted();
         requireAuthority();
+        const idempotencyKey = retryKey(current);
         const dispatched = await transition(current, {
           kind: 'attempt.dispatched', attemptId, route: {
             configurationRef, profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, model: selectedProfile.model,
+            idempotencyKey,
           },
         });
         contextCursor = dispatched.revision;
         signal.throwIfAborted();
         requireAuthority();
+        retryKey(dispatched);
         boundPermissions = permissions?.bind({
           attemptId, profileId: selectedProfile.profileId, authorityRef: state.authorityRef, signal,
           report: (event, reason) => trace(dispatched, event, reason, attemptId),
@@ -423,7 +449,7 @@ export function createOrchestrator(deps) {
           context: controllerContext(dispatched, entries, correction, lookups), authorityRef: state.authorityRef,
         };
         return { response: withinDeadline(executor.invoke(owned, {
-          ...context, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
         }, item => { if (acceptingObservations) observations.push(item); })) };
       });
@@ -528,7 +554,7 @@ export function createOrchestrator(deps) {
     }
     const attemptId = reserved.attemptId;
     try {
-      const response = await invoke(reserved.state, attemptId, stop, undefined, handoff.handoff, executor);
+      const response = await invoke(reserved.state, attemptId, stop, undefined, handoff.handoff, executor, undefined, action);
       const observations = response.observations;
       if (response.output !== undefined) {
         observations.push({ ref: 'attempt-output:' + attemptId, source: 'model_claim', completeness: 'complete', value: response.output });

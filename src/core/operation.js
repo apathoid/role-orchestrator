@@ -5,7 +5,7 @@
 
 /**
  * @typedef {'not_sent' | 'sent' | 'unknown'} DispatchCertainty
- * @typedef {{configurationRef: string, profileId: string, providerId: string, model: string}} DispatchRoute
+ * @typedef {{configurationRef: string, profileId: string, providerId: string, model: string, idempotencyKey?: string}} DispatchRoute
  * @typedef {{authorityRef: string, configurationRef: string, limits: Limits}} ResumeAuthority
  * @typedef {{attemptId: string, actionId: string, generation: number, reservedAt: number,
  *   dispatchedAt?: number, route?: DispatchRoute, dispatchCertainty: DispatchCertainty, cancellation?: CancellationSource}} AttemptRecord

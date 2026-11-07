@@ -18,12 +18,21 @@ export const request = record({
   userConstraints: arrayOf(text), configurationRef: id,
 });
 
-export const action = record({
+const actionFields = record({
   actionId: id, kind: oneOf('delegate'), objective: text, profileId: id,
   roleId: optional(id), skills: optional(ids), contextRefs: ids, requiredCapabilities: optional(ids),
   dependsOn: arrayOf(record({ actionId: id, kind: oneOf('after_terminal', 'after_model_acceptance') })),
   expectedResult: text, continuationReference: optional(id),
+  retryOf: optional(id), retryBasis: optional(oneOf('no_effect', 'provider_idempotency', 'user_approval')),
 });
+
+/** @type {import('./decode.js').Decoder<ReturnType<typeof actionFields>>} */
+export const action = (input, path) => {
+  const value = actionFields(input, path);
+  if (value.retryOf && !value.retryBasis) invalid(path + '.retryBasis', 'a retry basis');
+  if (value.retryBasis && !value.retryOf) invalid(path + '.retryOf', 'the original attempt id');
+  return value;
+};
 
 export const assessment = record({
   author: id, overall: oneOf('complete', 'partial', 'unresolved'),
@@ -54,7 +63,7 @@ const proposal = record({
 export const reasonCode = oneOf(
   'INVALID_PROPOSAL', 'IDENTITY_CONFLICT', 'CAPABILITY_UNAVAILABLE', 'PERMISSION_DENIED',
   'REVOKED', 'RESOURCE_LIMIT', 'PROVIDER_START_FAILED', 'PROTOCOL_ERROR', 'PROVIDER_DISCONNECTED',
-  'DEADLINE_EXCEEDED', 'STORE_CONFLICT', 'STORE_UNAVAILABLE', 'CANCELLED',
+  'DEADLINE_EXCEEDED', 'RETRY_NOT_AUTHORIZED', 'STORE_CONFLICT', 'STORE_UNAVAILABLE', 'CANCELLED',
 );
 const usage = record({ inputTokens: nullable(count), outputTokens: nullable(count), cost: nullable(measurement) });
 const outputRef = record({

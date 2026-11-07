@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.7, resume после перезапуска |
-| Следующий шаг | C05.8, независимое продолжение при unknown |
+| Последний локально проверенный шаг | C05.8, независимое продолжение при unknown |
+| Следующий шаг | C05.9, область неисправности store |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05.7 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C05.8 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -91,3 +91,6 @@
 
 - C05.7 — явный resume восстанавливает ledger и историю, применяет текущий grant, лимиты и каталог. Unresolved attempts передаются Controller. Status lookup требует действующей авторизации, совпадающего маршрута и negotiated capability; ожидание ограничено. Проверены SIGKILL, другой провайдер и конфигурация, изменившийся файл вне Git, успешный и зависший lookup и configured-only capability.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (61), `check:package`, `check:removal`. Следующий шаг — C05.8, явный retry и независимые действия при unknown. Нативная интеграция UNVERIFIED.
+
+- C05.8 — явно предложенный retry сопоставляется с исходным attempt. Проверены отказ при трёх неподтверждённых основаниях, доступность независимого чтения, известный no-effect, доверенное scoped-разрешение и повтор с тем же ключом по контракту адаптера. Счётчик эффекта при идемпотентном повторе остался равен одному.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (67), `check:package`, `check:removal`. Следующий шаг — C05.9, изоляция ошибок store.

@@ -10,6 +10,7 @@ export const controllerInstructions = [
   'Return a version 1 Decision for this operation. Use an assessment for your answer or a clarification for a question.',
   'Delegate when useful by selecting a profile and writing an objective, expected result and context references. Use all_requested or next_completion with action targets to wait for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
+  'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Assess requirements and unresolved work using the supplied records. An executor exit is not evidence of tool success.',
 ];
 
@@ -30,7 +31,9 @@ export function controllerContext(state, catalog, correction, lookups) {
       unresolvedAttempts: state.attempts.filter(attempt =>
         attempt.outcome?.terminal === 'unknown' || attempt.outcome?.effect === 'possible' || attempt.outcome?.effect === 'unknown'
       ).map(attempt => ({
-        attemptId: attempt.attemptId, actionId: attempt.actionId, route: attempt.route,
+        attemptId: attempt.attemptId, actionId: attempt.actionId,
+        profileId: attempt.route?.profileId, providerId: attempt.route?.providerId,
+        idempotencyKeyAvailable: Boolean(attempt.route?.idempotencyKey),
         dispatchCertainty: attempt.dispatchCertainty, effect: attempt.outcome?.effect,
         statusLookup: lookups?.get(attempt.attemptId) ?? 'not_checked',
       })),

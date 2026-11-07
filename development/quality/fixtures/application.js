@@ -13,7 +13,7 @@ export function final(invocation, overrides = {}) {
   };
 }
 
-export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions, lookupStatus, providerFor,
+export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions, lookupStatus, providerFor, supportsIdempotency, approveRetry,
   configurationRef = 'test-config', idPrefix = 'id-', profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' } } = {}) {
   const states = new Map();
   const invocations = [];
@@ -36,7 +36,7 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
   const api = createOrchestrator({
     store: injectedStore ?? store, profile, authority: authority ?? createAuthorityGrant({
       reference: 'fixture-authority', origin: 'user', profileIds: [profile.profileId],
-    }), configurationRef, permissions, providerFor,
+    }), configurationRef, permissions, providerFor, approveRetry,
     diagnostics: { emit(event) { events.push(event); }, flush() {} },
     clock: { now: () => 100, monotonicNow: () => 100 },
     ids: { newId: () => idPrefix + ++sequence },
@@ -44,7 +44,7 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
     invocationTimeoutMs: 10000, schedule,
     catalog: { async list() { return [{ kind: 'profile', value: profile }, ...extraCatalog]; }, async resolve() {} },
     provider: {
-      lookupStatus,
+      lookupStatus, supportsIdempotency,
       async describe() { return { providerId: profile.providerId, maxConcurrency: maxConcurrentInvocations, capabilities }; },
       async open(profile, signal) {
         if (open) await open(signal);

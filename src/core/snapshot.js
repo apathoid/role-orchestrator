@@ -73,7 +73,7 @@ const waiting = tagged('kind', {
 const limit = (input, path) => count(input, path) || invalid(path, 'a positive safe integer');
 const limits = record({ maxInvocations: limit, maxConcurrentInvocations: limit });
 const trusted = record({ authorityRef: id, configurationRef: id, limits });
-const route = record({ configurationRef: id, profileId: id, providerId: id, model: id });
+const route = record({ configurationRef: id, profileId: id, providerId: id, model: id, idempotencyKey: optional(id) });
 const attemptFields = {
   attemptId: id, actionId: id, generation: count, reservedAt: measurement,
   dispatchedAt: optional(measurement), route: optional(route), dispatchCertainty: certainty, cancellation: optional(cancellation),
