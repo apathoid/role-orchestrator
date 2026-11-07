@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C03.4, параллельный dispatch и обе wait policies |
-| Следующий шаг | C03.5, перепланирование и отмена выбранных actions |
+| Последний локально проверенный шаг | C03.10, сценарии модельного выбора |
+| Следующий шаг | C04.1, строгий конфиг v1 и доверенные источники |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C02 и C03.1–C03.4 с тестовыми портами |
+| Local regression verified | OBSERVED для C00–C03 с тестовыми портами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -45,4 +45,7 @@
 - OBSERVED: `npm --prefix development run check`, `test:core` (9), `test:integration` (14), exit 0. A08 и A09 проверены для handoff/графа.
 
 - C03.3–C03.4 — application запускает выбранных специалистов параллельно в пределах общего лимита. Проверено освобождение одного из двух слотов для третьего worker, независимость операций, terminal failure и явная модельная оценка для разных типов зависимостей. `next_completion` возвращает первый результат и pending attempts; `all_requested` ждёт указанные действия/попытки. Повторное ожидание уже виденного результата получает ошибку поля.
-- OBSERVED: `check`, `test:core` (9), `test:integration` (20), exit 0. [CI для handoff/графа](https://github.com/apathoid/role-orchestrator/actions/runs/42389043626) success на `ed33e7f`. Сквозная проверка использует тестовый ProviderPort. Адресная отмена actions, перепланирование и финал при pending effects требуют C03.5–C03.9.
+- OBSERVED: `check`, `test:core` (9), `test:integration` (20), exit 0. [CI для handoff/графа](https://github.com/apathoid/role-orchestrator/actions/runs/42389043626) success на `ed33e7f`. OBSERVED: [CI для параллельного dispatch](https://github.com/apathoid/role-orchestrator/actions/runs/42389581263) success на `c28c516`.
+
+- C03.5–C03.10 — модель может отменить конкретное действие и предложить новый id, сохраняя прежнюю попытку и её эффект. Дедупликация защищает от повторного dispatch, а поздний результат не меняет смысл более нового решения. При финале с запросом отмены Controller получает исход отмены до подтверждения оценки. Разногласие и ошибка проверки передаются Controller, который выбирает дальнейшее исследование.
+- OBSERVED: итоговый локальный прогон `check`, `test:foundation` (4), `test:core` (9), `test:integration` (23), `check:package`, `check:removal`, exit 0. Полные permission/configuration, durable restart и нативные провайдеры UNVERIFIED, следующие кластеры C04–C12.

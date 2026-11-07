@@ -27,6 +27,7 @@
  *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly ContextItem[]} |
  *   {kind: 'controller.responded', decision: Decision, admissions?: readonly Admission[]} |
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string} |
+   {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
  *   {kind: 'operation.continued', input: {requestId: string, text: string, questionId?: string}} |
  *   {kind: 'operation.finished', assessment: Assessment} |
@@ -87,7 +88,9 @@ export function resourceSnapshot(state) {
 /** @param {Operation} state @param {Event} event @returns {Transition} */
 export function applyEvent(state, event) {
   const attemptId = event.kind === 'attempt.outcome' ? event.outcome.attemptId
-    : 'attemptId' in event ? event.attemptId : undefined;
+    : event.kind === 'action.cancelled'
+      ? state.attempts.find(item => item.actionId === event.actionId && item.status !== 'terminal')?.attemptId
+      : 'attemptId' in event ? event.attemptId : undefined;
   const attempt = state.attempts.find(item => item.attemptId === attemptId);
   const actionId = attempt?.actionId ?? ('actionId' in event ? event.actionId : undefined);
   const decisionId = event.kind === 'controller.responded' ? event.decision.decisionId : undefined;
@@ -126,6 +129,7 @@ export function applyEvent(state, event) {
   switch (event.kind) {
     case 'attempt.reserved': {
       if (attempt) return reject('IDENTITY_CONFLICT');
+      if (state.events.some(item => item.kind === 'action.cancelled' && item.actionId === event.actionId)) return reject('CANCELLED');
       if (state.status !== 'active') return reject(state.status === 'cancelled' ? 'CANCELLED' : 'INVALID_PROPOSAL');
       const resources = resourceSnapshot(state);
       if (resources.remaining <= 0 || resources.active >= state.limits.maxConcurrentInvocations) {
@@ -181,6 +185,14 @@ export function applyEvent(state, event) {
       }
       if (state.status !== 'active') return reject(state.status === 'cancelled' ? 'CANCELLED' : 'INVALID_PROPOSAL');
       return apply({}, 'ACCEPTED');
+    }
+    case 'action.cancelled': {
+      if (state.events.some(item => item.kind === 'action.cancelled' && item.actionId === event.actionId)) return duplicate;
+      const current = state.attempts.find(item => item.actionId === event.actionId && item.status !== 'terminal');
+      if (!current || current.cancellation) return apply({}, 'CANCELLED');
+      const attempts = state.attempts.map(item => item === current ? { ...item, cancellation: event.source } : item);
+      return apply({ attempts }, 'CANCELLED', current.status === 'dispatched'
+        ? [{ kind: 'cancel', attemptId: current.attemptId, source: event.source }] : []);
     }
     case 'action.rejected':
     case 'action.deferred':

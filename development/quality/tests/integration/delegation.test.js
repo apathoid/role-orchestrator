@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { final, setup } from '../../fixtures/application.js';
-import { outcome, request } from '../../fixtures/core.js';
+import { abortOnly, final, setup } from '../../fixtures/application.js';
+import { assessment, outcome, request } from '../../fixtures/core.js';
 
 const delegate = (actionId, dependencies = [], overrides) => ({
   actionId, kind: 'delegate', objective: 'Inspect ' + actionId, profileId: 'primary',
@@ -175,4 +175,95 @@ test('waiting on a result the Controller has already seen returns a field error'
   const state = await (await api.submit(request())).completion;
   assert.equal(state.status, 'finished');
   assert.equal(invocations.filter(item => item.kind === 'delegate').length, 1);
+});
+
+test('replanning cancels the named worker, preserves its unknown effect and executes the new id', { timeout: 3000 }, async () => {
+  const initialWorkers = Promise.withResolvers();
+  const completeFast = Promise.withResolvers();
+  let workers = 0;
+  let controllers = 0;
+  const { api, invocations, cancellations } = setup({
+    maxInvocations: 6, maxConcurrentInvocations: 3,
+    async respond(invocation) {
+      if (invocation.kind === 'delegate') {
+        if (++workers === 2) initialWorkers.resolve();
+        if (invocation.actionId === 'old') return abortOnly(invocation.signal);
+        if (invocation.actionId === 'fast') await completeFast.promise;
+        return report(invocation);
+      }
+      const { contextCursor } = invocation.context[1].value;
+      if (++controllers === 1) return propose(invocation, [delegate('old'), delegate('fast')], {
+        contextCursor, waitPolicy: { ...wait('old', 'fast'), kind: 'next_completion' },
+      });
+      if (controllers === 2) return propose(invocation, [delegate('replacement')], {
+        contextCursor, cancellations: ['old'], waitPolicy: wait('old', 'replacement'),
+      });
+      return final(invocation);
+    },
+  });
+  const submission = await api.submit(request());
+  await initialWorkers.promise;
+  completeFast.resolve();
+  const state = await submission.completion;
+  assert.equal(state.status, 'finished');
+  const old = state.attempts.find(item => item.actionId === 'old');
+  assert.equal(old.cancellation, 'superseded');
+  assert.equal(old.outcome.effect, 'unknown');
+  assert.deepEqual(cancellations, [old.attemptId]);
+  assert.deepEqual(invocations.filter(item => item.kind === 'delegate').map(item => item.actionId), ['old', 'fast', 'replacement']);
+  assert.equal(state.attempts.find(item => item.actionId === 'fast').outcome.terminal, 'completed');
+});
+
+test('a final that requests cancellation is reconsidered with the resulting unknown effect', { timeout: 3000 }, async () => {
+  const { api } = setup({
+    maxInvocations: 5, maxConcurrentInvocations: 3,
+    async respond(invocation, count) {
+      if (invocation.kind === 'delegate') {
+        if (invocation.actionId === 'pending') return abortOnly(invocation.signal);
+        return report(invocation);
+      }
+      const { contextCursor, outcomes } = invocation.context[1].value;
+      if (count === 1) return propose(invocation, [delegate('pending'), delegate('quick')], {
+        contextCursor, waitPolicy: { ...wait('pending', 'quick'), kind: 'next_completion' },
+      });
+      const result = outcomes.find(item => item.actionId === 'pending');
+      if (!result) return final(invocation, { contextCursor, cancellations: ['pending'] });
+      assert.equal(result.effect, 'unknown');
+      return final(invocation, { contextCursor, finalAssessment: assessment({
+        overall: 'partial', unresolvedQuestions: ['Effect of cancelled action is unknown'],
+      }) });
+    },
+  });
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status, 'finished');
+  assert.equal(state.assessment.overall, 'partial');
+  assert.deepEqual(state.assessment.unresolvedQuestions, ['Effect of cancelled action is unknown']);
+});
+
+test('disagreement and a failed check leave the next action to the Controller', async () => {
+  let controllers = 0;
+  const { api, invocations } = setup({
+    maxInvocations: 6, maxConcurrentInvocations: 2,
+    respond(invocation) {
+      if (invocation.kind === 'delegate') {
+        const claim = { left: 'The check failed', right: 'The check passed', investigate: 'The claims refer to different checks' };
+        return {
+          ...report(invocation, invocation.actionId === 'left' ? { terminal: 'failed' } : undefined),
+          output: claim[invocation.actionId],
+        };
+      }
+      const { contextCursor } = invocation.context[1].value;
+      if (++controllers === 1) return propose(invocation, [delegate('left'), delegate('right')], { contextCursor });
+      if (controllers === 2) {
+        const claims = invocation.context.filter(item => item.source === 'model_claim');
+        assert.deepEqual(claims.map(item => item.value).sort(), ['The check failed', 'The check passed']);
+        return propose(invocation, [delegate('investigate', [], { contextRefs: claims.map(item => item.ref) })], { contextCursor });
+      }
+      return final(invocation, { finalAssessment: assessment({ answer: 'The claims refer to different checks' }) });
+    },
+  });
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.assessment.answer, 'The claims refer to different checks');
+  assert.equal(state.assessment.overall, 'partial');
+  assert.deepEqual(invocations.filter(item => item.kind === 'delegate').map(item => item.actionId), ['left', 'right', 'investigate']);
 });
