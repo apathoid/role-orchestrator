@@ -26,12 +26,15 @@
  *   close: (session: ProviderSession) => Promise<void>
  * }} ProviderPort
  *
+ * @typedef {'corrupt_snapshot' | 'unsupported_version' | 'io'} SnapshotUnavailableReason
+ * @typedef {{kind: 'unavailable', ref: string, reason: SnapshotUnavailableReason, requestMatch?: true | 'unknown'}} UnavailableSnapshot
+ * @typedef {Operation | UnavailableSnapshot} StateListEntry
  * @typedef {{kind: 'committed'} | {kind: 'conflict'} | {kind: 'unavailable'}} CommitResult
  * @typedef {{
  *   open: () => Promise<void>,
  *   load: (operationId: string) => Promise<Operation | undefined>,
  *   commit: (operationId: string, expectedRevision: number | null, next: Operation) => Promise<CommitResult>,
- *   list: () => Promise<readonly Operation[]>,
+ *   list: (requestId?: string) => Promise<readonly StateListEntry[]>,
  *   close: () => Promise<void>
  * }} StateStore
  *

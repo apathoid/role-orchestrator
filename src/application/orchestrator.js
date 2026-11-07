@@ -15,7 +15,7 @@ import { runActionRound } from './action-round.js';
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
-/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderSession, RetryApproval, StateStore} from '../core/ports.js' */
+/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{
@@ -31,6 +31,11 @@ import { runActionRound } from './action-round.js';
  */
 
 /** @template T @typedef {T extends Event ? Omit<T, 'operationId' | 'eventId' | 'receivedAt'> : never} EventData */
+
+/** @param {StateListEntry} item @returns {item is Operation} */
+function isAvailable(item) {
+  return !('kind' in item);
+}
 
 export class OrchestrationError extends Error {
   /** @param {ReasonCode} code @param {string} message @param {string} [path] */
@@ -197,7 +202,11 @@ export function createOrchestrator(deps) {
       throw new OrchestrationError('PERMISSION_DENIED', 'Unknown trusted configuration', '$.configurationRef');
     }
     return serialize(async () => {
-      const all = await store.list();
+      const entries = await store.list(request.requestId);
+      if (entries.some(item => 'kind' in item && item.requestMatch === true)) {
+        throw new OrchestrationError('STORE_UNAVAILABLE', 'Stored request is unavailable');
+      }
+      const all = entries.filter(isAvailable);
       const previous = all.find(item => item.request.requestId === request.requestId);
       if (previous) {
         if (!sameRecord(previous.request, request)) throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
@@ -205,6 +214,9 @@ export function createOrchestrator(deps) {
       }
       if (all.some(item => item.transcriptRefs.includes(request.requestId))) {
         throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
+      }
+      if (entries.some(item => 'kind' in item && item.requestMatch === 'unknown')) {
+        throw new OrchestrationError('STORE_UNAVAILABLE', 'An unreadable snapshot lacks a request reference');
       }
       const state = createOperation(ids.newId(), request, authority.reference, limits);
       const failure = await commit(state, null);
@@ -229,7 +241,7 @@ export function createOrchestrator(deps) {
     }
     const follow = parsed.value;
     return serialize(async () => {
-      const all = await store.list();
+      const all = (await store.list()).filter(isAvailable);
       const state = await inspect(operationId);
       for (const operation of all) {
         if (operation.request.requestId === follow.requestId) throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');

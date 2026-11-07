@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLocalStateStore } from '../../../../src/adapters/state/local-store.js';
 import { applyEvent, createOperation, sameRecord } from '../../../../src/core/operation.js';
+import { final, setup } from '../../fixtures/application.js';
 import { outcome, request } from '../../fixtures/core.js';
 
 async function setupStore(t, overrides) {
@@ -50,7 +51,7 @@ test('local store persists complete revisions and serializes competing CAS write
   assert.deepEqual((await reopened.list()).map(operation => operation.operationId), [id]);
   const names = (await fs.readdir(directory)).filter(name => !name.startsWith('.writer.sqlite'));
   assert.equal(names.length, 1);
-  assert.match(names[0], /^[a-f0-9]{64}\.json$/u);
+  assert.match(names[0], /^[a-f0-9]{64}-[a-f0-9]{64}\.json$/u);
 });
 
 test('partial temp writes and rejected rename leave the previous JSON intact', async t => {
@@ -243,4 +244,86 @@ test('partial artifact writes publish no ref and reopen removes only owned temp 
   assert.ok(sameRecord(restored, terminal.state));
   const artifact = restored.events.at(-1).observations[0].value;
   assert.equal((await store.readArtifact(artifact, 10)).kind, 'available');
+});
+
+test('a damaged snapshot is visible in list and blocks only its own initial request redelivery', async t => {
+  const { store, directory } = await setupStore(t);
+  const { api, invocations } = setup({ store });
+  const damagedRequest = request({ requestId: 'damaged' });
+  const damaged = await (await api.submit(damagedRequest)).completion;
+  const [name] = (await fs.readdir(directory)).filter(item => item.endsWith('.json'));
+  const path = join(directory, name);
+  const original = await fs.readFile(path);
+  const healthy = await (await api.submit(request({ requestId: 'healthy' }))).completion;
+  for (const [content, reason] of [
+    ['{"schemaVersion":', 'corrupt_snapshot'],
+    ['{"schemaVersion":999}', 'unsupported_version'],
+  ]) {
+    await fs.writeFile(path, content);
+    const entries = await store.list();
+    assert.ok(entries.some(entry => entry.kind === 'unavailable' && entry.reason === reason && entry.ref.startsWith('state:')));
+    assert.ok(entries.some(entry => entry.operationId === healthy.operationId));
+    await assert.rejects(api.inspect(damaged.operationId), { code: 'STORE_UNAVAILABLE', reason });
+    await assert.rejects(api.submit(damagedRequest), { code: 'STORE_UNAVAILABLE' });
+    const finished = await (await api.submit(request({ requestId: reason }))).completion;
+    assert.equal(finished.status, 'finished');
+    assert.equal(await fs.readFile(path, 'utf8'), content);
+  }
+  await fs.writeFile(path, original);
+  assert.equal((await api.submit(damagedRequest)).operation.operationId, damaged.operationId);
+  assert.equal(invocations.filter(item => item.operationId === damaged.operationId).length, 1);
+});
+
+test('snapshots written before request-keyed filenames still load and commit in their original slot', async t => {
+  const { store, directory } = await setupStore(t);
+  const state = initial();
+  await store.commit(state.operationId, null, state);
+  const [name] = (await fs.readdir(directory)).filter(item => item.endsWith('.json'));
+  const originalName = name.slice(0, 64) + '.json';
+  await fs.rename(join(directory, name), join(directory, originalName));
+  assert.ok(sameRecord(await store.load(state.operationId), state));
+  const reserved = reserve(state);
+  assert.deepEqual(await store.commit(state.operationId, 0, reserved), { kind: 'committed' });
+  assert.ok(sameRecord(await store.load(state.operationId), reserved));
+  assert.deepEqual((await fs.readdir(directory)).filter(item => item.endsWith('.json')), [originalName]);
+});
+
+test('read-only storage prevents dispatch and disk recovery does not replay a previously sent effect', async t => {
+  let readOnly = true;
+  const { store } = await setupStore(t, {
+    open(path, ...args) {
+      if (readOnly && String(path).endsWith('.tmp')) {
+        return Promise.reject(Object.assign(new Error('read-only'), { code: 'EROFS' }));
+      }
+      return fs.open(path, ...args);
+    },
+  });
+  let effects = 0;
+  const { api, invocations } = setup({
+    store,
+    respond(invocation, count) {
+      if (count === 1) {
+        effects++;
+        readOnly = true;
+      } else {
+        assert.equal(invocation.context[1].value.unresolvedAttempts[0].effect, 'unknown');
+      }
+      return final(invocation);
+    },
+  });
+  await assert.rejects(api.submit(request()), { code: 'STORE_UNAVAILABLE' });
+  assert.equal(invocations.length, 0);
+  readOnly = false;
+  const submitted = await api.submit(request());
+  await assert.rejects(submitted.completion, { code: 'STORE_UNAVAILABLE' });
+  const stranded = await api.inspect(submitted.operation.operationId);
+  assert.equal(stranded.attempts[0].status, 'dispatched');
+  readOnly = false;
+  assert.equal((await (await api.submit(request())).completion).status, 'active');
+  assert.equal(invocations.length, 1);
+  const recovered = await (await api.resume(stranded.operationId)).completion;
+  assert.equal(recovered.status, 'finished');
+  assert.equal(recovered.attempts[0].outcome.terminal, 'unknown');
+  assert.equal(invocations.length, 2);
+  assert.equal(effects, 1);
 });

@@ -7,10 +7,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { sameRecord } from '../../core/operation.js';
 import { decodeSnapshot, encodeSnapshot } from '../../core/snapshot.js';
 
-/** @import {CommitResult, StateStore} from '../../core/ports.js' */
+/** @import {CommitResult, SnapshotUnavailableReason, StateListEntry, StateStore} from '../../core/ports.js' */
 /** @import {Operation} from '../../core/operation.js' */
 
-const snapshotName = /^[a-f0-9]{64}\.json$/u;
+const snapshotName = /^([a-f0-9]{64})(?:-([a-f0-9]{64}))?\.json$/u;
 const artifactRef = /^sha256:([a-f0-9]{64})$/u;
 const temporaryName = /^\.state-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.tmp$/u;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
@@ -33,12 +33,12 @@ function checkBound(maxBytes) {
 }
 
 /** @param {string} id */
-function filename(id) {
-  return createHash('sha256').update(id, 'utf16le').digest('hex') + '.json';
+function key(id) {
+  return createHash('sha256').update(id, 'utf16le').digest('hex');
 }
 
 export class LocalStoreError extends Error {
-  /** @param {'io' | 'closed' | 'corrupt_snapshot' | 'unsupported_version' | 'in_use'} reason @param {unknown} [cause] */
+  /** @param {SnapshotUnavailableReason | 'closed' | 'in_use'} reason @param {unknown} [cause] */
   constructor(reason, cause) {
     super('Local state store: ' + reason, { cause });
     this.code = reason === 'in_use' ? 'STATE_STORE_IN_USE' : 'STORE_UNAVAILABLE';
@@ -97,8 +97,26 @@ export function createLocalStateStore(directory, io = fs) {
     if (parsed.kind !== 'accepted') {
       throw new LocalStoreError(parsed.kind === 'corrupt' ? 'corrupt_snapshot' : parsed.kind);
     }
-    if (filename(parsed.value.operationId) !== name) throw new LocalStoreError('corrupt_snapshot');
+    const [, slot, requestKey] = snapshotName.exec(name) ?? [];
+    if (slot !== key(parsed.value.operationId) || (requestKey && requestKey !== key(parsed.value.request.requestId))) {
+      throw new LocalStoreError('corrupt_snapshot');
+    }
     return parsed.value;
+  }
+
+  async function snapshotNames() {
+    try {
+      return (await io.readdir(root)).filter(name => snapshotName.test(name));
+    } catch (error) {
+      throw new LocalStoreError('io', error);
+    }
+  }
+
+  /** @param {string} slot */
+  async function locate(slot) {
+    const matching = (await snapshotNames()).filter(name => name.startsWith(slot));
+    if (matching.length > 1) throw new LocalStoreError('corrupt_snapshot');
+    return matching[0];
   }
 
   /**
@@ -154,18 +172,34 @@ export function createLocalStateStore(directory, io = fs) {
 
     async load(operationId) {
       requireOpen();
-      return read(filename(operationId));
+      const name = await locate(key(operationId));
+      return name ? read(name) : undefined;
     },
 
-    async list() {
+    async list(requestId) {
       requireOpen();
-      let names;
-      try {
-        names = await io.readdir(root);
-      } catch (error) {
-        throw new LocalStoreError('io', error);
-      }
-      const entries = await Promise.all(names.filter(name => snapshotName.test(name)).sort().map(read));
+      const names = (await snapshotNames()).sort();
+      const duplicates = new Set(names.filter((name, index) => index > 0 &&
+        name.slice(0, 64) === names[index - 1].slice(0, 64)).map(name => name.slice(0, 64)));
+      const requested = requestId === undefined ? undefined : key(requestId);
+      const entries = await Promise.all(names.map(async name => {
+        /** @type {SnapshotUnavailableReason} */
+        let reason = 'corrupt_snapshot';
+        const [, slot, requestKey] = snapshotName.exec(name) ?? [];
+        if (!duplicates.has(slot)) {
+          try {
+            return await read(name);
+          } catch (error) {
+            if (!(error instanceof LocalStoreError)) throw error;
+            reason = error.reason === 'unsupported_version' || error.reason === 'corrupt_snapshot' ? error.reason : 'io';
+          }
+        }
+        /** @type {StateListEntry} */
+        const unavailable = { kind: 'unavailable', ref: 'state:' + slot, reason };
+        if (requested && requested === requestKey) unavailable.requestMatch = true;
+        if (requested && !requestKey) unavailable.requestMatch = 'unknown';
+        return unavailable;
+      }));
       return entries.filter(entry => entry !== undefined);
     },
 
@@ -175,10 +209,13 @@ export function createLocalStateStore(directory, io = fs) {
         const unavailable = { kind: 'unavailable' };
         try {
           const handle = requireOpen();
-          const name = filename(operationId);
-          const previous = await read(name);
+          const slot = key(operationId);
+          const existing = await locate(slot);
+          const previous = existing ? await read(existing) : undefined;
+          const name = existing ?? slot + '-' + key(next.request.requestId) + '.json';
           if ((previous?.revision ?? null) !== expectedRevision) return { kind: 'conflict' };
-          if (next.operationId !== operationId) return unavailable;
+          if (next.operationId !== operationId ||
+              (previous && !sameRecord(next.request, previous.request))) return unavailable;
           if (previous && next.revision === previous.revision) {
             if (!sameRecord(previous, next)) return { kind: 'conflict' };
             await handle.sync();

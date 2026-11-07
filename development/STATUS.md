@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.8, независимое продолжение при unknown |
-| Следующий шаг | C05.9, область неисправности store |
+| Последний локально проверенный шаг | C05.9, область неисправности store |
+| Следующий шаг | C05.10, crash matrix |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05.8 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C05.9 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -94,3 +94,6 @@
 
 - C05.8 — явно предложенный retry сопоставляется с исходным attempt. Проверены отказ при трёх неподтверждённых основаниях, доступность независимого чтения, известный no-effect, доверенное scoped-разрешение и повтор с тем же ключом по контракту адаптера. Счётчик эффекта при идемпотентном повторе остался равен одному.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (67), `check:package`, `check:removal`. Следующий шаг — C05.9, изоляция ошибок store.
+
+- C05.9 — list различает здоровые, повреждённые и несовместимые snapshots. Адресный отказ защищает повторную доставку начального requestId повреждённой операции, а другие операции работают. Проверены сохранность повреждённых байтов, чтение и commit раннего имени файла, инъекция EROFS и продолжение после восстановления записи без повторения внешнего эффекта.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (70), `check:package`, `check:removal`. Следующий шаг — C05.10, итоговая crash matrix.
