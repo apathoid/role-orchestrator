@@ -20,5 +20,6 @@
   "dependencies": {
     "@agentclientprotocol/codex-acp": "2.5.0",
     "@agentclientprotocol/sdk": "2.4.0"
-  }
+  },
+  "exports": "./src/main/index.js"
 }

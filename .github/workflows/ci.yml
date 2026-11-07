@@ -21,11 +21,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Check specification when development material is present
-        if: ${{ hashFiles('development/quality/scripts/check-specification.mjs') != '' }}
-        run: node development/quality/scripts/check-specification.mjs
-      - name: Inspect npm package contents without executing lifecycle scripts
-        run: npm pack --dry-run --ignore-scripts --json
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
         with:
@@ -38,5 +33,24 @@ jobs:
         run: nix develop --no-update-lock-file --command node --version
       - name: Install locked npm dependencies in Node 24 without lifecycle scripts
         run: nix develop --no-update-lock-file --command npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check package contents
+        run: nix develop --no-update-lock-file --command npm pack --dry-run --ignore-scripts --json
+      - name: Smoke public JavaScript import
+        run: nix develop --no-update-lock-file --command node --input-type=module -e "import('role-orchestrator')"
+      - name: Install locked development harness
+        if: ${{ hashFiles('development/package-lock.json') != '' }}
+        run: nix develop --no-update-lock-file --command npm --prefix development ci --ignore-scripts --no-audit --no-fund
+      - name: Check specification, JavaScript contracts and boundaries
+        if: ${{ hashFiles('development/package-lock.json') != '' }}
+        run: nix develop --no-update-lock-file --command npm --prefix development run check
+      - name: Test foundation and packaging
+        if: ${{ hashFiles('development/package-lock.json') != '' }}
+        run: |
+          nix develop --no-update-lock-file --command npm --prefix development run test:foundation
+          nix develop --no-update-lock-file --command npm --prefix development run check:package
+          nix develop --no-update-lock-file --command npm --prefix development run check:removal
+      - name: Report unavailable development checks
+        if: ${{ hashFiles('development/package-lock.json') == '' }}
+        run: echo 'Development harness absent. Development checks skipped.'
       - name: Verify lock files were not changed
-        run: git diff --exit-code -- flake.lock package-lock.json
+        run: git diff --exit-code -- flake.lock package-lock.json development/package-lock.json

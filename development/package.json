@@ -1,0 +1,23 @@
+{
+  "name": "role-orchestrator-development",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "^24.0.0" },
+  "scripts": {
+    "check": "node quality/scripts/check-specification.mjs && node quality/scripts/check-javascript.mjs && npm run check:boundaries",
+    "test:foundation": "node --test quality/tests/foundation/*.test.js",
+    "test:core": "node quality/scripts/run-suite.mjs core",
+    "test:contracts": "node quality/scripts/run-suite.mjs contracts",
+    "test:integration": "node quality/scripts/run-suite.mjs integration",
+    "test:acceptance": "node quality/scripts/run-suite.mjs acceptance",
+    "test:native": "node quality/scripts/run-suite.mjs native",
+    "check:boundaries": "node quality/scripts/check-boundaries.mjs",
+    "check:package": "node quality/scripts/check-package.mjs",
+    "check:removal": "node quality/scripts/check-package.mjs --removal"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "24.10.0"
+  }
+}

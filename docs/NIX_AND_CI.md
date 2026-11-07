@@ -6,7 +6,7 @@ Production-код пишется на JavaScript `.js` с ESM (`type: module`), 
 
 В `package.json` сохранены версии, предоставленные пользователем: `@agentclientprotocol/codex-acp` 2.5.0 и `@agentclientprotocol/sdk` 2.4.0. Их наличие не делает Codex обязательным исполнителем или допустимой зависимостью core. Конкретные imports и нативные особенности остаются в adapters. `package-lock.json` фиксирует действительное дерево npm dependencies.
 
-Стартовый manifest содержит ESM, Node engines, metadata и allowlist поставляемых файлов. `private: true` защищает от случайной npm-публикации на стадии разработки; это не запрет локальной/Nix-установки. Пока CLI отсутствует, в manifest нет фиктивного `bin`, `start`, `build` или обещанного executable export. Они добавляются при реализации соответствующих entrypoints; JS-компиляция не нужна сама по себе.
+Стартовый manifest содержит ESM, Node engines, metadata и allowlist поставляемых файлов. `private: true` защищает от случайной npm-публикации на стадии разработки; это не запрет локальной/Nix-установки. Manifest экспортирует реализованные контракты JavaScript через `src/main/index.js`. CLI entrypoint появится вместе с реализацией CLI. Для импорта и исполнения JavaScript не нужна компиляция.
 
 ## Flake сейчас и готовый продукт
 
