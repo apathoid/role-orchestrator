@@ -437,8 +437,8 @@ export function createOrchestrator(deps) {
       }) };
     }
     const admissions = admitActions(known, decision.additions);
-    const actions = new Map([...known, ...admissions.flatMap(item => item.kind === 'accepted' ? [item.action] : [])]
-      .map(action => [action.actionId, action]));
+    const newlyAdmitted = admissions.flatMap(item => item.kind === 'accepted' ? [item.action] : []);
+    const actions = new Map([...known, ...newlyAdmitted].map(action => [action.actionId, action]));
     const rejected = new Set(admissions.flatMap(item => item.kind === 'rejected' ? [item.actionId] : []));
     const selected = [];
     const waitingFor = new Set();
@@ -462,7 +462,7 @@ export function createOrchestrator(deps) {
         code: 'INVALID_PROPOSAL', path: '$.waitPolicy.targets', expected: 'at least one pending action or unseen result',
       }) };
     }
-    return { admissions, selected: [...new Set(selected)], newResult };
+    return { admissions, selected: [...new Set(selected)], newlyAdmitted, actions, newResult };
   }
 
   /** @param {string} operationId @param {AbortSignal} stop */
@@ -482,7 +482,8 @@ export function createOrchestrator(deps) {
         const reserved = await reserve(operationId, stop);
         if (!reserved.attemptId) return reserved.state;
         const attemptId = reserved.attemptId;
-        /** @type {{selected: Action[], policy: 'all_requested' | 'next_completion', newResult: boolean} | undefined} */
+        /** @type {{selected: Action[], newlyAdmitted: Action[], actions: ReadonlyMap<string, Action>,
+         *   policy: 'all_requested' | 'next_completion', newResult: boolean} | undefined} */
         let selection;
         /** @type {Promise<boolean>[]} */
         let settleCancellation = [];
@@ -547,7 +548,9 @@ export function createOrchestrator(deps) {
                 if (value.clarification) return transition(state, { kind: 'operation.waiting', waiting: {
                   kind: 'question', questionId: ids.newId(), question: value.clarification.question,
                 } });
-                if (value.waitPolicy) selection = { selected: round.selected, policy: value.waitPolicy.kind, newResult: round.newResult };
+                if (value.waitPolicy) selection = {
+                  ...round, policy: value.waitPolicy.kind,
+                };
                 return state;
               }
             }
@@ -557,7 +560,8 @@ export function createOrchestrator(deps) {
         });
         if (next.status !== 'active') return next;
         if (settleCancellation.length) await Promise.all(settleCancellation);
-        if (selection) await runActionRound(selection.selected, next, action => dispatchDelegate(next, action, stop),
+        if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
+          action => dispatchDelegate(next, action, stop),
           (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
           pending, selection.policy, selection.newResult);
       }

@@ -7,18 +7,19 @@ import { pendingDependencies } from '../core/action-graph.js';
  * Run the model's selected action set. Wait for predecessor
  * termination only when the corresponding edge explicitly allows it.
  * @param {readonly Action[]} selected
+ * @param {readonly Action[]} newlyAdmitted
+ * @param {ReadonlyMap<string, Action>} actions
  * @param {Operation} state
  * @param {(action: Action) => Promise<boolean>} dispatch
  * @param {(action: Action, code: ReasonCode, resource?: string) => Promise<void>} defer
  * @param {Map<string, Promise<boolean>>} pending
  * @param {'all_requested' | 'next_completion'} policy
- * @param {boolean} alreadyObservedNewResult
+ * @param {boolean} newUnseenResult
  */
-export async function runActionRound(selected, state, dispatch, defer, pending, policy, alreadyObservedNewResult) {
+export async function runActionRound(selected, newlyAdmitted, actions, state, dispatch, defer, pending, policy, newUnseenResult) {
   const terminal = new Set(state.attempts.filter(attempt => attempt.status === 'terminal').map(attempt => attempt.actionId));
   const accepted = new Set(state.events.flatMap(event => event.kind === 'controller.responded'
     ? event.decision.acceptedActionIds ?? [] : []));
-  const actions = new Map(selected.map(action => [action.actionId, action]));
 
   /** @param {Action} action @returns {Promise<boolean>} */
   function run(action) {
@@ -40,7 +41,10 @@ export async function runActionRound(selected, state, dispatch, defer, pending, 
     return task;
   }
 
+  // The wait policy chooses when the Controller hears back. It does not
+  // remove other actions the model already asked to dispatch.
   const tasks = selected.filter(action => !terminal.has(action.actionId)).map(run);
+  for (const action of newlyAdmitted) void run(action).catch(() => {});
   if (policy === 'next_completion') {
     const completed = Promise.any(tasks.map(async task => {
       if (!await task) throw new Error('Action was deferred');
@@ -48,7 +52,7 @@ export async function runActionRound(selected, state, dispatch, defer, pending, 
     // Even when the result is already available, the rest of the selected
     // actions continue, with their rejection handlers installed here.
     void completed.catch(() => {});
-    if (alreadyObservedNewResult) return;
+    if (newUnseenResult) return;
     try { await completed; } catch {
       // All actions were either deferred or rejected. Forward a storage
       // failure, if any, instead of silently turning it into a model outcome.

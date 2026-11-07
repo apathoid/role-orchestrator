@@ -267,3 +267,38 @@ test('disagreement and a failed check leave the next action to the Controller', 
   assert.equal(state.assessment.overall, 'partial');
   assert.deepEqual(invocations.filter(item => item.kind === 'delegate').map(item => item.actionId), ['left', 'right', 'investigate']);
 });
+
+test('all_requested waits on its target while an independent action outside that wait set still starts', { timeout: 3000 }, async () => {
+  const backgroundStarted = Promise.withResolvers();
+  const backgroundRelease = Promise.withResolvers();
+  const controllerSawPending = Promise.withResolvers();
+  let controllers = 0;
+  const { api } = setup({
+    maxInvocations: 5, maxConcurrentInvocations: 3,
+    async respond(invocation) {
+      if (invocation.kind === 'delegate') {
+        if (invocation.actionId === 'background') {
+          backgroundStarted.resolve();
+          await backgroundRelease.promise;
+        } else {
+          await backgroundStarted.promise;
+        }
+        return report(invocation);
+      }
+      const { contextCursor, pendingAttempts } = invocation.context[1].value;
+      if (++controllers === 1) return propose(invocation, [delegate('target'), delegate('background')], {
+        contextCursor, waitPolicy: wait('target'),
+      });
+      if (controllers === 2) {
+        assert.equal(pendingAttempts.find(item => item.actionId === 'background').status, 'dispatched');
+        controllerSawPending.resolve();
+        return propose(invocation, [], { contextCursor, waitPolicy: wait('background') });
+      }
+      return final(invocation);
+    },
+  });
+  const submission = await api.submit(request());
+  await controllerSawPending.promise;
+  backgroundRelease.resolve();
+  assert.equal((await submission.completion).status, 'finished');
+});
