@@ -2,7 +2,7 @@
 
 ## Постоянная часть
 
-`src/` — бизнес-логика и production adapters. `docs/` — актуальная спецификация и эксплуатационные контракты. `README.md`, `AGENTS.md` — продукт и неизменяемые инженерные границы. Root package manifest/lock/build config, которые появятся в C00, нужны для сборки/поставки и не ссылаются на development. Product distribution включает только объявленный runtime/build output и продуктовые документы.
+`src/` — бизнес-логика и production adapters. `docs/` — актуальная спецификация и эксплуатационные контракты. `README.md`, `AGENTS.md` — продукт и неизменяемые инженерные границы. Root package manifest и Nix flake уже задают базовую инфраструктуру; lock-файлы и packaging завершаются в C00/C10. Эти файлы нужны для поставки и не ссылаются на development. Product distribution включает только объявленный runtime/build output и продуктовые документы.
 
 ## Удаляемая часть
 
@@ -22,13 +22,13 @@
 
 ## Направление зависимости
 
-Tests могут импортировать публичный product output `../../dist/...` и testable ports. Production никогда не импортирует tests/fixtures/harness или reasoning-файлы. Нет root test script, workspace package linkage, TypeScript project reference, startup read, runtime prompt или package export, требующего `development/`.
+Tests импортируют публичные JavaScript entrypoints из `src/` и testable ports; копия в `dist/` не требуется. Production никогда не импортирует tests/fixtures/harness или reasoning-файлы. Нет root test script, workspace package linkage, обязательной ссылки на конфигурацию JS type-checker, startup read, runtime prompt или package export, требующего `development/`.
 
 Нужные продукту инструкции Controller/roles оформляются как самостоятельные runtime ресурсы в `src/`/поставке. Они не читают reasoning качества coding-агента из development. Тестируемость достигается ports/Clock/IdFactory и контролируемыми adapters в harness, не условными ветками `if test` в production.
 
-Harness запускается отдельно: `npm --prefix development ci`, затем предусмотренные им scripts. Точный набор scripts устанавливается C00; документация продукта не должна зависеть от их наличия. Автоматизация проверки хранится здесь; если позднее подключается внешний CI entrypoint, он должен допускать отсутствие development без необходимости редактировать product files. Не добавлять такую CI конфигурацию автоматически в documentation-only поставке.
+Harness запускается отдельно: `npm --prefix development ci`, затем предусмотренные им scripts. Точный набор scripts устанавливается C00; документация продукта не должна зависеть от их наличия. Автоматизация проверки хранится здесь; если позднее подключается внешний CI entrypoint, он должен допускать отсутствие development без необходимости редактировать product files. Текущий `.github/workflows/ci.yml` проверяет спецификацию при её наличии и Nix metadata независимо от development. При удалении development его проверки явно пропускаются; продуктовые проверки не пропускаются.
 
-Product build использует свои необходимые devDependencies (например compiler); они не являются временным исследованием. Удаляемый harness не участвует в разрешении production dependency graph. Не использовать общий workspace lock, который требует package из development.
+JavaScript исполняется напрямую, без компилятора в runtime-поставке. TypeScript checker и его конфигурация принадлежат development harness. Root lock и Nix packaging относятся к постоянной продуктовой инфраструктуре; CI entrypoint остаётся тонкой автоматизацией, допускающей отсутствие harness. Удаляемый harness не участвует в разрешении production dependency graph. Не использовать общий workspace lock, который требует package из development.
 
 ## Проверка удаления
 

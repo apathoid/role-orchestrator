@@ -37,3 +37,7 @@
 ## C10.9 — Сквозная проверка поверхностей
 
 Одни acceptance scenarios через API/CLI/ACP fixture: direct answer, delegation, permission, cancel, resume, partial result. Различия только в presentation/transport. Затем настоящий Zed при доступности; не объявлять native по fixture. Закрыть A06/A07/A16/A20/A24/A38/A40.
+
+## C10.10 — Устанавливаемый Nix package и apps
+
+Добавить реальный package bin для JavaScript CLI, `buildNpmPackage` с Node 24/вычисленным npmDepsHash и named/default packages/apps по NIX_AND_CI. Не включать development в source closure или runtime dependencies. Выполнить `nix build`, `nix run ... -- --help`, установку в временный profile и запуск вне репозитория. Проверить immutable store, внешний state/logs, сохранение cwd/PATH и нативные binaries adapters на NixOS. Добавить package/CLI smoke в CI; A42 остаётся незавершённой до этих фактических проверок.

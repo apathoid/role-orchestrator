@@ -1,0 +1,42 @@
+name: Foundation checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  specification-and-nix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check specification when development material is present
+        if: ${{ hashFiles('development/quality/scripts/check-specification.mjs') != '' }}
+        run: node development/quality/scripts/check-specification.mjs
+      - name: Inspect npm package contents without executing lifecycle scripts
+        run: npm pack --dry-run --ignore-scripts --json
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          determinate: false
+          kvm: false
+          diagnostic-endpoint: ""
+      - name: Resolve initial pinned Nix input
+        run: nix flake lock
+      - name: Show public lock metadata
+        run: cat flake.lock
+      - name: Check flake metadata
+        run: nix flake check --no-update-lock-file --print-build-logs
+      - name: Check Node in development shell
+        run: nix develop --no-update-lock-file --command node --version

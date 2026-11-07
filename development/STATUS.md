@@ -3,7 +3,8 @@
 | Показатель | Значение |
 |---|---|
 | Specification prepared | YES |
-| Implementation started | NO |
+| Production implementation started | NO |
+| Package / Nix / CI foundation | PREPARED; проверка инфраструктуры отдельно от runtime |
 | Последний завершённый implementation step | Нет |
 | Следующий шаг | C00.1 |
 | Functional implementation complete | NO |
