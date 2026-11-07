@@ -1,0 +1,64 @@
+import { createOrchestrator } from '../../../src/main/index.js';
+import { assessment, decision, outcome } from './core.js';
+
+export function final(invocation, overrides = {}) {
+  return {
+    dispatchCertainty: 'sent',
+    outcome: outcome(invocation.attemptId),
+    output: decision({
+      operationId: invocation.operationId, decisionId: 'decision-' + invocation.attemptId,
+      finalAssessment: assessment({ overall: 'complete', answer: 'Direct answer' }),
+      ...overrides,
+    }),
+  };
+}
+
+export function setup({ respond = invocation => final(invocation), open, maxInvocations = 3, schedule } = {}) {
+  const states = new Map();
+  const invocations = [];
+  const events = [];
+  const closed = [];
+  const cancellations = [];
+  let sequence = 0;
+  let sessionSequence = 0;
+  const store = {
+    async open() {},
+    async close() {},
+    async load(id) { return structuredClone(states.get(id)); },
+    async list() { return structuredClone([...states.values()]); },
+    async commit(id, revision, next) {
+      if ((states.get(id)?.revision ?? null) !== revision) return { kind: 'conflict' };
+      states.set(id, structuredClone(next));
+      return { kind: 'committed' };
+    },
+  };
+  const profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' };
+  const api = createOrchestrator({
+    store, profile, authorityRef: 'fixture-authority', configurationRef: 'test-config',
+    diagnostics: { emit(event) { events.push(event); }, flush() {} },
+    clock: { now: () => 100, monotonicNow: () => 100 },
+    ids: { newId: () => 'id-' + ++sequence },
+    limits: { maxInvocations, maxConcurrentInvocations: 1 },
+    invocationTimeoutMs: 10000, schedule,
+    catalog: { async list() { return [{ kind: 'profile', value: profile }]; }, async resolve() {} },
+    provider: {
+      async describe() { return { providerId: 'fixture', maxConcurrency: 1, capabilities: {} }; },
+      async open(profile, signal) {
+        if (open) await open(signal);
+        return { sessionId: 'session-' + ++sessionSequence };
+      },
+      async invoke(session, invocation, observe) {
+        invocations.push(invocation);
+        return respond(invocation, invocations.length, observe);
+      },
+      async cancel(session, attemptId) { cancellations.push(attemptId); },
+      async close(session) { closed.push(session.sessionId); },
+    },
+  });
+  return { api, invocations, events, closed, cancellations };
+}
+
+export function abortOnly(signal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+}

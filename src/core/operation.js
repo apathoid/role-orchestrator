@@ -1,5 +1,6 @@
 /** @import {Assessment, CancellationSource, Decision, Outcome, ReasonCode, Request} from './contracts.js' */
 /** @import {DiagnosticEvent} from './diagnostics.js' */
+/** @import {ContextItem} from './ports.js' */
 
 /**
  * @typedef {'not_sent' | 'sent' | 'unknown'} DispatchCertainty
@@ -12,7 +13,7 @@
  * @typedef {{maxInvocations: number, maxConcurrentInvocations: number}} Limits
  * @typedef {{code: ReasonCode, operationId: string, actionId?: string, attemptId?: string,
  *   dispatchCertainty?: DispatchCertainty, effect?: Outcome['effect']}} Reason
- * @typedef {{kind: 'question', questionId: string, question: string} | {kind: 'resource', reason: Reason}} Waiting
+ * @typedef {{kind: 'question', questionId: string, question: string} | {kind: 'technical', reason: Reason}} Waiting
  * @typedef {{schemaVersion: 1, operationId: string, request: Request, generation: number, revision: number,
  *   authorityRef: string, transcriptRefs: readonly string[], limits: Limits, attempts: readonly Attempt[],
  *   events: readonly Event[], assessment?: Assessment, waiting?: Waiting,
@@ -22,10 +23,10 @@
  *   {kind: 'attempt.reserved', actionId: string, attemptId: string} |
  *   {kind: 'attempt.dispatched', attemptId: string} |
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
- *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty} |
+ *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly ContextItem[]} |
  *   {kind: 'controller.responded', decision: Decision} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
- *   {kind: 'operation.continued', transcriptRef: string} |
+ *   {kind: 'operation.continued', input: {requestId: string, text: string, questionId?: string}} |
  *   {kind: 'operation.finished', assessment: Assessment} |
  *   {kind: 'operation.cancelled', source: CancellationSource}
  * )} Event
@@ -148,7 +149,12 @@ export function applyEvent(state, event) {
     case 'attempt.outcome': {
       if (!attempt) return reject('INVALID_PROPOSAL');
       if (attempt.status === 'terminal') {
-        if (sameRecord(attempt.outcome, event.outcome) && attempt.dispatchCertainty === event.dispatchCertainty) return duplicate;
+        if (sameRecord(attempt.outcome, event.outcome) && attempt.dispatchCertainty === event.dispatchCertainty) {
+          const recorded = state.events.find(item => item.kind === 'attempt.outcome' &&
+            item.outcome.attemptId === event.outcome.attemptId && sameRecord(item.observations, event.observations));
+          if (recorded || !event.observations?.length) return duplicate;
+          return apply({}, 'OBSERVATIONS_RECEIVED', [], 'attempt.late_outcome');
+        }
         const hasKnownUpdate = attempt.outcome.terminal === 'unknown' && event.outcome.terminal !== 'unknown' &&
           (attempt.dispatchCertainty === 'unknown' || attempt.dispatchCertainty === event.dispatchCertainty);
         if (!hasKnownUpdate) return apply({}, 'IDENTITY_CONFLICT', [], 'attempt.outcome_discrepancy');
@@ -181,7 +187,7 @@ export function applyEvent(state, event) {
       if (state.status !== 'waiting' && state.status !== 'finished') return reject('INVALID_PROPOSAL');
       return apply({
         status: 'active', waiting: undefined, generation: state.generation + 1,
-        transcriptRefs: [...state.transcriptRefs, event.transcriptRef],
+        transcriptRefs: [...state.transcriptRefs, event.input.requestId],
       }, 'USER_INPUT');
     case 'operation.finished':
       if (state.status !== 'active') return reject('INVALID_PROPOSAL');
