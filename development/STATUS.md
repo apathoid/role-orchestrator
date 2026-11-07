@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.5, commit перед dispatch |
-| Следующий шаг | C05.6, outcome commit и доставка |
+| Последний локально проверенный шаг | C05.6, outcome commit и доставка |
+| Следующий шаг | C05.7, resume после перезапуска |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05.5 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C05.6 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -85,3 +85,6 @@
 
 - C05.5 — координатор допускает внешний вызов после подтверждённых commit reservation и dispatch. При неподтверждённой записи перечитывает snapshot для корреляции и прекращает текущую попытку dispatch. Проверены четыре subprocess crash boundaries вокруг reserve и dispatch, сохранённый остаток бюджета и фактическое число внешних эффектов после повторной доставки requestId. Отдельный тест читает terminal unknown после закрытия и повторного открытия durable store.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (55), `check:package`, `check:removal`. Следующий шаг — C05.6, подтверждение outcome commit и повторная доставка. Активное возобновление после сбоя и статус прежнего провайдера относятся к C05.7.
+
+- C05.6 — при CAS conflict исход повторно применяется к сохранённой revision с тем же eventId. Если итог уже виден после потерянного ACK store, точное совпадение позволяет повторно подтвердить запись без изменения revision. Проверены реальный конфликт CAS, повторная доставка requestId после SIGKILL между final commit и доставкой, сохранение единственного outcome и отсутствие повторного вызова провайдера.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (57), `check:package`, `check:removal`. Следующий шаг — C05.7, активный resume после перезапуска с текущей доверенной конфигурацией и capability status lookup.

@@ -4,6 +4,7 @@ import { constants as bufferLimits } from 'node:buffer';
 import * as fs from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { sameRecord } from '../../core/operation.js';
 import { decodeSnapshot, encodeSnapshot } from '../../core/snapshot.js';
 
 /** @import {CommitResult, StateStore} from '../../core/ports.js' */
@@ -177,7 +178,13 @@ export function createLocalStateStore(directory, io = fs) {
           const name = filename(operationId);
           const previous = await read(name);
           if ((previous?.revision ?? null) !== expectedRevision) return { kind: 'conflict' };
-          if (next.operationId !== operationId || next.revision !== (expectedRevision ?? -1) + 1) return unavailable;
+          if (next.operationId !== operationId) return unavailable;
+          if (previous && next.revision === previous.revision) {
+            if (!sameRecord(previous, next)) return { kind: 'conflict' };
+            await handle.sync();
+            return { kind: 'committed' };
+          }
+          if (next.revision !== (expectedRevision ?? -1) + 1) return unavailable;
           await publish(handle, name, encodeSnapshot(next));
           return { kind: 'committed' };
         } catch {

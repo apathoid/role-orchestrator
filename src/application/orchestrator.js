@@ -105,20 +105,31 @@ export function createOrchestrator(deps) {
       const observed = await store.load(next.operationId).catch(() => undefined);
       trace(observed ?? next, observed && sameRecord(observed, next)
         ? 'store.unconfirmed_revision_visible' : 'store.commit_unconfirmed', code);
-      throw new OrchestrationError(code, 'Unable to persist operation state');
+      return { error: new OrchestrationError(code, 'Unable to persist operation state'), observed };
     }
   }
 
   /** @param {Operation} state @param {EventData<Event>} data */
   async function transition(state, data) {
-    const result = applyEvent(state, {
+    const event = /** @type {Event} */ ({
       ...data, operationId: state.operationId, eventId: ids.newId(), receivedAt: clock.now(),
     });
+    let result = applyEvent(state, event);
     if (result.kind === 'rejected') throw new OrchestrationError(result.reason.code, 'Invalid transition: ' + data.kind);
-    if (result.kind === 'applied') {
-      await commit(result.state, state.revision);
-      emitDiagnostic(diagnostics, result.diagnostic);
+    if (result.kind === 'duplicate') return result.state;
+
+    const failure = await commit(result.state, state.revision);
+    if (failure) {
+      const { observed, error } = failure;
+      if (!observed || (event.kind !== 'attempt.outcome' && event.kind !== 'operation.finished')) throw error;
+      // Retry only the local record, using the original event identity.
+      // An already visible record still needs a durability acknowledgement.
+      result = applyEvent(observed, event);
+      if (result.kind === 'rejected') throw error;
+      const retry = await commit(result.state, observed.revision);
+      if (retry) throw retry.error;
     }
+    if (result.kind === 'applied') emitDiagnostic(diagnostics, result.diagnostic);
     return result.state;
   }
 
@@ -180,7 +191,8 @@ export function createOrchestrator(deps) {
         throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
       }
       const state = createOperation(ids.newId(), request, authority.reference, limits);
-      await commit(state, null);
+      const failure = await commit(state, null);
+      if (failure) throw failure.error;
       trace(state, 'operation.accepted', 'ACCEPTED');
       return launch(state);
     });
