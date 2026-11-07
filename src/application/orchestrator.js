@@ -12,14 +12,14 @@ import { runActionRound } from './action-round.js';
 /** @import {Clock, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
 /** @import {Event, Limits, Operation, Reason} from '../core/operation.js' */
 /** @import {Handoff} from './handoff.js' */
-/** @import {Catalog, ContextItem, Profile, ProviderPort, ProviderSession, StateStore} from '../core/ports.js' */
+/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderSession, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{
  *   store: StateStore, provider: ProviderPort, catalog: Catalog, profile: Profile,
  *   clock: Clock, ids: IdFactory, limits: Limits, invocationTimeoutMs: number,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
- *   diagnostics?: DiagnosticPort, authorityRef: string, configurationRef: string,
+ *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
  * }} Dependencies
  * @typedef {{operation: Operation, completion: Promise<Operation>}} Submission
@@ -58,7 +58,7 @@ function failedOutcome(attemptId, code, mayHaveSent) {
 /** @param {Dependencies} deps */
 export function createOrchestrator(deps) {
   const {
-    store, provider, catalog, profile, clock, ids, limits, invocationTimeoutMs, authorityRef, configurationRef,
+    store, provider, catalog, profile, clock, ids, limits, invocationTimeoutMs, authority, permissions, configurationRef,
     diagnostics = noopDiagnostics, schedule = scheduleDeadline,
     providerFor = selected => selected.providerId === profile.providerId ? provider : undefined,
   } = deps;
@@ -165,7 +165,7 @@ export function createOrchestrator(deps) {
       if (all.some(item => item.transcriptRefs.includes(request.requestId))) {
         throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
       }
-      const state = createOperation(ids.newId(), request, authorityRef, limits);
+      const state = createOperation(ids.newId(), request, authority.reference, limits);
       await commit(state, null);
       trace(state, 'operation.accepted', 'ACCEPTED');
       return launch(state);
@@ -222,8 +222,12 @@ export function createOrchestrator(deps) {
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
     /** @type {ProviderSession | undefined} */
     let session;
+    /** @type {AttemptPermissions | undefined} */
+    let boundPermissions;
     let mayHaveSent = false;
     let contextCursor = state.revision;
+    /** @type {'PERMISSION_DENIED' | 'REVOKED' | undefined} */
+    let denied;
     /** @type {ContextItem[]} */
     const observations = [];
     let acceptingObservations = true;
@@ -246,6 +250,15 @@ export function createOrchestrator(deps) {
     try {
       const entries = handoff ? [] : await catalog.list();
       const selectedProfile = handoff?.profile ?? profile;
+      function requireAuthority() {
+        const decision = authority.authorize(state.authorityRef, selectedProfile.profileId);
+        if (decision !== 'ALLOWED') {
+          denied = decision;
+          throw new OrchestrationError(decision, 'Invocation is outside the active grant');
+        }
+      }
+      signal.throwIfAborted();
+      requireAuthority();
       const attachments = handoff ? handoff.attachments ?? [] : state.request.attachments;
       const requiredCapabilities = new Set(handoff?.requiredCapabilities);
       if (attachments.some(item => item.mediaType.toLowerCase().startsWith('image/'))) {
@@ -268,9 +281,15 @@ export function createOrchestrator(deps) {
       const invocation = await serialize(async () => {
         const current = await inspect(state.operationId);
         signal.throwIfAborted();
+        requireAuthority();
         const dispatched = await transition(current, { kind: 'attempt.dispatched', attemptId });
         contextCursor = dispatched.revision;
         signal.throwIfAborted();
+        requireAuthority();
+        boundPermissions = permissions?.bind({
+          attemptId, profileId: selectedProfile.profileId, authorityRef: state.authorityRef, signal,
+          report: (event, reason) => trace(dispatched, event, reason, attemptId),
+        });
         mayHaveSent = true;
         if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
         // Keep the dispatch decision and actual provider call in the same turn.
@@ -282,6 +301,7 @@ export function createOrchestrator(deps) {
         };
         return { response: executor.invoke(owned, {
           ...context, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
         }, item => { if (acceptingObservations) observations.push(item); }) };
       });
       const reply = await invocation.response;
@@ -297,12 +317,13 @@ export function createOrchestrator(deps) {
       }
     } catch (error) {
       if (error instanceof OrchestrationError && ['STORE_CONFLICT', 'STORE_UNAVAILABLE'].includes(error.code)) throw error;
-      const code = stop.aborted ? 'CANCELLED' : local.signal.aborted ? 'DEADLINE_EXCEEDED'
-        : mayHaveSent ? 'PROVIDER_DISCONNECTED' : 'PROVIDER_START_FAILED';
+      const code = denied ?? (stop.aborted ? 'CANCELLED' : local.signal.aborted ? 'DEADLINE_EXCEEDED'
+        : mayHaveSent ? 'PROVIDER_DISCONNECTED' : 'PROVIDER_START_FAILED');
       certainty = mayHaveSent ? 'unknown' : 'not_sent';
       outcome = failedOutcome(attemptId, code, mayHaveSent);
     } finally {
       acceptingObservations = false;
+      boundPermissions?.close();
       clear();
       signal.removeEventListener('abort', abort);
       await requestedCancel;

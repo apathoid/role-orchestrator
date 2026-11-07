@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C04.4, capability requirements |
-| Следующий шаг | C04.5, trusted authority и revocation |
+| Последний локально проверенный шаг | C04.8, границы полномочий и regression workspace drift |
+| Следующий шаг | C05.1, версионированный snapshot codec и round-trip |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C03 и C04.1–C04.4 с тестовыми портами |
+| Local regression verified | OBSERVED для C00–C04 с тестовыми портами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -56,4 +56,8 @@
 - C04.2 — merge по отдельным полям: defaults → trusted user config → ограниченные project preferences → trusted launch options. Project preferences могут выбрать существующие profile/role/skills и снизить лимиты. Читается только явно указанный файл или `.role-orchestrator.json` из выбранной директории.
 - C04.3 — immutable model-facing catalog отделяет профиль, модель и capability provenance от launch/settings и secret refs. Две модели могут использовать один provider port.
 - C04.4 — обязательные capability проверяются до открытия сессии. Недоступный image input даёт `CAPABILITY_UNAVAILABLE` с `not_sent`; необязательный usage сохраняется как unknown.
-- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (9), `test:integration` (31), `check:package`, `check:removal`, exit 0. Результат относится к синтетическим портам. C04.5–C04.8, durable state, реальные исполнители и публичные CLI/ACP поверхности остаются открыты.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (9), `test:integration` (31), `check:package`, `check:removal`, exit 0. Результат относится к синтетическим портам. [CI для C04.1–C04.4](https://github.com/apathoid/role-orchestrator/actions/runs/42390386124) success на `ec2bfcf`.
+
+- C04.5–C04.6 — доверенный grant ограничивает запуск выбранными профилями, проверяется до open и перед dispatch. Permission bridge сопоставляет host request id, attempt id, native request id и предложенную опцию. Standing decision не открывает повторный prompt. Отмена закрывает запрос; поздний или повторный ответ не применяется. Отсутствие UI возвращает unavailable.
+- C04.7–C04.8 — regression меняет файл, Git index и branch во время попытки. Orchestrator завершает исходную попытку с прежним authority ref без повторного вызова. Runtime остаётся проверяемым без Git. Область гарантий описана в документации. Нативные permission settings проверяются вместе с реальными адаптерами.
+- Итоговый локальный набор: `check`, `test:foundation` (4), `test:core` (9), `test:integration` (37), `check:package`, `check:removal`, exit 0. Removal smoke также загружает схему из реального npm tarball. Durable state/recovery, context retention, реальные адаптеры, CLI/ACP hosts, эксплуатационные и native acceptance checks относятся к C05–C12.

@@ -13,7 +13,7 @@
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
  *   userConstraints: readonly string[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal}} Invocation
+ *   signal: AbortSignal, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
@@ -44,10 +44,16 @@
  *   append: (items: readonly ContextItem[]) => Promise<void>,
  *   fetchArtifact: (ref: string) => Promise<ContextItem>
  * }} ContextPort
+ * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>
+ *   'ALLOWED' | 'PERMISSION_DENIED' | 'REVOKED'}} AuthorityPort
+ * @typedef {{id: string, kind: 'allow' | 'deny'}} PermissionOption
+ * @typedef {{providerRequestId: string, resource: string, options: readonly PermissionOption[]}} PermissionRequest
+ * @typedef {{kind: 'selected', option: string} | {kind: 'denied' | 'cancelled' | 'unavailable' | 'invalid'}} PermissionResult
+ * @typedef {{request: (request: PermissionRequest) => Promise<PermissionResult>, close: () => void}} AttemptPermissions
  * @typedef {{
- *   request: (attemptId: string, providerRequestId: string, options: readonly string[]) =>
- *     Promise<{kind: 'selected', option: string} | {kind: 'denied' | 'cancelled'}>,
- *   cancel: (requestId: string) => Promise<void>
+ *   bind: (attempt: {attemptId: string, authorityRef: string, profileId: string, signal: AbortSignal,
+ *     report?: (event: 'permission.requested' | 'permission.resolved' | 'permission.expired', reason: string) => void
+ *   }) => AttemptPermissions
  * }} PermissionPort
  */
 

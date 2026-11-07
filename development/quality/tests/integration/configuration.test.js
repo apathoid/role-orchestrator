@@ -4,8 +4,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { loadProjectPreferences } from '../../../../src/adapters/configuration/project-file.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
-import { createCatalog, decodeConfiguration, resolveConfiguration } from '../../../../src/main/index.js';
-import { setup } from '../../fixtures/application.js';
+import { createAuthorityGrant, createCatalog, decodeConfiguration, resolveConfiguration } from '../../../../src/main/index.js';
+import { final, setup } from '../../fixtures/application.js';
 import { request } from '../../fixtures/core.js';
 
 const config = {
@@ -157,4 +157,71 @@ test('a mandatory image capability is checked before open, while optional metada
   assert.equal(successful.status, 'finished');
   assert.deepEqual(available.invocations[0].attachments, [image]);
   assert.equal(successful.attempts[0].outcome.usage.cost, null);
+});
+
+test('a revoked authority during open prevents dispatch and closes the acquired session', async () => {
+  const authority = createAuthorityGrant({ reference: 'grant', origin: 'user', profileIds: ['primary'] });
+  const opened = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const { api, invocations, closed } = setup({
+    authority, async open() { opened.resolve(); await release.promise; },
+  });
+  const submission = await api.submit(request());
+  await opened.promise;
+  authority.revoke();
+  release.resolve();
+  const state = await submission.completion;
+  assert.equal(state.waiting.reason.code, 'REVOKED');
+  assert.equal(state.attempts[0].dispatchCertainty, 'not_sent');
+  assert.equal(invocations.length, 0);
+  assert.equal(closed.length, 1);
+});
+
+test('a known profile without a trusted grant cannot open an invocation', async () => {
+  const authority = createAuthorityGrant({ reference: 'grant', origin: 'provider', profileIds: ['other'] });
+  let opened = 0;
+  const { api, invocations } = setup({ authority, open() { opened++; } });
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.waiting.reason.code, 'PERMISSION_DENIED');
+  assert.equal(state.attempts[0].outcome.effect, 'none');
+  assert.equal(invocations.length, 0);
+  assert.equal(opened, 0);
+});
+
+test('workspace files and Git state can change during a live attempt without invalidation', { timeout: 4000 }, async () => {
+  await withOwnedRun('workspace-drift', async (cwd, run) => {
+    function git(...args) {
+      const result = run('git', args, { cwd });
+      assert.ifError(result.error);
+      assert.equal(result.status, 0, result.stderr);
+    }
+    const file = resolve(cwd, 'example.js');
+    git('init', '-q');
+    await writeFile(file, 'export const value = 1;');
+    git('add', 'example.js');
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+      'commit', '--no-gpg-sign', '-qm', 'synthetic fixture');
+    const started = Promise.withResolvers();
+    const proceed = Promise.withResolvers();
+    const { api, invocations, cancellations } = setup({ async respond(invocation) {
+      started.resolve();
+      await proceed.promise;
+      return final(invocation);
+    } });
+    const submission = await api.submit(request({ workspaceContext: { cwd } }));
+    await started.promise;
+    try {
+      git('switch', '-qc', 'other-branch');
+      await writeFile(file, 'export const value = 2;');
+      git('add', 'example.js');
+      await writeFile(file, 'export const value = 3;');
+    } finally {
+      proceed.resolve();
+    }
+    const finished = await submission.completion;
+    assert.equal(finished.status, 'finished');
+    assert.equal(invocations.length, 1);
+    assert.equal(invocations[0].authorityRef, 'fixture-authority');
+    assert.deepEqual(cancellations, []);
+  });
 });

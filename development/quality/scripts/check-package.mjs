@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, cp, mkdir, readFile, readdir } from 'node:fs/promises';
+import { access, cp, mkdir, readFile, readdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { root, withOwnedRun } from './owned-run.mjs';
 
@@ -51,5 +51,15 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
     const api = await import(${JSON.stringify(pkg.name)});
     assert.equal(typeof api.emitDiagnostic, 'function');
   `], consumer, { ...process.env, PATH: '' });
+  if (removal) {
+    // Resolve the pinned validator from the clean install while exercising the
+    // actual schema shipped in the tarball.
+    await symlink(join(product, 'node_modules', 'ajv'), join(consumer, 'node_modules', 'ajv'), 'dir');
+    checked(process.execPath, ['--input-type=module', '-e', `
+      import assert from 'node:assert/strict';
+      const { decodeConfiguration } = await import(${JSON.stringify(pkg.name)});
+      assert.equal((await decodeConfiguration('{}')).kind, 'rejected');
+    `], consumer, { ...process.env, PATH: '' });
+  }
   console.log('PASS ' + (removal ? 'clean install without development or Git' : 'package contents and side-effect-free public import'));
 });

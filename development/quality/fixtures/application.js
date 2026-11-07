@@ -1,4 +1,4 @@
-import { createOrchestrator } from '../../../src/main/index.js';
+import { createAuthorityGrant, createOrchestrator } from '../../../src/main/index.js';
 import { assessment, decision, outcome } from './core.js';
 
 export function final(invocation, overrides = {}) {
@@ -13,7 +13,7 @@ export function final(invocation, overrides = {}) {
   };
 }
 
-export function setup({ respond = invocation => final(invocation), open, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {} } = {}) {
+export function setup({ respond = invocation => final(invocation), open, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions } = {}) {
   const states = new Map();
   const invocations = [];
   const events = [];
@@ -34,7 +34,9 @@ export function setup({ respond = invocation => final(invocation), open, maxInvo
   };
   const profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' };
   const api = createOrchestrator({
-    store, profile, authorityRef: 'fixture-authority', configurationRef: 'test-config',
+    store, profile, authority: authority ?? createAuthorityGrant({
+      reference: 'fixture-authority', origin: 'user', profileIds: ['primary'],
+    }), configurationRef: 'test-config', permissions,
     diagnostics: { emit(event) { events.push(event); }, flush() {} },
     clock: { now: () => 100, monotonicNow: () => 100 },
     ids: { newId: () => 'id-' + ++sequence },
