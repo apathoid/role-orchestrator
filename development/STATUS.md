@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C07.5, полномочия и возможности CLI |
-| Следующий шаг | C07.6, общий контракт ProviderPort |
+| Последний локально проверенный шаг | C07.6, общий контракт ProviderPort |
+| Следующий шаг | C07.7, сквозной запуск с durable state |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.5 на Linux с локальным store и реальными тестовыми CLI-процессами |
+| Local regression verified | OBSERVED для C00–C07.6 на Linux с локальным store и реальными тестовыми CLI-процессами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -170,3 +170,6 @@
 
 - C07.5 — [полномочия и возможности CLI](reports/C07/CLI_PERMISSIONS.md). Адаптер объявляет ограничения headless-вызова. Если обязательной возможности нет, отказ сохраняет её имя, статус и доступную причину. Нативный профиль выбирает оператор. Явный отказ команды сохраняется как отчёт провайдера и не меняет семантический итог хода.
 - OBSERVED на Linux, Node 24.22.1. Проверены требование интерактивного разрешения, отсутствие запроса к брокеру, передача нативного профиля для Controller и Reviewer и отдельная запись нативного отказа. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (124), `check:package`, `check:removal` и `git diff --check` завершились успешно. Настоящий модельный вызов и нативное применение прав остаются UNVERIFIED. Следующий шаг — C07.6.
+
+- C07.6 — [общий контракт ProviderPort](reports/C07/PROVIDER_PORT_CONTRACT.md) проверяется на управляемом провайдере и Codex CLI с контролируемым дочерним процессом. Оба транспорта проходят одни проверки порядка наблюдений, терминального результата, идентичности вызова, отмены, закрытия, независимых вызовов и неизвестного usage. `test:contracts` подключён к CI.
+- OBSERVED на Linux, Node 24.22.1. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:contracts` (10), `test:integration` (124), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативная сессия Codex остаётся UNVERIFIED. Следующий шаг — C07.7.
