@@ -1,4 +1,4 @@
-/** @import {ContextItem, ProviderObservation} from './observation.js' */
+/** @import {ArtifactReference, ContextItem, ProviderObservation} from './observation.js' */
 /** @import {Outcome, Request} from './contracts.js' */
 /** @import {Operation} from './operation.js' */
 
@@ -12,7 +12,7 @@
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
  *   userConstraints: readonly string[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
+ *   signal: AbortSignal, contextAccess?: ContextPort, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
@@ -34,8 +34,15 @@
  *   load: (operationId: string) => Promise<Operation | undefined>,
  *   commit: (operationId: string, expectedRevision: number | null, next: Operation) => Promise<CommitResult>,
  *   list: (requestId?: string) => Promise<readonly StateListEntry[]>,
- *   close: () => Promise<void>
+ *   close: () => Promise<void>,
+ *   writeArtifact?: ArtifactStore['writeArtifact'],
+ *   readArtifact?: ArtifactStore['readArtifact']
  * }} StateStore
+ * @typedef {{kind: 'available', bytes: Uint8Array} | {kind: 'unavailable' | 'integrity_error'}} ArtifactRead
+ * @typedef {{
+ *   writeArtifact: (bytes: Uint8Array, maxBytes: number) => Promise<ArtifactReference>,
+ *   readArtifact: (reference: ArtifactReference, maxBytes: number) => Promise<ArtifactRead>
+ * }} ArtifactStore
  *
  * @typedef {{kind: 'profile', value: Profile} |
  *   {kind: 'role' | 'skill', value: {id: string, instructions: string, purpose?: string, preferredProfiles?: readonly string[]}} |
@@ -45,10 +52,12 @@
  *   resolve: (kind: CatalogEntry['kind'], id: string) => Promise<CatalogEntry | undefined>
  * }} Catalog
  * @typedef {{
- *   materialize: (refs: readonly string[], budget: number) => Promise<readonly ContextItem[]>,
- *   append: (items: readonly ContextItem[]) => Promise<void>,
- *   fetchArtifact: (ref: string) => Promise<ContextItem>
+ *   fetch: (ref: string, sourceOperationId?: string) => Promise<ContextFetch>,
+ *   captureArtifact: (bytes: Uint8Array) => Promise<string | undefined>
  * }} ContextPort
+ * @typedef {{kind: 'available', item: ContextItem, bytes?: Uint8Array} |
+ *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'budget' | 'integrity_error' | 'closed'}} ContextFetch
+ * @typedef {(share: {sourceOperationId: string, targetOperationId: string, ref: string, profileId: string}) => boolean} ContextShare
  * @typedef {(retry: {operationId: string, attemptId: string, actionId: string, profileId: string}) => boolean} RetryApproval
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>
  *   'ALLOWED' | 'PERMISSION_DENIED' | 'REVOKED'}} AuthorityPort

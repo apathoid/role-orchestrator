@@ -594,3 +594,126 @@ test('opposing findings and a model revision survive reopening alongside raw evi
   assert.deepEqual(resumed.events.filter(event => event.kind === 'operation.finished').map(event => event.assessment.answer),
     [first.assessment.answer, 'Both readings are relevant']);
 });
+
+test('bound context fetch recovers artifacts and model summaries with raw coverage after reopening', async t => {
+  const { directory, store } = await setupStore(t);
+  const maxBytes = 1024;
+  const raw = 'detail '.repeat(100);
+  const bytes = Buffer.alloc(1400, 42);
+  let ref;
+  let missingRef;
+  const first = setup({
+    store, context: { maxBytes },
+    async respond(invocation, count, observe) {
+      ref = await invocation.contextAccess.captureArtifact(bytes);
+      missingRef = await invocation.contextAccess.captureArtifact(Buffer.from('will be missing'));
+      observe({ kind: 'provider_report', ref: 'raw', sourceId: 'source', completeness: 'complete', value: raw });
+      observe({ kind: 'model_summary', text: 'Model summary', coveredObservationRefs: ['raw', ref] });
+      observe({ kind: 'model_summary', text: 'Foreign coverage', coveredObservationRefs: ['unknown-observation'] });
+      return final(invocation);
+    },
+  });
+  const original = await (await first.api.submit(request())).completion;
+  assert.equal(original.status, 'finished');
+  const records = original.events.flatMap(event => event.observations ?? []);
+  const summary = records.find(item => item.summary);
+  assert.equal(records.filter(item => item.summary).length, 1);
+  assert.equal(summary.source, 'model_claim');
+  assert.deepEqual(summary.summary, { author: 'primary', coveredObservationRefs: ['raw', ref] });
+  assert.equal(summary.value, 'Model summary');
+  assert.equal(records.find(item => item.ref === 'raw').value, raw);
+  const artifact = records.find(item => item.ref === ref);
+  assert.equal(artifact.artifact.size, maxBytes);
+  assert.equal(artifact.artifact.originalSize, bytes.length);
+  assert.equal(artifact.completeness, 'truncated');
+  const encoded = JSON.parse(encodeSnapshot(original));
+  encoded.events.find(event => event.kind === 'attempt.outcome').observations
+    .find(item => item.summary).summary.coveredObservationRefs = ['other-operation'];
+  assert.match(decodeSnapshot(JSON.stringify(encoded)).reason.path, /\.summary\.coveredObservationRefs$/);
+  const missing = records.find(item => item.ref === missingRef).artifact.ref.slice('sha256:'.length);
+  await fs.unlink(join(directory, 'artifact-' + missing + '.blob'));
+  await store.close();
+  const reopened = createLocalStateStore(directory);
+  t.after(() => reopened.close());
+  await reopened.open();
+
+  const accesses = [];
+  const next = setup({ store: reopened, idPrefix: 'reopen-context-', maxInvocations: 4, context: { maxBytes },
+    async respond(invocation, count) {
+      const access = invocation.contextAccess;
+      accesses.push(access);
+      if (count === 1) {
+        const result = await access.fetch('raw');
+        assert.equal(result.item.value, raw);
+        const foundSummary = await access.fetch(summary.ref);
+        assert.equal(foundSummary.item.source, 'model_claim');
+        assert.deepEqual(foundSummary.item.summary, summary.summary);
+        const action = {
+          actionId: 'inspect', kind: 'delegate', objective: 'Inspect output', expectedResult: 'A result',
+          profileId: 'primary', contextRefs: [ref, missingRef], dependsOn: [],
+        };
+        return final(invocation, {
+          additions: [action], finalAssessment: undefined,
+          waitPolicy: { kind: 'all_requested', targets: [{ kind: 'action', id: 'inspect' }] },
+        });
+      }
+      if (invocation.kind === 'delegate') {
+        const result = await access.fetch(ref);
+        assert.equal(result.kind, 'available');
+        assert.equal(result.item.completeness, 'truncated');
+        assert.deepEqual(result.bytes, bytes.subarray(0, maxBytes));
+        assert.deepEqual(await access.fetch(missingRef), { kind: 'unavailable', reason: 'payload' });
+        assert.deepEqual(await access.fetch('raw'), { kind: 'unavailable', reason: 'denied' });
+        return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
+      }
+      return final(invocation);
+    },
+  });
+  const continued = await next.api.resume(original.operationId, { requestId: 'retrieve-details', text: 'Read detail' });
+  assert.equal((await continued.completion).status, 'finished');
+  assert.equal(accesses.length, 3);
+  assert.deepEqual(await accesses[1].fetch(ref), { kind: 'unavailable', reason: 'closed' });
+});
+
+test('cross-operation context reads require an exact share and cannot be enabled by a reported hash', async t => {
+  const { store } = await setupStore(t);
+  const content = Buffer.from('source artifact');
+  let ref;
+  const source = setup({ store, async respond(invocation) {
+    ref = await invocation.contextAccess.captureArtifact(content);
+    return final(invocation);
+  } });
+  const origin = await (await source.api.submit(request())).completion;
+  assert.equal(origin.status, 'finished');
+  const stored = origin.events.flatMap(event => event.observations ?? []).find(item => item.ref === ref).artifact;
+  let allow = false;
+  const target = setup({
+    store, idPrefix: 'target-', maxInvocations: 2,
+    allowContextShare: share => allow && share.sourceOperationId === origin.operationId &&
+      share.targetOperationId.startsWith('target-') && share.ref === ref && share.profileId === 'primary',
+    async respond(invocation, count, observe) {
+      const access = invocation.contextAccess;
+      if (count === 1) {
+        observe({ kind: 'provider_report', ref: 'model-reported-hash', sourceId: 'report', completeness: 'complete', value: stored });
+        observe({ kind: 'provider_report', ref: 'forged', sourceId: 'report', completeness: 'complete', artifact: stored });
+        return final(invocation);
+      }
+      assert.deepEqual(await access.fetch(ref, origin.operationId), { kind: 'unavailable', reason: 'denied' });
+      assert.deepEqual(await access.fetch(ref), { kind: 'unavailable', reason: 'missing' });
+      assert.deepEqual(await access.fetch('forged'), { kind: 'unavailable', reason: 'missing' });
+      const report = await access.fetch('model-reported-hash');
+      assert.deepEqual(report.item.value, stored);
+      assert.equal(report.bytes, undefined);
+      allow = true;
+      const shared = await access.fetch(ref, origin.operationId);
+      assert.equal(shared.kind, 'available');
+      assert.deepEqual(shared.bytes, content);
+      assert.deepEqual(await access.fetch('request-1', origin.operationId), { kind: 'unavailable', reason: 'denied' });
+      return final(invocation);
+    },
+  });
+  const other = await (await target.api.submit(request({ requestId: 'another-operation' }))).completion;
+  const resumed = await target.api.resume(other.operationId, { requestId: 'cross-operation-read', text: 'Read' });
+  assert.equal((await resumed.completion).status, 'finished');
+  assert.equal(target.invocations.length, 2);
+});

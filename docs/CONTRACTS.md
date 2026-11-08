@@ -64,7 +64,7 @@ Provider может сообщить completion без деталей вложе
 | ProviderPort | describe(), open(profile), invoke(Invocation), cancel(attemptId), close(session) | callback/AsyncIterable событий + один logical outcome; одновременность явно объявлена |
 | StateStore | open(), load(id), commit(id, expectedRevision, nextSnapshot), list(), close() | атомарность snapshot, чтение результата неизвестного commit по attemptId |
 | Catalog | list(), resolve(profile/role/skill/tool) | immutable versioned config snapshot на запуск; явная переоценка на resume |
-| ContextPort | materialize(refs, budget), append(records), fetchArtifact(ref) | unavailable/truncated явны; artifacts bounded, refs не раскрывают произвольные secrets |
+| ContextPort | invocation-bound fetch(ref, sourceOperationId?) и captureArtifact(bytes) для доверенного адаптера | выбранные ссылки специалиста, точное разрешение на обмен между operations, bounded output, explicit unavailable |
 | PermissionPort | request(attemptId, providerRequestId, options), cancel(requestId) | решение пользователя связано с живым запросом; неизвестный option не принимается |
 | DiagnosticPort | emit(event), flush() | best-effort, bounded, не source of truth и не источник семантических переходов |
 | Clock / IdFactory | now(), monotonic deadline support, newId() | тестируемость без настоящего ожидания и случайных гонок |

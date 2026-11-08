@@ -11,7 +11,7 @@ const finding = record({
 export const findings = arrayOf(finding);
 
 /** @typedef {ReturnType<typeof finding>} Finding */
-/** @typedef {{observations: Set<string>, findings: Set<string>, findingOutputs: Set<string>}} EvidenceRefs */
+/** @typedef {{observations: Set<string>, rawObservations: Set<string>, findings: Set<string>, findingOutputs: Set<string>}} EvidenceRefs */
 /** @typedef {Pick<Extract<Event, {kind: 'attempt.outcome'}>, 'kind' | 'outcome' | 'observations'>} OutcomeEvidence */
 
 /** @param {Finding} item */
@@ -25,27 +25,35 @@ export function eventFindings(event) {
 
 /** @param {EvidenceRefs} refs @param {Event | OutcomeEvidence} event */
 export function recordObservationRefs(refs, event) {
+  /** @param {string} ref */
+  function raw(ref) {
+    refs.observations.add(ref);
+    refs.rawObservations.add(ref);
+  }
   if (event.kind === 'attempt.outcome') {
-    for (const item of event.observations ?? []) refs.observations.add(item.ref);
+    for (const item of event.observations ?? []) {
+      if (item.summary) refs.observations.add(item.ref);
+      else raw(item.ref);
+    }
     for (const item of event.outcome.outputRefs) {
       refs.observations.add(item.ref);
       if (item.kind === 'finding') refs.findingOutputs.add(item.ref);
     }
   } else if (event.kind === 'operation.continued') {
-    refs.observations.add(event.input.requestId);
+    raw(event.input.requestId);
   } else if (event.kind === 'operation.waiting' && event.waiting.kind === 'question') {
-    refs.observations.add(event.waiting.questionId);
+    raw(event.waiting.questionId);
   } else if (event.kind === 'controller.responded') {
-    refs.observations.add('decision:' + event.decision.decisionId);
+    raw('decision:' + event.decision.decisionId);
   } else if (event.kind === 'operation.finished') {
-    refs.observations.add('assessment:' + event.eventId);
+    raw('assessment:' + event.eventId);
   }
 }
 
 /** @param {string} requestId @param {readonly Event[]} [events] @returns {EvidenceRefs} */
 export function evidenceRefs(requestId, events = []) {
   /** @type {EvidenceRefs} */
-  const refs = { observations: new Set([requestId]), findings: new Set(), findingOutputs: new Set() };
+  const refs = { observations: new Set([requestId]), rawObservations: new Set([requestId]), findings: new Set(), findingOutputs: new Set() };
   for (const event of events) {
     recordObservationRefs(refs, event);
     for (const item of eventFindings(event) ?? []) refs.findings.add(findingRef(item));

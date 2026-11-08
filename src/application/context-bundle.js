@@ -6,14 +6,14 @@ const maxExcerptBytes = 512;
 /** @param {unknown} value */
 const jsonBytes = value => Buffer.byteLength(JSON.stringify(value), 'utf8');
 
-/** @param {ContextItem} item @param {number} bytes @returns {ContextItem | undefined} */
-function excerptItem(item, bytes) {
+/** @param {ContextItem} item @param {number} bytes @param {number} excerptLimit @returns {ContextItem | undefined} */
+function excerptItem(item, bytes, excerptLimit) {
   if (item.value === undefined || item.completeness === 'unavailable') return undefined;
   const { value, ...metadata } = item;
   /** @type {ContextItem} */
   const itemExcerpt = { ...metadata, completeness: 'truncated', excerpt: '' };
   const text = typeof value === 'string' ? value : JSON.stringify(value);
-  let remaining = Math.min(maxExcerptBytes, bytes - jsonBytes(itemExcerpt));
+  let remaining = Math.min(excerptLimit, bytes - jsonBytes(itemExcerpt));
   let excerpt = '';
   for (const character of text) {
     const size = jsonBytes(character) - 2;
@@ -22,6 +22,13 @@ function excerptItem(item, bytes) {
     remaining -= size;
   }
   return excerpt ? { ...itemExcerpt, excerpt } : undefined;
+}
+
+/** @param {ContextItem} item @param {number} maxBytes @param {number} [excerptLimit] */
+export function boundContextItem(item, maxBytes, excerptLimit = maxExcerptBytes) {
+  if (maxBytes <= 0) return undefined;
+  if (!(typeof item.value === 'string' && item.value.length > maxBytes) && jsonBytes(item) <= maxBytes) return item;
+  return excerptItem(item, maxBytes, excerptLimit);
 }
 
 /** @param {ContextItem} item */
@@ -49,18 +56,11 @@ export function compactContext(items, maxBytes, keepRefs) {
       context.push(item);
       continue;
     }
-    const size = remaining > 1 && !(typeof item.value === 'string' && item.value.length >= remaining)
-      ? jsonBytes(item) + 1 : Infinity;
-    if (size <= remaining) {
-      context.push(item);
-      remaining -= size;
-      continue;
-    }
-    const excerpt = remaining > 1 ? excerptItem(item, remaining - 1) : undefined;
-    if (excerpt) {
-      context.push(excerpt);
-      remaining -= jsonBytes(excerpt) + 1;
-      excerpted++;
+    const bounded = boundContextItem(item, remaining - 1);
+    if (bounded) {
+      context.push(bounded);
+      remaining -= jsonBytes(bounded) + 1;
+      if (bounded !== item) excerpted++;
     } else {
       omitted++;
       if (keepRefs) context.push(unavailableContext(item.ref, 'budget'));

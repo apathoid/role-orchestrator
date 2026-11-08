@@ -129,7 +129,24 @@ function snapshot(input, path) {
     if (item.operationId !== value.operationId) invalid(at + '.operationId', 'the enclosing operation id');
     if (events.has(item.eventId)) invalid(at + '.eventId', 'a unique event id');
     events.add(item.eventId);
-    if (item.kind === 'attempt.outcome') recordObservationRefs(refs, item);
+    if (item.kind === 'attempt.outcome') {
+      for (const [index, observation] of (item.observations ?? []).entries()) {
+        const summary = observation.summary;
+        if (!summary) {
+          refs.rawObservations.add(observation.ref);
+          continue;
+        }
+        const field = at + '.observations[' + index + '].summary';
+        if (item.dispatchCertainty === 'not_sent' ||
+            ledger.get(item.outcome.attemptId)?.route?.profileId !== summary.author) {
+          invalid(field + '.author', 'the reporting model on the recorded route');
+        }
+        if (summary.coveredObservationRefs.some(ref => !refs.rawObservations.has(ref))) {
+          invalid(field + '.coveredObservationRefs', 'earlier raw observations in this operation');
+        }
+      }
+      recordObservationRefs(refs, item);
+    }
     const batch = eventFindings(item);
     if (item.kind === 'operation.continued' || item.kind === 'operation.recovered') generation++;
     const attemptId = item.kind === 'attempt.outcome' ? item.outcome.attemptId : 'attemptId' in item ? item.attemptId : undefined;

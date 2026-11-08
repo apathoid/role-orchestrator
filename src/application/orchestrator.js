@@ -6,10 +6,11 @@ import { applyEvent, createOperation, resourceSnapshot, sameRecord } from '../co
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
 import { handoffContext, prepareHandoff } from './handoff.js';
+import { bindContextAccess } from './context-access.js';
 import { defaultContextMaxBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
 import { runActionRound } from './action-round.js';
-import { attributeProviderOutputRefs, observation, receiveProviderObservation } from '../core/observation.js';
+import { attributeProviderOutputRefs, decodeSummaryReport, observation, receiveProviderObservation } from '../core/observation.js';
 
 /** @import {Action, CancellationSource, Decision, Outcome, ReasonCode} from '../core/contracts.js' */
 /** @import {OutcomeEvidence} from '../core/finding.js' */
@@ -20,13 +21,13 @@ import { attributeProviderOutputRefs, observation, receiveProviderObservation } 
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
-/** @import {AttemptPermissions, AuthorityPort, Catalog, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
+/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextShare, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{
  *   store: StateStore, provider: ProviderPort, catalog: Catalog, profile: Profile,
  *   clock: Clock, ids: IdFactory, limits: Limits, invocationTimeoutMs: number,
- *   context?: {maxBytes?: number},
+ *   context?: {maxBytes?: number}, allowContextShare?: ContextShare,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
  *   approveRetry?: RetryApproval,
  *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, configurationRef: string,
@@ -72,7 +73,7 @@ function failedOutcome(attemptId, code, mayHaveSent) {
 export function createOrchestrator(deps) {
   const {
     store, provider, catalog, profile, clock, ids, limits, invocationTimeoutMs, authority, permissions, configurationRef,
-    context: { maxBytes: contextMaxBytes = defaultContextMaxBytes } = {},
+    context: { maxBytes: contextMaxBytes = defaultContextMaxBytes } = {}, allowContextShare,
     diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry,
     providerFor = selected => selected.providerId === profile.providerId ? provider : undefined,
   } = deps;
@@ -371,6 +372,7 @@ export function createOrchestrator(deps) {
     /** @type {Observation[]} */
     const observations = [];
     let acceptingObservations = true;
+    let contextOpen = false;
     /** @type {Observation[]} */
     const lateObservations = [];
     /** @type {ProviderResult | undefined} */
@@ -567,14 +569,45 @@ export function createOrchestrator(deps) {
           workspaceContext: state.request.workspaceContext, userConstraints: state.request.userConstraints,
           context: controllerContext(dispatched, entries, correction, lookups, contextMaxBytes), authorityRef: state.authorityRef,
         };
+        const selected = action ? new Set(action.contextRefs) : undefined;
+        contextOpen = true;
+        const contextAccess = bindContextAccess({
+          state: dispatched, store, maxBytes: contextMaxBytes, profileId: selectedProfile.profileId, attemptId,
+          selected, allowShare: allowContextShare, newId: () => ids.newId(), now: () => clock.now(), receive,
+          isActive: () => contextOpen && !signal.aborted &&
+            authority.authorize(dispatched.authorityRef, selectedProfile.profileId) === 'ALLOWED',
+        });
+        /** @type {Set<string> | undefined} */
+        let rawRefs;
         return { response: withinDeadline(executor.invoke(owned, {
-          ...context, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, contextAccess, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
         }, item => {
           if (!acceptingObservations) return;
-          const received = receiveProviderObservation(item, clock.now());
-          if (received) receive(received);
-          else trace(dispatched, 'attempt.observation_invalid', 'PROTOCOL_ERROR', attemptId);
+          const summary = item && typeof item === 'object' && 'kind' in item && item.kind === 'model_summary';
+          if (summary) {
+            const report = decodeSummaryReport(item);
+            if (report && contextOpen && !signal.aborted) {
+              rawRefs ??= evidenceRefs(dispatched.request.requestId, dispatched.events).rawObservations;
+              if (report.coveredObservationRefs.every(ref =>
+                ((!selected || selected.has(ref)) && rawRefs?.has(ref)) ||
+                observations.some(item => item.ref === ref && !item.summary))) {
+                const author = selectedProfile.profileId;
+                receive(observation({
+                  ref: 'summary:' + ids.newId(), completeness: 'complete', value: report.text,
+                  summary: { author, coveredObservationRefs: report.coveredObservationRefs },
+                }, { kind: 'model', sourceId: author, receivedAt: clock.now() }));
+                return;
+              }
+            }
+          } else {
+            const received = receiveProviderObservation(item, clock.now());
+            if (received) {
+              receive(received);
+              return;
+            }
+          }
+          trace(dispatched, 'attempt.observation_invalid', 'PROTOCOL_ERROR', attemptId);
         }).then(acceptReply)) };
       });
       const reply = await invocation.response;
@@ -596,6 +629,7 @@ export function createOrchestrator(deps) {
     } finally {
       // Decisions stop at abort. Facts remain attributable until the adapter
       // acknowledges detachment of this invocation's owned session.
+      contextOpen = false;
       acceptingObservations = signal.aborted && mayHaveSent;
       boundPermissions?.close();
       clear();
@@ -619,7 +653,10 @@ export function createOrchestrator(deps) {
         if (!closed) undetached.add(attemptId);
       }
     }
-    return { outcome, certainty, output, observations, contextCursor, recordLate, reportedFindings };
+    return {
+      outcome, certainty, output, contextCursor, recordLate, reportedFindings,
+      observations: certainty === 'not_sent' ? observations.filter(item => !item.summary) : observations,
+    };
   }
 
   /** @param {string} operationId @param {AbortSignal} stop @param {string} [actionId] */

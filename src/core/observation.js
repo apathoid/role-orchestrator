@@ -1,5 +1,5 @@
 /** @import {Outcome} from './contracts.js' */
-import { decode, id, invalid, jsonValue, measurement, oneOf, optional, record } from './decode.js';
+import { arrayOf, count, decode, id, invalid, jsonValue, measurement, oneOf, optional, record } from './decode.js';
 
 /** @type {import('./decode.js').Decoder<number>} */
 const exitCode = (value, path) => typeof value === 'number' && Number.isSafeInteger(value)
@@ -18,12 +18,29 @@ const sources = {
 const provenance = record({
   kind: sourceKind, sourceId: id, receivedAt: measurement, exit: optional(exit),
 });
-const itemFields = record({ ref: id, source, completeness, value: optional(jsonValue), provenance: optional(provenance) });
+const artifactFields = record({ ref: id, size: count, originalSize: count, truncated: (input, path) => typeof input === 'boolean' ? input : invalid(path, 'a boolean') });
+/** @type {import('./decode.js').Decoder<ArtifactReference>} */
+const artifact = (input, path) => {
+  const value = artifactFields(input, path);
+  if (!/^sha256:[a-f0-9]{64}$/u.test(value.ref)) invalid(path + '.ref', 'a SHA-256 reference');
+  if (value.originalSize < value.size || value.truncated !== (value.size < value.originalSize)) {
+    invalid(path, 'consistent artifact sizes and truncation');
+  }
+  return value;
+};
+const summaryFields = { coveredObservationRefs: arrayOf(id) };
+const summary = record({ author: id, ...summaryFields });
+const summaryReport = record({ kind: oneOf('model_summary'), text: id, ...summaryFields });
+const itemFields = record({
+  ref: id, source, completeness, value: optional(jsonValue), provenance: optional(provenance),
+  artifact: optional(artifact), summary: optional(summary),
+});
 
-/** @typedef {{kind: 'user' | 'model' | 'provider_tool' | 'provider_report' | 'host_transport',
+/** @typedef {{ref: string, size: number, originalSize: number, truncated: boolean}} ArtifactReference
+ * @typedef {{kind: 'user' | 'model' | 'provider_tool' | 'provider_report' | 'host_transport',
  *   sourceId: string, receivedAt?: number, exit?: {kind: 'agent_exit' | 'tool_exit', code: number}}} Provenance
  * @typedef {{ref: string, source: ReturnType<typeof source>, completeness: ReturnType<typeof completeness>,
- *   value?: unknown, provenance?: Provenance}} Observation
+ *   value?: unknown, provenance?: Provenance, artifact?: ArtifactReference, summary?: ReturnType<typeof summary>}} Observation
  * @typedef {Observation & {receivedSequence?: {revision: number, index: number}, attemptId?: string,
  *   kind?: 'finding', excerpt?: string, unavailableReason?: 'missing' | 'budget' | 'payload',
  *   outputKind?: Outcome['outputRefs'][number]['kind']}} ContextItem
@@ -32,7 +49,7 @@ const itemFields = record({ ref: id, source, completeness, value: optional(jsonV
  *   {kind: 'provider_tool', exitCode?: number} |
  *   {kind: 'model' | 'provider_report' | 'host_transport'}
  * )} AdapterObservation
- * @typedef {AdapterObservation | Omit<Observation, 'provenance'>} ProviderObservation
+ * @typedef {AdapterObservation | Omit<Observation, 'provenance' | 'artifact' | 'summary'> | ReturnType<typeof summaryReport>} ProviderObservation
  */
 
 /** @type {import('./decode.js').Decoder<Observation>} */
@@ -43,8 +60,28 @@ export const contextItem = (input, path) => {
   if (origin?.exit && origin.kind !== (origin.exit.kind === 'agent_exit' ? 'host_transport' : 'provider_tool')) {
     invalid(path + '.provenance.exit.kind', 'an exit scoped to the observed process or reported tool');
   }
+  if (value.artifact && (value.value !== undefined || value.summary ||
+      value.completeness !== (value.artifact.truncated ? 'truncated' : 'complete'))) {
+    invalid(path + '.artifact', 'a standalone artifact with consistent completeness');
+  }
+  if (value.summary && (origin?.kind !== 'model' || origin.sourceId !== value.summary.author ||
+      typeof value.value !== 'string' || !value.value.trim() || value.completeness !== 'complete' ||
+      !validCoverage(value.summary.coveredObservationRefs))) {
+    invalid(path + '.summary', 'an attributed model summary with unique observation references');
+  }
   return value;
 };
+
+/** @param {readonly string[]} refs */
+function validCoverage(refs) {
+  return refs.length > 0 && new Set(refs).size === refs.length;
+}
+
+/** @param {unknown} input */
+export function decodeSummaryReport(input) {
+  const result = decode(summaryReport, input);
+  return result.kind === 'accepted' && validCoverage(result.value.coveredObservationRefs) ? result.value : undefined;
+}
 
 /** @param {Omit<Observation, 'source' | 'provenance'>} item @param {Provenance} origin @returns {Observation} */
 export function observation(item, origin) {

@@ -16,6 +16,7 @@ export const controllerInstructions = [
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Use optional findings for model claims that should remain available in history. Each finding has a new findingId, author (your profileId), claim, subject, supports, and uncertainties. Use an earlier finding reference in supersedes to revise it. Cite findings by their finding:<id> context reference.',
+  'When the adapter exposes context fetch, request details by reference. A model summary lists covered observation references and remains a separate model claim.',
   'Context excerpts are partial. Missing references and omissions from the byte budget are marked explicitly.',
   'Assess requirements and unresolved work using the supplied records. An agent_exit applies to the agent process. Only a separately reported tool_exit describes a tool exit. Model claims and provider reports carry their own attribution.',
 ];

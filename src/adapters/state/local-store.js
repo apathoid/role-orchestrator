@@ -7,20 +7,13 @@ import { DatabaseSync } from 'node:sqlite';
 import { sameRecord } from '../../core/operation.js';
 import { decodeSnapshot, encodeSnapshot } from '../../core/snapshot.js';
 
-/** @import {CommitResult, SnapshotUnavailableReason, StateListEntry, StateStore} from '../../core/ports.js' */
+/** @import {ArtifactStore, CommitResult, SnapshotUnavailableReason, StateListEntry, StateStore} from '../../core/ports.js' */
 /** @import {Operation} from '../../core/operation.js' */
 
 const snapshotName = /^([a-f0-9]{64})(?:-([a-f0-9]{64}))?\.json$/u;
 const artifactRef = /^sha256:([a-f0-9]{64})$/u;
 const temporaryName = /^\.state-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.tmp$/u;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
-
-/** @typedef {{ref: string, size: number, originalSize: number, truncated: boolean}} ArtifactReference */
-/** @typedef {{kind: 'available', bytes: Uint8Array} | {kind: 'unavailable' | 'integrity_error'}} ArtifactRead */
-/** @typedef {{
- *   writeArtifact: (bytes: Uint8Array, maxBytes: number) => Promise<ArtifactReference>,
- *   readArtifact: (reference: ArtifactReference, maxBytes: number) => Promise<ArtifactRead>
- * }} ArtifactStore */
 
 /** @param {Uint8Array} bytes */
 const hashBytes = bytes => createHash('sha256').update(bytes).digest('hex');
