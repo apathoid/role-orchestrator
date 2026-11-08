@@ -60,9 +60,9 @@ Provider может сообщить completion без деталей вложе
 
 | Порт | Минимальные операции | Важные свойства |
 |---|---|---|
-| Orchestrator API | submit(Request), resume(operationId, userInput?), inspect(id), cancel(id, source) | requestId dedup; одинаковая семантика CLI/ACP |
+| Orchestrator API | submit(Request), resume(operationId, userInput?), inspect(id), inspectFinding(id, ref), cancel(id, source) | requestId dedup; одинаковая семантика CLI/ACP |
 | ProviderPort | describe(), open(profile), invoke(Invocation), cancel(attemptId), close(session) | callback/AsyncIterable событий + один logical outcome; одновременность явно объявлена |
-| StateStore | open(), load(id), commit(id, expectedRevision, nextSnapshot), list(), close() | атомарность snapshot, чтение результата неизвестного commit по attemptId |
+| StateStore | open(retention?), load(id), commit(id, expectedRevision, nextSnapshot), list(), close() | атомарность snapshot, чтение результата неизвестного commit по attemptId |
 | Catalog | list(), resolve(profile/role/skill/tool) | immutable versioned config snapshot на запуск; явная переоценка на resume |
 | ContextPort | invocation-bound fetch(ref, sourceOperationId?) и captureArtifact(bytes) для доверенного адаптера | выбранные ссылки специалиста, точное разрешение на обмен между operations, bounded output, explicit unavailable |
 | PermissionPort | request(attemptId, providerRequestId, options), cancel(requestId) | решение пользователя связано с живым запросом; неизвестный option не принимается |

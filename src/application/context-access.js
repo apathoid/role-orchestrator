@@ -44,12 +44,20 @@ export function bindContextAccess(scope) {
       const item = operationHistory(source).find(item => item.ref === ref);
       if (!item) return unavailable('missing');
       if (item.artifact) {
-        if (item.artifact.size > maxBytes) return unavailable('budget');
         try {
+          if (item.artifact.size > maxBytes) {
+            const presence = await store.artifactPresence?.(item.artifact);
+            if (!isActive()) return unavailable('closed');
+            if (!allowed()) return unavailable('denied');
+            return unavailable(presence === 'retention' ? 'retention' : 'budget');
+          }
           const result = await store.readArtifact?.(item.artifact, item.artifact.size);
           if (!isActive()) return unavailable('closed');
           if (!allowed()) return unavailable('denied');
-          if (result?.kind !== 'available') return unavailable(result?.kind === 'integrity_error' ? 'integrity_error' : 'payload');
+          if (result?.kind !== 'available') {
+            if (result?.kind === 'integrity_error') return unavailable('integrity_error');
+            return unavailable(result?.reason ?? 'payload');
+          }
           if (result.bytes.byteLength !== item.artifact.size) return unavailable('integrity_error');
           return { kind: 'available', item: structuredClone(item), bytes: result.bytes };
         } catch {

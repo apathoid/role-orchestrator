@@ -12,7 +12,7 @@
  *   roles?: Record<string, {purpose?: string, instructions: string, preferredProfiles?: string[]}>,
  *   resources?: ResourceConfig,
  *   context?: {maxBytes?: number},
- *   storage?: {directory: string},
+ *   storage?: {directory: string, artifactRetention?: import('../../core/ports.js').ArtifactRetention},
  *   diagnostics?: {level?: 'debug' | 'info' | 'warn' | 'error', maxFileBytes?: number, retainedFiles?: number, captureBodies?: boolean},
  *   plugins?: {id: string, module: string}[],
  *   skills?: {id: string, source: string}[],

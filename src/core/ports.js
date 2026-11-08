@@ -30,18 +30,22 @@
  * @typedef {Operation | UnavailableSnapshot} StateListEntry
  * @typedef {{kind: 'committed'} | {kind: 'conflict'} | {kind: 'unavailable'}} CommitResult
  * @typedef {{
- *   open: () => Promise<void>,
+ *   open: (retention?: ArtifactRetention) => Promise<void>,
  *   load: (operationId: string) => Promise<Operation | undefined>,
  *   commit: (operationId: string, expectedRevision: number | null, next: Operation) => Promise<CommitResult>,
  *   list: (requestId?: string) => Promise<readonly StateListEntry[]>,
  *   close: () => Promise<void>,
  *   writeArtifact?: ArtifactStore['writeArtifact'],
- *   readArtifact?: ArtifactStore['readArtifact']
+ *   readArtifact?: ArtifactStore['readArtifact'],
+ *   artifactPresence?: ArtifactStore['artifactPresence']
  * }} StateStore
- * @typedef {{kind: 'available', bytes: Uint8Array} | {kind: 'unavailable' | 'integrity_error'}} ArtifactRead
+ * @typedef {{maxAgeMs?: number, maxBytes?: number}} ArtifactRetention
+ * @typedef {'present' | 'missing' | 'retention'} ArtifactPresence
+ * @typedef {{kind: 'available', bytes: Uint8Array} | {kind: 'unavailable', reason?: 'retention'} | {kind: 'integrity_error'}} ArtifactRead
  * @typedef {{
  *   writeArtifact: (bytes: Uint8Array, maxBytes: number) => Promise<ArtifactReference>,
- *   readArtifact: (reference: ArtifactReference, maxBytes: number) => Promise<ArtifactRead>
+ *   readArtifact: (reference: ArtifactReference, maxBytes: number) => Promise<ArtifactRead>,
+ *   artifactPresence: (reference: ArtifactReference) => Promise<ArtifactPresence>
  * }} ArtifactStore
  *
  * @typedef {{kind: 'profile', value: Profile} |
@@ -56,7 +60,7 @@
  *   captureArtifact: (bytes: Uint8Array) => Promise<string | undefined>
  * }} ContextPort
  * @typedef {{kind: 'available', item: ContextItem, bytes?: Uint8Array} |
- *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'budget' | 'integrity_error' | 'closed'}} ContextFetch
+ *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'retention' | 'budget' | 'integrity_error' | 'closed'}} ContextFetch
  * @typedef {(share: {sourceOperationId: string, targetOperationId: string, ref: string, profileId: string}) => boolean} ContextShare
  * @typedef {(retry: {operationId: string, attemptId: string, actionId: string, profileId: string}) => boolean} RetryApproval
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>

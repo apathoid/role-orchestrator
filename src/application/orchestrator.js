@@ -6,6 +6,7 @@ import { applyEvent, createOperation, resourceSnapshot, sameRecord } from '../co
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
 import { handoffContext, prepareHandoff } from './handoff.js';
+import { findingHistory } from './finding-history.js';
 import { bindContextAccess } from './context-access.js';
 import { defaultContextMaxBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
@@ -122,6 +123,13 @@ export function createOrchestrator(deps) {
     const state = await store.load(operationId);
     if (!state) throw new OrchestrationError('INVALID_PROPOSAL', 'Unknown operation', '$.operationId');
     return state;
+  }
+
+  /** @param {string} operationId @param {string} findingRef */
+  async function inspectFinding(operationId, findingRef) {
+    const history = await findingHistory(await inspect(operationId), findingRef, store);
+    if (!history) throw new OrchestrationError('INVALID_PROPOSAL', 'Unknown finding', '$.findingRef');
+    return history;
   }
 
   /** @param {Operation} next @param {number | null} revision @param {string} [attemptId] */
@@ -894,5 +902,5 @@ export function createOrchestrator(deps) {
     return inspect(operationId);
   }
 
-  return { submit, resume, inspect, cancel };
+  return { submit, resume, inspect, inspectFinding, cancel };
 }

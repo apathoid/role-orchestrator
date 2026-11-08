@@ -65,6 +65,8 @@ Permission prompt провайдера связывается с attempt/provide
 
 На resume immutable snapshot запуска доступен для объяснения истории; текущие доверенные запреты и отключённые endpoints применяются к новым actions. Изменение необязательного параметра не инвалидирует историю. Пропавший выбранный профиль даёт локальную ошибку с возможностью нового выбора моделью.
 
+Необязательная настройка `storage.artifactRetention` включает очистку опубликованных артефактов при открытии локального store. Можно задать `maxAgeMs`, `maxBytes` или оба предела. Область применения описана в [правилах хранения](CONTEXT_AND_RECOVERY.md#retention).
+
 ## Plugin и skill
 
 Plugin manifest: id, version, apiVersion=1, типы exports, совместимые capabilities. Подключение явно из trusted config; загрузка происходит в composition root. Plugin — доверенный код с правами процесса, не изолированный tenant. Нельзя обещать защиту от злонамеренного plugin при запрете isolation.

@@ -4,14 +4,14 @@ import { constants as bufferLimits } from 'node:buffer';
 import * as fs from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { artifactRef, expiredArtifacts } from './artifact-retention.js';
 import { sameRecord } from '../../core/operation.js';
 import { decodeSnapshot, encodeSnapshot } from '../../core/snapshot.js';
 
-/** @import {ArtifactStore, CommitResult, SnapshotUnavailableReason, StateListEntry, StateStore} from '../../core/ports.js' */
+/** @import {ArtifactRetention, ArtifactStore, CommitResult, SnapshotUnavailableReason, StateListEntry, StateStore} from '../../core/ports.js' */
 /** @import {Operation} from '../../core/operation.js' */
 
 const snapshotName = /^([a-f0-9]{64})(?:-([a-f0-9]{64}))?\.json$/u;
-const artifactRef = /^sha256:([a-f0-9]{64})$/u;
 const temporaryName = /^\.state-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.tmp$/u;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
@@ -136,10 +136,55 @@ export function createLocalStateStore(directory, io = fs) {
     }
   }
 
+  /** @param {string} hash */
+  async function hasRetentionMarker(hash) {
+    try {
+      const marker = await io.open(join(root, 'artifact-' + hash + '.retention'), 'r');
+      await marker.close();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Run under the exclusive writer lock, before any capture can publish a
+   * blob whose receipt has yet to reach the operation journal.
+   * @param {import('node:fs/promises').FileHandle} handle
+   * @param {readonly string[]} names @param {ArtifactRetention} policy
+   */
+  async function retainArtifacts(handle, names, policy) {
+    const operations = [];
+    const slots = new Set();
+    for (const name of names) {
+      if (!snapshotName.test(name)) continue;
+      const slot = name.slice(0, 64);
+      if (slots.has(slot)) return;
+      slots.add(slot);
+      const operation = await read(name).catch(() => undefined);
+      if (!operation) return;
+      operations.push(operation);
+    }
+    for (const hash of expiredArtifacts(operations, new Set(names), policy, Date.now())) {
+      try {
+        // Persist the reason before unlink. A blob left by an interruption
+        // remains readable and is eligible for a later maintenance pass.
+        await publish(handle, 'artifact-' + hash + '.retention', '');
+        await io.unlink(join(root, 'artifact-' + hash + '.blob'));
+        await handle.sync();
+      } catch {
+        // Maintenance is best-effort. The immutable operation is still usable.
+      }
+    }
+  }
+
   return {
-    open() {
+    open(retention) {
       return serialize(async () => {
         if (directoryHandle) return;
+        if (retention && (retention.maxAgeMs === undefined && retention.maxBytes === undefined ||
+            [retention.maxAgeMs, retention.maxBytes].some(value => value !== undefined &&
+              (!Number.isSafeInteger(value) || value < 0)))) throw new RangeError('Invalid artifact retention policy');
         let handle;
         let lock;
         try {
@@ -148,9 +193,11 @@ export function createLocalStateStore(directory, io = fs) {
           // an operation or removes the shared lock file.
           lock = new DatabaseSync(join(root, '.writer.sqlite'), { timeout: 0 });
           lock.exec('BEGIN IMMEDIATE');
-          for (const name of await io.readdir(root)) {
+          const names = await io.readdir(root);
+          for (const name of names) {
             if (temporaryName.test(name)) await io.unlink(join(root, name)).catch(() => {});
           }
+          if (retention) await retainArtifacts(handle, names, retention);
         } catch (error) {
           lock?.close();
           await handle?.close().catch(() => {});
@@ -232,6 +279,9 @@ export function createLocalStateStore(directory, io = fs) {
         const handle = requireOpen();
         try {
           await publish(handle, 'artifact-' + hash + '.blob', data);
+          if (await hasRetentionMarker(hash)) {
+            await io.unlink(join(root, 'artifact-' + hash + '.retention')).then(() => handle.sync()).catch(() => {});
+          }
         } catch (error) {
           throw new LocalStoreError('io', error);
         }
@@ -265,8 +315,22 @@ export function createLocalStateStore(directory, io = fs) {
         } finally {
           await file.close();
         }
-      } catch {
-        return { kind: 'unavailable' };
+      } catch (error) {
+        return isMissing(error) && await hasRetentionMarker(match[1])
+          ? { kind: 'unavailable', reason: 'retention' } : { kind: 'unavailable' };
+      }
+    },
+
+    async artifactPresence(reference) {
+      requireOpen();
+      const hash = artifactRef.exec(reference.ref)?.[1];
+      if (!hash) return 'missing';
+      try {
+        const file = await io.open(join(root, 'artifact-' + hash + '.blob'), 'r');
+        await file.close();
+        return 'present';
+      } catch (error) {
+        return isMissing(error) && await hasRetentionMarker(hash) ? 'retention' : 'missing';
       }
     },
 

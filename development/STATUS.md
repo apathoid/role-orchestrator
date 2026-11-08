@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C06.6, assessment по требованиям |
-| Следующий шаг | C06.7, история и retention |
+| Последний локально проверенный шаг | C06.7, история и retention |
+| Следующий шаг | C06.8, сквозная проверка контекста |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C06.6 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C06.7 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -138,3 +138,8 @@
 - C06.6 — Controller оценивает существенные требования и может сохранить объяснение по каждому. Координатор проверяет автора, уникальность ID и ссылки. На продолжении краткие незакрытые статусы доступны со ссылкой на исходную модельную оценку. Snapshot сверяет сохранённый итог с последней записью в истории.
 - OBSERVED: fixture запустил проверку до правки и записал её tool exit 0. После правки модель вернула `unverified` для явно запрошенной проверки нового состояния. Подтверждены ровно три dispatch, единственный исходный tool exit и сохранение объяснения. Проверены адресные ошибки авторства, повторного ID и недоступной ссылки, а также видимость незакрытой оценки при лимите истории в один байт.
 - Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (91), `check:package`, `check:removal`, exit 0. Нативные CLI/ACP остаются UNVERIFIED. Следующий шаг — C06.7.
+
+
+- C06.7 — `inspectFinding` связывает находки, опоры и попытки с исходными outcome. Локальный store применяет явную политику возраста и размера при открытии под блокировкой. Отсутствующий после очистки blob получает причину `retention`; снимки и модельные выводы сохраняются.
+- OBSERVED: по лимиту удалён старый blob, а более новый и общие данные с возможным либо неизвестным эффектом остались доступны. Проверены сохранность снимков, чтение отметки retention, отказ от очистки при повреждённом снимке и повтор после ошибки unlink.
+- Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (93), `check:package`, `check:removal`, exit 0. Нативные CLI/ACP остаются UNVERIFIED. Следующий шаг — C06.8.
