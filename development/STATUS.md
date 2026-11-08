@@ -183,3 +183,8 @@
 
 - C08.1 — [сопоставление ProviderPort и стабильного ACP v1](reports/C08/ACP_V1_PROTOCOL_MAPPING.md) по SDK 2.4.0, опубликованной спецификации и контрактному тесту. Подтверждены API подключения, рукопожатие, сессия, prompt, событие инструмента, запрос разрешения, отмена и закрытие через NDJSON с управляемым агентом.
 - OBSERVED на Linux, Node 24.22.1. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:contracts` (11), `test:integration` (127), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативное рукопожатие с Codex ACP и вызов модели остаются UNVERIFIED. Следующий шаг — C08.2.
+
+### Исправления после ревью C07
+
+- CLI сохраняет `item.completed/error` как сообщение провайдера со ссылкой из исхода. Проверка воспроизвела потерю предупреждения на `fb87c65`. После исправления предупреждение сохраняется в snapshot успешного хода.
+- CLI явно сообщает `context.retrieval: unsupported` в каталоге и предупреждает модель об ограничении в prompt. Доставка `ContextPort.list/fetch` через реальные адаптеры и её сквозная проверка внесены в C09.6. Следующий шаг — C08.2.

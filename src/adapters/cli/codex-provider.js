@@ -18,6 +18,7 @@ const capabilities = Object.freeze({
   'output.decision': { support: 'supported', source: 'configured', detail: 'Validated JSON in the final model message.' },
   'tools.command_exit': { support: 'supported', source: 'configured', detail: 'Provider-reported command exits when available.' },
   'tools.visibility': { support: 'unknown', source: 'configured', detail: 'Command events provide partial tool visibility.' },
+  'context.retrieval': { support: 'unsupported', source: 'configured', detail: 'Only the supplied context is available to the model.' },
   'tools.bridge': { support: 'unsupported', source: 'configured', detail: 'Codex CLI headless mode exposes no host tool bridge.' },
   'permissions.interactive': { support: 'unsupported', source: 'configured', detail: interactiveApprovalDetail },
   cancel: { support: 'supported', source: 'configured' },

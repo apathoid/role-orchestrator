@@ -94,6 +94,9 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
       }
       message = item.text;
       publish({ ref, kind: 'model', sourceId: item.id, completeness: 'complete', value: message });
+    } else if (item.type === 'error' && typeof item.message === 'string') {
+      publish({ ref, kind: 'provider_report', sourceId: item.id, completeness: 'complete',
+        value: { type: item.type, message: item.message } });
     } else if (item.type === 'command_execution') {
       const declined = item.status === 'declined';
       const exitCode = declined ? undefined : integer(item.exit_code);

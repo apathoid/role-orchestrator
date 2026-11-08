@@ -161,6 +161,7 @@ test('Codex describes headless capability limits and rejects a required approval
   const first = await provider.describe();
   assert.equal(first.capabilities['permissions.interactive'].support, 'unsupported');
   assert.equal(first.capabilities['tools.bridge'].source, 'configured');
+  assert.equal(first.capabilities['context.retrieval'].support, 'unsupported');
   assert.equal(first.capabilities['tools.visibility'].support, 'unknown');
   assert.equal(first.capabilities['attempt.status'].support, 'unsupported');
   first.capabilities['permissions.interactive'].support = 'supported';
@@ -263,3 +264,26 @@ for (const declined of [false, true]) {
     assert.deepEqual(worker.outcome.diagnostics, declined ? [{ code: 'PERMISSION_DENIED', ref: tool.ref }] : []);
   });
 }
+
+test('Codex preserves a non-fatal provider warning in a successful turn', linux, async () => {
+  const warning = 'Model rerouted by provider';
+  const { api } = codexSetup(`
+    assert.match(prompt, /Context retrieval is unavailable/);
+    emit('item.completed', {item: {type: 'error', id: 'native-warning', message: ${JSON.stringify(warning)}}});
+    message(JSON.stringify(decision({finalAssessment: assessment({answer: 'Answer'})})));
+    complete();
+  `);
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status, 'finished');
+  assert.equal(state.assessment.answer, 'Answer');
+  const receipt = state.events.find(event => event.kind === 'attempt.outcome');
+  assert.equal(receipt.outcome.terminal, 'completed');
+  assert.deepEqual(receipt.outcome.diagnostics, []);
+  const restored = decodeSnapshot(encodeSnapshot(state));
+  assert.equal(restored.kind, 'accepted');
+  const persisted = restored.value.events.find(event => event.kind === 'attempt.outcome');
+  const report = persisted.observations.find(item => item.provenance?.sourceId === 'native-warning');
+  assert.equal(report?.source, 'provider_reported');
+  assert.deepEqual(report.value, { type: 'error', message: warning });
+  assert.ok(persisted.outcome.outputRefs.some(item => item.ref === report.ref));
+});

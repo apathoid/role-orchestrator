@@ -25,7 +25,9 @@ export function renderCodexPrompt(request, approvalDetail) {
     instructions, userConstraints, context, expectedResult, continuationReference } = request;
   const output = kind === 'controller' ? decisionFormat :
     'Return the requested result in your final message. Plain text or the structured text specified by the task is accepted.';
-  return output + '\n' + approvalDetail + '\n\nInvocation (JSON):\n' + JSON.stringify({
+  return output + '\n' + approvalDetail +
+    '\nContext retrieval is unavailable in this transport. Use the supplied context and report missing evidence explicitly.' +
+    '\n\nInvocation (JSON):\n' + JSON.stringify({
     kind, operationId, attemptId, actionId, profileId, objective, instructions,
     userConstraints, context, expectedResult, continuationReference,
   });
