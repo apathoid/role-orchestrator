@@ -13,7 +13,7 @@ export function final(invocation, overrides = {}) {
   };
 }
 
-export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions, lookupStatus, providerFor, supportsIdempotency, approveRetry, emit,
+export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, provider: injectedProvider, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions, lookupStatus, providerFor, supportsIdempotency, approveRetry, emit,
   now = () => 100, context, allowContextShare, configurationRef = 'test-config', idPrefix = 'id-', profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' } } = {}) {
   const states = new Map();
   const invocations = [];
@@ -43,7 +43,7 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
     limits: { maxInvocations, maxConcurrentInvocations },
     invocationTimeoutMs: 10000, schedule,
     catalog: { async list() { return [{ kind: 'profile', value: profile }, ...extraCatalog]; }, async resolve() {} },
-    provider: {
+    provider: injectedProvider ?? {
       lookupStatus, supportsIdempotency,
       async describe() { return { providerId: profile.providerId, maxConcurrency: maxConcurrentInvocations, capabilities }; },
       async open(profile, signal) {

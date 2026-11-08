@@ -42,15 +42,16 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
     import assert from 'node:assert/strict';
     import { registerHooks } from 'node:module';
     const expectedSource = new URL('./node_modules/' + ${JSON.stringify(pkg.name)} + '/src/', import.meta.url).href;
-    // The application uses Node's built-in SHA-256 for stable evidence identities.
+    const builtins = new Set(['node:crypto', 'node:buffer', 'node:child_process', 'node:events']);
     registerHooks({ resolve(specifier, context, next) {
       const result = next(specifier, context);
-      assert.ok(result.url === 'node:crypto' || result.url.startsWith(expectedSource), result.url);
+      assert.ok(builtins.has(result.url) || result.url.startsWith(expectedSource), result.url);
       return result;
     } });
     globalThis.fetch = () => { throw new Error('Network access during import'); };
     const api = await import(${JSON.stringify(pkg.name)});
     assert.equal(typeof api.emitDiagnostic, 'function');
+    assert.equal(typeof api.createCodexProvider, 'function');
   `], consumer, { ...process.env, PATH: '' });
   if (removal) {
     // Resolve the pinned validator from the clean install while exercising the

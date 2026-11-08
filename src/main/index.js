@@ -7,3 +7,4 @@ export { resolveConfiguration } from '../application/configuration/resolve-confi
 export { createCatalog } from '../application/configuration/catalog.js';
 export { createAuthorityGrant } from '../application/configuration/authority.js';
 export { createPermissionBroker } from '../application/configuration/permissions.js';
+export { createCodexProvider } from '../adapters/cli/codex-provider.js';

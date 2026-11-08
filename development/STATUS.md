@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C07.3, фрейминг и ограничение вывода |
-| Следующий шаг | C07.4, Controller и Worker |
+| Последний локально проверенный шаг | C07.4, Controller и Worker через Codex CLI |
+| Следующий шаг | C07.5, полномочия и возможности CLI |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.3 на Linux с тестовыми портами, локальным store и реальными тестовыми CLI-процессами |
+| Local regression verified | OBSERVED для C00–C07.4 на Linux с локальным store и реальными тестовыми CLI-процессами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -164,3 +164,6 @@
 
 - C07.3 — [фрейминг и ограничение вывода Codex CLI](reports/C07/CLI_OUTPUT_FRAMING.md). Адаптер разбирает целые JSONL-строки, сохраняет ограниченные префиксы stdout/stderr и сообщает причину, позицию и число ошибок фрейминга. После пропуска строки разбор продолжается в пределах бюджета stdout.
 - OBSERVED на Linux, Node 24.22.1. Проверены разрывы UTF-8 и границы чанков, отдельный stderr, некорректные строки, лимиты и доступность частичного вывода после ненулевого выхода. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (113), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативная сессия Codex остаётся UNVERIFIED. Следующий шаг — C07.4.
+
+- C07.4 — [Controller и Worker через Codex CLI](reports/C07/CLI_CONTROLLER_AND_WORKER.md). Фабрика `createCodexProvider` доступна через программный API. Controller возвращает полное JSON-решение через штатный decoder. Worker сохраняет текст. Сообщение модели, код CLI и сообщённый код инструмента имеют отдельное происхождение. При сбое транспорта частичный вывод остаётся доступным с неизвестным эффектом.
+- OBSERVED на Linux, Node 24.22.1. Проверены модельное делегирование и частичный итог, адресное исправление Decision, различение кодов выхода и сохранение вывода без применения решения при сбое. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (120), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативная сессия Codex остаётся UNVERIFIED. Следующий шаг — C07.5.
