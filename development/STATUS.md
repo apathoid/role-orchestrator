@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C06.8 и исправления по итогам ревью |
-| Следующий шаг | C07.1, контракт запуска CLI |
+| Последний локально проверенный шаг | C07.1, контракт запуска Codex CLI |
+| Следующий шаг | C07.2, жизненный цикл процесса CLI |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C06 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C07.1 на Linux с тестовыми портами, локальным store и проверкой контракта запуска CLI |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -153,3 +153,8 @@
 - P1 — ключ наблюдения привязан к операции, попытке и исходной ссылке провайдера. Исходная ссылка сохраняется как метаданные. Поиск, опоры findings и ссылки на вывод используют внутренние ключи. Snapshot отклоняет неоднозначные записи. Однозначные snapshots v1 по-прежнему читаются.
 - P2 — `ContextPort.list` показывает метаданные записей, пропущенных в кратком контексте, постранично до 32 записей и 8 КиБ. Специалист видит только выбранные ссылки. Модель выбирает запись, извлекает её через `fetch` и при необходимости передаёт дальше.
 - OBSERVED на Node 24.22.1. Обе регрессии воспроизведены на `783281f` и проходят с исправлением. `check`, `test:foundation` (4), `test:core` (15), `test:integration` (96), `check:package`, `check:removal`. Реальные CLI/ACP/Zed и установка приложения в NixOS остаются UNVERIFIED. Следующий шаг — C07.1.
+
+## C07 — CLI/headless provider adapter
+
+- C07.1 — [контракт запуска Codex CLI](reports/C07/CLI_LAUNCH.md). Адаптер формирует команду и argv из доверенных настроек, передаёт текст через stdin, сохраняет cwd и окружение с явными переадресациями `fromEnv`. Профиль Codex опционален. Формат stdout — JSONL.
+- OBSERVED на Linux, Node 24.22.1. Бинарник Codex CLI 0.165.0 подтвердил флаги и чтение stdin вне Git. Контролируемый процесс подтвердил передачу stdin, cwd, argv и окружения. Обе установки из lock, `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (98), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативные модельные вызовы и локальный Nix остаются UNVERIFIED. Следующий шаг — C07.2.
