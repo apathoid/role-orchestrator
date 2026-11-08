@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C06.1, provenance |
-| Следующий шаг | C06.2, findings и revisions оценок |
+| Последний локально проверенный шаг | C06.2, findings и revisions оценок |
+| Следующий шаг | C06.3, context materialization |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C06.1 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C06.2 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -113,3 +113,8 @@
 - C06.1 — история различает пользовательские сообщения, модельные сообщения, отчёты провайдера, события инструментов и наблюдения транспорта. Сохранены идентификатор источника, время приёма, доступный вывод и полнота. Порядок доставки восстанавливается из revision и позиции записи в событии. Снимки v1 без новых полей остаются читаемыми.
 - OBSERVED: после повторного открытия Linux store выход процесса агента с кодом 0 и сообщение модели о прошедших тестах видны отдельно. Код завершения инструмента появляется только из отдельного структурированного события. Проверены противоречивый provenance в snapshot и дедупликация позднего события с другим временем доставки.
 - Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (80), `check:package`, `check:removal`, exit 0. Адаптеры CLI/ACP и локальная проверка Nix остаются UNVERIFIED. Следующий шаг — C06.2.
+
+
+- C06.2 — Controller и специалисты могут добавлять структурированные findings с claim, subject, supports, author и uncertainties. `supersedes` связывает новую запись с предыдущей. Проверяются идентификаторы, авторство и ссылки в пределах операции. История сохраняет каждую находку и её опоры.
+- OBSERVED: противоположные выводы двух профилей об одном файле сосуществуют. После повторного открытия store доступны оба вывода, модельная ревизия, исходные observations и предыдущая итоговая assessment. Невалидная находка специалиста оставляет исход вызова и raw output доступными. Проверены адресные ошибки для чужих ссылок, повторных ID и несовпадающего автора.
+- Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (83), `check:package`, `check:removal`, exit 0. Реальные CLI/ACP-адаптеры остаются UNVERIFIED. Следующий шаг — C06.3.

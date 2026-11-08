@@ -78,3 +78,4 @@ Mock Controller fixtures задают решения, позволяющие п�
 | `A27` | OBSERVED, C05, Linux и fault injection | `local-store.test.js`; повреждение/версия локальны, EROFS останавливает dispatch, запись восстанавливается без повторения эффекта |
 | `A28` | OBSERVED, C05, Linux и fault injection | `durable-dispatch.test.js`; видимый неподтверждённый commit, повтор подтверждения исхода, отказ sync/async diagnostic sink |
 | `A29` | OBSERVED, C06.1, синтетический ProviderPort и Linux store | `local-store.test.js`, `snapshot.test.js`: раздельные agent exit, tool exit и модельное сообщение, повторное открытие store, отказ при противоречивой атрибуции. Native adapters UNVERIFIED |
+| `A33` | OBSERVED, C06.2, синтетические модели и Linux store | `local-store.test.js`, `orchestrator.test.js`: разногласие, supersedes, сохранение опор и повторное использование после открытия store, проверка ссылок и автора. Сквозная проверка кластера остаётся в C06.8 |

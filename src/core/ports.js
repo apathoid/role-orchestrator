@@ -13,7 +13,7 @@
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
  *   userConstraints: readonly string[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
  *   signal: AbortSignal, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
- * @typedef {{outcome: Outcome, output?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
+ * @typedef {{outcome: Outcome, output?: unknown, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,

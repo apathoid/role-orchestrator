@@ -1,5 +1,6 @@
 /** @import {CatalogEntry} from '../core/ports.js' */
 /** @import {ContextItem} from '../core/observation.js' */
+import { eventFindings, findingRef } from '../core/finding.js';
 import { observation } from '../core/observation.js';
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {LookupStatus} from './recovery.js' */
@@ -13,6 +14,7 @@ export const controllerInstructions = [
   'Delegate when useful by selecting a profile and writing an objective, expected result and context references. Use all_requested or next_completion with action targets to wait for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
+  'Use optional findings for model claims that should remain available in history. Each finding has a new findingId, author (your profileId), claim, subject, supports, and uncertainties. Use an earlier finding reference in supersedes to revise it. Cite findings by their finding:<id> context reference.',
   'Assess requirements and unresolved work using the supplied records. An agent_exit applies to the agent process. Only a separately reported tool_exit describes a tool exit. Model claims and provider reports carry their own attribution.',
 ];
 
@@ -72,6 +74,20 @@ export function controllerContext(state, catalog, correction, lookups) {
       append('assessment:' + event.eventId, event.assessment, 'model', event.assessment.author);
     } else if (event.kind === 'operation.continued') {
       append(event.input.requestId, event.input.text, 'user', event.input.requestId);
+    }
+
+    const findings = eventFindings(event);
+    if (findings) {
+      const attemptId = event.kind === 'attempt.outcome' ? event.outcome.attemptId
+        : event.kind === 'controller.responded' ? event.attemptId : undefined;
+      const offset = event.kind === 'attempt.outcome' ? event.observations?.length ?? 0 : 1;
+      for (const [index, item] of findings.entries()) {
+        items.push({
+          ...observation({ ref: findingRef(item), completeness: 'complete', value: item },
+            { kind: 'model', sourceId: item.author, receivedAt: event.receivedAt }),
+          kind: 'finding', attemptId, receivedSequence: { revision, index: offset + index },
+        });
+      }
     }
 
     /** @param {string} ref @param {unknown} value @param {'user' | 'model'} kind @param {string} sourceId */

@@ -1,3 +1,4 @@
+import { admitFindings, eventFindings, evidenceRefs, findings, recordObservationRefs } from './finding.js';
 import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
 import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
 import { contextItem } from './observation.js';
@@ -74,10 +75,10 @@ const event = tagged('kind', {
   }),
   'attempt.outcome': record({
     ...eventFields, kind: oneOf('attempt.outcome'), outcome, dispatchCertainty: certainty,
-    observations: optional(arrayOf(contextItem)), late: optional((input, path) => input === true ? /** @type {const} */ (true) : invalid(path, 'true')),
+    observations: optional(arrayOf(contextItem)), findings: optional(findings), late: optional((input, path) => input === true ? /** @type {const} */ (true) : invalid(path, 'true')),
   }),
   'controller.responded': record({
-    ...eventFields, kind: oneOf('controller.responded'), decision, admissions: optional(arrayOf(admission)),
+    ...eventFields, kind: oneOf('controller.responded'), decision, attemptId: optional(id), admissions: optional(arrayOf(admission)),
   }),
   'action.rejected': record({
     ...eventFields, kind: oneOf('action.rejected'), actionId: id, code: reasonCode, resource: optional(id),
@@ -119,6 +120,7 @@ function snapshot(input, path) {
     }
   }
   const events = new Set();
+  const refs = evidenceRefs(value.request.requestId);
   /** @type {Map<string, Attempt>} */
   const ledger = new Map();
   let generation = 0;
@@ -127,8 +129,22 @@ function snapshot(input, path) {
     if (item.operationId !== value.operationId) invalid(at + '.operationId', 'the enclosing operation id');
     if (events.has(item.eventId)) invalid(at + '.eventId', 'a unique event id');
     events.add(item.eventId);
+    if (item.kind === 'attempt.outcome') recordObservationRefs(refs, item);
+    const batch = eventFindings(item);
     if (item.kind === 'operation.continued' || item.kind === 'operation.recovered') generation++;
     const attemptId = item.kind === 'attempt.outcome' ? item.outcome.attemptId : 'attemptId' in item ? item.attemptId : undefined;
+    if (batch?.length) {
+      const worker = item.kind === 'attempt.outcome';
+      const field = at + (worker ? '.findings' : '.decision.findings');
+      const reporting = attemptId ? ledger.get(attemptId) : undefined;
+      if (!reporting?.route || (worker && item.dispatchCertainty === 'not_sent') ||
+          (!worker && (reporting.actionId !== attemptId || reporting.outcome?.terminal !== 'completed'))) {
+        invalid(field, 'a reporting model on the recorded route');
+      }
+      const error = admitFindings(refs, batch, field, reporting.route.profileId);
+      if (error) invalid(error.path, error.expected);
+    }
+    if (item.kind !== 'attempt.outcome') recordObservationRefs(refs, item);
     if (!attemptId) continue;
     if (!attempts.has(attemptId)) invalid(at + '.attemptId', 'an attempt in this snapshot');
     const prior = ledger.get(attemptId);

@@ -1,3 +1,4 @@
+import { findings } from './finding.js';
 import { arrayOf, count, decode, id, invalid, measurement, nullable, oneOf, optional, record, text } from './decode.js';
 
 /**
@@ -52,7 +53,7 @@ const proposal = record({
     targets: arrayOf(record({ kind: oneOf('action', 'attempt'), id })),
   })),
   clarification: optional(record({ question: id })),
-  finalAssessment: optional(assessment),
+  finalAssessment: optional(assessment), findings: optional(findings),
 });
 
 /** @typedef {ReturnType<typeof request>} Request */

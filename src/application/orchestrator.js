@@ -1,3 +1,4 @@
+import { admitFindings, checkAssessmentRefs, evidenceRefs, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
@@ -10,6 +11,7 @@ import { runActionRound } from './action-round.js';
 import { attributeProviderOutputRefs, observation, receiveProviderObservation } from '../core/observation.js';
 
 /** @import {Action, CancellationSource, Decision, Outcome, ReasonCode} from '../core/contracts.js' */
+/** @import {OutcomeEvidence} from '../core/finding.js' */
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {Clock, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
 /** @import {Observation} from '../core/observation.js' */
@@ -146,6 +148,10 @@ export function createOrchestrator(deps) {
       if (!observed || (event.kind !== 'attempt.outcome' && event.kind !== 'operation.finished')) throw error;
       // Retry only the local record, using the original event identity.
       // An already visible record still needs a durability acknowledgement.
+      if (event.kind === 'attempt.outcome' && event.findings?.length &&
+          !observed.events.some(item => item.eventId === event.eventId)) {
+        event.findings = receiveWorkerFindings(observed, event, event.findings);
+      }
       result = applyEvent(observed, event);
       if (result.kind === 'rejected') throw error;
       const retry = await commit(result.state, observed.revision, attemptId);
@@ -402,10 +408,13 @@ export function createOrchestrator(deps) {
         known.push(sample);
       }
       if (!reply && !observations.length) return current;
-      return transition(current, {
-        kind: 'attempt.outcome', late: true,
+      const receipt = {
+        kind: /** @type {const} */ ('attempt.outcome'),
         outcome: reply ? attributeProviderOutputRefs(reply.outcome, known) : attempt.outcome,
         dispatchCertainty: reply?.dispatchCertainty ?? attempt.dispatchCertainty, observations,
+      };
+      return transition(current, {
+        ...receipt, late: true, findings: handoff && receiveWorkerFindings(current, receipt, reply?.findings),
       });
     }
 
@@ -425,7 +434,7 @@ export function createOrchestrator(deps) {
       if (parsed.kind === 'rejected' || parsed.value.attemptId !== attemptId ||
           !['not_sent', 'sent', 'unknown'].includes(reply.dispatchCertainty) ||
           (reply.dispatchCertainty === 'not_sent' && parsed.value.effect !== 'none')) return undefined;
-      const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty, output: reply.output };
+      const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty, output: reply.output, findings: reply.findings };
       if (acceptingObservations) {
         receivedReply = result;
         if (result.output !== undefined) {
@@ -450,6 +459,8 @@ export function createOrchestrator(deps) {
     const withinDeadline = work => Promise.race([work, interrupted.promise]);
     /** @type {unknown} */
     let output;
+    /** @type {unknown} */
+    let reportedFindings;
     /** @type {Outcome} */
     let outcome;
     /** @type {'sent' | 'not_sent' | 'unknown'} */
@@ -564,7 +575,7 @@ export function createOrchestrator(deps) {
         outcome = failedOutcome(attemptId, 'PROTOCOL_ERROR', true);
         certainty = 'unknown';
       } else {
-        ({ dispatchCertainty: certainty, output } = reply);
+        ({ dispatchCertainty: certainty, output, findings: reportedFindings } = reply);
         outcome = attributeProviderOutputRefs(reply.outcome, observations);
       }
     } catch (error) {
@@ -600,7 +611,7 @@ export function createOrchestrator(deps) {
         if (!closed) undetached.add(attemptId);
       }
     }
-    return { outcome, certainty, output, observations, contextCursor, recordLate };
+    return { outcome, certainty, output, observations, contextCursor, recordLate, reportedFindings };
   }
 
   /** @param {string} operationId @param {AbortSignal} stop @param {string} [actionId] */
@@ -661,13 +672,38 @@ export function createOrchestrator(deps) {
     const attemptId = reserved.attemptId;
     try {
       const response = await invoke(reserved.state, attemptId, stop, undefined, handoff.handoff, executor, undefined, action);
-      await serialize(async () => response.recordLate(await transition(await inspect(state.operationId), {
-        kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
-      })));
+      await serialize(async () => {
+        const current = await inspect(state.operationId);
+        const receipt = {
+          kind: /** @type {const} */ ('attempt.outcome'),
+          outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
+        };
+        return response.recordLate(await transition(current, {
+          ...receipt, findings: receiveWorkerFindings(current, receipt, response.reportedFindings),
+        }));
+      });
       return true;
     } finally {
       releaseAttempt(attemptId);
     }
+  }
+
+  /**
+   * @param {Operation} state
+   * @param {OutcomeEvidence & {dispatchCertainty: import('../core/operation.js').DispatchCertainty}} receipt
+   * @param {unknown} reported
+   */
+  function receiveWorkerFindings(state, receipt, reported) {
+    if (reported === undefined) return undefined;
+    const attemptId = receipt.outcome.attemptId;
+    const author = state.attempts.find(item => item.attemptId === attemptId)?.route?.profileId;
+    const parsed = decode(findings, reported);
+    if (parsed.kind === 'accepted' && author && receipt.dispatchCertainty !== 'not_sent') {
+      const refs = evidenceRefs(state.request.requestId, state.events);
+      recordObservationRefs(refs, receipt);
+      if (!admitFindings(refs, parsed.value, '$.findings', author)) return parsed.value;
+    }
+    trace(state, 'worker.findings_invalid_proposal', 'INVALID_PROPOSAL', attemptId);
   }
 
   /** @param {string} operationId @param {Action} action @param {'action.rejected' | 'action.deferred'} kind
@@ -753,15 +789,10 @@ export function createOrchestrator(deps) {
         correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
         if (parsed.kind === 'accepted') {
           const value = parsed.value;
-          const availableRefs = new Set([
-            ...state.attempts.flatMap(item => item.outcome?.outputRefs.map(ref => ref.ref) ?? []),
-            ...state.events.flatMap(event => event.kind === 'attempt.outcome' ? event.observations?.map(item => item.ref) ?? [] : []),
-          ]);
           const assessment = value.finalAssessment;
-          const references = assessment ? [
-            ...assessment.observationRefs, ...assessment.findingRefs,
-            ...assessment.requirements.flatMap(item => [...item.observationRefs, ...item.findingRefs]),
-          ] : [];
+          const refs = evidenceRefs(state.request.requestId, state.events);
+          const evidenceError = admitFindings(refs, value.findings ?? [], '$.findings', profile.profileId)
+            ?? (assessment && checkAssessmentRefs(refs, assessment));
           const live = new Set(pending.keys());
           if (value.operationId !== operationId) {
             correction = { code: 'INVALID_PROPOSAL', path: '$.operationId', expected: 'the current operation id' };
@@ -775,15 +806,15 @@ export function createOrchestrator(deps) {
           } else if (value.acceptedActionIds?.some(id => !state.attempts.some(attempt =>
             attempt.actionId === id && attempt.status === 'terminal' && attempt.attemptId !== attempt.actionId))) {
             correction = { code: 'INVALID_PROPOSAL', path: '$.acceptedActionIds', expected: 'ids of terminal actions' };
-          } else if (references.some(ref => !availableRefs.has(ref))) {
-            correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'references to available observations and findings' };
+          } else if (evidenceError) {
+            correction = evidenceError;
           } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
             correction = { code: 'INVALID_PROPOSAL', path: '$.decisionId', expected: 'a fresh decision id' };
           } else {
             const round = planRound(state, value);
             if (round.error) correction = round.error;
             else {
-              state = await transition(state, { kind: 'controller.responded', decision: value, admissions: round.admissions });
+              state = await transition(state, { kind: 'controller.responded', decision: value, attemptId, admissions: round.admissions });
               for (const actionId of new Set(value.cancellations)) {
                 state = await transition(state, { kind: 'action.cancelled', actionId, source: 'superseded' });
                 pending.get(actionId)?.stop.abort('superseded');

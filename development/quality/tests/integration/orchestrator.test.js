@@ -316,3 +316,54 @@ test('a correlated reply during cleanup records late facts but cannot drive the 
   assert.equal(state.events.flatMap(event => event.observations ?? []).filter(item => item.ref === fact.ref).length, 1);
   assert.equal(invocations.length, 1);
 });
+
+
+test('invalid finding references receive field errors and do not partially append a batch', async () => {
+  const finding = {
+    findingId: 'first', author: 'primary', claim: 'A model claim', subject: 'target',
+    supports: ['request-1'], uncertainties: ['Needs confirmation'],
+  };
+  const { api, invocations } = setup({ maxInvocations: 4, respond(invocation, count) {
+    if (count === 1) return final(invocation, {
+      findings: [finding, { ...finding, findingId: 'second', supports: ['foreign-observation'] }],
+    });
+    if (count === 2) return final(invocation, { findings: [finding, { ...finding, claim: 'Duplicate id' }] });
+    if (count === 3) return final(invocation, { findings: [{ ...finding, author: 'other-model' }] });
+    return final(invocation, { findings: [finding], finalAssessment: assessment({ findingRefs: ['finding:first'] }) });
+  } });
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status, 'finished');
+  assert.deepEqual(invocations.slice(1).map(invocation => invocation.context.at(-1).value.path),
+    ['$.findings[1].supports[0]', '$.findings[1].findingId', '$.findings[0].author']);
+  assert.ok(invocations.every(invocation => invocation.context.every(item => item.kind !== 'finding')));
+  assert.deepEqual(state.events.flatMap(event => event.decision?.findings ?? []), [{ ...finding, supersedes: undefined }]);
+});
+
+test('an invalid worker finding preserves the worker outcome and raw output', async () => {
+  const { api, events, invocations } = setup({ maxInvocations: 3, respond(invocation, count) {
+    if (count === 1) return final(invocation, {
+      additions: [{
+        actionId: 'inspect', kind: 'delegate', profileId: 'primary', objective: 'Inspect', expectedResult: 'Finding',
+        contextRefs: [], dependsOn: [],
+      }],
+      finalAssessment: undefined, waitPolicy: { kind: 'all_requested', targets: [{ kind: 'action', id: 'inspect' }] },
+    });
+    if (invocation.kind === 'delegate') return {
+      dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId), output: 'Available raw report',
+      findings: [{
+        findingId: 'bad', author: 'primary', claim: 'An unsupported finding', subject: 'target',
+        supports: [], uncertainties: [], supersedes: 'finding:bad',
+      }],
+    };
+    return final(invocation);
+  } });
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status, 'finished');
+  const worker = state.attempts.find(item => item.actionId === 'inspect');
+  assert.equal(worker.outcome.terminal, 'completed');
+  const delivered = invocations.at(-1).context;
+  assert.equal(delivered.find(item => item.ref === 'attempt-output:' + worker.attemptId).value, 'Available raw report');
+  assert.ok(delivered.every(item => item.kind !== 'finding'));
+  assert.deepEqual(events.filter(event => event.eventName === 'worker.findings_invalid_proposal').map(event => event.attemptId),
+    [worker.attemptId]);
+});

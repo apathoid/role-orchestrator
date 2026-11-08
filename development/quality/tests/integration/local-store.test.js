@@ -7,8 +7,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLocalStateStore } from '../../../../src/adapters/state/local-store.js';
 import { applyEvent, createOperation, sameRecord } from '../../../../src/core/operation.js';
+import { decodeSnapshot, encodeSnapshot } from '../../../../src/core/snapshot.js';
+import { createAuthorityGrant } from '../../../../src/main/index.js';
 import { final, setup } from '../../fixtures/application.js';
-import { outcome, request } from '../../fixtures/core.js';
+import { assessment, outcome, request } from '../../fixtures/core.js';
 
 async function setupStore(t, overrides) {
   const directory = await fs.mkdtemp(join(tmpdir(), 'role-orchestrator-state-'));
@@ -509,4 +511,86 @@ test('reopened history keeps the agent process exit, tool exit and model claims 
   assert.deepEqual(records.filter(item => item.provenance?.exit?.kind === 'tool_exit'), [tool]);
   assert.equal(invocations.length, 1);
   assert.equal(resumed.invocations.length, 1);
+});
+
+
+test('opposing findings and a model revision survive reopening alongside raw evidence', async t => {
+  const { store, directory } = await setupStore(t);
+  const profileIds = ['primary', 'left', 'right'];
+  const authority = createAuthorityGrant({ reference: 'fixture-authority', origin: 'user', profileIds });
+  const subject = 'src/example.js';
+  const revise = {
+    findingId: 'revision', author: 'primary', subject, claim: 'The two runs checked different inputs',
+    supports: ['finding:left', 'finding:right'], uncertainties: ['The intended input is unclear'],
+    supersedes: 'finding:left',
+  };
+  let controllers = 0;
+  const { api, invocations } = setup({
+    store, authority, maxInvocations: 5, maxConcurrentInvocations: 2,
+    extraCatalog: profileIds.slice(1).map(profileId => ({
+      kind: 'profile', value: { profileId, providerId: 'fixture', model: 'model-' + profileId },
+    })),
+    respond(invocation, count, observe) {
+      if (invocation.kind === 'delegate') {
+        const author = invocation.profile.profileId;
+        const ref = 'raw-' + author;
+        const value = author === 'left' ? 'failed' : 'passed';
+        observe({ kind: 'provider_tool', sourceId: 'run-' + author, ref, completeness: 'complete', value });
+        return {
+          dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId), output: 'worker-' + author,
+          findings: [{
+            findingId: author, author, subject, claim: 'The check ' + value, supports: [ref], uncertainties: [],
+          }],
+        };
+      }
+      if (++controllers === 1) {
+        const additions = profileIds.slice(1).map(id => ({
+          actionId: id, kind: 'delegate', profileId: id, objective: 'Inspect', expectedResult: 'Finding',
+          contextRefs: [], dependsOn: [],
+        }));
+        return final(invocation, {
+          additions, finalAssessment: undefined,
+          waitPolicy: { kind: 'all_requested', targets: additions.map(item => ({ kind: 'action', id: item.actionId })) },
+        });
+      }
+      const available = invocation.context.filter(item => item.kind === 'finding');
+      assert.deepEqual(available.map(item => item.value.claim).sort(), ['The check failed', 'The check passed']);
+      assert.deepEqual(available.map(item => item.value.subject), [subject, subject]);
+      assert.ok(available.every(item => item.source === 'model_claim' && item.provenance.sourceId === item.value.author));
+      return final(invocation, {
+        findings: [revise], finalAssessment: assessment({ findingRefs: ['finding:revision'], observationRefs: ['raw-left'] }),
+      });
+    },
+  });
+  const first = await (await api.submit(request())).completion;
+  assert.equal(first.status, 'finished');
+  assert.deepEqual(first.assessment.findingRefs, ['finding:revision']);
+  assert.equal(invocations.length, 4);
+  const wire = JSON.parse(encodeSnapshot(first));
+  const index = wire.events.findIndex(event => event.decision?.findings?.length);
+  wire.events[index].decision.findings[0].supersedes = 'finding:foreign';
+  assert.equal(decodeSnapshot(JSON.stringify(wire)).reason.path, '$.events[' + index + '].decision.findings[0].supersedes');
+  await store.close();
+
+  const reopened = createLocalStateStore(directory);
+  t.after(() => reopened.close());
+  await reopened.open();
+  const next = setup({
+    store: reopened, authority, idPrefix: 'reopen-', maxInvocations: 5,
+    respond: invocation => final(invocation, { finalAssessment: assessment({
+      findingRefs: ['finding:left', 'finding:right', 'finding:revision'], answer: 'Both readings are relevant',
+    }) }),
+  });
+  const resumed = await (await next.api.resume(first.operationId, { requestId: 'followup-findings', text: 'Reassess' })).completion;
+  assert.equal(resumed.assessment.answer, 'Both readings are relevant');
+  const delivered = new Map(next.invocations[0].context.map(item => [item.ref, item]));
+  const revision = delivered.get('finding:revision');
+  assert.deepEqual(revision.value, revise);
+  assert.equal(revision.attemptId, invocations.at(-1).attemptId);
+  assert.equal(delivered.get('finding:left').value.claim, 'The check failed');
+  assert.equal(delivered.get('finding:right').value.claim, 'The check passed');
+  assert.equal(delivered.get('raw-left').value, 'failed');
+  assert.equal(delivered.get('raw-right').value, 'passed');
+  assert.deepEqual(resumed.events.filter(event => event.kind === 'operation.finished').map(event => event.assessment.answer),
+    [first.assessment.answer, 'Both readings are relevant']);
 });

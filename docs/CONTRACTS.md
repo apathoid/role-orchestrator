@@ -15,7 +15,7 @@
 | Authority | authorityId, trusted origin, permitted provider/tool resources, applicable scope expressed by available enforcement contract, standing decisions, revoked flag; без исходных секретов |
 | Profile | profileId, providerId, model selector, native execution settings, declared/negotiated capabilities |
 | Role | roleId, purpose, instructions, optional preferred profiles; роль не выдаёт capabilities или authority |
-| Decision | decisionId, operationId, contextCursor, additions[], cancellations[], waitPolicy, optional clarification или finalAssessment |
+| Decision | decisionId, operationId, contextCursor, additions[], cancellations[], waitPolicy, optional clarification или finalAssessment, optional findings[] |
 | Action | actionId, kind=`delegate`, objective, profileId, optional roleId/skills[], contextRefs[], dependsOn[], expectedResult, optional continuationReference |
 | Attempt | attemptId, actionId, operationId, generation, lifecycle status, dispatch certainty, effect knowledge, timestamps, reservation, terminal outcome reference |
 | Invocation | attemptId, task/handoff, profile, workspace context, context bundle, effective authority reference, resource envelope, cancel signal |

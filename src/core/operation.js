@@ -1,6 +1,7 @@
 /** @import {Assessment, CancellationSource, Decision, Outcome, ReasonCode, Request} from './contracts.js' */
 /** @import {DiagnosticEvent} from './diagnostics.js' */
 /** @import {Observation} from './observation.js' */
+/** @import {Finding} from './finding.js' */
 /** @import {Admission} from './action-graph.js' */
 
 /**
@@ -26,8 +27,8 @@
  *   {kind: 'attempt.reserved', actionId: string, attemptId: string} |
  *   {kind: 'attempt.dispatched', attemptId: string, route?: DispatchRoute} |
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
- *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly Observation[], late?: true} |
- *   {kind: 'controller.responded', decision: Decision, admissions?: readonly Admission[]} |
+ *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly Observation[], findings?: readonly Finding[], late?: true} |
+ *   {kind: 'controller.responded', decision: Decision, attemptId?: string, admissions?: readonly Admission[]} |
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
@@ -202,10 +203,10 @@ export function applyEvent(state, event) {
       if (attempt.status === 'terminal') {
         const recorded = state.events.some(item => item.kind === 'attempt.outcome' &&
           item.dispatchCertainty === event.dispatchCertainty && sameRecord(item.outcome, event.outcome) &&
-          sameRecord(item.observations, event.observations));
+          sameRecord(item.observations, event.observations) && sameRecord(item.findings, event.findings));
         if (recorded) return duplicate;
         if (sameRecord(attempt.outcome, event.outcome) && attempt.dispatchCertainty === event.dispatchCertainty) {
-          return event.observations?.length ? apply({}, 'OBSERVATIONS_RECEIVED', [], 'attempt.late_outcome') : duplicate;
+          return (event.observations?.length || event.findings?.length) ? apply({}, 'OBSERVATIONS_RECEIVED', [], 'attempt.late_outcome') : duplicate;
         }
       }
       const resolved = resolveOutcome(attempt, event);
