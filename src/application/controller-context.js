@@ -15,6 +15,7 @@ export const controllerInstructions = [
   'Delegate when useful by selecting a profile and writing an objective, expected result and context references. Use all_requested or next_completion with action targets to wait for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
+  'Workspace files and branches may change during the operation. Use observations to decide whether earlier findings still apply and whether to read a target again. Reported locations, versions and times describe individual observations.',
   'Use optional findings for model claims that should remain available in history. Each finding has a new findingId, author (your profileId), claim, subject, supports, and uncertainties. Use an earlier finding reference in supersedes to revise it. Cite findings by their finding:<id> context reference.',
   'When the adapter exposes context fetch, request details by reference. A model summary lists covered observation references and remains a separate model claim.',
   'Context excerpts are partial. Missing references and omissions from the byte budget are marked explicitly.',

@@ -197,6 +197,7 @@ test('workspace files and Git state can change during a live attempt without inv
       const result = run('git', args, { cwd });
       assert.ifError(result.error);
       assert.equal(result.status, 0, result.stderr);
+      return result.stdout;
     }
     const file = resolve(cwd, 'example.js');
     git('init', '-q');
@@ -206,7 +207,7 @@ test('workspace files and Git state can change during a live attempt without inv
       'commit', '--no-gpg-sign', '-qm', 'synthetic fixture');
     const started = Promise.withResolvers();
     const proceed = Promise.withResolvers();
-    const { api, invocations, cancellations } = setup({ async respond(invocation) {
+    const { api, invocations, events, cancellations } = setup({ async respond(invocation) {
       started.resolve();
       await proceed.promise;
       return final(invocation);
@@ -218,12 +219,16 @@ test('workspace files and Git state can change during a live attempt without inv
       await writeFile(file, 'export const value = 2;');
       git('add', 'example.js');
       await writeFile(file, 'export const value = 3;');
+      assert.equal(git('branch', '--show-current').trim(), 'other-branch');
+      assert.equal(git('show', ':example.js'), 'export const value = 2;');
     } finally {
       proceed.resolve();
     }
     const finished = await submission.completion;
     assert.equal(finished.status, 'finished');
     assert.equal(invocations.length, 1);
+    assert.deepEqual(events.filter(item => item.eventName === 'attempt.dispatched').map(item => item.attemptId),
+      [invocations[0].attemptId]);
     assert.equal(invocations[0].authorityRef, 'fixture-authority');
     assert.deepEqual(cancellations, []);
   });

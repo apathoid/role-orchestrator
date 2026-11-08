@@ -31,20 +31,24 @@ const artifact = (input, path) => {
 const summaryFields = { coveredObservationRefs: arrayOf(id) };
 const summary = record({ author: id, ...summaryFields });
 const summaryReport = record({ kind: oneOf('model_summary'), text: id, ...summaryFields });
+const reportedContext = optional(record({
+  location: optional(id), version: optional(id), reportedAt: optional(measurement),
+}));
 const itemFields = record({
   ref: id, source, completeness, value: optional(jsonValue), provenance: optional(provenance),
-  artifact: optional(artifact), summary: optional(summary),
+  artifact: optional(artifact), summary: optional(summary), reportedContext,
 });
 
 /** @typedef {{ref: string, size: number, originalSize: number, truncated: boolean}} ArtifactReference
  * @typedef {{kind: 'user' | 'model' | 'provider_tool' | 'provider_report' | 'host_transport',
  *   sourceId: string, receivedAt?: number, exit?: {kind: 'agent_exit' | 'tool_exit', code: number}}} Provenance
  * @typedef {{ref: string, source: ReturnType<typeof source>, completeness: ReturnType<typeof completeness>,
- *   value?: unknown, provenance?: Provenance, artifact?: ArtifactReference, summary?: ReturnType<typeof summary>}} Observation
+ *   value?: unknown, provenance?: Provenance, artifact?: ArtifactReference, summary?: ReturnType<typeof summary>,
+ *   reportedContext?: ReturnType<typeof reportedContext>}} Observation
  * @typedef {Observation & {receivedSequence?: {revision: number, index: number}, attemptId?: string,
  *   kind?: 'finding', excerpt?: string, unavailableReason?: 'missing' | 'budget' | 'payload',
  *   outputKind?: Outcome['outputRefs'][number]['kind']}} ContextItem
- * @typedef {{ref: string, sourceId: string, completeness: Observation['completeness'], value?: unknown} & (
+ * @typedef {{ref: string, sourceId: string, completeness: Observation['completeness'], value?: unknown, reportedContext?: Observation['reportedContext']} & (
  *   {kind: 'agent_exit', exitCode: number} |
  *   {kind: 'provider_tool', exitCode?: number} |
  *   {kind: 'model' | 'provider_report' | 'host_transport'}
@@ -88,18 +92,19 @@ export function observation(item, origin) {
   return { ...item, source: sources[origin.kind], provenance: origin };
 }
 
-const adapterFields = { ref: id, sourceId: id, completeness, value: optional(jsonValue) };
+const adapterFields = { ref: id, sourceId: id, completeness, value: optional(jsonValue), reportedContext };
 const adapterObservation = record({
   ...adapterFields, kind: oneOf('agent_exit', 'provider_tool', 'model', 'provider_report', 'host_transport'), exitCode: optional(exitCode),
 });
-const legacyObservation = record({ ref: id, source, completeness, value: optional(jsonValue) });
+const legacyObservation = record({ ref: id, source, completeness, value: optional(jsonValue), reportedContext });
 
 /** @param {ProviderObservation} input @param {number} receivedAt @returns {Observation | undefined} */
 export function receiveProviderObservation(input, receivedAt) {
   if (input && Object.hasOwn(input, 'kind')) {
     const parsed = decode(adapterObservation, input);
     if (parsed.kind === 'rejected') return undefined;
-    const { kind, sourceId, exitCode, ...item } = parsed.value;
+    const { kind, sourceId, exitCode, reportedContext, ...fields } = parsed.value;
+    const item = reportedContext ? { ...fields, reportedContext } : fields;
     if (kind === 'agent_exit') {
       return exitCode === undefined ? undefined : observation(item, {
         kind: 'host_transport', sourceId, receivedAt, exit: { kind: 'agent_exit', code: exitCode },
@@ -113,7 +118,8 @@ export function receiveProviderObservation(input, receivedAt) {
   }
   const parsed = decode(legacyObservation, input);
   if (parsed.kind === 'rejected') return undefined;
-  const { source, ...item } = parsed.value;
+  const { source, reportedContext, ...fields } = parsed.value;
+  const item = reportedContext ? { ...fields, reportedContext } : fields;
   // An opaque legacy payload supplies no verified process or tool identity.
   return observation(item, { kind: source === 'model_claim' ? 'model' : 'provider_report', sourceId: item.ref, receivedAt });
 }
