@@ -42,7 +42,7 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
     import assert from 'node:assert/strict';
     import { registerHooks } from 'node:module';
     const expectedSource = new URL('./node_modules/' + ${JSON.stringify(pkg.name)} + '/src/', import.meta.url).href;
-    const builtins = new Set(['node:crypto', 'node:buffer', 'node:child_process', 'node:events']);
+    const builtins = new Set(['node:crypto', 'node:buffer', 'node:child_process', 'node:events', 'node:path', 'node:stream']);
     registerHooks({ resolve(specifier, context, next) {
       const result = next(specifier, context);
       assert.ok(builtins.has(result.url) || result.url.startsWith(expectedSource), result.url);

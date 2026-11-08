@@ -1,3 +1,5 @@
+import { parseDecisionText } from '../invocation-prompt.js';
+
 /** @import {ProviderPort, ProviderResult} from '../../core/ports.js' */
 /** @import {Outcome, ReasonCode} from '../../core/contracts.js' */
 /** @import {AdapterObservation} from '../../core/observation.js' */
@@ -156,23 +158,4 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
     },
     output: code || message === undefined ? undefined : kind === 'controller' ? parseDecisionText(message) : message,
   };
-}
-
-/** @param {string} message @returns {unknown} */
-function parseDecisionText(message) {
-  try {
-    /** @type {unknown} */
-    const value = JSON.parse(message);
-    // A v1 Decision is shallow. Preserve excessively nested input as text so
-    // it can be recorded without recursive admission of arbitrary JSON.
-    return withinDecisionDepth(value, 16) ? value : message;
-  } catch {
-    return message;
-  }
-}
-
-/** @param {unknown} value @param {number} remaining @returns {boolean} */
-function withinDecisionDepth(value, remaining) {
-  return value === null || typeof value !== 'object' ||
-    (remaining > 0 && Object.values(value).every(item => withinDecisionDepth(item, remaining - 1)));
 }

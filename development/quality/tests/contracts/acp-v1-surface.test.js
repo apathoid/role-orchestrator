@@ -65,12 +65,12 @@ test('pinned ACP v1 SDK exchanges session, tool, permission and cancel messages 
 
   const signal = AbortSignal.timeout(2_000);
   try {
-    const initialized = await connection.agent.request(a.initialize, { protocolVersion: 1, clientCapabilities: {} }, { signal });
+    const initialized = await connection.agent.request(a.initialize, { protocolVersion: 1, clientCapabilities: {} }, { cancellationSignal: signal, stopWaitingOnCancel: true });
     assert.equal(initialized.protocolVersion, 1);
     assert.ok(initialized.agentCapabilities.sessionCapabilities.close);
-    const opened = await connection.agent.request(a.session.new, { cwd: process.cwd(), mcpServers: [] }, { signal });
+    const opened = await connection.agent.request(a.session.new, { cwd: process.cwd(), mcpServers: [] }, { cancellationSignal: signal, stopWaitingOnCancel: true });
     assert.equal(opened.sessionId, sessionId);
-    const prompt = connection.agent.request(a.session.prompt, { sessionId, prompt: [{ type: 'text', text: 'probe' }] }, { signal });
+    const prompt = connection.agent.request(a.session.prompt, { sessionId, prompt: [{ type: 'text', text: 'probe' }] }, { cancellationSignal: signal, stopWaitingOnCancel: true });
     await Promise.race([
       permissionReceived.promise,
       prompt.then(() => assert.fail('Prompt finished before the cancellation notification')),
@@ -79,7 +79,7 @@ test('pinned ACP v1 SDK exchanges session, tool, permission and cancel messages 
     assert.equal(updates[0].update.toolCallId, toolCallId);
     await connection.agent.notify(a.session.cancel, { sessionId });
     assert.deepEqual(await prompt, { stopReason: 'cancelled' });
-    assert.deepEqual(await connection.agent.request(a.session.close, { sessionId }, { signal }), {});
+    assert.deepEqual(await connection.agent.request(a.session.close, { sessionId }, { cancellationSignal: signal, stopWaitingOnCancel: true }), {});
   } finally {
     waitingForCancel.resolve();
     connection.close();

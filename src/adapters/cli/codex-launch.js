@@ -1,3 +1,5 @@
+import { launchEnvironment } from '../launch-environment.js';
+
 /** @import {ProviderConfig} from '../../application/configuration/decode-config.js' */
 
 /**
@@ -28,23 +30,12 @@ export function prepareCodexLaunch(provider, { model, cwd, prompt }, environment
     nativeArgs.push(`--profile=${value}`);
   }
 
-  const overrides = Object.entries(launch.env ?? {}).map(([key, { fromEnv }]) => {
-    if (!key || key.includes('=') || key.includes('\0')) {
-      throw new TypeError('launch.env contains an invalid destination name');
-    }
-    const value = Object.hasOwn(environment, fromEnv) ? environment[fromEnv] : undefined;
-    if (value === undefined || value.includes('\0')) {
-      throw new TypeError(`launch.env.${key} references an unavailable or invalid environment value`);
-    }
-    return [key, value];
-  });
-
   return {
     command: launch.command,
     args: [...launcherArgs, 'exec', '--json', '--skip-git-repo-check', `--model=${model}`, ...nativeArgs, '-'],
     options: {
       cwd,
-      env: { ...environment, ...Object.fromEntries(overrides) },
+      env: launchEnvironment(launch.env, environment),
       shell: /** @type {const} */ (false),
     },
     stdin: prompt,

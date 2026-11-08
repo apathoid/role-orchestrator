@@ -8,3 +8,4 @@ export { createCatalog } from '../application/configuration/catalog.js';
 export { createAuthorityGrant } from '../application/configuration/authority.js';
 export { createPermissionBroker } from '../application/configuration/permissions.js';
 export { createCodexProvider } from '../adapters/cli/codex-provider.js';
+export { createAcpProvider } from '../adapters/acp/provider.js';

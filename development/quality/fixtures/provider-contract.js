@@ -85,7 +85,7 @@ export function providerContract(name, withFixture, { skip = false } = {}) {
     const response = await next.response;
     assert.equal(response.outcome.terminal, 'completed');
     assert.equal(response.output, 'result attempt-next');
-    assert.deepEqual(response.outcome.usage, { inputTokens: 0, outputTokens: 4, cost: null });
+    assert.deepEqual(response.outcome.usage, fixture.knownUsage ?? { inputTokens: 0, outputTokens: 4, cost: null });
     assertReferences(response, next);
   });
 }

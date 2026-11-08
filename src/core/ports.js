@@ -71,7 +71,7 @@
  * @typedef {(retry: {operationId: string, attemptId: string, actionId: string, profileId: string}) => boolean} RetryApproval
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>
  *   'ALLOWED' | 'PERMISSION_DENIED' | 'REVOKED'}} AuthorityPort
- * @typedef {{id: string, kind: 'allow' | 'deny'}} PermissionOption
+ * @typedef {{id: string, kind: 'allow' | 'deny', label?: string, scope?: 'once' | 'always'}} PermissionOption
  * @typedef {{providerRequestId: string, resource: string, options: readonly PermissionOption[]}} PermissionRequest
  * @typedef {{kind: 'selected', option: string} | {kind: 'denied' | 'cancelled' | 'unavailable' | 'invalid'}} PermissionResult
  * @typedef {{request: (request: PermissionRequest) => Promise<PermissionResult>, close: () => void}} AttemptPermissions

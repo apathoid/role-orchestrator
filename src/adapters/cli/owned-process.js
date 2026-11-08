@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { addAbortListener } from 'node:events';
 
-/** @typedef {{command: string, args: readonly string[], options: {cwd?: string, env: NodeJS.ProcessEnv, shell: false}, stdin: string}} ProcessLaunch */
+/** @typedef {{command: string, args: readonly string[], options: {cwd?: string, env: NodeJS.ProcessEnv, shell: false}, stdin?: string}} ProcessLaunch */
 /** @typedef {'stdout' | 'stderr'} OutputStream */
 /** @typedef {'exited' | 'start_failed' | 'cancelled' | 'timed_out' | 'io_failed'} ProcessEnd */
 /** @typedef {Partial<Record<'start' | 'stdin' | OutputStream | 'cleanup', string>>} ProcessErrors */
@@ -17,7 +17,7 @@ const drainAfterExitMs = 1_000;
  *
  * @param {ProcessLaunch} launch
  * @param {{timeoutMs: number, signal: AbortSignal, onOutput: (stream: OutputStream, chunk: Buffer) => void}} options
- * @returns {OwnedProcess}
+ * @returns {OwnedProcess & {pipes?: import('node:child_process').ChildProcessWithoutNullStreams}}
  */
 export function startCliProcess(launch, { timeoutMs, signal, onOutput }) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimerDelayMs) {
@@ -78,11 +78,11 @@ export function startCliProcess(launch, { timeoutMs, signal, onOutput }) {
   });
   child.once('spawn', () => {
     started = true;
-    if (reason === undefined) stdin.end(launch.stdin, 'utf8');
+    if (reason === undefined && launch.stdin !== undefined) stdin.end(launch.stdin, 'utf8');
   });
   stdin.on('error', error => { errors.stdin = errorCode(error); });
   for (const name of /** @type {const} */ (['stdout', 'stderr'])) {
-    child[name].on('data', (/** @type {Buffer} */ chunk) => {
+    if (name === 'stderr' || launch.stdin !== undefined) child[name].on('data', (/** @type {Buffer} */ chunk) => {
       if (errors[name] !== undefined) return;
       try {
         onOutput(name, chunk);
@@ -130,6 +130,7 @@ export function startCliProcess(launch, { timeoutMs, signal, onOutput }) {
 
   return {
     finished,
+    ...(launch.stdin === undefined && { pipes: child }),
     cancel,
     async close() {
       cancel();

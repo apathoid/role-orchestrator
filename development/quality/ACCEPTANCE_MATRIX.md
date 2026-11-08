@@ -89,3 +89,6 @@ Mock Controller fixtures задают решения, позволяющие п�
 | `A18` | OBSERVED, часть CLI adapter | `codex-provider.test.js`, `provider-port.test.js`: обязательное интерактивное подтверждение блокируется до запуска; неизвестный необязательный usage остаётся неизвестным |
 | `A20` | OBSERVED, CLI adapter и локальный Linux subprocess | `cli-process.test.js`, `codex-durable.test.js`, `provider-port.test.js`: адресная отмена и закрытие, сохранение поздних наблюдений, независимый процесс не остановлен. Нативная модель и внешний ACP остаются UNVERIFIED |
 | `A38` | UNVERIFIED | [Проба Codex CLI](../reports/C07/CLI_NATIVE_PROBE.md) достигла HTTP 401 без ответа модели. Для A38 нужны успешные проверки с реальными исполнителями и ACP/Zed |
+| `A16`, `A18` | OBSERVED, Generic ACP adapter и Linux subprocess | `acp-provider.test.js`: allow/deny, неизвестная опция, отмена параллельных запросов, обязательные возможности и negotiation, неизвестный usage |
+| `A20` | OBSERVED, контракт ACP adapter | `acp-provider.test.js`: адресная отмена, поздний terminal, потеря транспорта, закрытие сессии и отсутствие ответа на cancel. Нативная часть UNVERIFIED |
+| `A38` | UNVERIFIED, нативное рукопожатие ACP OBSERVED | [Проба Codex ACP 2.5.0](../reports/C08/ACP_ADAPTER.md) подтвердила ACP v1, но `session/new` не ответил до дедлайна. Модельный вызов и внешний клиент остаются открытыми |

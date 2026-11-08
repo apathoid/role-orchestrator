@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C08.1, сопоставление портов с ACP v1 |
-| Следующий шаг | C08.2, владение соединением и сессией ACP |
+| Последний локально проверенный шаг | C08.8, общий контракт и нативная проба ACP |
+| Следующий шаг | C09.1, Plugin API v1 |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.7 и протокольной проверки C08.1 на Linux |
+| Local regression verified | OBSERVED для C00–C07.7 и C08.1–C08.8 на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -182,9 +182,11 @@
 ## C08 — Generic ACP adapter
 
 - C08.1 — [сопоставление ProviderPort и стабильного ACP v1](reports/C08/ACP_V1_PROTOCOL_MAPPING.md) по SDK 2.4.0, опубликованной спецификации и контрактному тесту. Подтверждены API подключения, рукопожатие, сессия, prompt, событие инструмента, запрос разрешения, отмена и закрытие через NDJSON с управляемым агентом.
-- OBSERVED на Linux, Node 24.22.1. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:contracts` (11), `test:integration` (127), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативное рукопожатие с Codex ACP и вызов модели остаются UNVERIFIED. Следующий шаг — C08.2.
+- C08.2–C08.7 — [Generic ACP ProviderPort](reports/C08/ACP_ADAPTER.md). Публичная фабрика управляет соединением и сессией, передаёт вложения и потоковые события, связывает разрешения с попыткой, поддерживает явно подключённый client-tool bridge, проверяет выбор модели и завершает собственный процесс после отмены.
+- C08.8 — общий контракт ProviderPort, протокольные fixtures и сквозной вызов Controller прошли на Linux, Node 24.22.1. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:contracts` (34), `test:integration` (128), `check:package`, `check:removal` и `git diff --check` завершились успешно.
+- OBSERVED: Codex ACP 2.5.0 согласовал ACP v1. `session/new` не ответил до дедлайна, поэтому модельный вызов и внешний ACP/Zed остаются UNVERIFIED. A18/A20 проверены локально на уровне контракта адаптера. Нативная часть A20 и A38 остаются открытыми. Следующий шаг — C09.1.
 
 ### Исправления после ревью C07
 
 - CLI сохраняет `item.completed/error` как сообщение провайдера со ссылкой из исхода. Проверка воспроизвела потерю предупреждения на `fb87c65`. После исправления предупреждение сохраняется в snapshot успешного хода.
-- CLI явно сообщает `context.retrieval: unsupported` в каталоге и предупреждает модель об ограничении в prompt. Доставка `ContextPort.list/fetch` через реальные адаптеры и её сквозная проверка внесены в C09.6. Следующий шаг — C08.2.
+- CLI явно сообщает `context.retrieval: unsupported` в каталоге и предупреждает модель об ограничении в prompt. Доставка `ContextPort.list/fetch` через реальные адаптеры и её сквозная проверка внесены в C09.6.
