@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resourceSnapshot } from '../../../../src/main/index.js';
 import { abortOnly, final, setup } from '../../fixtures/application.js';
-import { assessment, request } from '../../fixtures/core.js';
+import { assessment, outcome, request } from '../../fixtures/core.js';
 
 test('a literal request without cwd takes one Controller and correlates the timeline', async () => {
   const { api, invocations, events, closed } = setup();
@@ -201,7 +201,7 @@ test('a continuation sees the previous delivered answer as a model record', asyn
   assert.equal(history.at(-1).value, 'Explain that answer');
 });
 
-test('deadline bounds an uncooperative invoke and cancel; a late reply cannot finish the operation', { timeout: 3000 }, async () => {
+test('deadline bounds uncooperative invoke and cancel; a detached session cannot add late data', { timeout: 3000 }, async () => {
   const dispatched = Promise.withResolvers();
   const reply = Promise.withResolvers();
   let expire;
@@ -265,4 +265,48 @@ test('an undetached connection keeps its slot until late cleanup completes', { t
   await new Promise(resolve => setImmediate(resolve));
   const resumed = await api.resume(blocked.operationId, { requestId: 'continue-other', text: 'Continue' });
   assert.equal((await resumed.completion).status, 'finished');
+});
+
+test('a correlated reply during cleanup records late facts but cannot drive the Controller', { timeout: 3000 }, async () => {
+  const dispatched = Promise.withResolvers();
+  const closing = Promise.withResolvers();
+  const cleanup = Promise.withResolvers();
+  const reply = Promise.withResolvers();
+  let expire;
+  let observe;
+  const { api, invocations } = setup({
+    schedule(ms, callback) { expire = callback; return () => {}; },
+    close() { closing.resolve(); return cleanup.promise; },
+    respond(invocation, count, callback) {
+      observe = callback;
+      dispatched.resolve(invocation);
+      return reply.promise;
+    },
+  });
+  const submitted = await api.submit(request());
+  const invocation = await dispatched.promise;
+  expire();
+  await closing.promise;
+  const fact = { ref: 'late-exit', source: 'provider_reported', completeness: 'complete', value: 'failed before effect' };
+  observe(fact);
+  observe(fact);
+  reply.resolve({
+    ...final(invocation),
+    outcome: outcome(invocation.attemptId, {
+      terminal: 'failed', effect: 'none', usage: { cost: 0.02, inputTokens: null, outputTokens: null },
+    }),
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  cleanup.resolve();
+  const state = await submitted.completion;
+  assert.equal(state.status, 'waiting');
+  assert.equal(state.waiting.reason.code, 'DEADLINE_EXCEEDED');
+  assert.equal(state.waiting.reason.effect, 'none');
+  assert.equal(state.attempts[0].outcome.terminal, 'failed');
+  assert.equal(state.attempts[0].outcome.effect, 'none');
+  assert.equal(state.attempts[0].outcome.usage.cost, 0.02);
+  assert.equal(resourceSnapshot(state).usage.cost.known, 0.02);
+  assert.equal(state.events.filter(event => event.kind === 'controller.responded').length, 0);
+  assert.equal(state.events.flatMap(event => event.observations ?? []).filter(item => item.ref === fact.ref).length, 1);
+  assert.equal(invocations.length, 1);
 });

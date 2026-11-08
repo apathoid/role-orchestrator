@@ -88,3 +88,20 @@ test('snapshot rejects runtime handles instead of invoking their serializers', (
   assert.throws(() => encodeSnapshot(withHistory(circular)), SnapshotFormatError);
   assert.throws(() => encodeSnapshot({ ...initial(), permissions: { token: 'secret' } }), SnapshotFormatError);
 });
+
+test('snapshot rejects lifecycle regressions and fabricated no-effect outcomes', () => {
+  const wire = () => JSON.parse(encodeSnapshot(withHistory()));
+  const edits = [
+    state => { state.attempts[0].status = 'reserved'; delete state.attempts[0].outcome; delete state.attempts[0].endedAt; },
+    state => { delete state.attempts[0].dispatchedAt; },
+    state => { state.attempts[0].route = { configurationRef: 'c', profileId: 'p', providerId: 'x', model: 'm' }; },
+    state => { state.attempts[0].dispatchCertainty = 'sent'; },
+    state => { state.attempts[0].outcome.effect = 'none'; state.attempts[0].outcome.terminal = 'failed'; },
+    state => { [state.events[1], state.events[2]] = [state.events[2], state.events[1]]; },
+  ];
+  for (const edit of edits) {
+    const damaged = wire();
+    edit(damaged);
+    assert.equal(decodeSnapshot(JSON.stringify(damaged)).kind, 'corrupt');
+  }
+});

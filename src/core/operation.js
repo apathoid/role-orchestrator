@@ -26,7 +26,7 @@
  *   {kind: 'attempt.reserved', actionId: string, attemptId: string} |
  *   {kind: 'attempt.dispatched', attemptId: string, route?: DispatchRoute} |
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
- *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly ContextItem[]} |
+ *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly ContextItem[], late?: true} |
  *   {kind: 'controller.responded', decision: Decision, admissions?: readonly Admission[]} |
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
@@ -86,6 +86,47 @@ export function resourceSnapshot(state) {
     active, charged, remaining: Math.max(0, state.limits.maxInvocations - charged),
     usage: { inputTokens: total('inputTokens'), outputTokens: total('outputTokens'), cost: total('cost') },
   };
+}
+
+/**
+ * Resolve terminal evidence against the current ledger. A late report can
+ * fill unknown fields, but cannot replace an earlier incompatible fact.
+ * @param {Attempt} prior @param {Extract<Event, {kind: 'attempt.outcome'}>} event
+ */
+export function resolveOutcome(prior, event) {
+  const { outcome, dispatchCertainty } = event;
+  if (prior.status !== 'terminal') return { outcome, dispatchCertainty };
+  const current = prior.outcome;
+  if (!event.late) {
+    if (current.terminal === 'unknown' && outcome.terminal !== 'unknown' &&
+        (prior.dispatchCertainty === 'unknown' || prior.dispatchCertainty === dispatchCertainty)) {
+      return { outcome, dispatchCertainty };
+    }
+    return undefined;
+  }
+  if (current.terminal !== 'unknown' && outcome.terminal !== 'unknown' && current.terminal !== outcome.terminal) return undefined;
+  if (prior.dispatchCertainty !== 'unknown' && dispatchCertainty !== 'unknown' &&
+      prior.dispatchCertainty !== dispatchCertainty) return undefined;
+  if ((current.effect === 'none' && outcome.effect === 'confirmed') ||
+      (current.effect === 'confirmed' && outcome.effect === 'none')) return undefined;
+
+  const terminal = current.terminal === 'unknown' ? outcome.terminal : current.terminal;
+  const effect = current.effect === 'unknown' || (current.effect === 'possible' && outcome.effect !== 'unknown')
+    ? outcome.effect : current.effect;
+  const certainty = prior.dispatchCertainty === 'unknown' ? dispatchCertainty : prior.dispatchCertainty;
+  const usage = {
+    inputTokens: current.usage.inputTokens ?? outcome.usage.inputTokens,
+    outputTokens: current.usage.outputTokens ?? outcome.usage.outputTokens,
+    cost: current.usage.cost ?? outcome.usage.cost,
+  };
+  const outputRefs = [...current.outputRefs];
+  for (const ref of outcome.outputRefs) {
+    if (!outputRefs.some(item => sameRecord(item, ref))) outputRefs.push(ref);
+  }
+  if (terminal === current.terminal && effect === current.effect && certainty === prior.dispatchCertainty &&
+      sameRecord(usage, current.usage) && outputRefs.length === current.outputRefs.length) return undefined;
+  const base = terminal !== current.terminal ? outcome : current;
+  return { outcome: { ...base, terminal, effect, usage, outputRefs }, dispatchCertainty: certainty };
 }
 
 /** @param {Operation} state @param {Event} event @returns {Transition} */
@@ -158,24 +199,30 @@ export function applyEvent(state, event) {
     case 'attempt.outcome': {
       if (!attempt) return reject('INVALID_PROPOSAL');
       if (attempt.status === 'terminal') {
+        const recorded = state.events.some(item => item.kind === 'attempt.outcome' &&
+          item.dispatchCertainty === event.dispatchCertainty && sameRecord(item.outcome, event.outcome) &&
+          sameRecord(item.observations, event.observations));
+        if (recorded) return duplicate;
         if (sameRecord(attempt.outcome, event.outcome) && attempt.dispatchCertainty === event.dispatchCertainty) {
-          const recorded = state.events.find(item => item.kind === 'attempt.outcome' &&
-            item.outcome.attemptId === event.outcome.attemptId && sameRecord(item.observations, event.observations));
-          if (recorded || !event.observations?.length) return duplicate;
-          return apply({}, 'OBSERVATIONS_RECEIVED', [], 'attempt.late_outcome');
+          return event.observations?.length ? apply({}, 'OBSERVATIONS_RECEIVED', [], 'attempt.late_outcome') : duplicate;
         }
-        const hasKnownUpdate = attempt.outcome.terminal === 'unknown' && event.outcome.terminal !== 'unknown' &&
-          (attempt.dispatchCertainty === 'unknown' || attempt.dispatchCertainty === event.dispatchCertainty);
-        if (!hasKnownUpdate) return apply({}, 'IDENTITY_CONFLICT', [], 'attempt.outcome_discrepancy');
       }
-      if ((attempt.status === 'reserved' && event.dispatchCertainty !== 'not_sent') ||
-          (event.dispatchCertainty === 'not_sent' && event.outcome.effect !== 'none')) {
+      const resolved = resolveOutcome(attempt, event);
+      if (!resolved) return apply({}, 'IDENTITY_CONFLICT', [], 'attempt.outcome_discrepancy');
+      if ((attempt.status === 'reserved' && resolved.dispatchCertainty !== 'not_sent') ||
+          (resolved.dispatchCertainty === 'not_sent' && resolved.outcome.effect !== 'none')) {
         return reject('INVALID_PROPOSAL');
       }
-      return apply(updateAttempt({
-        ...attempt, status: 'terminal', endedAt: event.receivedAt, outcome: event.outcome,
-        dispatchCertainty: event.dispatchCertainty,
-      }), event.outcome.diagnostics[0]?.code ?? event.outcome.terminal.toUpperCase(), [],
+      /** @type {Partial<Operation>} */
+      const patch = updateAttempt({
+        ...attempt, ...resolved, status: 'terminal', endedAt: event.receivedAt,
+      });
+      if (state.waiting?.kind === 'technical' && state.waiting.reason.attemptId === attempt.attemptId) {
+        patch.waiting = { kind: 'technical', reason: {
+          ...state.waiting.reason, dispatchCertainty: resolved.dispatchCertainty, effect: resolved.outcome.effect,
+        } };
+      }
+      return apply(patch, event.outcome.diagnostics[0]?.code ?? event.outcome.terminal.toUpperCase(), [],
       attempt.status === 'terminal' || state.status === 'cancelled' || attempt.generation !== state.generation
         ? 'attempt.late_outcome' : 'attempt.outcome');
     }

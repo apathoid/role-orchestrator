@@ -100,3 +100,9 @@
 
 - C05.10 — девять subprocess crash boundaries от reservation до доставки. Проверены число внешних эффектов, сохранённый расход, явный resume, повторная доставка, корреляция commit revision и attemptId и сохранность результата при отказе diagnostic sink. C05 закрыт на уровне локального Linux store и тестовых портов. A23–A28 отражены в acceptance matrix с границами доказательства.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (13), `test:integration` (76), `check:package`, `check:removal`. Следующий шаг — C06.1, provenance. Нативные адаптеры, CLI/ACP delivery и NixOS остаются UNVERIFIED.
+
+### C05 — исправления после ревью
+
+- Snapshot codec сверяет status, dispatch certainty, timestamps, маршрут и итог attempt с последовательностью сохранённых событий. Несогласованная запись возвращает corrupt_snapshot, остаётся на диске и не допускает resume или dispatch.
+- После abort coordinator ограничивает ожидание и завершает модельный ход, но до подтверждения отсоединения сохраняет коррелированные поздние факты. Проверены late outcome и расход, дедупликация observations, сохранение после дедлайна cleanup и отсутствие повторного модельного хода.
+- OBSERVED локально: `check`, `test:foundation` (4), `test:core` (14), `test:integration` (79), `check:package`, `check:removal` (из локального npm cache). Следующий шаг — C06.1.

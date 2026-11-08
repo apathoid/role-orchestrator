@@ -1,5 +1,6 @@
 import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
 import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
+import { resolveOutcome, sameRecord } from './operation.js';
 
 /** @import {Decoder, FieldError} from './decode.js' */
 /** @import {Attempt, Event, Operation} from './operation.js' */
@@ -107,7 +108,7 @@ const event = tagged('kind', {
   }),
   'attempt.outcome': record({
     ...eventFields, kind: oneOf('attempt.outcome'), outcome, dispatchCertainty: certainty,
-    observations: optional(arrayOf(contextItem)),
+    observations: optional(arrayOf(contextItem)), late: optional((input, path) => input === true ? /** @type {const} */ (true) : invalid(path, 'true')),
   }),
   'controller.responded': record({
     ...eventFields, kind: oneOf('controller.responded'), decision, admissions: optional(arrayOf(admission)),
@@ -152,13 +153,54 @@ function snapshot(input, path) {
     }
   }
   const events = new Set();
+  /** @type {Map<string, Attempt>} */
+  const ledger = new Map();
+  let generation = 0;
   for (const [index, item] of value.events.entries()) {
     const at = path + '.events[' + index + ']';
     if (item.operationId !== value.operationId) invalid(at + '.operationId', 'the enclosing operation id');
     if (events.has(item.eventId)) invalid(at + '.eventId', 'a unique event id');
     events.add(item.eventId);
+    if (item.kind === 'operation.continued' || item.kind === 'operation.recovered') generation++;
     const attemptId = item.kind === 'attempt.outcome' ? item.outcome.attemptId : 'attemptId' in item ? item.attemptId : undefined;
-    if (attemptId && !attempts.has(attemptId)) invalid(at + '.attemptId', 'an attempt in this snapshot');
+    if (!attemptId) continue;
+    if (!attempts.has(attemptId)) invalid(at + '.attemptId', 'an attempt in this snapshot');
+    const prior = ledger.get(attemptId);
+    if (item.kind === 'attempt.reserved') {
+      if (prior) invalid(at + '.attemptId', 'a single reservation per attempt');
+      ledger.set(attemptId, {
+        attemptId, actionId: item.actionId, generation, reservedAt: item.receivedAt,
+        status: 'reserved', dispatchCertainty: 'not_sent',
+      });
+    } else {
+      if (!prior) invalid(at + '.attemptId', 'a preceding reservation');
+      if (item.kind === 'attempt.dispatched') {
+        if (prior.status !== 'reserved') invalid(at + '.kind', 'a dispatch of a reserved attempt');
+        ledger.set(attemptId, {
+          ...prior, status: 'dispatched', dispatchCertainty: 'unknown', dispatchedAt: item.receivedAt, route: item.route,
+        });
+      } else if (item.kind === 'attempt.outcome') {
+        const resolved = resolveOutcome(prior, item);
+        if (!resolved) continue;
+        if ((prior.status === 'reserved' && resolved.dispatchCertainty !== 'not_sent') ||
+            (resolved.dispatchCertainty === 'not_sent' && resolved.outcome.effect !== 'none')) {
+          invalid(at + '.dispatchCertainty', 'a dispatch certainty consistent with the recorded attempt');
+        }
+        ledger.set(attemptId, {
+          ...prior, ...resolved, status: 'terminal', endedAt: item.receivedAt,
+        });
+      }
+    }
+  }
+  for (const [index, item] of value.attempts.entries()) {
+    const at = path + '.attempts[' + index + ']';
+    const recorded = ledger.get(item.attemptId);
+    if (!recorded) invalid(at + '.attemptId', 'a recorded reservation');
+    for (const key of /** @type {const} */ ([
+      'actionId', 'generation', 'reservedAt', 'status', 'dispatchCertainty', 'dispatchedAt', 'route', 'outcome', 'endedAt',
+    ])) {
+      if (!sameRecord(item[key], recorded[key])) invalid(at + '.' + key, 'a value consistent with the attempt history');
+    }
   }
   return value;
 }

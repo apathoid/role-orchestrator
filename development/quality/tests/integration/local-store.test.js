@@ -337,3 +337,78 @@ test('read-only storage prevents dispatch and disk recovery does not replay a pr
   assert.equal(invocations.length, 2);
   assert.equal(effects, 1);
 });
+
+test('an orphan with a contradictory dispatch record cannot be resumed as unsent', async t => {
+  const { store, directory } = await setupStore(t);
+  const state = initial();
+  const reserved = reserve(state);
+  const dispatched = applyEvent(reserved, {
+    kind: 'attempt.dispatched', operationId: state.operationId, eventId: 'dispatch-1',
+    receivedAt: 101, attemptId: 'attempt-1',
+    route: { configurationRef: 'test-config', profileId: 'primary', providerId: 'fixture', model: 'fake' },
+  });
+  assert.equal(dispatched.kind, 'applied');
+  await store.commit(state.operationId, null, state);
+  await store.commit(state.operationId, 0, reserved);
+  await store.commit(state.operationId, 1, dispatched.state);
+  const name = (await fs.readdir(directory)).find(item => item.endsWith('.json'));
+  const path = join(directory, name);
+  const snapshot = JSON.parse(await fs.readFile(path, 'utf8'));
+  snapshot.attempts[0].status = 'reserved';
+  const corrupt = JSON.stringify(snapshot);
+  await fs.writeFile(path, corrupt);
+  const { api, invocations } = setup({ store });
+  await assert.rejects(api.resume(state.operationId), { code: 'STORE_UNAVAILABLE', reason: 'corrupt_snapshot' });
+  assert.equal(invocations.length, 0);
+  assert.equal(await fs.readFile(path, 'utf8'), corrupt);
+});
+
+test('late evidence after the cleanup deadline is committed while the connection is still owned', { timeout: 3000 }, async t => {
+  const { store } = await setupStore(t);
+  const started = Promise.withResolvers();
+  const closing = Promise.withResolvers();
+  const cleanup = Promise.withResolvers();
+  const reply = Promise.withResolvers();
+  const recorded = Promise.withResolvers();
+  let expire;
+  let observe;
+  const { api, invocations } = setup({
+    store,
+    schedule(ms, callback) { expire = callback; return () => {}; },
+    close() { closing.resolve(); return cleanup.promise; },
+    respond(invocation, count, callback) {
+      observe = callback;
+      started.resolve(invocation);
+      return reply.promise;
+    },
+    emit(event) {
+      if (event.eventName === 'attempt.late_outcome' && event.reasonCode === 'COMPLETED') recorded.resolve();
+    },
+  });
+  const submitted = await api.submit(request());
+  const invocation = await started.promise;
+  expire();
+  await closing.promise;
+  expire();
+  const waiting = await submitted.completion;
+  assert.equal(waiting.attempts[0].outcome.effect, 'unknown');
+
+  const fact = { ref: 'late-tool', source: 'provider_reported', completeness: 'complete', value: 'observed' };
+  observe(fact);
+  await new Promise(resolve => setImmediate(resolve));
+  observe(fact);
+  reply.resolve({
+    ...final(invocation),
+    outcome: outcome(invocation.attemptId, { effect: 'confirmed', usage: { cost: 0.02, inputTokens: 1, outputTokens: null } }),
+  });
+  await recorded.promise;
+  cleanup.resolve();
+  const loaded = await store.load(waiting.operationId);
+  assert.equal(loaded.status, 'waiting');
+  assert.equal(loaded.waiting.reason.code, 'DEADLINE_EXCEEDED');
+  assert.equal(loaded.waiting.reason.effect, 'confirmed');
+  assert.equal(loaded.attempts[0].outcome.usage.cost, 0.02);
+  assert.equal(loaded.events.filter(event => event.kind === 'controller.responded').length, 0);
+  assert.equal(loaded.events.flatMap(event => event.observations ?? []).filter(item => item.ref === fact.ref).length, 1);
+  assert.equal(invocations.length, 1);
+});

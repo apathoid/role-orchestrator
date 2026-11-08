@@ -15,7 +15,7 @@ import { runActionRound } from './action-round.js';
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
-/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
+/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{
@@ -357,6 +357,67 @@ export function createOrchestrator(deps) {
     /** @type {ContextItem[]} */
     const observations = [];
     let acceptingObservations = true;
+    /** @type {ContextItem[]} */
+    const lateObservations = [];
+    /** @type {ProviderResult | undefined} */
+    let receivedReply;
+    /** @type {ProviderResult | undefined} */
+    let lateReply;
+    let recordingLate = false;
+    let flushScheduled = false;
+
+    /** @param {Operation} current */
+    async function recordLate(current) {
+      recordingLate = true;
+      const reply = lateReply;
+      lateReply = undefined;
+      const samples = lateObservations.splice(0);
+      if (!reply && !samples.length) return current;
+      const attempt = current.attempts.find(item => item.attemptId === attemptId);
+      if (attempt?.status !== 'terminal') return current;
+
+      const known = current.events.flatMap(event => event.kind === 'attempt.outcome' &&
+        event.outcome.attemptId === attemptId ? event.observations ?? [] : []);
+      const observations = [];
+      for (const sample of samples) {
+        if (known.some(item => sameRecord(item, sample))) continue;
+        observations.push(sample);
+        known.push(sample);
+      }
+      if (!reply && !observations.length) return current;
+      return transition(current, {
+        kind: 'attempt.outcome', late: true, outcome: reply?.outcome ?? attempt.outcome,
+        dispatchCertainty: reply?.dispatchCertainty ?? attempt.dispatchCertainty, observations,
+      });
+    }
+
+    function scheduleLateCommit() {
+      if (!recordingLate || flushScheduled) return;
+      flushScheduled = true;
+      void serialize(async () => {
+        const current = await inspect(state.operationId).finally(() => { flushScheduled = false; });
+        await recordLate(current);
+      }).catch(() => trace(state, 'attempt.late_outcome_commit_failed', 'STORE_UNAVAILABLE', attemptId));
+    }
+
+    /** @param {ProviderResult} reply @returns {ProviderResult | undefined} */
+    function acceptReply(reply) {
+      if (!reply) return undefined;
+      const parsed = decodeOutcome(reply.outcome);
+      if (parsed.kind === 'rejected' || parsed.value.attemptId !== attemptId ||
+          !['not_sent', 'sent', 'unknown'].includes(reply.dispatchCertainty) ||
+          (reply.dispatchCertainty === 'not_sent' && parsed.value.effect !== 'none')) return undefined;
+      const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty, output: reply.output };
+      if (acceptingObservations) {
+        receivedReply = result;
+        if (signal.aborted) {
+          lateReply = result;
+          scheduleLateCommit();
+        }
+      }
+      return result;
+    }
+
     const interrupted = Promise.withResolvers();
     void interrupted.promise.catch(() => {});
     /** @template T @param {Promise<T>} work @returns {Promise<T>} */
@@ -368,7 +429,6 @@ export function createOrchestrator(deps) {
     /** @type {'sent' | 'not_sent' | 'unknown'} */
     let certainty = 'not_sent';
     const abort = () => {
-      acceptingObservations = false;
       interrupted.reject(signal.reason);
       const owned = session;
       if (mayHaveSent && owned) {
@@ -426,7 +486,7 @@ export function createOrchestrator(deps) {
             capabilities[key].support !== 'supported')) {
           return {
             outcome: failedOutcome(attemptId, 'CAPABILITY_UNAVAILABLE', false),
-            certainty: /** @type {const} */ ('not_sent'), output, observations, contextCursor,
+            certainty: /** @type {const} */ ('not_sent'), output, observations, contextCursor, recordLate,
           };
         }
       }
@@ -465,19 +525,23 @@ export function createOrchestrator(deps) {
         return { response: withinDeadline(executor.invoke(owned, {
           ...context, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
-        }, item => { if (acceptingObservations) observations.push(item); })) };
+        }, item => {
+          if (!acceptingObservations) return;
+          if (!signal.aborted) observations.push(item);
+          else {
+            lateObservations.push(item);
+            scheduleLateCommit();
+          }
+        }).then(acceptReply)) };
       });
       const reply = await invocation.response;
       signal.throwIfAborted();
-      const parsed = decodeOutcome(reply.outcome);
-      if (parsed.kind === 'rejected' || parsed.value.attemptId !== attemptId ||
-          !['not_sent', 'sent', 'unknown'].includes(reply.dispatchCertainty) ||
-          (reply.dispatchCertainty === 'not_sent' && parsed.value.effect !== 'none')) {
+      if (!reply) {
         outcome = failedOutcome(attemptId, 'PROTOCOL_ERROR', true);
         certainty = 'unknown';
       } else {
         ({ dispatchCertainty: certainty, output } = reply);
-        outcome = parsed.value;
+        outcome = reply.outcome;
       }
     } catch (error) {
       if (error instanceof OrchestrationError && ['STORE_CONFLICT', 'STORE_UNAVAILABLE'].includes(error.code)) throw error;
@@ -485,8 +549,11 @@ export function createOrchestrator(deps) {
         : mayHaveSent ? 'PROVIDER_DISCONNECTED' : 'PROVIDER_START_FAILED');
       certainty = mayHaveSent ? 'unknown' : 'not_sent';
       outcome = failedOutcome(attemptId, code, mayHaveSent);
+      if (signal.aborted) lateReply ??= receivedReply;
     } finally {
-      acceptingObservations = false;
+      // Decisions stop at abort. Facts remain attributable until the adapter
+      // acknowledges detachment of this invocation's owned session.
+      acceptingObservations = signal.aborted && mayHaveSent;
       boundPermissions?.close();
       clear();
       signal.removeEventListener('abort', abort);
@@ -495,6 +562,7 @@ export function createOrchestrator(deps) {
         // A late open still transfers a session to this cleanup path.
         const detached = opening.then(owned => executor.close(owned), () => {}).then(() => {
           closed = true;
+          acceptingObservations = false;
           if (undetached.delete(attemptId)) releaseSlot();
         }).catch(() => trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId));
         /** @type {{promise: Promise<void>, resolve: () => void}} */
@@ -508,7 +576,7 @@ export function createOrchestrator(deps) {
         if (!closed) undetached.add(attemptId);
       }
     }
-    return { outcome, certainty, output, observations, contextCursor };
+    return { outcome, certainty, output, observations, contextCursor, recordLate };
   }
 
   /** @param {string} operationId @param {AbortSignal} stop @param {string} [actionId] */
@@ -573,9 +641,9 @@ export function createOrchestrator(deps) {
       if (response.output !== undefined) {
         observations.push({ ref: 'attempt-output:' + attemptId, source: 'model_claim', completeness: 'complete', value: response.output });
       }
-      await serialize(async () => transition(await inspect(state.operationId), {
+      await serialize(async () => response.recordLate(await transition(await inspect(state.operationId), {
         kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations,
-      }));
+      })));
       return true;
     } finally {
       releaseAttempt(attemptId);
@@ -653,13 +721,14 @@ export function createOrchestrator(deps) {
         let state = await transition(await inspect(operationId), {
           kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
         });
-        if (state.status !== 'active') return state;
-        if (response.outcome.terminal !== 'completed') {
-          return technicalWait(state, {
+        if (state.status === 'active' && response.outcome.terminal !== 'completed') {
+          state = await technicalWait(state, {
             code: response.outcome.diagnostics[0]?.code ?? 'PROTOCOL_ERROR',
             operationId, attemptId, actionId: attemptId, effect: response.outcome.effect, dispatchCertainty: response.certainty,
           });
         }
+        state = await response.recordLate(state);
+        if (state.status !== 'active') return state;
         const parsed = decodeDecision(response.output);
         correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
         if (parsed.kind === 'accepted') {
