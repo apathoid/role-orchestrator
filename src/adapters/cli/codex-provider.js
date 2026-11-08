@@ -1,11 +1,30 @@
 import { randomUUID } from 'node:crypto';
+import { unavailableCapabilities } from '../../application/configuration/catalog.js';
 import { prepareCodexLaunch } from './codex-launch.js';
 import { startCodexProcess } from './codex-output.js';
 import { renderCodexPrompt } from './codex-prompt.js';
 import { receiveCodexResult, unstartedCodexResult } from './codex-result.js';
 
 /** @import {ProviderConfig} from '../../application/configuration/decode-config.js' */
-/** @import {Profile, ProviderPort, ProviderSession} from '../../core/ports.js' */
+/** @import {Capability, Profile, ProviderPort, ProviderSession} from '../../core/ports.js' */
+
+const interactiveApprovalDetail = 'Codex CLI headless mode has no host channel for interactive approval.';
+
+/** @type {Readonly<Record<string, Capability>>} */
+const capabilities = Object.freeze({
+  'input.text': { support: 'supported', source: 'configured' },
+  'input.image': { support: 'unsupported', source: 'configured', detail: 'This adapter accepts text only.' },
+  'input.attachments': { support: 'unsupported', source: 'configured', detail: 'This adapter cannot transfer attachments.' },
+  'output.decision': { support: 'supported', source: 'configured', detail: 'Validated JSON in the final model message.' },
+  'tools.command_exit': { support: 'supported', source: 'configured', detail: 'Provider-reported command exits when available.' },
+  'tools.visibility': { support: 'unknown', source: 'configured', detail: 'Command events provide partial tool visibility.' },
+  'tools.bridge': { support: 'unsupported', source: 'configured', detail: 'Codex CLI headless mode exposes no host tool bridge.' },
+  'permissions.interactive': { support: 'unsupported', source: 'configured', detail: interactiveApprovalDetail },
+  cancel: { support: 'supported', source: 'configured' },
+  usage: { support: 'supported', source: 'configured', detail: 'Token counts when reported; cost is unknown.' },
+  'session.resume': { support: 'unsupported', source: 'configured', detail: 'This adapter opens a fresh CLI process for each call.' },
+  'attempt.status': { support: 'unsupported', source: 'configured' },
+});
 
 /**
  * Compose a Codex CLI endpoint from trusted configuration.
@@ -19,7 +38,9 @@ export function createCodexProvider({ providerId, configuration, environment = p
   const sessions = new Map();
   return {
     async describe() {
-      return { providerId, maxConcurrency: null, capabilities: { 'input.image': { support: 'unsupported', source: 'configured' } } };
+      return { providerId, maxConcurrency: null, capabilities: Object.fromEntries(
+        Object.entries(capabilities).map(([key, value]) => [key, { ...value }]),
+      ) };
     },
     async open(profile, signal) {
       signal.throwIfAborted();
@@ -36,9 +57,20 @@ export function createCodexProvider({ providerId, configuration, environment = p
       }
       state.invoked = true;
       if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
-      if (request.attachments?.length) return unstartedCodexResult(request.attemptId, 'CAPABILITY_UNAVAILABLE');
+      const required = new Set(request.requiredCapabilities);
+      for (const { mediaType } of request.attachments ?? []) {
+        required.add(mediaType.toLowerCase().startsWith('image/') ? 'input.image' : 'input.attachments');
+      }
+      const missing = unavailableCapabilities(capabilities, required);
+      if (missing.length) {
+        const result = unstartedCodexResult(request.attemptId, 'CAPABILITY_UNAVAILABLE');
+        const ref = observe({ ref: 'codex-capability', kind: 'host_transport', sourceId: request.attemptId,
+          completeness: 'complete', value: { profileId: state.profile.profileId, missing } });
+        result.outcome.diagnostics[0].ref = ref;
+        return result;
+      }
 
-      const prompt = renderCodexPrompt(request);
+      const prompt = renderCodexPrompt(request, interactiveApprovalDetail);
       let launch;
       try {
         launch = prepareCodexLaunch(configuration, { model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt }, environment);

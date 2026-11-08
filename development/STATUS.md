@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C07.4, Controller и Worker через Codex CLI |
-| Следующий шаг | C07.5, полномочия и возможности CLI |
+| Последний локально проверенный шаг | C07.5, полномочия и возможности CLI |
+| Следующий шаг | C07.6, общий контракт ProviderPort |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.4 на Linux с локальным store и реальными тестовыми CLI-процессами |
+| Local regression verified | OBSERVED для C00–C07.5 на Linux с локальным store и реальными тестовыми CLI-процессами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -167,3 +167,6 @@
 
 - C07.4 — [Controller и Worker через Codex CLI](reports/C07/CLI_CONTROLLER_AND_WORKER.md). Фабрика `createCodexProvider` доступна через программный API. Controller возвращает полное JSON-решение через штатный decoder. Worker сохраняет текст. Сообщение модели, код CLI и сообщённый код инструмента имеют отдельное происхождение. При сбое транспорта частичный вывод остаётся доступным с неизвестным эффектом.
 - OBSERVED на Linux, Node 24.22.1. Проверены модельное делегирование и частичный итог, адресное исправление Decision, различение кодов выхода и сохранение вывода без применения решения при сбое. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (120), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативная сессия Codex остаётся UNVERIFIED. Следующий шаг — C07.5.
+
+- C07.5 — [полномочия и возможности CLI](reports/C07/CLI_PERMISSIONS.md). Адаптер объявляет ограничения headless-вызова. Если обязательной возможности нет, отказ сохраняет её имя, статус и доступную причину. Нативный профиль выбирает оператор. Явный отказ команды сохраняется как отчёт провайдера и не меняет семантический итог хода.
+- OBSERVED на Linux, Node 24.22.1. Проверены требование интерактивного разрешения, отсутствие запроса к брокеру, передача нативного профиля для Controller и Reviewer и отдельная запись нативного отказа. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (124), `check:package`, `check:removal` и `git diff --check` завершились успешно. Настоящий модельный вызов и нативное применение прав остаются UNVERIFIED. Следующий шаг — C07.6.

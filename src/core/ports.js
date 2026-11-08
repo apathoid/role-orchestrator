@@ -4,7 +4,7 @@
 
 /**
  * @typedef {'supported' | 'unsupported' | 'unknown'} Support
- * @typedef {{support: Support, source: 'configured' | 'negotiated'}} Capability
+ * @typedef {{support: Support, source: 'configured' | 'negotiated', detail?: string}} Capability
  * @typedef {{providerId: string, maxConcurrency: number | null, capabilities: Readonly<Record<string, Capability>>}} ProviderDescription
  * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>}} Profile
  * @typedef {{sessionId: string}} ProviderSession

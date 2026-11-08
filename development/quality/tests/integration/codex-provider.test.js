@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { decodeSnapshot, encodeSnapshot } from '../../../../src/core/snapshot.js';
 import { createCodexProvider } from '../../../../src/main/index.js';
 import { setup } from '../../fixtures/application.js';
 import { request } from '../../fixtures/core.js';
@@ -7,7 +8,7 @@ import { request } from '../../fixtures/core.js';
 const linux = { skip: process.platform !== 'linux', timeout: 12_000 };
 const profile = { profileId: 'primary', providerId: 'codex', model: 'fixture-model' };
 
-function codexSetup(body) {
+function codexSetup(body, { nativeSettings, ...options } = {}) {
   const source = `
     import assert from 'node:assert/strict';
     import { readFileSync } from 'node:fs';
@@ -30,9 +31,9 @@ function codexSetup(body) {
   `;
   const provider = createCodexProvider({
     providerId: profile.providerId,
-    configuration: { adapter: 'codex-cli', launch: { command: process.execPath, args: ['--input-type=module', '-e', source, '--'] } },
+    configuration: { adapter: 'codex-cli', launch: { command: process.execPath, args: ['--input-type=module', '-e', source, '--'] }, nativeSettings },
   });
-  return { provider, ...setup({ profile, provider }) };
+  return { provider, ...setup({ profile, provider, ...options }) };
 }
 
 test('Codex Controller delegates to a real child Worker and uses separate model, tool and agent facts', linux, async () => {
@@ -72,6 +73,7 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
     state.attempts.find(attempt => attempt.attemptId === event.outcome.attemptId)?.actionId === 'worker');
   assert.equal(worker.outcome.terminal, 'completed');
   assert.equal(worker.outcome.effect, 'unknown');
+  assert.deepEqual(worker.outcome.diagnostics, []);
   assert.deepEqual(worker.outcome.usage, { inputTokens: 12, outputTokens: 0, cost: null });
   assert.deepEqual(worker.observations.filter(item => item.provenance?.exit).map(item =>
     [item.source, item.provenance.exit.kind, item.provenance.exit.code]), [
@@ -150,5 +152,114 @@ for (const [label, end, code, exit] of [
     assert.ok(stdout.value.text.includes('Premature claim'));
     if (label.includes('incomplete')) assert.equal(stdout.completeness, 'truncated');
     if (exit === 17) assert.equal(observations.find(item => item.providerRef === 'codex-stderr').value.text, 'transport lost');
+  });
+}
+
+
+test('Codex describes headless capability limits and rejects a required approval or tool bridge before launch', async () => {
+  const provider = createCodexProvider({ providerId: 'codex', configuration: { adapter: 'codex-cli' } });
+  const first = await provider.describe();
+  assert.equal(first.capabilities['permissions.interactive'].support, 'unsupported');
+  assert.equal(first.capabilities['tools.bridge'].source, 'configured');
+  assert.equal(first.capabilities['tools.visibility'].support, 'unknown');
+  assert.equal(first.capabilities['attempt.status'].support, 'unsupported');
+  first.capabilities['permissions.interactive'].support = 'supported';
+  assert.equal((await provider.describe()).capabilities['permissions.interactive'].support, 'unsupported');
+
+  const signal = new AbortController().signal;
+  const session = await provider.open(profile, signal);
+  const observations = [];
+  let permissionRequests = 0;
+  try {
+    const result = await provider.invoke(session, {
+      attemptId: 'attempt', operationId: 'operation', actionId: 'action', kind: 'delegate',
+      objective: 'Use a host approval', profile, instructions: [], userConstraints: [],
+      context: [], authorityRef: 'test-grant', timeoutMs: 3000, signal,
+      requiredCapabilities: ['permissions.interactive', 'tools.bridge'],
+      permissions: { request() { permissionRequests++; return { kind: 'unavailable' }; } },
+    }, item => { observations.push(item); return item.ref; });
+    assert.equal(result.dispatchCertainty, 'not_sent');
+    assert.equal(result.outcome.effect, 'none');
+    assert.equal(permissionRequests, 0);
+    assert.deepEqual(result.outcome.diagnostics, [{ code: 'CAPABILITY_UNAVAILABLE', ref: observations[0].ref }]);
+    assert.deepEqual(observations[0].value.missing.map(item => [item.key, item.support]), [
+      ['permissions.interactive', 'unsupported'], ['tools.bridge', 'unsupported'],
+    ]);
+    assert.match(observations[0].value.missing[0].detail, /headless.*interactive approval/);
+  } finally {
+    await provider.close(session);
+  }
+});
+
+test('an unavailable approval requirement is observable to the Controller without launching a Worker', linux, async () => {
+  const { api } = codexSetup(`
+    assert.equal(invocation.kind, 'controller');
+    if (host.outcomes.length === 0) {
+      message(JSON.stringify(decision({
+        additions: [{actionId: 'interactive', kind: 'delegate', objective: 'Use the approval channel',
+          profileId: 'primary', contextRefs: [], dependsOn: [], expectedResult: 'Report',
+          requiredCapabilities: ['permissions.interactive']}],
+        waitPolicy: {kind: 'all_requested', targets: [{kind: 'action', id: 'interactive'}]},
+      })));
+    } else {
+      const observation = invocation.context.find(item => item.ref.startsWith('host:capability:'));
+      assert.equal(observation.value.missing[0].key, 'permissions.interactive');
+      assert.match(observation.value.missing[0].detail, /headless.*interactive approval/);
+      message(JSON.stringify(decision({finalAssessment: assessment({answer: 'Approval channel unavailable',
+        observationRefs: [observation.ref]})})));
+    }
+    complete();
+  `);
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status, 'finished');
+  assert.equal(state.assessment.answer, 'Approval channel unavailable');
+  const worker = state.attempts.find(attempt => attempt.actionId === 'interactive');
+  assert.equal(worker.dispatchCertainty, 'not_sent');
+  assert.equal(worker.outcome.effect, 'none');
+  assert.equal(worker.outcome.diagnostics[0].code, 'CAPABILITY_UNAVAILABLE');
+  assert.equal(worker.outcome.diagnostics[0].ref, state.assessment.observationRefs[0]);
+  assert.equal(state.events.some(event => event.kind === 'attempt.dispatched' && event.attemptId === worker.attemptId), false);
+  assert.equal(decodeSnapshot(encodeSnapshot(state)).kind, 'accepted');
+});
+
+for (const declined of [false, true]) {
+  test('the operator profile controls a Reviewer command with ' + (declined ? 'native denial' : 'standing native allowance'), linux, async () => {
+    let permissionRequests = 0;
+    const { api } = codexSetup(`
+      assert.deepEqual(process.argv.slice(1), [
+        'exec', '--json', '--skip-git-repo-check', '--model=fixture-model', '--profile=operator-profile', '-',
+      ]);
+      if (invocation.kind === 'delegate') {
+        assert.deepEqual(invocation.instructions, ['Review and follow operator settings']);
+        emit('item.completed', {item: {type: 'command_execution', id: 'check', command: 'git status',
+          status: ${declined ? "'declined'" : "'completed'"}, exit_code: ${declined ? 'null' : '0'}}});
+        message('Review result');
+      } else if (host.outcomes.length === 0) {
+        message(JSON.stringify(decision({
+          additions: [{actionId: 'review', kind: 'delegate', objective: 'Review output', roleId: 'reviewer',
+            profileId: 'primary', contextRefs: [], dependsOn: [], expectedResult: 'Report command outcome'}],
+          waitPolicy: {kind: 'all_requested', targets: [{kind: 'action', id: 'review'}]},
+        })));
+      } else {
+        message(JSON.stringify(decision({finalAssessment: assessment()})));
+      }
+      complete();
+    `, {
+      nativeSettings: { profile: 'operator-profile' },
+      extraCatalog: [{ kind: 'role', value: { id: 'reviewer', instructions: 'Review and follow operator settings' } }],
+      permissions: { bind: () => ({ close() {}, async request() { permissionRequests++; return { kind: 'denied' }; } }) },
+    });
+    const state = await (await api.submit(request())).completion;
+    assert.equal(state.status, 'finished');
+    assert.equal(state.attempts.length, 3);
+    assert.equal(permissionRequests, 0);
+    const worker = state.attempts.find(attempt => attempt.actionId === 'review');
+    const report = state.events.find(event => event.kind === 'attempt.outcome' && event.outcome.attemptId === worker.attemptId);
+    const tool = report.observations.find(item => item.provenance?.kind === 'provider_tool');
+    assert.equal(worker.outcome.terminal, 'completed');
+    assert.equal(worker.outcome.effect, 'unknown');
+    assert.equal(tool.value.status, declined ? 'declined' : 'completed');
+    assert.deepEqual(tool.provenance.exit, declined ? undefined : { kind: 'tool_exit', code: 0 });
+    assert.deepEqual(worker.outcome.diagnostics, declined ? [{ code: 'PERMISSION_DENIED', ref: tool.ref }] : []);
   });
 }

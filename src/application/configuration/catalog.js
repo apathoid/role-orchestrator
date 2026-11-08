@@ -1,5 +1,5 @@
 /** @import {Configuration} from './decode-config.js' */
-/** @import {Catalog, CatalogEntry, ProviderDescription} from '../../core/ports.js' */
+/** @import {Capability, Catalog, CatalogEntry, ProviderDescription} from '../../core/ports.js' */
 
 /**
  * Capture the model-facing portion of trusted configuration. Launch commands,
@@ -32,5 +32,19 @@ export function createCatalog(configuration, descriptions = []) {
   return Object.freeze({
     async list() { return entries; },
     async resolve(kind, id) { return byKind.get(kind)?.get(id); },
+  });
+}
+
+
+/**
+ * Resolve only explicit requirements. An absent declaration has unknown support.
+ * @param {Readonly<Record<string, Capability>>} capabilities
+ * @param {Iterable<string>} required
+ */
+export function unavailableCapabilities(capabilities, required) {
+  return Array.from(required).flatMap(key => {
+    const entry = Object.hasOwn(capabilities, key) ? capabilities[key] : undefined;
+    if (entry?.support === 'supported') return [];
+    return [{ key, support: entry?.support ?? 'unknown', detail: entry?.detail }];
   });
 }

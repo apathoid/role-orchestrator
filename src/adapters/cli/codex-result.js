@@ -34,6 +34,8 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
   const { process, stdout, stderr, frames, diagnostics } = result;
   /** @type {Outcome['outputRefs']} */
   const outputRefs = [];
+  /** @type {Outcome['diagnostics']} */
+  const permissionDiagnostics = [];
   /** @param {AdapterObservation} item */
   function publish(item) {
     const ref = observe(item);
@@ -93,8 +95,9 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
       message = item.text;
       publish({ ref, kind: 'model', sourceId: item.id, completeness: 'complete', value: message });
     } else if (item.type === 'command_execution') {
-      const exitCode = integer(item.exit_code);
-      publish({
+      const declined = item.status === 'declined';
+      const exitCode = declined ? undefined : integer(item.exit_code);
+      const evidence = publish({
         ref, kind: 'provider_tool', sourceId: item.id, completeness: 'complete', exitCode,
         value: {
           command: typeof item.command === 'string' ? item.command : undefined,
@@ -102,6 +105,7 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
           status: typeof item.status === 'string' ? item.status : undefined,
         },
       });
+      if (declined) permissionDiagnostics.push({ code: 'PERMISSION_DENIED', ref: evidence });
     }
   }
 
@@ -144,7 +148,8 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
     dispatchCertainty: sent ? 'sent' : 'unknown',
     outcome: {
       schemaVersion: 1, attemptId, terminal: outcomeStatus, effect: 'unknown',
-      diagnostics: code ? [{ code, ref: providerErrorRef ?? processRef }] : [], outputRefs, usage,
+      diagnostics: code ? [{ code, ref: providerErrorRef ?? processRef }, ...permissionDiagnostics] : permissionDiagnostics,
+      outputRefs, usage,
     },
     output: code || message === undefined ? undefined : kind === 'controller' ? parseDecisionText(message) : message,
   };

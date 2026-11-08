@@ -10,6 +10,7 @@ import { findingHistory } from './finding-history.js';
 import { bindContextAccess } from './context-access.js';
 import { defaultContextMaxBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
+import { unavailableCapabilities } from './configuration/catalog.js';
 import { runActionRound } from './action-round.js';
 import { bindAssessmentEvidence, bindFindingEvidence, bindOutcomeEvidence, evidenceAliases, providerEvidenceRef,
   reservedEvidenceRef, scopedEvidenceAliases } from './evidence-identity.js';
@@ -583,10 +584,16 @@ export function createOrchestrator(deps) {
       if (requiredCapabilities.size) {
         signal.throwIfAborted();
         const capabilities = selectedProfile.capabilities ?? (await withinDeadline(executor.describe())).capabilities;
-        if ([...requiredCapabilities].some(key => !Object.hasOwn(capabilities, key) ||
-            capabilities[key].support !== 'supported')) {
+        const missing = unavailableCapabilities(capabilities, requiredCapabilities);
+        if (missing.length) {
+          const ref = 'host:capability:' + attemptId;
+          observations.push(observation({
+            ref, completeness: 'complete', value: { profileId: selectedProfile.profileId, missing },
+          }, { kind: 'host_transport', sourceId: selectedProfile.providerId, receivedAt: clock.now() }));
+          const outcome = failedOutcome(attemptId, 'CAPABILITY_UNAVAILABLE', false);
+          outcome.diagnostics[0].ref = ref;
           return {
-            outcome: failedOutcome(attemptId, 'CAPABILITY_UNAVAILABLE', false),
+            outcome,
             certainty: /** @type {const} */ ('not_sent'), output, observations, contextCursor, recordLate,
           };
         }
