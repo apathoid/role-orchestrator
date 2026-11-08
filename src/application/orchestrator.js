@@ -16,8 +16,8 @@ import { attributeProviderOutputRefs, decodeSummaryReport, observation, receiveP
 /** @import {Action, CancellationSource, Decision, Outcome, ReasonCode} from '../core/contracts.js' */
 /** @import {OutcomeEvidence} from '../core/finding.js' */
 /** @import {FieldError} from '../core/decode.js' */
-/** @import {Clock, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
-/** @import {Observation} from '../core/observation.js' */
+/** @import {Clock, DiagnosticEvent, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
+/** @import {ContextItem, Observation} from '../core/observation.js' */
 /** @import {Event, Limits, Operation, Reason} from '../core/operation.js' */
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
@@ -176,13 +176,47 @@ export function createOrchestrator(deps) {
     return result.state;
   }
 
-  /** @param {Operation} state @param {string} eventName @param {string} reasonCode @param {string} [attemptId] */
-  function trace(state, eventName, reasonCode, attemptId) {
+  /** @param {Operation} state @param {string} eventName @param {string} reasonCode @param {string} [attemptId]
+   * @param {Pick<DiagnosticEvent, 'actionId' | 'details'>} [context]
+   */
+  function trace(state, eventName, reasonCode, attemptId, context) {
     emitDiagnostic(diagnostics, {
       schemaVersion: 1, eventId: ids.newId(), receivedAt: clock.now(), sequence: state.revision,
       level: eventName.endsWith('invalid_proposal') ? 'warn' : 'info', component: 'application',
-      eventName, reasonCode, operationId: state.operationId, attemptId,
+      eventName, reasonCode, operationId: state.operationId, attemptId, ...context,
     });
+  }
+
+  /**
+   * Correlate delivered items without copying user/model-controlled refs or
+   * bodies to the sink. Selection indexes address the admitted action.
+   * @param {Operation} state @param {string} attemptId @param {Action} action
+   * @param {readonly ContextItem[]} items
+   */
+  function traceHandoff(state, attemptId, action, items) {
+    const selections = new Map();
+    for (const [index, ref] of action.contextRefs.entries()) {
+      if (!selections.has(ref)) selections.set(ref, index);
+    }
+    for (const [contextIndex, item] of items.entries()) {
+      const selectedIndex = selections.get(item.ref);
+      const source = item.receivedSequence;
+      const details = {
+        contextIndex,
+        ...(selectedIndex !== undefined ? { selectedIndex } : {}),
+        ...(source ? { sourceRevision: source.revision, sourceIndex: source.index } : {}),
+      };
+      if (item.completeness === 'unavailable') {
+        trace(state, 'context.unavailable', item.unavailableReason?.toUpperCase() ?? 'SOURCE_UNAVAILABLE',
+          attemptId, { actionId: action.actionId, details });
+      } else if (item.completeness === 'truncated') {
+        trace(state, 'context.truncated', item.excerpt === undefined ? 'SOURCE_TRUNCATED' : 'EXCERPT',
+          attemptId, { actionId: action.actionId, details });
+      } else {
+        trace(state, 'context.materialized', item.artifact ? 'ARTIFACT_REFERENCE' : 'DELIVERED',
+          attemptId, { actionId: action.actionId, details });
+      }
+    }
   }
 
   /** @param {Operation} state @param {Reason} reason */
@@ -577,6 +611,7 @@ export function createOrchestrator(deps) {
           workspaceContext: state.request.workspaceContext, userConstraints: state.request.userConstraints,
           context: controllerContext(dispatched, entries, correction, lookups, contextMaxBytes), authorityRef: state.authorityRef,
         };
+        if (handoff && action) traceHandoff(dispatched, attemptId, action, context.context);
         const selected = action ? new Set(action.contextRefs) : undefined;
         contextOpen = true;
         const contextAccess = bindContextAccess({

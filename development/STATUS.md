@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C06.7, история и retention |
-| Следующий шаг | C06.8, сквозная проверка контекста |
+| Последний локально проверенный шаг | C06.8, сквозная проверка контекста |
+| Следующий шаг | C07.1, контракт запуска CLI |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C06.7 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C06 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -143,3 +143,7 @@
 - C06.7 — `inspectFinding` связывает находки, опоры и попытки с исходными outcome. Локальный store применяет явную политику возраста и размера при открытии под блокировкой. Отсутствующий после очистки blob получает причину `retention`; снимки и модельные выводы сохраняются.
 - OBSERVED: по лимиту удалён старый blob, а более новый и общие данные с возможным либо неизвестным эффектом остались доступны. Проверены сохранность снимков, чтение отметки retention, отказ от очистки при повреждённом снимке и повтор после ошибки unlink.
 - Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (93), `check:package`, `check:removal`, exit 0. Нативные CLI/ACP остаются UNVERIFIED. Следующий шаг — C06.8.
+
+
+- C06.8 — сквозной сценарий повторно открывает store, доставляет две противоречащие находки без повторного запуска исследователей и выполняет один новый целевой check. Проверены provenance исходного и текущего результата, unavailable после retention, модельное резюме и частичный итог. Трасса привязывает позиции переданных записей и причины сокращения/недоступности к handoff. Ошибка sink сохраняет итог.
+- OBSERVED локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (94), `check:package`, `check:removal`, exit 0. Кластер C06 закрыт для синтетического ProviderPort и локального store. Native review, реальные CLI/ACP-вызовы, экспорт/redaction диагностики остаются UNVERIFIED. Следующий шаг — C07.1.

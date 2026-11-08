@@ -19,6 +19,8 @@
 | context.materialized / truncated / unavailable | какие данные действительно доступны модели |
 | diagnostic.dropped / export.redacted | предел наблюдаемости самой диагностики |
 
+Для handoff события `context.materialized`, `context.truncated` и `context.unavailable` связывают позицию записи с operationId, actionId и attemptId. `selectedIndex` указывает на позицию ссылки в принятом action, а `sourceRevision` и `sourceIndex` указывают на запись в журнале, если она есть. Лог содержит числовые позиции и техническую причину. Для артефакта отметка `ARTIFACT_REFERENCE` означает передачу ссылки. Доступность байтов определяется при чтении.
+
 `deferred` при занятых слотах и `rejected` при deny — разные причины. Сообщение «waiting» без reasonCode/owner/reference считается дефектом диагностики. Не логировать рассуждения модели как обязательную telemetry; достаточно видимых решений и outputs, если включено согласованное сохранение содержимого.
 
 ## По умолчанию
