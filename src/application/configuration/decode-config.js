@@ -11,6 +11,7 @@
  *   controllerProfile: string,
  *   roles?: Record<string, {purpose?: string, instructions: string, preferredProfiles?: string[]}>,
  *   resources?: ResourceConfig,
+ *   context?: {maxBytes?: number},
  *   storage?: {directory: string},
  *   diagnostics?: {level?: 'debug' | 'info' | 'warn' | 'error', maxFileBytes?: number, retainedFiles?: number, captureBodies?: boolean},
  *   plugins?: {id: string, module: string}[],

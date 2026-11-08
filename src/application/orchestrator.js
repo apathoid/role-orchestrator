@@ -5,7 +5,8 @@ import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { applyEvent, createOperation, resourceSnapshot, sameRecord } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
-import { materializeHandoff } from './handoff.js';
+import { handoffContext, prepareHandoff } from './handoff.js';
+import { defaultContextMaxBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
 import { runActionRound } from './action-round.js';
 import { attributeProviderOutputRefs, observation, receiveProviderObservation } from '../core/observation.js';
@@ -25,6 +26,7 @@ import { attributeProviderOutputRefs, observation, receiveProviderObservation } 
  * @typedef {{
  *   store: StateStore, provider: ProviderPort, catalog: Catalog, profile: Profile,
  *   clock: Clock, ids: IdFactory, limits: Limits, invocationTimeoutMs: number,
+ *   context?: {maxBytes?: number},
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
  *   approveRetry?: RetryApproval,
  *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, configurationRef: string,
@@ -70,11 +72,15 @@ function failedOutcome(attemptId, code, mayHaveSent) {
 export function createOrchestrator(deps) {
   const {
     store, provider, catalog, profile, clock, ids, limits, invocationTimeoutMs, authority, permissions, configurationRef,
+    context: { maxBytes: contextMaxBytes = defaultContextMaxBytes } = {},
     diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry,
     providerFor = selected => selected.providerId === profile.providerId ? provider : undefined,
   } = deps;
   if (!Number.isSafeInteger(invocationTimeoutMs) || invocationTimeoutMs < 1 || invocationTimeoutMs > 2_147_483_647) {
     throw new RangeError('invocationTimeoutMs must be an integer from 1 to 2147483647');
+  }
+  if (!Number.isSafeInteger(contextMaxBytes) || contextMaxBytes < 1) {
+    throw new RangeError('context.maxBytes must be a positive safe integer');
   }
   /** @type {Map<string, Running>} */
   const running = new Map();
@@ -553,11 +559,13 @@ export function createOrchestrator(deps) {
         mayHaveSent = true;
         if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
         // Keep the dispatch decision and actual provider call in the same turn.
-        const context = handoff ?? {
+        const context = handoff ? {
+          ...handoff, context: handoffContext(dispatched, action?.contextRefs ?? [], contextMaxBytes, lookups),
+        } : {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
           objective: state.request.text, instructions: controllerInstructions, profile,
           workspaceContext: state.request.workspaceContext, userConstraints: state.request.userConstraints,
-          context: controllerContext(dispatched, entries, correction, lookups), authorityRef: state.authorityRef,
+          context: controllerContext(dispatched, entries, correction, lookups, contextMaxBytes), authorityRef: state.authorityRef,
         };
         return { response: withinDeadline(executor.invoke(owned, {
           ...context, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
@@ -650,12 +658,13 @@ export function createOrchestrator(deps) {
     }
   }
 
-  /** @param {Operation} state @param {Action} action @param {AbortSignal} stop */
-  async function dispatchWorker(state, action, stop) {
+  /** @param {Operation} state @param {Action} action @param {AbortSignal} stop
+   * @param {ReadonlyMap<string, LookupStatus>} [lookups] */
+  async function dispatchWorker(state, action, stop, lookups) {
     const current = await inspect(state.operationId);
     if (stop.aborted || current.status !== 'active') return false;
     const entries = await catalog.list();
-    const handoff = materializeHandoff(current, action, entries, controllerContext(current, entries, undefined));
+    const handoff = prepareHandoff(current, action, entries);
     const executor = handoff.kind === 'accepted' ? providerFor(handoff.handoff.profile) : undefined;
     if (handoff.kind === 'rejected' || !executor) {
       await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
@@ -671,7 +680,7 @@ export function createOrchestrator(deps) {
     }
     const attemptId = reserved.attemptId;
     try {
-      const response = await invoke(reserved.state, attemptId, stop, undefined, handoff.handoff, executor, undefined, action);
+      const response = await invoke(reserved.state, attemptId, stop, undefined, handoff.handoff, executor, lookups, action);
       await serialize(async () => {
         const current = await inspect(state.operationId);
         const receipt = {
@@ -841,7 +850,7 @@ export function createOrchestrator(deps) {
       if (next.status !== 'active') return next;
       if (settleCancellation.length) await Promise.all(settleCancellation);
       if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
-        (action, signal) => dispatchWorker(next, action, signal),
+        (action, signal) => dispatchWorker(next, action, signal, lookups),
         (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
         pending, selection.policy, selection.newResult);
     }

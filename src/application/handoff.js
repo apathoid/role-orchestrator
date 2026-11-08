@@ -1,9 +1,12 @@
+import { compactContext, unavailableContext } from './context-bundle.js';
+import { coordinationFacts, operationHistory } from './controller-context.js';
+/** @import {LookupStatus} from './recovery.js' */
 /** @import {ContextItem} from '../core/observation.js' */
 /** @import {Action} from '../core/contracts.js' */
 /** @import {Operation, Reason} from '../core/operation.js' */
 /** @import {CatalogEntry, Invocation} from '../core/ports.js' */
 
-/** @typedef {Omit<Invocation, 'attemptId' | 'signal' | 'timeoutMs' | 'idempotencyKey'>} Handoff */
+/** @typedef {Omit<Invocation, 'attemptId' | 'signal' | 'timeoutMs' | 'idempotencyKey' | 'context'>} Handoff */
 
 /**
  * The catalog and authority reference are supplied by the Host. Role and skill
@@ -11,10 +14,9 @@
  * @param {Operation} operation
  * @param {Action} action
  * @param {readonly CatalogEntry[]} catalog
- * @param {readonly ContextItem[]} availableContext
  * @returns {{kind: 'accepted', handoff: Handoff} | {kind: 'rejected', reason: Reason, resource: string}}
  */
-export function materializeHandoff(operation, action, catalog, availableContext) {
+export function prepareHandoff(operation, action, catalog) {
   /** @param {string} resource @returns {{kind: 'rejected', reason: Reason, resource: string}} */
   const missing = resource => ({
     kind: 'rejected', resource, reason: {
@@ -37,17 +39,40 @@ export function materializeHandoff(operation, action, catalog, availableContext)
     instructions.push(skill.value.instructions);
   }
 
-  /** @type {ContextItem[]} */
-  const context = [...new Set(action.contextRefs)].map(ref =>
-    availableContext.find(item => item.ref === ref) ?? { ref, completeness: 'unavailable', source: 'host_observed' });
   return {
     kind: 'accepted', handoff: {
       kind: 'delegate', operationId: operation.operationId, actionId: action.actionId,
       objective: action.objective, instructions, profile: profile.value, workspaceContext: operation.request.workspaceContext,
-      userConstraints: operation.request.userConstraints, context, authorityRef: operation.authorityRef,
+      userConstraints: operation.request.userConstraints, authorityRef: operation.authorityRef,
       attachments: operation.request.attachments.filter(attachment => action.contextRefs.includes(attachment.ref)),
       requiredCapabilities: action.requiredCapabilities,
       expectedResult: action.expectedResult, continuationReference: action.continuationReference,
     },
   };
+}
+
+
+/**
+ * @param {Operation} operation @param {readonly string[]} refs @param {number} maxBytes
+ * @param {ReadonlyMap<string, LookupStatus>} [lookups] @returns {ContextItem[]}
+ */
+export function handoffContext(operation, refs, maxBytes, lookups) {
+  const selected = new Set(refs);
+  const facts = coordinationFacts(operation, lookups);
+  const includeFacts = facts.unresolvedAttempts.length || facts.cancellations.length;
+  const factsRef = 'host:operation-state';
+  if (includeFacts) selected.delete(factsRef);
+  /** @type {Map<string, ContextItem>} */
+  const found = new Map();
+  for (const item of operationHistory(operation)) {
+    if (selected.has(item.ref) && !found.has(item.ref)) found.set(item.ref, item);
+  }
+  const attachments = new Set(operation.request.attachments.map(item => item.ref));
+  const records = [...selected].filter(ref => found.has(ref) || !attachments.has(ref))
+    .map(ref => found.get(ref) ?? unavailableContext(ref, 'missing'));
+  const { context } = compactContext(records, maxBytes, true);
+  if (includeFacts) {
+    context.push({ ref: factsRef, source: 'host_observed', completeness: 'complete', value: facts });
+  }
+  return context;
 }

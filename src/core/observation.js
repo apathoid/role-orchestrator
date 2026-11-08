@@ -24,7 +24,9 @@ const itemFields = record({ ref: id, source, completeness, value: optional(jsonV
  *   sourceId: string, receivedAt?: number, exit?: {kind: 'agent_exit' | 'tool_exit', code: number}}} Provenance
  * @typedef {{ref: string, source: ReturnType<typeof source>, completeness: ReturnType<typeof completeness>,
  *   value?: unknown, provenance?: Provenance}} Observation
- * @typedef {Observation & {receivedSequence?: {revision: number, index: number}, attemptId?: string, kind?: 'finding'}} ContextItem
+ * @typedef {Observation & {receivedSequence?: {revision: number, index: number}, attemptId?: string,
+ *   kind?: 'finding', excerpt?: string, unavailableReason?: 'missing' | 'budget' | 'payload',
+ *   outputKind?: Outcome['outputRefs'][number]['kind']}} ContextItem
  * @typedef {{ref: string, sourceId: string, completeness: Observation['completeness'], value?: unknown} & (
  *   {kind: 'agent_exit', exitCode: number} |
  *   {kind: 'provider_tool', exitCode?: number} |

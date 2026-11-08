@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C06.2, findings и revisions оценок |
-| Следующий шаг | C06.3, context materialization |
+| Последний локально проверенный шаг | C06.3, context materialization |
+| Следующий шаг | C06.4, retrieval и summary |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C06.2 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C06.3 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -118,3 +118,8 @@
 - C06.2 — Controller и специалисты могут добавлять структурированные findings с claim, subject, supports, author и uncertainties. `supersedes` связывает новую запись с предыдущей. Проверяются идентификаторы, авторство и ссылки в пределах операции. История сохраняет каждую находку и её опоры.
 - OBSERVED: противоположные выводы двух профилей об одном файле сосуществуют. После повторного открытия store доступны оба вывода, модельная ревизия, исходные observations и предыдущая итоговая assessment. Невалидная находка специалиста оставляет исход вызова и raw output доступными. Проверены адресные ошибки для чужих ссылок, повторных ID и несовпадающего автора.
 - Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (83), `check:package`, `check:removal`, exit 0. Реальные CLI/ACP-адаптеры остаются UNVERIFIED. Следующий шаг — C06.3.
+
+
+- C06.3 — доверенная настройка `context.maxBytes` ограничивает необязательную историю в UTF-8 JSON. Controller получает приоритет недавних записей, специалист получает выбранные ссылки и обязательные сведения об отмене и неизвестных эффектах перед dispatch. Цель, пользовательский текст и ограничения передаются дословно.
+- OBSERVED: большие записи доставляются как помеченные фрагменты с provenance и ссылкой. Пропуск по лимиту, неизвестная ссылка и зарегистрированный вывод без payload различаются. Проверены многобайтный текст, лимит в один байт, сохранение исходного вывода и отсутствие невыбранной истории в handoff.
+- Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (85), `check:package`, `check:removal`, exit 0. Лимит относится к истории, а размер нативного окна зависит от адаптера. CLI/ACP остаются UNVERIFIED. Следующий шаг — C06.4.

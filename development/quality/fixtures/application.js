@@ -14,7 +14,7 @@ export function final(invocation, overrides = {}) {
 }
 
 export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, extraCatalog = [], capabilities = {}, authority, permissions, lookupStatus, providerFor, supportsIdempotency, approveRetry, emit,
-  now = () => 100, configurationRef = 'test-config', idPrefix = 'id-', profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' } } = {}) {
+  now = () => 100, context, configurationRef = 'test-config', idPrefix = 'id-', profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' } } = {}) {
   const states = new Map();
   const invocations = [];
   const events = [];
@@ -36,7 +36,7 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
   const api = createOrchestrator({
     store: injectedStore ?? store, profile, authority: authority ?? createAuthorityGrant({
       reference: 'fixture-authority', origin: 'user', profileIds: [profile.profileId],
-    }), configurationRef, permissions, providerFor, approveRetry,
+    }), configurationRef, context, permissions, providerFor, approveRetry,
     diagnostics: { emit(event) { events.push(event); return emit?.(event); }, flush() {} },
     clock: { now, monotonicNow: now },
     ids: { newId: () => idPrefix + ++sequence },

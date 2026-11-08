@@ -32,7 +32,7 @@ Permission prompt провайдера связывается с attempt/provide
 
 ## Конфигурация v1
 
-Формат — UTF-8 JSON. [Схема конфигурации v1](../src/application/configuration/config-v1.schema.json) применяется при runtime validation. Доверенный пользовательский файл задаёт providers/profiles, controller, ресурсы, state/diagnostics и установленные plugins. Проектный файл необязателен, читается только из явно выбранного cwd или явно переданного пути; поиск Git root и обход родителей для обнаружения конфигурации не нужны.
+Формат — UTF-8 JSON. [Схема конфигурации v1](../src/application/configuration/config-v1.schema.json) применяется при runtime validation. Доверенный пользовательский файл задаёт providers/profiles, controller, ресурсы, лимит истории, state/diagnostics и установленные plugins. Проектный файл необязателен, читается только из явно выбранного cwd или явно переданного пути; поиск Git root и обход родителей для обнаружения конфигурации не нужны.
 
 Приоритет: built-in defaults < доверенный user config < разрешённые project preferences < явные доверенные параметры запуска. Project preferences могут выбрать существующий профиль/role/skill и уменьшить лимит; не могут добавлять исполняемый plugin, endpoint, secrets, расширять permissions или повышать пределы. Merge выполняется по описанным полям, не generic deep merge массивов. Неизвестные поля — ошибка с JSON path. Отсутствие поля отличается от `null`. По умолчанию используются 2 одновременных вызова, 40 вызовов на operation и 180 000 мс на вызов. Проектный файл `.role-orchestrator.json` читается в явно выбранной директории или по явно переданному пути. Он может задать `controllerProfile`, `preferredRole`, `preferredSkills` и сниженные `resources`.
 
@@ -52,6 +52,7 @@ Permission prompt провайдера связывается с attempt/provide
   "controllerProfile": "primary",
   "roles": {"reviewer": {"instructions": "Проверь указанный результат и основания вывода.", "preferredProfiles": ["primary"]}},
   "resources": {"maxConcurrentInvocations": 2, "maxInvocationsPerOperation": 40, "invocationTimeoutMs": 180000},
+  "context": {"maxBytes": 65536},
   "storage": {"directory": "/path/to/orchestrator-state"},
   "diagnostics": {"level": "info", "maxFileBytes": 10485760, "retainedFiles": 3, "captureBodies": false},
   "plugins": [],

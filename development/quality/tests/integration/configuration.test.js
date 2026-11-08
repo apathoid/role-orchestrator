@@ -37,6 +37,7 @@ test('schema failures point to unknown keys, versions, missing controller and ba
     [{ controllerProfile: undefined }, '/controllerProfile', 'required'],
     [{ resources: { maxInvocationsPerOperation: 0 } }, '/resources/maxInvocationsPerOperation', 'minimum'],
     [{ resources: { invocationTimeoutMs: 2 ** 31 } }, '/resources/invocationTimeoutMs', 'maximum'],
+    [{ context: { maxBytes: 0 } }, '/context/maxBytes', 'minimum'],
   ];
   for (const [overrides, path, constraint] of cases) {
     assert.deepEqual(await decode(overrides), { kind: 'rejected', reason: { code: 'INVALID_CONFIGURATION', path, constraint } });
@@ -69,6 +70,7 @@ test('sources merge by field and project preferences cannot add authority', asyn
   const { value } = await decode({
     profiles: { ...config.profiles, other: { provider: 'agent', model: 'another' } },
     skills: [{ id: 'check', source: '/path/to/instructions' }],
+    context: { maxBytes: 2048 },
   });
   const project = JSON.stringify({
     schemaVersion: 1, controllerProfile: 'other', preferredRole: 'reviewer', preferredSkills: ['check'],
@@ -81,11 +83,12 @@ test('sources merge by field and project preferences cannot add authority', asyn
   assert.deepEqual(merged.value.resources, {
     maxConcurrentInvocations: 1, maxInvocationsPerOperation: 5, invocationTimeoutMs: 200,
   });
+  assert.deepEqual(merged.value.context, { maxBytes: 2048 });
   const launchWins = resolveConfiguration(value, project, { controllerProfile: 'primary', preferredSkills: [] });
   assert.equal(launchWins.value.controllerProfile, 'primary');
   assert.deepEqual(launchWins.value.preferredSkills, []);
 
-  for (const key of ['providers', 'plugins', 'authority', 'storage']) {
+  for (const key of ['providers', 'plugins', 'authority', 'storage', 'context']) {
     const result = resolveConfiguration(value, JSON.stringify({ schemaVersion: 1, [key]: 'synthetic' }));
     assert.equal(result.kind, 'rejected');
     assert.equal(result.path, '$.' + key);

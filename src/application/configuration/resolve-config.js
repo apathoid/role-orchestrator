@@ -1,3 +1,4 @@
+import { defaultContextMaxBytes } from '../context-bundle.js';
 import { arrayOf, count, decode, id, invalid, oneOf, optional, record } from '../../core/decode.js';
 
 /** @import {Configuration, ResourceConfig} from './decode-config.js' */
@@ -36,7 +37,7 @@ const projectShape = record({ schemaVersion: oneOf(1), ...preferences });
 const launchShape = record(preferences);
 
 /** @typedef {{kind: 'rejected', source: 'project' | 'launch', path: string, constraint: string}} Rejected */
-/** @typedef {Configuration & {resources: Required<ResourceConfig>, preferredRole?: string, preferredSkills: string[]}} EffectiveConfiguration */
+/** @typedef {Configuration & {resources: Required<ResourceConfig>, context: {maxBytes: number}, preferredRole?: string, preferredSkills: string[]}} EffectiveConfiguration */
 
 /** @param {Rejected['source']} source @param {string} path @param {string} constraint @returns {Rejected} */
 function reject(source, path, constraint) {
@@ -85,7 +86,7 @@ export function resolveConfiguration(user, projectText, launchOptions = {}) {
   }
 
   return { kind: 'accepted', value: {
-    ...user, resources: effective,
+    ...user, resources: effective, context: { maxBytes: user.context?.maxBytes ?? defaultContextMaxBytes },
     controllerProfile: launch.value.controllerProfile ?? project.value.controllerProfile ?? user.controllerProfile,
     preferredRole: launch.value.preferredRole ?? project.value.preferredRole,
     preferredSkills: [...new Set(launch.value.preferredSkills ?? project.value.preferredSkills ?? [])],

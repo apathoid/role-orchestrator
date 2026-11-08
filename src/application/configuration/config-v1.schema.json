@@ -20,6 +20,11 @@
         "invocationTimeoutMs": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
       }
     },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "maxBytes": { "$ref": "#/definitions/limit" } }
+    },
     "storage": {
       "type": "object",
       "additionalProperties": false,
