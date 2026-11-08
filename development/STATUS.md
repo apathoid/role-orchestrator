@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C07.2, жизненный цикл процесса CLI |
-| Следующий шаг | C07.3, фрейминг и ограничение вывода |
+| Последний локально проверенный шаг | C07.3, фрейминг и ограничение вывода |
+| Следующий шаг | C07.4, Controller и Worker |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.2 на Linux с тестовыми портами, локальным store и реальными тестовыми CLI-процессами |
+| Local regression verified | OBSERVED для C00–C07.3 на Linux с тестовыми портами, локальным store и реальными тестовыми CLI-процессами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -161,3 +161,6 @@
 
 - C07.2 — [владелец процесса CLI](reports/C07/CLI_PROCESS_OWNERSHIP.md) запускает отдельную группу Linux, записывает stdin, передаёт байты stdout и stderr, завершает группу при дедлайне, отмене или выходе лидера. Терминальный результат доступен после закрытия процесса и потоков. Ограниченное дочитывание помечает поток, если EOF недоступен.
 - OBSERVED на Linux x86-64, Node 24.22.1. Подтверждены ENOENT, EPIPE, ранний выход, частичный вывод, дедлайн, отмена и очистка потомков. Параллельный вызов сохранил свою группу. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (107), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативные сессии и восстановление после принудительного завершения владельца остаются UNVERIFIED. Следующий шаг — C07.3.
+
+- C07.3 — [фрейминг и ограничение вывода Codex CLI](reports/C07/CLI_OUTPUT_FRAMING.md). Адаптер разбирает целые JSONL-строки, сохраняет ограниченные префиксы stdout/stderr и сообщает причину, позицию и число ошибок фрейминга. После пропуска строки разбор продолжается в пределах бюджета stdout.
+- OBSERVED на Linux, Node 24.22.1. Проверены разрывы UTF-8 и границы чанков, отдельный stderr, некорректные строки, лимиты и доступность частичного вывода после ненулевого выхода. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (113), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативная сессия Codex остаётся UNVERIFIED. Следующий шаг — C07.4.
