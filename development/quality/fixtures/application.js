@@ -7,7 +7,7 @@ export function final(invocation, overrides = {}) {
     outcome: outcome(invocation.attemptId),
     output: decision({
       operationId: invocation.operationId, decisionId: 'decision-' + invocation.attemptId,
-      finalAssessment: assessment({ overall: 'complete', answer: 'Direct answer' }),
+      finalAssessment: assessment({ author: invocation.profile.profileId, overall: 'complete', answer: 'Direct answer' }),
       ...overrides,
     }),
   };

@@ -39,7 +39,7 @@ export const assessment = record({
   author: id, overall: oneOf('complete', 'partial', 'unresolved'),
   requirements: arrayOf(record({
     requirementId: id, status: oneOf('fulfilled', 'partial', 'unverified', 'unavailable'),
-    observationRefs: ids, findingRefs: ids,
+    observationRefs: ids, findingRefs: ids, reason: optional(id),
   })),
   observationRefs: ids, findingRefs: ids, unresolvedQuestions: arrayOf(text), answer: text,
 });

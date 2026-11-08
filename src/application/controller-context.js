@@ -19,7 +19,9 @@ export const controllerInstructions = [
   'Use optional findings for model claims that should remain available in history. Each finding has a new findingId, author (your profileId), claim, subject, supports, and uncertainties. Use an earlier finding reference in supersedes to revise it. Cite findings by their finding:<id> context reference.',
   'When the adapter exposes context fetch, request details by reference. A model summary lists covered observation references and remains a separate model claim.',
   'Context excerpts are partial. Missing references and omissions from the byte budget are marked explicitly.',
-  'Assess requirements and unresolved work using the supplied records. An agent_exit applies to the agent process. Only a separately reported tool_exit describes a tool exit. Model claims and provider reports carry their own attribution.',
+  'Assess each material user requirement, including explicit checks, using fulfilled, partial, unverified or unavailable. Set the assessment author to your profileId. Cite the available observations or findings and explain any gaps.',
+  'If a requested check must run after a change, distinguish evidence from before the change from evidence that covers the new state. Use unverified when a required check lacks matching confirmation and explain what remains open.',
+  'An agent_exit applies to the agent process. Only a separately reported tool_exit describes a tool exit. Model claims and provider reports carry their own attribution.',
 ];
 
 /** @param {Operation} state @param {ReadonlyMap<string, LookupStatus>} [lookups] */
@@ -116,6 +118,9 @@ export function operationHistory(state) {
 export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes) {
   const [request, ...history] = operationHistory(state);
   const { context, omitted, excerpted } = compactContext(history.reverse(), maxBytes, false);
+  const previous = state.events.findLast(item => item.kind === 'operation.finished');
+  const unresolved = previous?.assessment.requirements.flatMap(({ requirementId, status }) =>
+    status === 'fulfilled' ? [] : [{ requirementId, status }]);
   /** @type {ContextItem[]} */
   const items = [
     request,
@@ -143,6 +148,10 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       }),
       ...(omitted || excerpted ? { historyBudget: { maxBytes, omitted, excerpted } } : {}),
     } },
+    ...(previous && unresolved?.length ? [observation({
+      ref: 'assessment-progress:' + previous.eventId, completeness: 'complete',
+      value: { assessmentRef: 'assessment:' + previous.eventId, requirements: unresolved },
+    }, { kind: 'model', sourceId: previous.assessment.author, receivedAt: previous.receivedAt })] : []),
     ...context.reverse(),
   ];
   if (correction) {

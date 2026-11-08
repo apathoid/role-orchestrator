@@ -1,4 +1,4 @@
-import { admitFindings, checkAssessmentRefs, evidenceRefs, findings, recordObservationRefs } from '../core/finding.js';
+import { admitFindings, checkAssessment, evidenceRefs, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
@@ -838,7 +838,7 @@ export function createOrchestrator(deps) {
           const assessment = value.finalAssessment;
           const refs = evidenceRefs(state.request.requestId, state.events);
           const evidenceError = admitFindings(refs, value.findings ?? [], '$.findings', profile.profileId)
-            ?? (assessment && checkAssessmentRefs(refs, assessment));
+            ?? (assessment && checkAssessment(refs, assessment, profile.profileId));
           const live = new Set(pending.keys());
           if (value.operationId !== operationId) {
             correction = { code: 'INVALID_PROPOSAL', path: '$.operationId', expected: 'the current operation id' };

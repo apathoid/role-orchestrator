@@ -65,6 +65,7 @@ test('explicit resume reuses crash history, current grant and alternative provid
   assert.equal(first.completion, concurrent.completion);
   const recovered = await first.completion;
   assert.equal(recovered.status, 'finished');
+  assert.equal(recovered.assessment.author, alt.profileId);
   assert.equal(recovered.request.configurationRef, 'test-config');
   assert.equal(recovered.events.find(event => event.kind === 'operation.recovered').trusted.configurationRef, 'new-config');
   assert.equal(recovered.attempts[0].outcome.terminal, 'unknown');

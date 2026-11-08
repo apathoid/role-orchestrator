@@ -106,7 +106,10 @@ function snapshot(input, path) {
   const value = operation(input, path);
   if (value.revision !== value.events.length) invalid(path + '.revision', 'the committed event count');
   if ((value.status === 'waiting') !== Boolean(value.waiting)) invalid(path + '.waiting', 'a reason only for waiting');
-  if (value.status === 'finished' && !value.assessment) invalid(path + '.assessment', 'the final assessment');
+  const final = value.events.findLast(item => item.kind === 'operation.finished');
+  if ((value.status === 'finished' && !final) || !sameRecord(value.assessment, final?.assessment)) {
+    invalid(path + '.assessment', 'the most recent recorded assessment, if any');
+  }
   const attempts = new Set();
   for (const [index, item] of value.attempts.entries()) {
     const at = path + '.attempts[' + index + ']';

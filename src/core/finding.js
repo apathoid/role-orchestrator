@@ -93,8 +93,21 @@ export function admitFindings(refs, batch, path, author) {
   for (const ref of added) refs.findings.add(ref);
 }
 
-/** @param {EvidenceRefs} refs @param {import('./contracts.js').Assessment} assessment */
-export function checkAssessmentRefs(refs, assessment) {
+/** @param {EvidenceRefs} refs @param {import('./contracts.js').Assessment} assessment @param {string} author
+ * @returns {FieldError | undefined}
+ */
+export function checkAssessment(refs, assessment, author) {
+  if (assessment.author !== author) {
+    return { code: 'INVALID_PROPOSAL', path: '$.finalAssessment.author', expected: 'the reporting model profile id' };
+  }
+  const seen = new Set();
+  for (const [index, requirement] of assessment.requirements.entries()) {
+    if (seen.has(requirement.requirementId)) {
+      return { code: 'INVALID_PROPOSAL', path: '$.finalAssessment.requirements[' + index + '].requirementId',
+        expected: 'a unique requirement id in this assessment' };
+    }
+    seen.add(requirement.requirementId);
+  }
   const items = [
     { value: assessment, path: '$.finalAssessment' },
     ...assessment.requirements.map((value, index) => ({ value, path: '$.finalAssessment.requirements[' + index + ']' })),
@@ -103,11 +116,11 @@ export function checkAssessmentRefs(refs, assessment) {
     const observation = value.observationRefs.findIndex(ref => !refs.observations.has(ref));
     const finding = value.findingRefs.findIndex(ref => !refs.findings.has(ref) && !refs.findingOutputs.has(ref));
     if (observation >= 0) return {
-      code: /** @type {const} */ ('INVALID_PROPOSAL'),
+      code: 'INVALID_PROPOSAL',
       path: path + '.observationRefs[' + observation + ']', expected: 'an available observation in this operation',
     };
     if (finding >= 0) return {
-      code: /** @type {const} */ ('INVALID_PROPOSAL'),
+      code: 'INVALID_PROPOSAL',
       path: path + '.findingRefs[' + finding + ']', expected: 'an available finding in this operation',
     };
   }

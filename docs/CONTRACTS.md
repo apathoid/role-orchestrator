@@ -21,7 +21,7 @@
 | Invocation | attemptId, task/handoff, profile, workspace context, context bundle, effective authority reference, resource envelope, cancel signal |
 | Observation | observationId, attemptId/source identity, source kind, received sequence/time, payload reference, completeness; optional source-reported time/version/location |
 | Finding | findingId, author, claim, subject, supports[], uncertainties[], optional supersedes; статус/важность — оценка модели |
-| Assessment | model author, requirement results[] со статусом `fulfilled \| partial \| unverified \| unavailable`, observation/finding refs, unresolved questions, user-facing answer; overall=`complete \| partial \| unresolved`; user acceptance хранится отдельным событием |
+| Assessment | model author, requirement results[] со статусом `fulfilled \| partial \| unverified \| unavailable`, observation/finding refs, optional reason по требованию, unresolved questions, user-facing answer; overall=`complete \| partial \| unresolved`; user acceptance хранится отдельным событием |
 
 Handoff — материализованная часть Invocation: задача, назначение специалиста, применимые инструкции, буквальные ограничения пользователя, релевантный контекст, ожидаемая форма результата. Не копировать весь журнал каждому специалисту. Controller может делегировать исполнителю исследование/изменение/проверку в одной задаче; Host не раскладывает её на фиксированные подэтапы.
 

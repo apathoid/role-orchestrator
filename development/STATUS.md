@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C06.5, mutable environment |
-| Следующий шаг | C06.6, assessment по требованиям |
+| Последний локально проверенный шаг | C06.6, assessment по требованиям |
+| Следующий шаг | C06.7, история и retention |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C06.5 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C06.6 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -133,3 +133,8 @@
 - C06.5 — observations могут содержать сообщённые источником место, версию и время в `reportedContext`. Controller и специалист получают эту информацию в обычном контексте и по выбранным ссылкам. Ранее сохранённые findings остаются доступны вместе с исходными наблюдениями.
 - OBSERVED: правка постороннего файла сохраняет находку и даёт три предусмотренных вызова. После правки проверяемого файла Controller запрашивает одно целевое повторное чтение, всего пять вызовов. Правка файла, обновление индекса и смена Git-ветки во время активного вызова оставляют один исходный dispatch. Проверены фактические вызовы, журнал dispatch и round-trip снимка.
 - Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (89), `check:package`, `check:removal`, exit 0. Нативные CLI/ACP остаются UNVERIFIED. Следующий шаг — C06.6.
+
+
+- C06.6 — Controller оценивает существенные требования и может сохранить объяснение по каждому. Координатор проверяет автора, уникальность ID и ссылки. На продолжении краткие незакрытые статусы доступны со ссылкой на исходную модельную оценку. Snapshot сверяет сохранённый итог с последней записью в истории.
+- OBSERVED: fixture запустил проверку до правки и записал её tool exit 0. После правки модель вернула `unverified` для явно запрошенной проверки нового состояния. Подтверждены ровно три dispatch, единственный исходный tool exit и сохранение объяснения. Проверены адресные ошибки авторства, повторного ID и недоступной ссылки, а также видимость незакрытой оценки при лимите истории в один байт.
+- Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (91), `check:package`, `check:removal`, exit 0. Нативные CLI/ACP остаются UNVERIFIED. Следующий шаг — C06.7.
