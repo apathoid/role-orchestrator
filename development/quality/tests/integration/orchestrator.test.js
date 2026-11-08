@@ -94,8 +94,12 @@ test('clarification waits for a matching reply and redelivery spends no second a
   assert.equal(finished.operationId, waiting.operationId);
   assert.equal(resourceSnapshot(finished).charged, 2);
   assert.deepEqual(invocations[1].context.slice(-2), [
-    { ref: waiting.waiting.questionId, source: 'model_claim', completeness: 'complete', value: 'Which target?' },
-    { ref: 'reply-1', source: 'user', completeness: 'complete', value: 'Target A' },
+    { ref: waiting.waiting.questionId, source: 'model_claim', completeness: 'complete', value: 'Which target?',
+      provenance: { kind: 'model', sourceId: waiting.waiting.questionId, receivedAt: 100 },
+      receivedSequence: { revision: waiting.revision, index: 0 } },
+    { ref: 'reply-1', source: 'user', completeness: 'complete', value: 'Target A',
+      provenance: { kind: 'user', sourceId: 'reply-1', receivedAt: 100 },
+      receivedSequence: { revision: result.operation.revision, index: 0 } },
   ]);
   assert.equal(invocations[1].context.find(item => item.ref.startsWith('decision:')).value.clarification.question,
     'Which target?');
@@ -170,7 +174,9 @@ test('observations from the executor preserve their source and can support a mod
   } });
   const state = await (await api.submit(request())).completion;
   const terminal = state.events.find(item => item.kind === 'attempt.outcome');
-  assert.deepEqual(terminal.observations, [record]);
+  assert.deepEqual(terminal.observations.find(item => item.ref === record.ref), {
+    ...record, provenance: { kind: 'provider_report', sourceId: record.ref, receivedAt: 100 },
+  });
   assert.deepEqual(state.assessment.observationRefs, [record.ref]);
 });
 

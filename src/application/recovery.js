@@ -1,4 +1,5 @@
 import { decodeOutcome } from '../core/contracts.js';
+import { attributeProviderOutputRefs } from '../core/observation.js';
 
 /** @import {Attempt, Operation} from '../core/operation.js' */
 /** @import {AuthorityPort, Catalog, Profile, ProviderPort, ProviderResult} from '../core/ports.js' */
@@ -41,5 +42,5 @@ export async function lookupAttempt(state, attempt, current, signal) {
       (attempt.dispatchCertainty !== 'unknown' && attempt.dispatchCertainty !== reply.dispatchCertainty) ||
       (reply.dispatchCertainty === 'not_sent' && parsed.value.effect !== 'none')) return { status: 'unavailable' };
   if (parsed.value.terminal === 'unknown') return { status: 'unresolved' };
-  return { status: 'reported', result: { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty } };
+  return { status: 'reported', result: { outcome: attributeProviderOutputRefs(parsed.value, []), dispatchCertainty: reply.dispatchCertainty } };
 }

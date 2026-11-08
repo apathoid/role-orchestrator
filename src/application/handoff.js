@@ -1,6 +1,7 @@
+/** @import {ContextItem} from '../core/observation.js' */
 /** @import {Action} from '../core/contracts.js' */
 /** @import {Operation, Reason} from '../core/operation.js' */
-/** @import {CatalogEntry, ContextItem, Invocation} from '../core/ports.js' */
+/** @import {CatalogEntry, Invocation} from '../core/ports.js' */
 
 /** @typedef {Omit<Invocation, 'attemptId' | 'signal' | 'timeoutMs' | 'idempotencyKey'>} Handoff */
 

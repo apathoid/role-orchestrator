@@ -1,4 +1,6 @@
-/** @import {CatalogEntry, ContextItem} from '../core/ports.js' */
+/** @import {CatalogEntry} from '../core/ports.js' */
+/** @import {ContextItem} from '../core/observation.js' */
+import { observation } from '../core/observation.js';
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {LookupStatus} from './recovery.js' */
 import { resourceSnapshot } from '../core/operation.js';
@@ -11,7 +13,7 @@ export const controllerInstructions = [
   'Delegate when useful by selecting a profile and writing an objective, expected result and context references. Use all_requested or next_completion with action targets to wait for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
-  'Assess requirements and unresolved work using the supplied records. An executor exit is not evidence of tool success.',
+  'Assess requirements and unresolved work using the supplied records. An agent_exit applies to the agent process. Only a separately reported tool_exit describes a tool exit. Model claims and provider reports carry their own attribution.',
 ];
 
 /**
@@ -24,7 +26,9 @@ export const controllerInstructions = [
 export function controllerContext(state, catalog, correction, lookups) {
   /** @type {ContextItem[]} */
   const items = [
-    { ref: state.request.requestId, source: 'user', completeness: 'complete', value: state.request.text },
+    { ...observation({ ref: state.request.requestId, completeness: 'complete', value: state.request.text },
+      { kind: 'user', sourceId: state.request.requestId, receivedAt: state.acceptedAt }),
+    receivedSequence: { revision: 0, index: 0 } },
     { ref: 'host:invocation-context', source: 'host_observed', completeness: 'complete', value: {
       operationId: state.operationId, contextCursor: state.revision, catalog,
       limits: state.limits, resources: resourceSnapshot(state),
@@ -54,20 +58,28 @@ export function controllerContext(state, catalog, correction, lookups) {
       }),
     } },
   ];
-  for (const event of state.events) {
+  for (const [index, event] of state.events.entries()) {
+    const revision = index + 1;
     if (event.kind === 'attempt.outcome' && event.observations) {
-      items.push(...event.observations);
+      for (const [index, item] of event.observations.entries()) {
+        items.push({ ...item, attemptId: event.outcome.attemptId, receivedSequence: { revision, index } });
+      }
     } else if (event.kind === 'controller.responded') {
-      items.push({ ref: 'decision:' + event.decision.decisionId, source: 'model_claim',
-        completeness: 'complete', value: event.decision });
+      append('decision:' + event.decision.decisionId, event.decision, 'model', event.decision.decisionId);
     } else if (event.kind === 'operation.waiting' && event.waiting.kind === 'question') {
-      items.push({ ref: event.waiting.questionId, source: 'model_claim',
-        completeness: 'complete', value: event.waiting.question });
+      append(event.waiting.questionId, event.waiting.question, 'model', event.waiting.questionId);
     } else if (event.kind === 'operation.finished') {
-      items.push({ ref: 'assessment:' + event.eventId, source: 'model_claim',
-        completeness: 'complete', value: event.assessment });
+      append('assessment:' + event.eventId, event.assessment, 'model', event.assessment.author);
     } else if (event.kind === 'operation.continued') {
-      items.push({ ref: event.input.requestId, source: 'user', completeness: 'complete', value: event.input.text });
+      append(event.input.requestId, event.input.text, 'user', event.input.requestId);
+    }
+
+    /** @param {string} ref @param {unknown} value @param {'user' | 'model'} kind @param {string} sourceId */
+    function append(ref, value, kind, sourceId) {
+      items.push({
+        ...observation({ ref, value, completeness: 'complete' }, { kind, sourceId, receivedAt: event.receivedAt }),
+        receivedSequence: { revision, index: 0 },
+      });
     }
   }
   if (correction) {

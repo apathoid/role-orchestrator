@@ -1,5 +1,5 @@
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
-import { decode } from '../core/decode.js';
+import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { applyEvent, createOperation, resourceSnapshot, sameRecord } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
@@ -7,15 +7,17 @@ import { controllerContext, controllerInstructions } from './controller-context.
 import { materializeHandoff } from './handoff.js';
 import { lookupAttempt } from './recovery.js';
 import { runActionRound } from './action-round.js';
+import { attributeProviderOutputRefs, observation, receiveProviderObservation } from '../core/observation.js';
 
 /** @import {Action, CancellationSource, Decision, Outcome, ReasonCode} from '../core/contracts.js' */
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {Clock, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
+/** @import {Observation} from '../core/observation.js' */
 /** @import {Event, Limits, Operation, Reason} from '../core/operation.js' */
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
-/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextItem, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
+/** @import {AttemptPermissions, AuthorityPort, Catalog, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{
@@ -220,7 +222,7 @@ export function createOrchestrator(deps) {
       if (entries.some(item => 'kind' in item && item.requestMatch === 'unknown')) {
         throw new OrchestrationError('STORE_UNAVAILABLE', 'An unreadable snapshot lacks a request reference');
       }
-      const state = createOperation(ids.newId(), request, authority.reference, limits);
+      const state = createOperation(ids.newId(), request, authority.reference, limits, clock.now());
       const failure = await commit(state, null);
       if (failure) throw failure.error;
       trace(state, 'operation.accepted', 'ACCEPTED');
@@ -301,6 +303,7 @@ export function createOrchestrator(deps) {
             .catch(() => /** @type {Lookup} */ ({ status: 'unavailable' })),
           interrupted.promise,
         ]);
+        const receivedAt = clock.now();
         lookups.set(attempt.attemptId, status);
         if (stop.aborted) break;
         await serialize(async () => {
@@ -309,10 +312,9 @@ export function createOrchestrator(deps) {
           trace(current, 'attempt.status_lookup', status.toUpperCase(), attempt.attemptId);
           if (result) await transition(current, {
             kind: 'attempt.outcome', outcome: result.outcome, dispatchCertainty: result.dispatchCertainty,
-            observations: [{
-              ref: 'attempt-status:' + attempt.attemptId, source: 'provider_reported',
-              completeness: 'complete', value: result,
-            }],
+            observations: [observation({
+              ref: 'attempt-status:' + attempt.attemptId, completeness: 'complete', value: result,
+            }, { kind: 'provider_report', sourceId: attempt.route?.providerId ?? attempt.attemptId, receivedAt })],
           });
         });
       }
@@ -354,10 +356,10 @@ export function createOrchestrator(deps) {
     let contextCursor = state.revision;
     /** @type {'PERMISSION_DENIED' | 'REVOKED' | 'RETRY_NOT_AUTHORIZED' | undefined} */
     let denied;
-    /** @type {ContextItem[]} */
+    /** @type {Observation[]} */
     const observations = [];
     let acceptingObservations = true;
-    /** @type {ContextItem[]} */
+    /** @type {Observation[]} */
     const lateObservations = [];
     /** @type {ProviderResult | undefined} */
     let receivedReply;
@@ -365,6 +367,15 @@ export function createOrchestrator(deps) {
     let lateReply;
     let recordingLate = false;
     let flushScheduled = false;
+
+    /** @param {Observation} item */
+    function receive(item) {
+      if (!signal.aborted) observations.push(item);
+      else {
+        lateObservations.push(item);
+        scheduleLateCommit();
+      }
+    }
 
     /** @param {Operation} current */
     async function recordLate(current) {
@@ -378,15 +389,22 @@ export function createOrchestrator(deps) {
 
       const known = current.events.flatMap(event => event.kind === 'attempt.outcome' &&
         event.outcome.attemptId === attemptId ? event.observations ?? [] : []);
+      // Compare the report itself. A duplicate callback has a new local receipt time.
+      /** @param {Observation} item */
+      const report = ({ provenance, ...item }) => ({
+        ...item, provenance: provenance && { ...provenance, receivedAt: undefined },
+      });
       const observations = [];
       for (const sample of samples) {
-        if (known.some(item => sameRecord(item, sample))) continue;
+        const received = report(sample);
+        if (known.some(item => sameRecord(report(item), received))) continue;
         observations.push(sample);
         known.push(sample);
       }
       if (!reply && !observations.length) return current;
       return transition(current, {
-        kind: 'attempt.outcome', late: true, outcome: reply?.outcome ?? attempt.outcome,
+        kind: 'attempt.outcome', late: true,
+        outcome: reply ? attributeProviderOutputRefs(reply.outcome, known) : attempt.outcome,
         dispatchCertainty: reply?.dispatchCertainty ?? attempt.dispatchCertainty, observations,
       });
     }
@@ -410,6 +428,14 @@ export function createOrchestrator(deps) {
       const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty, output: reply.output };
       if (acceptingObservations) {
         receivedReply = result;
+        if (result.output !== undefined) {
+          const output = decode(jsonValue, result.output);
+          receive(observation({
+            ref: (handoff ? 'attempt-output:' : 'controller-output:') + attemptId,
+            completeness: output.kind === 'accepted' ? 'complete' : 'unavailable',
+            value: output.kind === 'accepted' ? output.value : undefined,
+          }, { kind: 'model', sourceId: attemptId, receivedAt: clock.now() }));
+        }
         if (signal.aborted) {
           lateReply = result;
           scheduleLateCommit();
@@ -527,11 +553,9 @@ export function createOrchestrator(deps) {
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
         }, item => {
           if (!acceptingObservations) return;
-          if (!signal.aborted) observations.push(item);
-          else {
-            lateObservations.push(item);
-            scheduleLateCommit();
-          }
+          const received = receiveProviderObservation(item, clock.now());
+          if (received) receive(received);
+          else trace(dispatched, 'attempt.observation_invalid', 'PROTOCOL_ERROR', attemptId);
         }).then(acceptReply)) };
       });
       const reply = await invocation.response;
@@ -541,7 +565,7 @@ export function createOrchestrator(deps) {
         certainty = 'unknown';
       } else {
         ({ dispatchCertainty: certainty, output } = reply);
-        outcome = reply.outcome;
+        outcome = attributeProviderOutputRefs(reply.outcome, observations);
       }
     } catch (error) {
       if (error instanceof OrchestrationError && ['STORE_CONFLICT', 'STORE_UNAVAILABLE'].includes(error.code)) throw error;
@@ -637,12 +661,8 @@ export function createOrchestrator(deps) {
     const attemptId = reserved.attemptId;
     try {
       const response = await invoke(reserved.state, attemptId, stop, undefined, handoff.handoff, executor, undefined, action);
-      const observations = response.observations;
-      if (response.output !== undefined) {
-        observations.push({ ref: 'attempt-output:' + attemptId, source: 'model_claim', completeness: 'complete', value: response.output });
-      }
       await serialize(async () => response.recordLate(await transition(await inspect(state.operationId), {
-        kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations,
+        kind: 'attempt.outcome', outcome: response.outcome, dispatchCertainty: response.certainty, observations: response.observations,
       })));
       return true;
     } finally {

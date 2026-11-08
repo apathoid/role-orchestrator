@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C05.10, crash matrix |
-| Следующий шаг | C06.1, provenance |
+| Последний локально проверенный шаг | C06.1, provenance |
+| Следующий шаг | C06.2, findings и revisions оценок |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C05 с тестовыми портами и локальным store на Linux |
+| Local regression verified | OBSERVED для C00–C06.1 с тестовыми портами и локальным store на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -106,3 +106,10 @@
 - Snapshot codec сверяет status, dispatch certainty, timestamps, маршрут и итог attempt с последовательностью сохранённых событий. Несогласованная запись возвращает corrupt_snapshot, остаётся на диске и не допускает resume или dispatch.
 - После abort coordinator ограничивает ожидание и завершает модельный ход, но до подтверждения отсоединения сохраняет коррелированные поздние факты. Проверены late outcome и расход, дедупликация observations, сохранение после дедлайна cleanup и отсутствие повторного модельного хода.
 - OBSERVED локально: `check`, `test:foundation` (4), `test:core` (14), `test:integration` (79), `check:package`, `check:removal` (из локального npm cache). Следующий шаг — C06.1.
+
+
+## C06 — контекст, findings и acceptance
+
+- C06.1 — история различает пользовательские сообщения, модельные сообщения, отчёты провайдера, события инструментов и наблюдения транспорта. Сохранены идентификатор источника, время приёма, доступный вывод и полнота. Порядок доставки восстанавливается из revision и позиции записи в событии. Снимки v1 без новых полей остаются читаемыми.
+- OBSERVED: после повторного открытия Linux store выход процесса агента с кодом 0 и сообщение модели о прошедших тестах видны отдельно. Код завершения инструмента появляется только из отдельного структурированного события. Проверены противоречивый provenance в snapshot и дедупликация позднего события с другим временем доставки.
+- Локально на Node 24.22.1: `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (80), `check:package`, `check:removal`, exit 0. Адаптеры CLI/ACP и локальная проверка Nix остаются UNVERIFIED. Следующий шаг — C06.2.

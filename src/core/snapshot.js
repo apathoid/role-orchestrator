@@ -1,5 +1,6 @@
 import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
 import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
+import { contextItem } from './observation.js';
 import { resolveOutcome, sameRecord } from './operation.js';
 
 /** @import {Decoder, FieldError} from './decode.js' */
@@ -9,37 +10,6 @@ import { resolveOutcome, sameRecord } from './operation.js';
 /** @typedef {{kind: 'accepted', value: Operation} |
  *   {kind: 'corrupt', reason: FieldError} | {kind: 'unsupported_version', version: number}} SnapshotResult
  */
-
-/**
- * Copy context data without calling toJSON or serializing runtime handles.
- * Undefined object fields represent absent optional values.
- * @type {Decoder<unknown>}
- */
-const jsonValue = (input, path) => {
-  const ancestors = new Set();
-  return visit(input, path);
-
-  /** @param {unknown} value @param {string} at @returns {unknown} */
-  function visit(value, at) {
-    if (value === null || typeof value === 'boolean' || typeof value === 'string') return value;
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (!value || typeof value !== 'object' || ancestors.has(value)) return invalid(at, 'acyclic JSON data');
-    ancestors.add(value);
-    try {
-      if (Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype) return arrayOf(visit)(value, at);
-      if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
-        return invalid(at, 'JSON data');
-      }
-      return Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(value)).flatMap(([key, field]) => {
-        if (!field.enumerable) return [];
-        if (!('value' in field)) invalid(at + '.' + key, 'JSON data');
-        return field.value === undefined ? [] : [[key, visit(field.value, at + '.' + key)]];
-      }));
-    } finally {
-      ancestors.delete(value);
-    }
-  }
-};
 
 /**
  * @template {Record<string, Decoder<unknown>>} Variants
@@ -94,10 +64,6 @@ const admission = tagged('kind', {
     reason: oneOf('identity', 'unknown_dependency', 'unavailable_dependency', 'cyclic_dependency'),
   }),
 });
-const contextItem = record({
-  ref: id, source: oneOf('user', 'host_observed', 'provider_reported', 'model_claim'),
-  completeness: oneOf('complete', 'truncated', 'unavailable'), value: optional(jsonValue),
-});
 const eventFields = { eventId: id, operationId: id, receivedAt: measurement };
 /** @type {Decoder<Event>} */
 const event = tagged('kind', {
@@ -128,7 +94,7 @@ const event = tagged('kind', {
 });
 const operation = record({
   schemaVersion: version, operationId: id, request, generation: count, revision: count,
-  authorityRef: id, transcriptRefs: arrayOf(id),
+  authorityRef: id, transcriptRefs: arrayOf(id), acceptedAt: optional(measurement),
   limits,
   attempts: arrayOf(attempt), events: arrayOf(event), assessment: optional(assessment),
   waiting: optional(waiting), cancellation: optional(cancellation), status,

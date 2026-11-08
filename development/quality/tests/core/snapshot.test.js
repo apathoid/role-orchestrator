@@ -105,3 +105,21 @@ test('snapshot rejects lifecycle regressions and fabricated no-effect outcomes',
     assert.equal(decodeSnapshot(JSON.stringify(damaged)).kind, 'corrupt');
   }
 });
+
+
+test('snapshot preserves legacy observation labels and rejects contradictory typed exits', () => {
+  const wire = JSON.parse(encodeSnapshot(withHistory()));
+  const item = wire.events[3].observations[0];
+  const legacy = decodeSnapshot(JSON.stringify(wire));
+  assert.equal(legacy.kind, 'accepted');
+  assert.equal(legacy.value.events[3].observations[0].provenance, undefined);
+
+  item.provenance = {
+    kind: 'host_transport', sourceId: 'process-1', receivedAt: 1, exit: { kind: 'agent_exit', code: 0 },
+  };
+  assert.equal(decodeSnapshot(JSON.stringify(wire)).reason.path, '$.events[3].observations[0].source');
+  item.source = 'host_observed';
+  assert.equal(decodeSnapshot(JSON.stringify(wire)).kind, 'accepted');
+  item.provenance.exit.kind = 'tool_exit';
+  assert.equal(decodeSnapshot(JSON.stringify(wire)).reason.path, '$.events[3].observations[0].provenance.exit.kind');
+});

@@ -75,3 +75,34 @@ export const record = fields => (input, path) => {
     [field, parse(Object.hasOwn(values, field) ? values[field] : undefined, path + '.' + field)]);
   return /** @type {{[K in keyof F]: ReturnType<F[K]>}} */ (Object.fromEntries(entries));
 };
+
+/**
+ * Copy context data without calling toJSON or serializing runtime handles.
+ * Undefined object fields represent absent optional values.
+ * @type {Decoder<unknown>}
+ */
+export const jsonValue = (input, path) => {
+  const ancestors = new Set();
+  return visit(input, path);
+
+  /** @param {unknown} value @param {string} at @returns {unknown} */
+  function visit(value, at) {
+    if (value === null || typeof value === 'boolean' || typeof value === 'string') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (!value || typeof value !== 'object' || ancestors.has(value)) return invalid(at, 'acyclic JSON data');
+    ancestors.add(value);
+    try {
+      if (Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype) return arrayOf(visit)(value, at);
+      if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+        return invalid(at, 'JSON data');
+      }
+      return Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(value)).flatMap(([key, field]) => {
+        if (!field.enumerable) return [];
+        if (!('value' in field)) invalid(at + '.' + key, 'JSON data');
+        return field.value === undefined ? [] : [[key, visit(field.value, at + '.' + key)]];
+      }));
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+};

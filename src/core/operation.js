@@ -1,6 +1,6 @@
 /** @import {Assessment, CancellationSource, Decision, Outcome, ReasonCode, Request} from './contracts.js' */
 /** @import {DiagnosticEvent} from './diagnostics.js' */
-/** @import {ContextItem} from './ports.js' */
+/** @import {Observation} from './observation.js' */
 /** @import {Admission} from './action-graph.js' */
 
 /**
@@ -18,7 +18,7 @@
  *   dispatchCertainty?: DispatchCertainty, effect?: Outcome['effect']}} Reason
  * @typedef {{kind: 'question', questionId: string, question: string} | {kind: 'technical', reason: Reason}} Waiting
  * @typedef {{schemaVersion: 1, operationId: string, request: Request, generation: number, revision: number,
- *   authorityRef: string, transcriptRefs: readonly string[], limits: Limits, attempts: readonly Attempt[],
+ *   authorityRef: string, acceptedAt?: number, transcriptRefs: readonly string[], limits: Limits, attempts: readonly Attempt[],
  *   events: readonly Event[], assessment?: Assessment, waiting?: Waiting,
  *   cancellation?: CancellationSource, status: 'active' | 'waiting' | 'finished' | 'cancelled'}} Operation
  *
@@ -26,7 +26,7 @@
  *   {kind: 'attempt.reserved', actionId: string, attemptId: string} |
  *   {kind: 'attempt.dispatched', attemptId: string, route?: DispatchRoute} |
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
- *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly ContextItem[], late?: true} |
+ *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly Observation[], late?: true} |
  *   {kind: 'controller.responded', decision: Decision, admissions?: readonly Admission[]} |
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
@@ -41,13 +41,14 @@
  *   {kind: 'duplicate', state: Operation} | {kind: 'rejected', state: Operation, reason: Reason}} Transition
  */
 
-/** @param {string} operationId @param {Request} request @param {string} authorityRef @param {Limits} limits @returns {Operation} */
-export function createOperation(operationId, request, authorityRef, limits) {
+/** @param {string} operationId @param {Request} request @param {string} authorityRef @param {Limits} limits @param {number} [acceptedAt] @returns {Operation} */
+export function createOperation(operationId, request, authorityRef, limits, acceptedAt) {
   for (const value of [limits.maxInvocations, limits.maxConcurrentInvocations]) {
     if (!Number.isSafeInteger(value) || value < 1) throw new RangeError('Operation limits must be positive safe integers');
   }
   return {
-    schemaVersion: 1, operationId, request, authorityRef, limits: { ...limits }, generation: 0, revision: 0,
+    schemaVersion: 1, operationId, request, authorityRef, limits: { ...limits },
+    ...(acceptedAt === undefined ? {} : { acceptedAt }), generation: 0, revision: 0,
     status: 'active', transcriptRefs: [], attempts: [], events: [],
   };
 }

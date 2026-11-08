@@ -370,10 +370,11 @@ test('late evidence after the cleanup deadline is committed while the connection
   const cleanup = Promise.withResolvers();
   const reply = Promise.withResolvers();
   const recorded = Promise.withResolvers();
+  let now = 100;
   let expire;
   let observe;
   const { api, invocations } = setup({
-    store,
+    store, now: () => now,
     schedule(ms, callback) { expire = callback; return () => {}; },
     close() { closing.resolve(); return cleanup.promise; },
     respond(invocation, count, callback) {
@@ -393,9 +394,13 @@ test('late evidence after the cleanup deadline is committed while the connection
   const waiting = await submitted.completion;
   assert.equal(waiting.attempts[0].outcome.effect, 'unknown');
 
-  const fact = { ref: 'late-tool', source: 'provider_reported', completeness: 'complete', value: 'observed' };
+  const fact = {
+    ref: 'late-tool', kind: 'provider_tool', sourceId: 'late-tool-invocation', exitCode: 0,
+    completeness: 'complete', value: 'observed',
+  };
   observe(fact);
   await new Promise(resolve => setImmediate(resolve));
+  now = 110;
   observe(fact);
   reply.resolve({
     ...final(invocation),
@@ -409,6 +414,99 @@ test('late evidence after the cleanup deadline is committed while the connection
   assert.equal(loaded.waiting.reason.effect, 'confirmed');
   assert.equal(loaded.attempts[0].outcome.usage.cost, 0.02);
   assert.equal(loaded.events.filter(event => event.kind === 'controller.responded').length, 0);
-  assert.equal(loaded.events.flatMap(event => event.observations ?? []).filter(item => item.ref === fact.ref).length, 1);
+  const samples = loaded.events.flatMap(event => event.observations ?? []).filter(item => item.ref === fact.ref);
+  assert.equal(samples.length, 1);
+  assert.deepEqual(samples[0].provenance, {
+    kind: 'provider_tool', sourceId: fact.sourceId, receivedAt: 100, exit: { kind: 'tool_exit', code: 0 },
+  });
   assert.equal(invocations.length, 1);
+});
+
+
+test('reopened history keeps the agent process exit, tool exit and model claims separate', async t => {
+  const { directory, store } = await setupStore(t);
+  let now = 100;
+  const { api, invocations, events } = setup({
+    store, now: () => now,
+    respond(invocation, count, observe) {
+      now = 110;
+      observe({ ref: 'agent-exit', kind: 'agent_exit', sourceId: 'agent-process', exitCode: 0, completeness: 'complete' });
+      now = 120;
+      observe({ ref: 'claim', kind: 'model', sourceId: 'message-1', completeness: 'complete', value: 'Tests passed' });
+      observe({ ref: 'legacy', source: 'host_observed', completeness: 'complete', value: { exitCode: 0 } });
+      observe({ ref: 'malformed', kind: 'model', sourceId: 'message-2', exitCode: 0, completeness: 'complete' });
+      now = 130;
+      return {
+        ...final(invocation, { finalAssessment: undefined, clarification: { question: 'Run the requested test?' } }),
+        outcome: outcome(invocation.attemptId, { outputRefs: [
+          { ref: 'agent-exit', kind: 'agent_exit', source: 'provider_reported' },
+          { ref: 'claim', kind: 'tool_exit', source: 'host_observed' },
+        ] }),
+      };
+    },
+  });
+  const waiting = await (await api.submit(request())).completion;
+  assert.equal(waiting.status, 'waiting');
+  assert.equal(events.filter(event => event.eventName === 'attempt.observation_invalid').length, 1);
+  assert.deepEqual(waiting.attempts[0].outcome.outputRefs, [
+    { ref: 'agent-exit', kind: 'agent_exit', source: 'host_observed' },
+    { ref: 'claim', kind: 'observation', source: 'model_claim' },
+  ]);
+  await store.close();
+
+  const reopened = createLocalStateStore(directory);
+  t.after(() => reopened.close());
+  await reopened.open();
+  const resumed = setup({
+    store: reopened, idPrefix: 'resumed-', now: () => now,
+    respond(invocation, count, observe) {
+      observe({
+        ref: 'tool-exit', kind: 'provider_tool', sourceId: 'test-invocation', exitCode: 1,
+        completeness: 'truncated', value: 'one failing test',
+      });
+      return final(invocation);
+    },
+  });
+  now = 140;
+  const finished = await (await resumed.api.resume(waiting.operationId, {
+    requestId: 'user-answer', questionId: waiting.waiting.questionId, text: 'Yes',
+  })).completion;
+  const context = resumed.invocations[0].context;
+  const byRef = ref => context.find(item => item.ref === ref);
+  assert.deepEqual(byRef('request-1').provenance, { kind: 'user', sourceId: 'request-1', receivedAt: 100 });
+  assert.deepEqual(byRef('user-answer').provenance, { kind: 'user', sourceId: 'user-answer', receivedAt: 140 });
+  const agent = byRef('agent-exit');
+  const claim = byRef('claim');
+  assert.equal(agent.attemptId, invocations[0].attemptId);
+  assert.equal(agent.source, 'host_observed');
+  assert.deepEqual(agent.provenance, {
+    kind: 'host_transport', sourceId: 'agent-process', receivedAt: 110, exit: { kind: 'agent_exit', code: 0 },
+  });
+  assert.equal(claim.source, 'model_claim');
+  assert.equal(claim.value, 'Tests passed');
+  assert.equal(claim.provenance.receivedAt, 120);
+  assert.equal(claim.provenance.sourceId, 'message-1');
+  assert.equal(claim.provenance.exit, undefined);
+  assert.deepEqual(agent.receivedSequence, { revision: 3, index: 0 });
+  assert.deepEqual(claim.receivedSequence, { revision: 3, index: 1 });
+  assert.equal(byRef('legacy').source, 'provider_reported');
+  assert.equal(byRef('legacy').provenance.exit, undefined);
+  assert.equal(byRef('malformed'), undefined);
+  const controllerOutput = byRef('controller-output:' + invocations[0].attemptId);
+  assert.equal(controllerOutput.value.clarification.question, 'Run the requested test?');
+  assert.equal(controllerOutput.provenance.kind, 'model');
+  assert.ok(!context.some(item => item.provenance?.exit?.kind === 'tool_exit'));
+
+  const loaded = await reopened.load(finished.operationId);
+  const records = loaded.events.flatMap(event => event.observations ?? []);
+  const tool = records.find(item => item.ref === 'tool-exit');
+  assert.equal(tool.source, 'provider_reported');
+  assert.equal(tool.value, 'one failing test');
+  assert.equal(tool.completeness, 'truncated');
+  assert.deepEqual(tool.provenance, {
+    kind: 'provider_tool', sourceId: 'test-invocation', receivedAt: 140, exit: { kind: 'tool_exit', code: 1 },
+  });
+  assert.deepEqual(records.filter(item => item.provenance?.exit?.kind === 'tool_exit'), [tool]);
+  assert.equal(invocations.length, 1);
+  assert.equal(resumed.invocations.length, 1);
 });

@@ -33,6 +33,8 @@ test('two independent workers run in parallel, a third starts when one slot is r
   assert.equal(invocations.length, 3);
   assert.deepEqual(invocations[1].context, [{
     ref: 'request-1', source: 'user', completeness: 'complete', value: 'Literal task',
+    provenance: { kind: 'user', sourceId: 'request-1', receivedAt: 100 },
+    receivedSequence: { revision: 0, index: 0 },
   }]);
   assert.equal(invocations[1].authorityRef, 'fixture-authority');
   active.get('b').done.resolve();

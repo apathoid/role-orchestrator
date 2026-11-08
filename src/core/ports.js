@@ -1,3 +1,4 @@
+/** @import {ContextItem, ProviderObservation} from './observation.js' */
 /** @import {Outcome, Request} from './contracts.js' */
 /** @import {Operation} from './operation.js' */
 
@@ -7,8 +8,6 @@
  * @typedef {{providerId: string, maxConcurrency: number | null, capabilities: Readonly<Record<string, Capability>>}} ProviderDescription
  * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>}} Profile
  * @typedef {{sessionId: string}} ProviderSession
- * @typedef {{ref: string, value?: unknown, completeness: 'complete' | 'truncated' | 'unavailable',
- *   source: 'user' | 'host_observed' | 'provider_reported' | 'model_claim'}} ContextItem
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
@@ -19,7 +18,7 @@
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
- *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ContextItem) => void) => Promise<ProviderResult>,
+ *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => void) => Promise<ProviderResult>,
  *   lookupStatus?: (query: {operationId: string, attemptId: string, profile: Profile, signal: AbortSignal}) =>
  *     Promise<Pick<ProviderResult, 'outcome' | 'dispatchCertainty'> | undefined>,
  *   cancel: (session: ProviderSession, attemptId: string) => Promise<void>,
