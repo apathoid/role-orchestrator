@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C07.7, сквозной запуск с durable state |
-| Следующий шаг | C07.8, проверка с настоящим исполнителем при доступности |
+| Последний локально проверенный шаг | C08.1, сопоставление портов с ACP v1 |
+| Следующий шаг | C08.2, владение соединением и сессией ACP |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.7 на Linux с локальным store и реальными тестовыми CLI-процессами |
+| Local regression verified | OBSERVED для C00–C07.7 и протокольной проверки C08.1 на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -176,3 +176,10 @@
 
 - C07.7 — [сквозная проверка CLI и восстановления](reports/C07/CLI_DURABLE_RUN.md). Оркестратор, CLI-адаптер, реальный дочерний процесс и локальное хранилище проверены вместе. Изменение каталога без Git во время вызова сохранило один запуск. После `SIGKILL` оркестратора до записи исхода Worker явный resume запустил новый Controller, а эффект Worker остался неизвестным. Отмена закрыла активный CLI-процесс, сохранив частичные наблюдения.
 - OBSERVED на Linux, Node 24.22.1. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:contracts` (10), `test:integration` (127), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативная сессия Codex остаётся UNVERIFIED. Следующий шаг — C07.8.
+
+- C07.8 — [нативный CLI-пробник](reports/C07/CLI_NATIVE_PROBE.md). Codex CLI 0.165.0 показал вход через ChatGPT, но запрос вернул HTTP 401 в диагностике и не дошёл до завершения хода. Нативная приёмка остаётся UNVERIFIED. Синтетические проверки A18 и A20 зафиксированы отдельно от A38.
+
+## C08 — Generic ACP adapter
+
+- C08.1 — [сопоставление ProviderPort и стабильного ACP v1](reports/C08/ACP_V1_PROTOCOL_MAPPING.md) по SDK 2.4.0, опубликованной спецификации и контрактному тесту. Подтверждены API подключения, рукопожатие, сессия, prompt, событие инструмента, запрос разрешения, отмена и закрытие через NDJSON с управляемым агентом.
+- OBSERVED на Linux, Node 24.22.1. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:contracts` (11), `test:integration` (127), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативное рукопожатие с Codex ACP и вызов модели остаются UNVERIFIED. Следующий шаг — C08.2.
