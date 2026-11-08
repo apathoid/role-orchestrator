@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C07.1, контракт запуска Codex CLI |
-| Следующий шаг | C07.2, жизненный цикл процесса CLI |
+| Последний локально проверенный шаг | C07.2, жизненный цикл процесса CLI |
+| Следующий шаг | C07.3, фрейминг и ограничение вывода |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.1 на Linux с тестовыми портами, локальным store и проверкой контракта запуска CLI |
+| Local regression verified | OBSERVED для C00–C07.2 на Linux с тестовыми портами, локальным store и реальными тестовыми CLI-процессами |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -158,3 +158,6 @@
 
 - C07.1 — [контракт запуска Codex CLI](reports/C07/CLI_LAUNCH.md). Адаптер формирует команду и argv из доверенных настроек, передаёт текст через stdin, сохраняет cwd и окружение с явными переадресациями `fromEnv`. Профиль Codex опционален. Формат stdout — JSONL.
 - OBSERVED на Linux, Node 24.22.1. Бинарник Codex CLI 0.165.0 подтвердил флаги и чтение stdin вне Git. Контролируемый процесс подтвердил передачу stdin, cwd, argv и окружения. Обе установки из lock, `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (98), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативные модельные вызовы и локальный Nix остаются UNVERIFIED. Следующий шаг — C07.2.
+
+- C07.2 — [владелец процесса CLI](reports/C07/CLI_PROCESS_OWNERSHIP.md) запускает отдельную группу Linux, записывает stdin, передаёт байты stdout и stderr, завершает группу при дедлайне, отмене или выходе лидера. Терминальный результат доступен после закрытия процесса и потоков. Ограниченное дочитывание помечает поток, если EOF недоступен.
+- OBSERVED на Linux x86-64, Node 24.22.1. Подтверждены ENOENT, EPIPE, ранний выход, частичный вывод, дедлайн, отмена и очистка потомков. Параллельный вызов сохранил свою группу. `npm --prefix development run check`, `test:foundation` (4), `test:core` (15), `test:integration` (107), `check:package`, `check:removal` и `git diff --check` завершились успешно. Нативные сессии и восстановление после принудительного завершения владельца остаются UNVERIFIED. Следующий шаг — C07.3.
