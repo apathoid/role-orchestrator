@@ -17,10 +17,7 @@ import { operationHistory } from './controller-context.js';
  * @returns {Promise<HistoryEntry[] | undefined>}
  */
 export async function findingHistory(operation, findingRef, store) {
-  const items = new Map();
-  for (const item of operationHistory(operation)) {
-    if (!items.has(item.ref)) items.set(item.ref, item);
-  }
+  const items = new Map(operationHistory(operation).map(item => [item.ref, item]));
   if (items.get(findingRef)?.kind !== 'finding') return undefined;
   const attempts = new Map(operation.attempts.map(attempt => [attempt.attemptId, attempt]));
   const refs = new Set([findingRef]);
@@ -34,7 +31,8 @@ export async function findingHistory(operation, findingRef, store) {
       if (finding.supersedes) refs.add(finding.supersedes);
     }
     for (const support of item?.summary?.coveredObservationRefs ?? []) refs.add(support);
-    const event = operation.events[(item?.receivedSequence?.revision ?? 0) - 1];
+    const event = item?.unavailableReason === 'ambiguous' ? undefined
+      : operation.events[(item?.receivedSequence?.revision ?? 0) - 1];
     entries.push({
       ref, item,
       attempt: item?.attemptId ? attempts.get(item.attemptId) : undefined,

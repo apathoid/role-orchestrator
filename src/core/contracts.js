@@ -68,7 +68,7 @@ export const reasonCode = oneOf(
 );
 const usage = record({ inputTokens: nullable(count), outputTokens: nullable(count), cost: nullable(measurement) });
 const outputRef = record({
-  ref: id, source: oneOf('host_observed', 'provider_reported', 'model_claim'),
+  ref: id, providerRef: optional(id), source: oneOf('host_observed', 'provider_reported', 'model_claim'),
   kind: oneOf('output', 'agent_exit', 'tool_exit', 'observation', 'finding'),
 });
 export const outcome = record({

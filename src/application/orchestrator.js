@@ -11,7 +11,9 @@ import { bindContextAccess } from './context-access.js';
 import { defaultContextMaxBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
 import { runActionRound } from './action-round.js';
-import { attributeProviderOutputRefs, decodeSummaryReport, observation, receiveProviderObservation } from '../core/observation.js';
+import { bindAssessmentEvidence, bindFindingEvidence, bindOutcomeEvidence, evidenceAliases, providerEvidenceRef,
+  reservedEvidenceRef, scopedEvidenceAliases } from './evidence-identity.js';
+import { decodeSummaryReport, observation, receiveProviderObservation } from '../core/observation.js';
 
 /** @import {Action, CancellationSource, Decision, Outcome, ReasonCode} from '../core/contracts.js' */
 /** @import {OutcomeEvidence} from '../core/finding.js' */
@@ -271,6 +273,9 @@ export function createOrchestrator(deps) {
         if (!sameRecord(previous.request, request)) throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
         return activeSubmission(previous);
       }
+      if (reservedEvidenceRef(request.requestId)) {
+        throw new OrchestrationError('INVALID_PROPOSAL', 'Reserved context reference prefix', '$.requestId');
+      }
       if (all.some(item => item.transcriptRefs.includes(request.requestId))) {
         throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
       }
@@ -309,6 +314,9 @@ export function createOrchestrator(deps) {
           if (operation.operationId === operationId && sameRecord(event.input, follow)) return activeSubmission(state);
           throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
         }
+      }
+      if (reservedEvidenceRef(follow.requestId) || evidenceRefs(state.request.requestId, state.events).observations.has(follow.requestId)) {
+        throw new OrchestrationError('INVALID_PROPOSAL', 'Request id collides with a context reference', '$.requestId');
       }
       const question = state.waiting?.kind === 'question' ? state.waiting : undefined;
       if (follow.questionId !== question?.questionId) {
@@ -365,12 +373,17 @@ export function createOrchestrator(deps) {
           const current = await inspect(operationId);
           if (stop.aborted) return;
           trace(current, 'attempt.status_lookup', status.toUpperCase(), attempt.attemptId);
-          if (result) await transition(current, {
-            kind: 'attempt.outcome', outcome: result.outcome, dispatchCertainty: result.dispatchCertainty,
-            observations: [observation({
-              ref: 'attempt-status:' + attempt.attemptId, completeness: 'complete', value: result,
-            }, { kind: 'provider_report', sourceId: attempt.route?.providerId ?? attempt.attemptId, receivedAt })],
-          });
+          if (result) {
+            const recorded = current.events.flatMap(event => event.kind === 'attempt.outcome' &&
+              event.outcome.attemptId === attempt.attemptId ? event.observations ?? [] : []);
+            const outcome = bindOutcomeEvidence(current.operationId, result.outcome, recorded);
+            await transition(current, {
+              kind: 'attempt.outcome', outcome, dispatchCertainty: result.dispatchCertainty,
+              observations: [observation({
+                ref: 'attempt-status:' + ids.newId(), completeness: 'complete', value: { ...result, outcome },
+              }, { kind: 'provider_report', sourceId: attempt.route?.providerId ?? attempt.attemptId, receivedAt })],
+            });
+          }
         });
       }
     } finally {
@@ -424,6 +437,13 @@ export function createOrchestrator(deps) {
     let recordingLate = false;
     let flushScheduled = false;
 
+    /** @type {Map<string, Observation>} */
+    const providerReports = new Map();
+    /** @param {Observation} item */
+    const reportContent = ({ provenance, ...item }) => ({
+      ...item, provenance: provenance && { ...provenance, receivedAt: undefined },
+    });
+
     /** @param {Observation} item */
     function receive(item) {
       if (!signal.aborted) observations.push(item);
@@ -445,22 +465,16 @@ export function createOrchestrator(deps) {
 
       const known = current.events.flatMap(event => event.kind === 'attempt.outcome' &&
         event.outcome.attemptId === attemptId ? event.observations ?? [] : []);
-      // Compare the report itself. A duplicate callback has a new local receipt time.
-      /** @param {Observation} item */
-      const report = ({ provenance, ...item }) => ({
-        ...item, provenance: provenance && { ...provenance, receivedAt: undefined },
-      });
       const observations = [];
       for (const sample of samples) {
-        const received = report(sample);
-        if (known.some(item => sameRecord(report(item), received))) continue;
+        if (known.some(item => item.ref === sample.ref)) continue;
         observations.push(sample);
         known.push(sample);
       }
       if (!reply && !observations.length) return current;
       const receipt = {
         kind: /** @type {const} */ ('attempt.outcome'),
-        outcome: reply ? attributeProviderOutputRefs(reply.outcome, known) : attempt.outcome,
+        outcome: reply ? bindOutcomeEvidence(current.operationId, reply.outcome, known) : attempt.outcome,
         dispatchCertainty: reply?.dispatchCertainty ?? attempt.dispatchCertainty, observations,
       };
       return transition(current, {
@@ -632,22 +646,33 @@ export function createOrchestrator(deps) {
             const report = decodeSummaryReport(item);
             if (report && contextOpen && !signal.aborted) {
               rawRefs ??= evidenceRefs(dispatched.request.requestId, dispatched.events).rawObservations;
-              if (report.coveredObservationRefs.every(ref =>
-                ((!selected || selected.has(ref)) && rawRefs?.has(ref)) ||
-                observations.some(item => item.ref === ref && !item.summary))) {
+              const covered = report.coveredObservationRefs.map(evidenceAliases(observations));
+              if (new Set(covered).size === covered.length && covered.every((ref, index) =>
+                !(ref !== report.coveredObservationRefs[index] && rawRefs?.has(report.coveredObservationRefs[index])) &&
+                (((!selected || selected.has(ref)) && rawRefs?.has(ref)) ||
+                  observations.some(item => item.ref === ref && !item.summary)))) {
                 const author = selectedProfile.profileId;
+                const ref = 'summary:' + ids.newId();
                 receive(observation({
-                  ref: 'summary:' + ids.newId(), completeness: 'complete', value: report.text,
-                  summary: { author, coveredObservationRefs: report.coveredObservationRefs },
+                  ref, completeness: 'complete', value: report.text,
+                  summary: { author, coveredObservationRefs: covered },
                 }, { kind: 'model', sourceId: author, receivedAt: clock.now() }));
-                return;
+                return ref;
               }
             }
           } else {
             const received = receiveProviderObservation(item, clock.now());
             if (received) {
-              receive(received);
-              return;
+              const providerRef = received.ref;
+              const ref = providerEvidenceRef(state.operationId, attemptId, providerRef);
+              const item = { ...received, ref, providerRef };
+              const prior = providerReports.get(providerRef);
+              if (!prior) {
+                providerReports.set(providerRef, item);
+                receive(item);
+                return ref;
+              }
+              if (sameRecord(reportContent(prior), reportContent(item))) return ref;
             }
           }
           trace(dispatched, 'attempt.observation_invalid', 'PROTOCOL_ERROR', attemptId);
@@ -660,7 +685,7 @@ export function createOrchestrator(deps) {
         certainty = 'unknown';
       } else {
         ({ dispatchCertainty: certainty, output, findings: reportedFindings } = reply);
-        outcome = attributeProviderOutputRefs(reply.outcome, observations);
+        outcome = bindOutcomeEvidence(state.operationId, reply.outcome, observations);
       }
     } catch (error) {
       if (error instanceof OrchestrationError && ['STORE_CONFLICT', 'STORE_UNAVAILABLE'].includes(error.code)) throw error;
@@ -790,7 +815,11 @@ export function createOrchestrator(deps) {
     if (parsed.kind === 'accepted' && author && receipt.dispatchCertainty !== 'not_sent') {
       const refs = evidenceRefs(state.request.requestId, state.events);
       recordObservationRefs(refs, receipt);
-      if (!admitFindings(refs, parsed.value, '$.findings', author)) return parsed.value;
+      const known = state.events.flatMap(event => event.kind === 'attempt.outcome' && event.outcome.attemptId === attemptId
+        ? event.observations ?? [] : []);
+      const scope = scopedEvidenceAliases([...known, ...(receipt.observations ?? [])], receipt.outcome.outputRefs, refs);
+      const bound = bindFindingEvidence(parsed.value, scope.resolve);
+      if (!scope.ambiguous && !admitFindings(refs, bound, '$.findings', author)) return bound;
     }
     trace(state, 'worker.findings_invalid_proposal', 'INVALID_PROPOSAL', attemptId);
   }
@@ -877,9 +906,16 @@ export function createOrchestrator(deps) {
         const parsed = decodeDecision(response.output);
         correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
         if (parsed.kind === 'accepted') {
-          const value = parsed.value;
-          const assessment = value.finalAssessment;
           const refs = evidenceRefs(state.request.requestId, state.events);
+          const scope = scopedEvidenceAliases(response.observations, response.outcome.outputRefs, refs);
+          const { resolve } = scope;
+          const value = {
+            ...parsed.value,
+            additions: parsed.value.additions.map(action => ({ ...action, contextRefs: action.contextRefs.map(resolve) })),
+            findings: parsed.value.findings && bindFindingEvidence(parsed.value.findings, resolve),
+            finalAssessment: parsed.value.finalAssessment && bindAssessmentEvidence(parsed.value.finalAssessment, resolve),
+          };
+          const assessment = value.finalAssessment;
           const evidenceError = admitFindings(refs, value.findings ?? [], '$.findings', profile.profileId)
             ?? (assessment && checkAssessment(refs, assessment, profile.profileId));
           const live = new Set(pending.keys());
@@ -895,6 +931,8 @@ export function createOrchestrator(deps) {
           } else if (value.acceptedActionIds?.some(id => !state.attempts.some(attempt =>
             attempt.actionId === id && attempt.status === 'terminal' && attempt.attemptId !== attempt.actionId))) {
             correction = { code: 'INVALID_PROPOSAL', path: '$.acceptedActionIds', expected: 'ids of terminal actions' };
+          } else if (scope.ambiguous) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'explicit internal references for ambiguous evidence names' };
           } else if (evidenceError) {
             correction = evidenceError;
           } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
@@ -915,7 +953,7 @@ export function createOrchestrator(deps) {
                   value.cancellations.includes(id) ? [task.completion] : []);
               }
               if (value.clarification) return transition(state, { kind: 'operation.waiting', waiting: {
-                kind: 'question', questionId: ids.newId(), question: value.clarification.question,
+                kind: 'question', questionId: 'question:' + ids.newId(), question: value.clarification.question,
               } });
               if (value.waitPolicy) selection = {
                 ...round, policy: value.waitPolicy.kind,

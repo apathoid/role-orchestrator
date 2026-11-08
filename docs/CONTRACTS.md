@@ -19,7 +19,7 @@
 | Action | actionId, kind=`delegate`, objective, profileId, optional roleId/skills[], contextRefs[], dependsOn[], expectedResult, optional continuationReference |
 | Attempt | attemptId, actionId, operationId, generation, lifecycle status, dispatch certainty, effect knowledge, timestamps, reservation, terminal outcome reference |
 | Invocation | attemptId, task/handoff, profile, workspace context, context bundle, effective authority reference, resource envelope, cancel signal |
-| Observation | observationId, attemptId/source identity, source kind, received sequence/time, payload reference, completeness; optional source-reported time/version/location |
+| Observation | operation-scoped ref, optional providerRef, attemptId/source identity, source kind, received sequence/time, payload reference, completeness; optional source-reported time/version/location |
 | Finding | findingId, author, claim, subject, supports[], uncertainties[], optional supersedes; статус/важность — оценка модели |
 | Assessment | model author, requirement results[] со статусом `fulfilled \| partial \| unverified \| unavailable`, observation/finding refs, optional reason по требованию, unresolved questions, user-facing answer; overall=`complete \| partial \| unresolved`; user acceptance хранится отдельным событием |
 
@@ -64,7 +64,7 @@ Provider может сообщить completion без деталей вложе
 | ProviderPort | describe(), open(profile), invoke(Invocation), cancel(attemptId), close(session) | callback/AsyncIterable событий + один logical outcome; одновременность явно объявлена |
 | StateStore | open(retention?), load(id), commit(id, expectedRevision, nextSnapshot), list(), close() | атомарность snapshot, чтение результата неизвестного commit по attemptId |
 | Catalog | list(), resolve(profile/role/skill/tool) | immutable versioned config snapshot на запуск; явная переоценка на resume |
-| ContextPort | invocation-bound fetch(ref, sourceOperationId?) и captureArtifact(bytes) для доверенного адаптера | выбранные ссылки специалиста, точное разрешение на обмен между operations, bounded output, explicit unavailable |
+| ContextPort | invocation-bound list(cursor?), fetch(ref, sourceOperationId?) и captureArtifact(bytes) для доверенного адаптера | выбранные ссылки специалиста, точное разрешение на обмен между operations, bounded output, explicit unavailable |
 | PermissionPort | request(attemptId, providerRequestId, options), cancel(requestId) | решение пользователя связано с живым запросом; неизвестный option не принимается |
 | DiagnosticPort | emit(event), flush() | best-effort, bounded, не source of truth и не источник семантических переходов |
 | Clock / IdFactory | now(), monotonic deadline support, newId() | тестируемость без настоящего ожидания и случайных гонок |

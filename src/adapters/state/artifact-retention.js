@@ -32,11 +32,15 @@ export function expiredArtifacts(operations, files, policy, now) {
 
     for (const event of operation.events) {
       if (event.kind !== 'attempt.outcome') continue;
-      for (const output of event.outcome.outputRefs) track(output.ref);
+      for (const output of event.outcome.outputRefs) {
+        track(output.ref);
+        track(output.providerRef);
+      }
       for (const item of event.observations ?? []) {
         if (item.artifact) track(item.artifact.ref, item.artifact.size);
         else {
           track(item.ref);
+          track(item.providerRef);
           if (item.value && typeof item.value === 'object') track(Object.getOwnPropertyDescriptor(item.value, 'ref')?.value);
         }
       }

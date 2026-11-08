@@ -18,7 +18,7 @@
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
- *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => void) => Promise<ProviderResult>,
+ *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => string | undefined) => Promise<ProviderResult>,
  *   lookupStatus?: (query: {operationId: string, attemptId: string, profile: Profile, signal: AbortSignal}) =>
  *     Promise<Pick<ProviderResult, 'outcome' | 'dispatchCertainty'> | undefined>,
  *   cancel: (session: ProviderSession, attemptId: string) => Promise<void>,
@@ -56,11 +56,17 @@
  *   resolve: (kind: CatalogEntry['kind'], id: string) => Promise<CatalogEntry | undefined>
  * }} Catalog
  * @typedef {{
- *   fetch: (ref: string, sourceOperationId?: string) => Promise<ContextFetch>,
+ *   list: (cursor?: number) => ContextList,
+ *   fetch: (ref: string | ContextPosition, sourceOperationId?: string) => Promise<ContextFetch>,
  *   captureArtifact: (bytes: Uint8Array) => Promise<string | undefined>
  * }} ContextPort
  * @typedef {{kind: 'available', item: ContextItem, bytes?: Uint8Array} |
- *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'retention' | 'budget' | 'integrity_error' | 'closed'}} ContextFetch
+ *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'ambiguous' | 'retention' | 'budget' | 'integrity_error' | 'closed'}} ContextFetch
+ * @typedef {NonNullable<ContextItem['receivedSequence']>} ContextPosition
+ * @typedef {Pick<ContextItem, 'source' | 'completeness' | 'attemptId' | 'receivedSequence' |
+ *   'providerRef' | 'kind' | 'outputKind'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem
+ * @typedef {{kind: 'available', items: ContextDirectoryItem[], nextCursor?: number} |
+ *   {kind: 'unavailable', reason: 'closed' | 'invalid_cursor'}} ContextList
  * @typedef {(share: {sourceOperationId: string, targetOperationId: string, ref: string, profileId: string}) => boolean} ContextShare
  * @typedef {(retry: {operationId: string, attemptId: string, actionId: string, profileId: string}) => boolean} RetryApproval
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>

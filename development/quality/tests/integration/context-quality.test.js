@@ -54,19 +54,23 @@ test('reopened context supports a targeted check and partial assessment without 
         };
       }
       let originalArtifact;
+      let beforeRef;
+      let afterRef;
+      let largeRef;
+      let privateObservation;
       const initial = setup({
         store, authority, extraCatalog, maxInvocations: 8, maxConcurrentInvocations: 2,
         async respond(invocation, count, observe) {
           if (count === 1) return propose(invocation, [action('investigate-left', 'left'), action('investigate-right', 'right')]);
           if (invocation.actionId === 'investigate-left') {
-            observe(checkFile('before'));
+            beforeRef = observe(checkFile('before'));
             observe({ kind: 'agent_exit', ref: 'agent:before', sourceId: 'synthetic-agent-process', exitCode: 0,
               completeness: 'complete' });
             originalArtifact = await invocation.contextAccess.captureArtifact(Buffer.from('original diagnostic output'));
             assert.ok(originalArtifact);
-            observe({ kind: 'provider_report', ref: 'large-log', sourceId: 'fixture-log', completeness: 'complete',
+            largeRef = observe({ kind: 'provider_report', ref: 'large-log', sourceId: 'fixture-log', completeness: 'complete',
               value: 'x'.repeat(6500) });
-            observe({ kind: 'provider_report', ref: privateRef, sourceId: 'fixture-private', completeness: 'complete',
+            privateObservation = observe({ kind: 'provider_report', ref: privateRef, sourceId: 'fixture-private', completeness: 'complete',
               value: privateBody });
             return worker(invocation, [finding('left', 'left', 'The original check passed', ['check:before', originalArtifact])],
               'Everything passed');
@@ -89,7 +93,7 @@ test('reopened context supports a targeted check and partial assessment without 
       assert.equal(originalChain.find(item => item.ref === originalArtifact).artifactPresence, 'retention');
 
       await writeFile(target, 'after');
-      const selected = ['finding:left', 'finding:right', originalArtifact, missingRef, 'check:before', 'large-log'];
+      const selected = ['finding:left', 'finding:right', originalArtifact, missingRef, beforeRef, largeRef];
       const resumed = setup({
         store, authority, extraCatalog, idPrefix: 'quality-resume-', maxInvocations: 8, context: { maxBytes: 4096 },
         emit(event) {
@@ -111,23 +115,23 @@ test('reopened context supports a targeted check and partial assessment without 
             assert.deepEqual(invocation.context.map(item => item.ref), selected);
             assert.deepEqual(await invocation.contextAccess.fetch(originalArtifact), { kind: 'unavailable', reason: 'retention' });
             assert.deepEqual(await invocation.contextAccess.fetch(missingRef), { kind: 'unavailable', reason: 'missing' });
-            assert.deepEqual(await invocation.contextAccess.fetch(privateRef), { kind: 'unavailable', reason: 'denied' });
+            assert.deepEqual(await invocation.contextAccess.fetch(privateObservation), { kind: 'unavailable', reason: 'denied' });
             assert.equal(invocation.context.at(-1).completeness, 'truncated');
             assert.ok(invocation.context.at(-1).excerpt.length < 6500);
-            observe(checkFile('after'));
+            afterRef = observe(checkFile('after'));
             observe({ kind: 'model_summary', text: 'The targeted check passed on both recorded versions.',
-              coveredObservationRefs: ['check:before', 'check:after'] });
+              coveredObservationRefs: [beforeRef, 'check:after'] });
             return worker(invocation, [finding('targeted', 'right', 'The edited file passed the targeted check',
               ['finding:right', 'check:after'], { supersedes: 'finding:left' })]);
           }
-          const current = await invocation.contextAccess.fetch('check:after');
-          const before = await invocation.contextAccess.fetch('check:before');
+          const current = await invocation.contextAccess.fetch(afterRef);
+          const before = await invocation.contextAccess.fetch(beforeRef);
           assert.equal(current.item.reportedContext.version, 'after');
           assert.ok(before.item.receivedSequence.revision < current.item.receivedSequence.revision);
           return final(invocation, { finalAssessment: assessment({
             overall: 'partial', answer: 'The edited target passed. The complete original output is unavailable.',
             requirements: [
-              { requirementId: 'target', status: 'fulfilled', observationRefs: ['check:after'], findingRefs: ['finding:targeted'] },
+              { requirementId: 'target', status: 'fulfilled', observationRefs: [afterRef], findingRefs: ['finding:targeted'] },
               { requirementId: 'compare', status: 'unverified', observationRefs: [originalArtifact], findingRefs: ['finding:left', 'finding:right'],
                 reason: 'Retention removed the original output bytes.' },
             ],
@@ -144,16 +148,16 @@ test('reopened context supports a targeted check and partial assessment without 
       assert.equal(resumed.events.filter(event => event.eventName === 'attempt.dispatched').length, 3);
 
       const raw = result.events.flatMap(event => event.observations ?? []);
-      assert.equal(raw.find(item => item.ref === 'agent:before').source, 'host_observed');
-      assert.equal(raw.find(item => item.ref === 'agent:before').provenance.exit.kind, 'agent_exit');
-      assert.deepEqual(raw.filter(item => item.provenance?.exit?.kind === 'tool_exit').map(item => item.ref), ['check:before', 'check:after']);
+      assert.equal(raw.find(item => item.providerRef === 'agent:before').source, 'host_observed');
+      assert.equal(raw.find(item => item.providerRef === 'agent:before').provenance.exit.kind, 'agent_exit');
+      assert.deepEqual(raw.filter(item => item.provenance?.exit?.kind === 'tool_exit').map(item => item.ref), [beforeRef, afterRef]);
       assert.equal(raw.find(item => item.value === 'Everything passed').source, 'model_claim');
       const summary = raw.find(item => item.summary);
       assert.equal(summary.source, 'model_claim');
-      assert.deepEqual(summary.summary.coveredObservationRefs, ['check:before', 'check:after']);
+      assert.deepEqual(summary.summary.coveredObservationRefs, [beforeRef, afterRef]);
       const history = await resumed.api.inspectFinding(original.operationId, 'finding:targeted');
       assert.equal(history.find(item => item.ref === originalArtifact).artifactPresence, 'retention');
-      assert.equal(history.find(item => item.ref === 'check:after').recordedOutcome.terminal, 'completed');
+      assert.equal(history.find(item => item.ref === afterRef).recordedOutcome.terminal, 'completed');
 
       const handoff = resumed.invocations[1];
       const trace = resumed.events.filter(event => event.eventName.startsWith('context.'));
@@ -172,7 +176,7 @@ test('reopened context supports a targeted check and partial assessment without 
       assert.equal(trace[3].reasonCode, 'MISSING');
       assert.equal(trace.at(-1).eventName, 'context.truncated');
       const log = JSON.stringify(resumed.events);
-      for (const text of [privateRef, privateBody, missingRef, required, originalArtifact, 'x'.repeat(60)]) {
+      for (const text of [privateRef, privateBody, missingRef, required, originalArtifact, beforeRef, afterRef, 'x'.repeat(60)]) {
         assert.ok(!log.includes(text));
       }
     } finally {

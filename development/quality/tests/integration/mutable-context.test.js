@@ -27,6 +27,8 @@ for (const [edited, needsRead] of [['other.js', false], ['target.js', true]]) {
       const read = Promise.withResolvers();
       const editedFile = Promise.withResolvers();
       let controllers = 0;
+      let changeRef;
+      let originalRef;
       const original = {
         findingId: 'initial', author: 'primary', subject: 'target.js', claim: 'Target was read as value = 1',
         supports: ['original-read'], uncertainties: [],
@@ -36,7 +38,7 @@ for (const [edited, needsRead] of [['other.js', false], ['target.js', true]]) {
         async respond(invocation, count, observe) {
           assert.equal(invocation.workspaceContext.cwd, cwd);
           if (invocation.actionId === 'initial') {
-            observe({
+            originalRef = observe({
               kind: 'provider_tool', ref: 'original-read', sourceId: 'fixture-read', completeness: 'complete',
               value: await readFile(target, 'utf8'), reportedContext: { location: 'target.js', version: 'original' },
             });
@@ -44,7 +46,7 @@ for (const [edited, needsRead] of [['other.js', false], ['target.js', true]]) {
             await editedFile.promise;
             const after = (await stat(changed)).size;
             assert.notEqual(after, before);
-            observe({
+            changeRef = observe({
               kind: 'provider_tool', ref: 'observed-change', sourceId: 'fixture-stat', completeness: 'complete',
               value: { before, after },
               reportedContext: { location: edited, version: 'size-' + after, reportedAt: 25 },
@@ -52,7 +54,7 @@ for (const [edited, needsRead] of [['other.js', false], ['target.js', true]]) {
             return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId), findings: [original] };
           }
           if (invocation.actionId === 'targeted-read') {
-            assert.deepEqual(invocation.context.map(item => item.ref), ['finding:initial', 'observed-change']);
+            assert.deepEqual(invocation.context.map(item => item.ref), ['finding:initial', changeRef]);
             assert.equal(invocation.context[1].reportedContext.location, 'target.js');
             observe({
               kind: 'provider_tool', ref: 'targeted-result', sourceId: 'fixture-read-again', completeness: 'complete',
@@ -61,19 +63,19 @@ for (const [edited, needsRead] of [['other.js', false], ['target.js', true]]) {
             return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
           }
           if (++controllers === 1) return delegate(invocation, inspect('initial'));
-          const observation = invocation.context.find(item => item.ref === 'observed-change');
+          const observation = invocation.context.find(item => item.ref === changeRef);
           assert.equal(observation.source, 'provider_reported');
           assert.equal(observation.provenance.receivedAt, 100);
           assert.equal(observation.reportedContext.reportedAt, 25);
           assert.equal(invocation.context.find(item => item.ref === 'finding:initial').value.claim, original.claim);
           if (controllers === 2 && observation.reportedContext.location === original.subject) {
-            return delegate(invocation, inspect('targeted-read', ['finding:initial', 'observed-change']));
+            return delegate(invocation, inspect('targeted-read', ['finding:initial', changeRef]));
           }
-          const latest = invocation.context.find(item => item.ref === 'targeted-result');
+          const latest = invocation.context.find(item => item.providerRef === 'targeted-result');
           return final(invocation, { finalAssessment: assessment({
             answer: latest?.value ?? original.claim,
             findingRefs: ['finding:initial'],
-            observationRefs: latest ? [latest.ref] : ['original-read'],
+            observationRefs: latest ? [latest.ref] : [originalRef],
           }) });
         },
       });
@@ -97,11 +99,11 @@ for (const [edited, needsRead] of [['other.js', false], ['target.js', true]]) {
       const restored = decodeSnapshot(encodeSnapshot(finished));
       assert.equal(restored.kind, 'accepted');
       const receipts = restored.value.events.filter(event => event.kind === 'attempt.outcome');
-      assert.deepEqual(receipts.flatMap(event => event.findings ?? []), [{ ...original, supersedes: undefined }]);
-      const record = receipts.flatMap(event => event.observations ?? []).find(item => item.ref === 'observed-change');
+      assert.deepEqual(receipts.flatMap(event => event.findings ?? []), [{ ...original, supports: [originalRef], supersedes: undefined }]);
+      const record = receipts.flatMap(event => event.observations ?? []).find(item => item.ref === changeRef);
       assert.equal(record.reportedContext.location, edited);
       assert.equal(record.reportedContext.version, 'size-12');
-      assert.equal(receipts.flatMap(event => event.observations ?? []).find(item => item.ref === 'original-read').value, 'value = 1');
+      assert.equal(receipts.flatMap(event => event.observations ?? []).find(item => item.ref === originalRef).value, 'value = 1');
     });
   });
 }

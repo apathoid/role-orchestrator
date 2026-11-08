@@ -35,7 +35,7 @@ const reportedContext = optional(record({
   location: optional(id), version: optional(id), reportedAt: optional(measurement),
 }));
 const itemFields = record({
-  ref: id, source, completeness, value: optional(jsonValue), provenance: optional(provenance),
+  ref: id, source, completeness, value: optional(jsonValue), provenance: optional(provenance), providerRef: optional(id),
   artifact: optional(artifact), summary: optional(summary), reportedContext,
 });
 
@@ -43,17 +43,17 @@ const itemFields = record({
  * @typedef {{kind: 'user' | 'model' | 'provider_tool' | 'provider_report' | 'host_transport',
  *   sourceId: string, receivedAt?: number, exit?: {kind: 'agent_exit' | 'tool_exit', code: number}}} Provenance
  * @typedef {{ref: string, source: ReturnType<typeof source>, completeness: ReturnType<typeof completeness>,
- *   value?: unknown, provenance?: Provenance, artifact?: ArtifactReference, summary?: ReturnType<typeof summary>,
+ *   value?: unknown, provenance?: Provenance, providerRef?: string, artifact?: ArtifactReference, summary?: ReturnType<typeof summary>,
  *   reportedContext?: ReturnType<typeof reportedContext>}} Observation
  * @typedef {Observation & {receivedSequence?: {revision: number, index: number}, attemptId?: string,
- *   kind?: 'finding', excerpt?: string, unavailableReason?: 'missing' | 'budget' | 'payload',
+ *   kind?: 'finding', excerpt?: string, unavailableReason?: 'missing' | 'budget' | 'payload' | 'ambiguous',
  *   outputKind?: Outcome['outputRefs'][number]['kind']}} ContextItem
  * @typedef {{ref: string, sourceId: string, completeness: Observation['completeness'], value?: unknown, reportedContext?: Observation['reportedContext']} & (
  *   {kind: 'agent_exit', exitCode: number} |
  *   {kind: 'provider_tool', exitCode?: number} |
  *   {kind: 'model' | 'provider_report' | 'host_transport'}
  * )} AdapterObservation
- * @typedef {AdapterObservation | Omit<Observation, 'provenance' | 'artifact' | 'summary'> | ReturnType<typeof summaryReport>} ProviderObservation
+ * @typedef {AdapterObservation | Omit<Observation, 'provenance' | 'providerRef' | 'artifact' | 'summary'> | ReturnType<typeof summaryReport>} ProviderObservation
  */
 
 /** @type {import('./decode.js').Decoder<Observation>} */

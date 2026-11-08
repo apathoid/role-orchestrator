@@ -416,7 +416,7 @@ test('late evidence after the cleanup deadline is committed while the connection
   assert.equal(loaded.waiting.reason.effect, 'confirmed');
   assert.equal(loaded.attempts[0].outcome.usage.cost, 0.02);
   assert.equal(loaded.events.filter(event => event.kind === 'controller.responded').length, 0);
-  const samples = loaded.events.flatMap(event => event.observations ?? []).filter(item => item.ref === fact.ref);
+  const samples = loaded.events.flatMap(event => event.observations ?? []).filter(item => item.providerRef === fact.ref);
   assert.equal(samples.length, 1);
   assert.deepEqual(samples[0].provenance, {
     kind: 'provider_tool', sourceId: fact.sourceId, receivedAt: 100, exit: { kind: 'tool_exit', code: 0 },
@@ -450,10 +450,13 @@ test('reopened history keeps the agent process exit, tool exit and model claims 
   const waiting = await (await api.submit(request())).completion;
   assert.equal(waiting.status, 'waiting');
   assert.equal(events.filter(event => event.eventName === 'attempt.observation_invalid').length, 1);
-  assert.deepEqual(waiting.attempts[0].outcome.outputRefs, [
-    { ref: 'agent-exit', kind: 'agent_exit', source: 'host_observed' },
-    { ref: 'claim', kind: 'observation', source: 'model_claim' },
+  const outcomeRefs = waiting.attempts[0].outcome.outputRefs;
+  assert.deepEqual(outcomeRefs.map(({ providerRef, kind, source }) => ({ providerRef, kind, source })), [
+    { providerRef: 'agent-exit', kind: 'agent_exit', source: 'host_observed' },
+    { providerRef: 'claim', kind: 'observation', source: 'model_claim' },
   ]);
+  const observed = waiting.events.flatMap(event => event.observations ?? []);
+  assert.ok(outcomeRefs.every(pointer => observed.some(item => item.ref === pointer.ref && item.providerRef === pointer.providerRef)));
   await store.close();
 
   const reopened = createLocalStateStore(directory);
@@ -477,8 +480,8 @@ test('reopened history keeps the agent process exit, tool exit and model claims 
   const byRef = ref => context.find(item => item.ref === ref);
   assert.deepEqual(byRef('request-1').provenance, { kind: 'user', sourceId: 'request-1', receivedAt: 100 });
   assert.deepEqual(byRef('user-answer').provenance, { kind: 'user', sourceId: 'user-answer', receivedAt: 140 });
-  const agent = byRef('agent-exit');
-  const claim = byRef('claim');
+  const agent = byRef(outcomeRefs[0].ref);
+  const claim = byRef(outcomeRefs[1].ref);
   assert.equal(agent.attemptId, invocations[0].attemptId);
   assert.equal(agent.source, 'host_observed');
   assert.deepEqual(agent.provenance, {
@@ -491,9 +494,9 @@ test('reopened history keeps the agent process exit, tool exit and model claims 
   assert.equal(claim.provenance.exit, undefined);
   assert.deepEqual(agent.receivedSequence, { revision: 3, index: 0 });
   assert.deepEqual(claim.receivedSequence, { revision: 3, index: 1 });
-  assert.equal(byRef('legacy').source, 'provider_reported');
-  assert.equal(byRef('legacy').provenance.exit, undefined);
-  assert.equal(byRef('malformed'), undefined);
+  assert.equal(context.find(item => item.providerRef === 'legacy').source, 'provider_reported');
+  assert.equal(context.find(item => item.providerRef === 'legacy').provenance.exit, undefined);
+  assert.equal(context.find(item => item.providerRef === 'malformed'), undefined);
   const controllerOutput = byRef('controller-output:' + invocations[0].attemptId);
   assert.equal(controllerOutput.value.clarification.question, 'Run the requested test?');
   assert.equal(controllerOutput.provenance.kind, 'model');
@@ -501,7 +504,7 @@ test('reopened history keeps the agent process exit, tool exit and model claims 
 
   const loaded = await reopened.load(finished.operationId);
   const records = loaded.events.flatMap(event => event.observations ?? []);
-  const tool = records.find(item => item.ref === 'tool-exit');
+  const tool = records.find(item => item.providerRef === 'tool-exit');
   assert.equal(tool.source, 'provider_reported');
   assert.equal(tool.value, 'one failing test');
   assert.equal(tool.completeness, 'truncated');
@@ -558,7 +561,7 @@ test('opposing findings and a model revision survive reopening alongside raw evi
       assert.deepEqual(available.map(item => item.value.subject), [subject, subject]);
       assert.ok(available.every(item => item.source === 'model_claim' && item.provenance.sourceId === item.value.author));
       return final(invocation, {
-        findings: [revise], finalAssessment: assessment({ findingRefs: ['finding:revision'], observationRefs: ['raw-left'] }),
+        findings: [revise], finalAssessment: assessment({ findingRefs: ['finding:revision'], observationRefs: [invocation.context.find(item => item.providerRef === 'raw-left').ref] }),
       });
     },
   });
@@ -589,8 +592,8 @@ test('opposing findings and a model revision survive reopening alongside raw evi
   assert.equal(revision.attemptId, invocations.at(-1).attemptId);
   assert.equal(delivered.get('finding:left').value.claim, 'The check failed');
   assert.equal(delivered.get('finding:right').value.claim, 'The check passed');
-  assert.equal(delivered.get('raw-left').value, 'failed');
-  assert.equal(delivered.get('raw-right').value, 'passed');
+  assert.equal(next.invocations[0].context.find(item => item.providerRef === 'raw-left').value, 'failed');
+  assert.equal(next.invocations[0].context.find(item => item.providerRef === 'raw-right').value, 'passed');
   assert.deepEqual(resumed.events.filter(event => event.kind === 'operation.finished').map(event => event.assessment.answer),
     [first.assessment.answer, 'Both readings are relevant']);
 });
@@ -602,12 +605,13 @@ test('bound context fetch recovers artifacts and model summaries with raw covera
   const bytes = Buffer.alloc(1400, 42);
   let ref;
   let missingRef;
+  let rawRef;
   const first = setup({
     store, context: { maxBytes },
     async respond(invocation, count, observe) {
       ref = await invocation.contextAccess.captureArtifact(bytes);
       missingRef = await invocation.contextAccess.captureArtifact(Buffer.from('will be missing'));
-      observe({ kind: 'provider_report', ref: 'raw', sourceId: 'source', completeness: 'complete', value: raw });
+      rawRef = observe({ kind: 'provider_report', ref: 'raw', sourceId: 'source', completeness: 'complete', value: raw });
       observe({ kind: 'model_summary', text: 'Model summary', coveredObservationRefs: ['raw', ref] });
       observe({ kind: 'model_summary', text: 'Foreign coverage', coveredObservationRefs: ['unknown-observation'] });
       return final(invocation);
@@ -619,9 +623,9 @@ test('bound context fetch recovers artifacts and model summaries with raw covera
   const summary = records.find(item => item.summary);
   assert.equal(records.filter(item => item.summary).length, 1);
   assert.equal(summary.source, 'model_claim');
-  assert.deepEqual(summary.summary, { author: 'primary', coveredObservationRefs: ['raw', ref] });
+  assert.deepEqual(summary.summary, { author: 'primary', coveredObservationRefs: [rawRef, ref] });
   assert.equal(summary.value, 'Model summary');
-  assert.equal(records.find(item => item.ref === 'raw').value, raw);
+  assert.equal(records.find(item => item.ref === rawRef).value, raw);
   const artifact = records.find(item => item.ref === ref);
   assert.equal(artifact.artifact.size, maxBytes);
   assert.equal(artifact.artifact.originalSize, bytes.length);
@@ -643,7 +647,7 @@ test('bound context fetch recovers artifacts and model summaries with raw covera
       const access = invocation.contextAccess;
       accesses.push(access);
       if (count === 1) {
-        const result = await access.fetch('raw');
+        const result = await access.fetch(rawRef);
         assert.equal(result.item.value, raw);
         const foundSummary = await access.fetch(summary.ref);
         assert.equal(foundSummary.item.source, 'model_claim');
@@ -663,7 +667,7 @@ test('bound context fetch recovers artifacts and model summaries with raw covera
         assert.equal(result.item.completeness, 'truncated');
         assert.deepEqual(result.bytes, bytes.subarray(0, maxBytes));
         assert.deepEqual(await access.fetch(missingRef), { kind: 'unavailable', reason: 'payload' });
-        assert.deepEqual(await access.fetch('raw'), { kind: 'unavailable', reason: 'denied' });
+        assert.deepEqual(await access.fetch(rawRef), { kind: 'unavailable', reason: 'denied' });
         return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
       }
       return final(invocation);
@@ -687,6 +691,7 @@ test('cross-operation context reads require an exact share and cannot be enabled
   assert.equal(origin.status, 'finished');
   const stored = origin.events.flatMap(event => event.observations ?? []).find(item => item.ref === ref).artifact;
   let allow = false;
+  let reportRef;
   const target = setup({
     store, idPrefix: 'target-', maxInvocations: 2,
     allowContextShare: share => allow && share.sourceOperationId === origin.operationId &&
@@ -694,14 +699,14 @@ test('cross-operation context reads require an exact share and cannot be enabled
     async respond(invocation, count, observe) {
       const access = invocation.contextAccess;
       if (count === 1) {
-        observe({ kind: 'provider_report', ref: 'model-reported-hash', sourceId: 'report', completeness: 'complete', value: stored });
+        reportRef = observe({ kind: 'provider_report', ref: 'model-reported-hash', sourceId: 'report', completeness: 'complete', value: stored });
         observe({ kind: 'provider_report', ref: 'forged', sourceId: 'report', completeness: 'complete', artifact: stored });
         return final(invocation);
       }
       assert.deepEqual(await access.fetch(ref, origin.operationId), { kind: 'unavailable', reason: 'denied' });
       assert.deepEqual(await access.fetch(ref), { kind: 'unavailable', reason: 'missing' });
       assert.deepEqual(await access.fetch('forged'), { kind: 'unavailable', reason: 'missing' });
-      const report = await access.fetch('model-reported-hash');
+      const report = await access.fetch(reportRef);
       assert.deepEqual(report.item.value, stored);
       assert.equal(report.bytes, undefined);
       allow = true;

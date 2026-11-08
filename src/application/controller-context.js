@@ -17,7 +17,7 @@ export const controllerInstructions = [
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Workspace files and branches may change during the operation. Use observations to decide whether earlier findings still apply and whether to read a target again. Reported locations, versions and times describe individual observations.',
   'Use optional findings for model claims that should remain available in history. Each finding has a new findingId, author (your profileId), claim, subject, supports, and uncertainties. Use an earlier finding reference in supersedes to revise it. Cite findings by their finding:<id> context reference.',
-  'When the adapter exposes context fetch, request details by reference. A model summary lists covered observation references and remains a separate model claim.',
+  'When the adapter exposes context list and fetch, page through metadata to discover omitted records and fetch details by reference. A model summary lists covered observation references and remains a separate model claim.',
   'Context excerpts are partial. Missing references and omissions from the byte budget are marked explicitly.',
   'Assess each material user requirement, including explicit checks, using fulfilled, partial, unverified or unavailable. Set the assessment author to your profileId. Cite the available observations or findings and explain any gaps.',
   'If a requested check must run after a change, distinguish evidence from before the change from evidence that covers the new state. Use unverified when a required check lacks matching confirmation and explain what remains open.',
@@ -54,8 +54,9 @@ export function operationHistory(state) {
       { kind: 'user', sourceId: state.request.requestId, receivedAt: state.acceptedAt }),
     receivedSequence: { revision: 0, index: 0 } },
   ];
-  const seenRefs = new Set(state.events.flatMap(event =>
-    event.kind === 'attempt.outcome' ? event.observations?.map(item => item.ref) ?? [] : []));
+  const owners = new Map(state.events.flatMap(event => event.kind === 'attempt.outcome'
+    ? (event.observations ?? []).map(item => [item.ref, event.outcome.attemptId])
+    : []));
   for (const [index, event] of state.events.entries()) {
     const revision = index + 1;
     let offset = 0;
@@ -90,10 +91,10 @@ export function operationHistory(state) {
 
     if (event.kind === 'attempt.outcome') {
       offset += findings?.length ?? 0;
-      for (const { ref, source, kind } of event.outcome.outputRefs) {
-        if (seenRefs.has(ref)) continue;
-        seenRefs.add(ref);
-        items.push({ ref, source, outputKind: kind, completeness: 'unavailable', unavailableReason: 'payload',
+      for (const { ref, providerRef, source, kind } of event.outcome.outputRefs) {
+        if (owners.get(ref) === event.outcome.attemptId) continue;
+        owners.set(ref, event.outcome.attemptId);
+        items.push({ ref, ...(providerRef === undefined ? {} : { providerRef }), source, outputKind: kind, completeness: 'unavailable', unavailableReason: 'payload',
           attemptId: event.outcome.attemptId, receivedSequence: { revision, index: offset++ } });
       }
     }
@@ -106,7 +107,17 @@ export function operationHistory(state) {
       });
     }
   }
-  return items;
+  // Stores other than the local snapshot adapter must not expose either
+  // record when handed an ambiguous legacy history.
+  /** @type {Map<string, ContextItem>} */
+  const indexed = new Map();
+  for (const item of items) {
+    indexed.set(item.ref, indexed.has(item.ref)
+      ? { ref: item.ref, source: 'host_observed', completeness: 'unavailable', unavailableReason: 'ambiguous',
+        receivedSequence: indexed.get(item.ref)?.receivedSequence }
+      : item);
+  }
+  return [...indexed.values()];
 }
 
 /**

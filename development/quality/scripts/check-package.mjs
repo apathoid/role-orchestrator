@@ -42,9 +42,10 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
     import assert from 'node:assert/strict';
     import { registerHooks } from 'node:module';
     const expectedSource = new URL('./node_modules/' + ${JSON.stringify(pkg.name)} + '/src/', import.meta.url).href;
+    // The application uses Node's built-in SHA-256 for stable evidence identities.
     registerHooks({ resolve(specifier, context, next) {
       const result = next(specifier, context);
-      assert.ok(result.url.startsWith(expectedSource), result.url);
+      assert.ok(result.url === 'node:crypto' || result.url.startsWith(expectedSource), result.url);
       return result;
     } });
     globalThis.fetch = () => { throw new Error('Network access during import'); };

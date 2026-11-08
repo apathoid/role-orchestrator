@@ -1,4 +1,4 @@
-import { admitFindings, eventFindings, evidenceRefs, findings, recordObservationRefs } from './finding.js';
+import { admitFindings, eventFindings, evidenceRefs, findingRef, findings, recordObservationRefs } from './finding.js';
 import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
 import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
 import { contextItem } from './observation.js';
@@ -124,6 +124,17 @@ function snapshot(input, path) {
   }
   const events = new Set();
   const refs = evidenceRefs(value.request.requestId);
+  /** @type {Map<string, string | undefined>} */
+  const identities = new Map([[value.request.requestId, undefined]]);
+  const observations = new Set();
+
+  /** @param {string} ref @param {string} field @param {string} [owner] */
+  function register(ref, field, owner) {
+    if (identities.has(ref) && (owner === undefined || identities.get(ref) !== owner)) {
+      invalid(field, 'an unambiguous context reference in this operation');
+    }
+    identities.set(ref, owner);
+  }
   /** @type {Map<string, Attempt>} */
   const ledger = new Map();
   let generation = 0;
@@ -133,7 +144,14 @@ function snapshot(input, path) {
     if (events.has(item.eventId)) invalid(at + '.eventId', 'a unique event id');
     events.add(item.eventId);
     if (item.kind === 'attempt.outcome') {
+      for (const [index, pointer] of item.outcome.outputRefs.entries()) {
+        register(pointer.ref, at + '.outcome.outputRefs[' + index + '].ref', item.outcome.attemptId);
+      }
       for (const [index, observation] of (item.observations ?? []).entries()) {
+        const refPath = at + '.observations[' + index + '].ref';
+        if (observations.has(observation.ref)) invalid(refPath, 'a unique observation reference in this operation');
+        observations.add(observation.ref);
+        register(observation.ref, refPath, item.outcome.attemptId);
         const summary = observation.summary;
         if (!summary) {
           refs.rawObservations.add(observation.ref);
@@ -163,7 +181,16 @@ function snapshot(input, path) {
       }
       const error = admitFindings(refs, batch, field, reporting.route.profileId);
       if (error) invalid(error.path, error.expected);
+      for (const [index, finding] of batch.entries()) {
+        register(findingRef(finding), field + '[' + index + '].findingId');
+      }
     }
+    if (item.kind === 'operation.continued') register(item.input.requestId, at + '.input.requestId');
+    if (item.kind === 'operation.waiting' && item.waiting.kind === 'question') {
+      register(item.waiting.questionId, at + '.waiting.questionId');
+    }
+    if (item.kind === 'controller.responded') register('decision:' + item.decision.decisionId, at + '.decision.decisionId');
+    if (item.kind === 'operation.finished') register('assessment:' + item.eventId, at + '.eventId');
     if (item.kind !== 'attempt.outcome') recordObservationRefs(refs, item);
     if (!attemptId) continue;
     if (!attempts.has(attemptId)) invalid(at + '.attemptId', 'an attempt in this snapshot');

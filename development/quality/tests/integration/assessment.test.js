@@ -16,6 +16,8 @@ test('the model keeps a requested post-change check unverified with only a histo
       kind: 'delegate', actionId: 'edit', profileId: 'primary', objective: 'Update target.txt', expectedResult: 'Change report',
       contextRefs: [], dependsOn: [],
     };
+    let beforeRef;
+    let afterRef;
     const { api, invocations, events } = setup({ context: { maxBytes: 512 }, async respond(invocation, count, observe) {
       assert.deepEqual(invocation.userConstraints, [required]);
       if (count === 1) {
@@ -23,7 +25,7 @@ test('the model keeps a requested post-change check unverified with only a histo
           'if (require("node:fs").readFileSync("target.txt", "utf8") !== "before") process.exit(1)'], { cwd });
         assert.ifError(result.error);
         assert.equal(result.status, 0);
-        observe({
+        beforeRef = observe({
           kind: 'provider_tool', ref: 'check:before', sourceId: 'test-process', exitCode: result.status, completeness: 'complete',
           reportedContext: { location: 'target.txt', version: 'before' },
         });
@@ -34,14 +36,14 @@ test('the model keeps a requested post-change check unverified with only a histo
       }
       if (invocation.actionId === 'edit') {
         await writeFile(file, 'after');
-        observe({
+        afterRef = observe({
           kind: 'provider_tool', ref: 'change:after', sourceId: 'write-tool', completeness: 'complete',
           value: 'Edited target.txt', reportedContext: { location: 'target.txt', version: 'after' },
         });
         return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
       }
-      const check = (await invocation.contextAccess.fetch('check:before')).item;
-      const changed = (await invocation.contextAccess.fetch('change:after')).item;
+      const check = (await invocation.contextAccess.fetch(beforeRef)).item;
+      const changed = (await invocation.contextAccess.fetch(afterRef)).item;
       assert.equal(check.provenance.exit.kind, 'tool_exit');
       assert.equal(check.provenance.exit.code, 0);
       assert.ok(check.receivedSequence.revision < changed.receivedSequence.revision);
@@ -63,7 +65,7 @@ test('the model keeps a requested post-change check unverified with only a histo
     assert.deepEqual(state.assessment.requirements.map(item => item.status), ['fulfilled', 'unverified']);
     assert.equal(state.assessment.requirements[1].reason, 'The only tool exit was recorded before the edit.');
     const records = state.events.flatMap(event => event.observations ?? []);
-    assert.deepEqual(records.filter(item => item.provenance?.exit?.kind === 'tool_exit').map(item => item.ref), ['check:before']);
+    assert.deepEqual(records.filter(item => item.provenance?.exit?.kind === 'tool_exit').map(item => item.ref), [beforeRef]);
     assert.deepEqual(invocations.map(item => item.kind), ['controller', 'delegate', 'controller']);
     assert.equal(events.filter(item => item.eventName === 'attempt.dispatched').length, 3);
     const wire = JSON.parse(encodeSnapshot(state));

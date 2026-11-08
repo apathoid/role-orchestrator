@@ -168,16 +168,17 @@ test('timeout after dispatch records uncertainty and never implicitly replays', 
 
 test('observations from the executor preserve their source and can support a model assessment', async () => {
   const record = { ref: 'observation-1', source: 'provider_reported', completeness: 'complete', value: 'Exit 0' };
+  let ref;
   const { api } = setup({ respond(invocation, count, observe) {
-    observe(record);
+    ref = observe(record);
     return final(invocation, { finalAssessment: assessment({ observationRefs: [record.ref] }) });
   } });
   const state = await (await api.submit(request())).completion;
   const terminal = state.events.find(item => item.kind === 'attempt.outcome');
-  assert.deepEqual(terminal.observations.find(item => item.ref === record.ref), {
-    ...record, provenance: { kind: 'provider_report', sourceId: record.ref, receivedAt: 100 },
+  assert.deepEqual(terminal.observations.find(item => item.ref === ref), {
+    ...record, ref, providerRef: record.ref, provenance: { kind: 'provider_report', sourceId: record.ref, receivedAt: 100 },
   });
-  assert.deepEqual(state.assessment.observationRefs, [record.ref]);
+  assert.deepEqual(state.assessment.observationRefs, [ref]);
 });
 
 test('a reply can continue past unknown effects without replaying the prior attempt or resetting the budget', async () => {
@@ -313,7 +314,7 @@ test('a correlated reply during cleanup records late facts but cannot drive the 
   assert.equal(state.attempts[0].outcome.usage.cost, 0.02);
   assert.equal(resourceSnapshot(state).usage.cost.known, 0.02);
   assert.equal(state.events.filter(event => event.kind === 'controller.responded').length, 0);
-  assert.equal(state.events.flatMap(event => event.observations ?? []).filter(item => item.ref === fact.ref).length, 1);
+  assert.equal(state.events.flatMap(event => event.observations ?? []).filter(item => item.providerRef === fact.ref).length, 1);
   assert.equal(invocations.length, 1);
 });
 

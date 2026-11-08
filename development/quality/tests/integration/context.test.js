@@ -13,14 +13,15 @@ const propose = (invocation, selected, cancellations = []) => final(invocation, 
 });
 
 test('a configured byte budget compacts history and preserves selected refs and coordination facts', async () => {
-  const maxBytes = 1050;
+  const maxBytes = 1280;
   const constraint = 'Preserve this constraint verbatim ' + 'x'.repeat(2000);
   const large = '🧪"\n'.repeat(2000);
   let controller = 0;
+  const refs = new Map();
   const { api, invocations } = setup({ maxInvocations: 5, context: { maxBytes }, respond(invocation, count, observe) {
     if (invocation.actionId === 'source') {
       for (const [ref, value] of [['private-unselected', 'unselected'], ['large', large], ['recent', 'small report']]) {
-        observe({ ref, kind: 'provider_tool', sourceId: 'source-event', completeness: 'complete', value });
+        refs.set(ref, observe({ ref, kind: 'provider_tool', sourceId: 'source-event', completeness: 'complete', value }));
       }
       return { dispatchCertainty: 'unknown', outcome: outcome(invocation.attemptId, {
         terminal: 'unknown', effect: 'unknown',
@@ -30,7 +31,8 @@ test('a configured byte budget compacts history and preserves selected refs and 
     if (invocation.kind === 'delegate') return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
     if (++controller === 1) return propose(invocation, action('source'));
     if (controller === 2) {
-      return propose(invocation, action('target', ['large', 'recent', 'missing', 'recorded-payload', 'large', 'host:operation-state']), ['source']);
+      refs.set('recorded-payload', invocation.contextAccess.list().items.find(item => item.providerRef === 'recorded-payload').ref);
+      return propose(invocation, action('target', [refs.get('large'), refs.get('recent'), 'missing', refs.get('recorded-payload'), refs.get('large'), 'host:operation-state']), ['source']);
     }
     return final(invocation);
   } });
@@ -41,13 +43,13 @@ test('a configured byte budget compacts history and preserves selected refs and 
   const host = second.context[1].value;
   assert.equal(host.historyBudget.maxBytes, maxBytes);
   assert.ok(host.historyBudget.excerpted > 0);
-  assert.equal(second.context.find(item => item.ref === 'recent').value, 'small report');
+  assert.equal(second.context.find(item => item.ref === refs.get('recent')).value, 'small report');
   const sourceAttempt = finished.attempts.find(item => item.actionId === 'source');
   assert.equal(host.unresolvedAttempts[0].attemptId, sourceAttempt.attemptId);
 
   const target = invocations.find(item => item.actionId === 'target');
   assert.deepEqual(target.userConstraints, [constraint]);
-  assert.deepEqual(target.context.map(item => item.ref), ['large', 'recent', 'missing', 'recorded-payload', 'host:operation-state']);
+  assert.deepEqual(target.context.map(item => item.ref), [refs.get('large'), refs.get('recent'), 'missing', refs.get('recorded-payload'), 'host:operation-state']);
   const [excerpt, recent, missing, recorded, facts] = target.context;
   assert.equal(excerpt.completeness, 'truncated');
   assert.equal(excerpt.value, undefined);
@@ -60,18 +62,19 @@ test('a configured byte budget compacts history and preserves selected refs and 
   assert.equal(recorded.unavailableReason, 'payload');
   assert.deepEqual(facts.value.unresolvedAttempts.map(item => [item.attemptId, item.effect]), [[sourceAttempt.attemptId, 'unknown']]);
   assert.deepEqual(facts.value.cancellations, [{ actionId: 'source', source: 'superseded' }]);
-  assert.equal(finished.events.flatMap(event => event.observations ?? []).find(item => item.ref === 'large').value, large);
+  assert.equal(finished.events.flatMap(event => event.observations ?? []).find(item => item.ref === refs.get('large')).value, large);
 });
 
 test('a tiny budget reports missing and omitted refs separately and keeps literal user messages', async () => {
   const input = 'Exact user text '.repeat(50);
   const followup = 'Exact follow-up '.repeat(50);
+  let optionalRef;
   const { api, invocations } = setup({ maxInvocations: 4, context: { maxBytes: 1 }, respond(invocation, count, observe) {
     if (count === 1) {
-      observe({ ref: 'optional', kind: 'provider_report', sourceId: 'report', completeness: 'complete', value: 'available' });
+      optionalRef = observe({ ref: 'optional', kind: 'provider_report', sourceId: 'report', completeness: 'complete', value: 'available' });
       return final(invocation, { finalAssessment: undefined, clarification: { question: 'Continue?' } });
     }
-    if (count === 2) return propose(invocation, action('worker', ['optional', 'unknown-ref', 'reply']));
+    if (count === 2) return propose(invocation, action('worker', [optionalRef, 'unknown-ref', 'reply']));
     if (count === 3) return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
     return final(invocation);
   } });
@@ -82,6 +85,6 @@ test('a tiny budget reports missing and omitted refs separately and keeps litera
   assert.ok(invocations[1].context[1].value.historyBudget.omitted > 0);
   assert.equal(invocations[1].context.find(item => item.ref === 'reply').value, followup);
   assert.deepEqual(invocations[2].context.map(item => [item.ref, item.unavailableReason, item.value]), [
-    ['optional', 'budget', undefined], ['unknown-ref', 'missing', undefined], ['reply', undefined, followup],
+    [optionalRef, 'budget', undefined], ['unknown-ref', 'missing', undefined], ['reply', undefined, followup],
   ]);
 });
