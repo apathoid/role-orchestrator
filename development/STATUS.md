@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C09.4 |
-| Следующий шаг | C09.5, семантика ограничений skill |
+| Последний локально проверенный шаг | C09.5 |
+| Следующий шаг | C09.6, внешние инструменты |
 | Functional implementation complete | NO |
 | Local regression verified | OBSERVED для C00–C07.7 и C08.1–C08.8 на Linux |
 | Native integration verified | UNVERIFIED |
@@ -210,3 +210,6 @@
 
 - C09.4 — Каталог предоставляет версию, описание и ссылки на ресурсы. Инструкции загружаются для выбранного Controller handoff, с общим лимитом текста и явными причинами недоступности. Изменившаяся версия не подменяет показанную в каталоге.
 - OBSERVED на Linux, Node 24.22.1: `check`, 6 целевых integration-тестов, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.5, семантика ограничений skill.
+
+- C09.5 — Worker получает буквальные ограничения skill, приоритет явных требований пользователя и действующие permissions. Тест передаёт запрет provider-native multi-agent review и проверяет, что заявление о разрешении из skill не допускает закрытый профиль.
+- OBSERVED на Linux, Node 24.22.1: `check`, 10 целевых integration-тестов, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.6, внешние инструменты.
