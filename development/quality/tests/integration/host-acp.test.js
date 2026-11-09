@@ -191,3 +191,69 @@ test('ACP continues in changed cwd and supersedes only the named operation', { t
       assert.equal(second.messages.at(-1).update.content.text, 'Ответ: replacement');
     } finally { await second.close(); }
   }));
+
+test('API, CLI and ACP share direct, delegated, partial, permission and continuation behavior', { timeout: 20_000 }, () =>
+  withOwnedRun('C10-surfaces', async (cwd, spawnSync) => {
+    const { openOrchestrator } = await import('../../../../src/main/index.js');
+    const config = await fixture(cwd);
+    const api = await openOrchestrator({
+      configuration: await readFile(config, 'utf8'), stateDirectory: join(cwd, 'api-state'),
+      permissions: { handleRequest: async () => ({ kind: 'selected', option: 'deny' }) },
+    });
+    const create = (requestId, text) => ({
+      schemaVersion: 1, configurationRef: api.configurationRef, requestId, text,
+      workspaceContext: { cwd }, attachments: [], userConstraints: [],
+    });
+    const cli = (...args) => {
+      const result = spawnSync(process.execPath, [entry, ...args, '--config', config, '--format', 'json'], { cwd, input: '' });
+      assert.equal(result.status, 0, result.stderr);
+      return JSON.parse(result.stdout);
+    };
+    const cases = [['direct', 'Ответ: direct'], ['delegate', 'Delegated result'], ['partial', 'Ответ: partial']];
+    try {
+      for (const [input, answer] of cases) {
+        const result = await (await api.submit(create(input, input))).completion;
+        assert.equal(result.assessment.answer, answer);
+        assert.equal(result.assessment.overall, input === 'partial' ? 'partial' : 'complete');
+        if (input === 'delegate') assert.ok(result.attempts.some(attempt => attempt.actionId === 'delegated'));
+        const fromCli = cli('run', input);
+        assert.deepEqual(fromCli.assessment, result.assessment);
+      }
+      const waiting = await (await api.submit(create('clarify', 'clarify'))).completion;
+      assert.equal(waiting.waiting.question, 'What scope?');
+      const continued = await (await api.resume(waiting.operationId, { requestId: 'answer', text: 'scope',
+        questionId: waiting.waiting.questionId })).completion;
+      assert.equal(continued.assessment.answer, 'Ответ: scope');
+      assert.equal(continued.attempts.length, 2);
+      assert.equal((await (await api.resume(waiting.operationId)).completion).revision, continued.revision);
+      const cliWaiting = cli('run', 'clarify');
+      assert.equal(cliWaiting.waiting.question, waiting.waiting.question);
+      const cliContinued = cli('resume', cliWaiting.operationId, '--question', cliWaiting.waiting.questionId, 'scope');
+      assert.deepEqual(cliContinued.assessment, continued.assessment);
+      assert.equal(cli('resume', cliWaiting.operationId).revision, cliContinued.revision);
+      assert.equal(cli('run', 'permission').assessment.answer, 'unavailable');
+      assert.equal((await (await api.submit(create('permission', 'permission'))).completion).assessment.answer, 'deny');
+      const requested = Promise.withResolvers();
+      const unsubscribe = api.subscribe(event => {
+        if (event.eventName === 'controller.requested') requested.resolve();
+      });
+      const held = await api.submit(create('held', 'hold'));
+      await requested.promise;
+      await api.cancel(held.operation.operationId);
+      assert.equal((await held.completion).status, 'cancelled');
+      unsubscribe();
+    } finally { await api.close(); }
+
+    const host = launch(cwd, config, app => app.onRequest(c.session.requestPermission, () =>
+      ({ outcome: { outcome: 'selected', optionId: 'deny' } })));
+    try {
+      await initialize(host.agent);
+      const { sessionId } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
+      for (const [input, answer] of [...cases, ['permission', 'deny'], ['clarify', 'What scope?']]) {
+        await prompt(host.agent, sessionId, input, { roleOrchestrator: { newOperation: true } });
+        assert.equal(host.messages.at(-1).update.content.text, answer);
+      }
+      await prompt(host.agent, sessionId, 'scope');
+      assert.equal(host.messages.at(-1).update.content.text, 'Ответ: scope');
+    } finally { await host.close(); }
+  }));

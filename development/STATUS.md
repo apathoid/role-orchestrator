@@ -254,3 +254,6 @@
 
 - C10.8 — ACP EOF отделён от user cancel. Принятый turn сохраняет результат после разрыва, а стабильный requestId связывается с журналом для load и повторной доставки. Проверены отказ от чужого supersession, адресная замена и продолжение в изменившемся cwd. Восстановлен ленивый импорт runtime для публичного пакета.
 - OBSERVED на Linux, Node 24.22.1: `check`, 4 ACP stdio теста, 7 проверок resume/mutable context, `check:package`, `git diff --check`. Следующий шаг — C10.9.
+
+- C10.9 — Общий fixture проверяет direct answer, delegation, partial result, permission и clarification/resume через API, CLI и внешний ACP. Отдельные сквозные проверки покрывают явную отмену, разрыв клиента, non-Git и повторную доставку. Обновлена матрица A06/A07/A16/A20/A24/A38/A40.
+- OBSERVED на Linux, Node 24.22.1: 5 сквозных тестов ACP/общих поверхностей, `check:package`, `git diff --check`. Zed в среде отсутствует, нативная часть A20/A38 остаётся UNVERIFIED. Следующий шаг — C10.10.
