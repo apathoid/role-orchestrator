@@ -105,6 +105,12 @@ export function createOrchestrator(deps) {
     releaseSlot();
   }
   let writes = Promise.resolve();
+  /** @type {Promise<void> | undefined} */
+  let closing;
+
+  function requireRunning() {
+    if (closing) throw new OrchestrationError('CANCELLED', 'Orchestrator is closing');
+  }
   /** @type {{promise: Promise<void>, resolve: () => void}} */
   let slot = Promise.withResolvers();
 
@@ -264,6 +270,7 @@ export function createOrchestrator(deps) {
       throw new OrchestrationError('PERMISSION_DENIED', 'Unknown trusted configuration', '$.configurationRef');
     }
     return serialize(async () => {
+      requireRunning();
       const entries = await store.list(request.requestId);
       if (entries.some(item => 'kind' in item && item.requestMatch === true)) {
         throw new OrchestrationError('STORE_UNAVAILABLE', 'Stored request is unavailable');
@@ -295,6 +302,7 @@ export function createOrchestrator(deps) {
   async function resume(operationId, input) {
     if (input === undefined) {
       return serialize(async () => {
+        requireRunning();
         const state = await inspect(operationId);
         if (state.status !== 'active' || running.has(operationId)) return activeSubmission(state);
         return launch(await transition(state, { kind: 'operation.recovered', trusted }), true);
@@ -306,6 +314,7 @@ export function createOrchestrator(deps) {
     }
     const follow = parsed.value;
     return serialize(async () => {
+      requireRunning();
       const all = (await store.list()).filter(isAvailable);
       const state = await inspect(operationId);
       for (const operation of all) {
@@ -398,12 +407,37 @@ export function createOrchestrator(deps) {
   async function cancel(operationId, source = 'user') {
     return serialize(async () => {
       const state = await inspect(operationId);
-      const next = await transition(state, { kind: 'operation.cancelled', source });
-      running.get(operationId)?.signal.abort(source);
-      for (const worker of workers.get(operationId)?.values() ?? []) worker.stop.abort(source);
-      releaseSlot();
+      const next = await transition(state, { kind: 'operation.cancelled', source }).finally(() => {
+        if (source === 'shutdown') stopOperation(operationId, source);
+      });
+      if (source !== 'shutdown') stopOperation(operationId, source);
       return settleOrphans(next);
     });
+  }
+
+  /** @param {string} operationId @param {CancellationSource} source */
+  function stopOperation(operationId, source) {
+    running.get(operationId)?.signal.abort(source);
+    for (const worker of workers.get(operationId)?.values() ?? []) worker.stop.abort(source);
+    releaseSlot();
+  }
+
+  function close() {
+    return closing ??= (async () => {
+      await writes;
+      const active = [...new Set([...running.keys(), ...workers.keys()])].filter(id =>
+        running.has(id) || workers.get(id)?.size);
+      const completions = [...running.values()].map(item => item.completion);
+      const cancelled = await Promise.allSettled(active.map(id => cancel(id, 'shutdown')));
+      for (const id of active) stopOperation(id, 'shutdown');
+      await Promise.allSettled([
+        ...completions,
+        ...[...workers.values()].flatMap(items => [...items.values()].map(item => item.completion)),
+      ]);
+      await writes;
+      const failure = cancelled.find(result => result.status === 'rejected');
+      if (failure) throw failure.reason;
+    })();
   }
 
   /**
@@ -770,7 +804,7 @@ export function createOrchestrator(deps) {
     while (true) {
       const result = await serialize(async () => {
         const state = await inspect(operationId);
-        if (stop.aborted || state.status !== 'active') return { state };
+        if (closing || stop.aborted || state.status !== 'active') return { state };
         if (actionId) {
           if (state.events.some(event => event.kind === 'action.cancelled' && event.actionId === actionId)) return { state };
           if (state.attempts.some(attempt => attempt.actionId === actionId)) return { state, known: true };
@@ -1012,5 +1046,5 @@ export function createOrchestrator(deps) {
     return inspect(operationId);
   }
 
-  return { submit, resume, inspect, inspectFinding, cancel };
+  return { submit, resume, inspect, inspectFinding, cancel, close };
 }

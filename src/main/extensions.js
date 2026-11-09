@@ -63,110 +63,118 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       eventName, reasonCode, details: { id, ...(path === undefined ? {} : { path }) },
     });
   }
-  const entries = configuration.plugins ?? [];
-  const duplicates = duplicateExtensionIds(entries);
-  for (const { id, module, enabled } of entries) {
-    if (enabled === false) { pluginFailures.set(id, 'PLUGIN_DISABLED'); continue; }
-    if (duplicates.has(id) || builtins.has(id)) {
-      pluginFailures.set(id, 'DUPLICATE_EXTENSION_ID');
-      report('plugin.load_failed', id, 'DUPLICATE_EXTENSION_ID', 'manifest.id');
-      continue;
-    }
-    try {
-      const loaded = await import(pluginSpecifier(module, directory));
-      plugins.set(id, validatePlugin(loaded, id));
-      report('plugin.loaded', id, 'LOADED');
-    } catch (error) {
-      const reason = error instanceof PluginError ? error.code : 'PLUGIN_IMPORT_FAILED';
-      pluginFailures.set(id, reason);
-      report('plugin.load_failed', id, reason, error instanceof PluginError ? error.path : 'module');
-    }
-  }
-  for (const [id, endpoint] of Object.entries(configuration.providers)) {
-    const factory = builtins.get(endpoint.adapter) ?? plugins.get(endpoint.adapter)?.createProvider;
-    if (!factory) {
-      const reason = pluginFailures.get(endpoint.adapter) ?? 'PROVIDER_FACTORY_UNAVAILABLE';
-      unavailable.set(id, reason);
-      report('provider.load_failed', id, reason, 'adapter');
-      continue;
-    }
-    /** @type {(() => void | Promise<void>)[]} */
-    const cleanup = [];
-    async function release() {
-      for (const dispose of cleanup.splice(0).reverse()) {
-        try { await dispose(); } catch { report('provider.cleanup_failed', id, 'PLUGIN_CLEANUP_FAILED'); }
-      }
-    }
-    try {
-      const value = await factory({
-        providerId: id, configuration: structuredClone(endpoint),
-        onClose(dispose) {
-          if (typeof dispose !== 'function') throw new PluginError('INVALID_PROVIDER', 'onClose');
-          cleanup.push(dispose);
-        },
-      });
-      const { provider, description } = await validateProvider(value, id);
-      releases.push(release);
-      providers.set(id, provider);
-      descriptions.push(description);
-      report('provider.loaded', id, 'LOADED');
-    } catch (error) {
-      unavailable.set(id, error instanceof PluginError ? error.code : 'PROVIDER_INIT_FAILED');
-      report('provider.load_failed', id, unavailable.get(id) ?? 'PROVIDER_INIT_FAILED',
-        error instanceof PluginError ? error.path : 'createProvider');
-      await release();
-    }
-  }
-  const skills = await createSkillRegistry(configuration.skills ?? [], plugins);
-  const configuredTools = configuration.tools ?? [];
-  const duplicateTools = duplicateExtensionIds(configuredTools);
-  const tools = new Map();
-  for (const id of new Set(configuredTools.map(tool => tool.id))) {
-    const exports = [...plugins.values()].filter(plugin => plugin.tool?.id === id);
-    const duplicate = duplicateTools.has(id) || exports.length > 1;
-    const tool = !duplicate && exports.length === 1 ? await compileExternalTool(exports[0].tool) : undefined;
-    if (tool) tools.set(id, tool);
-    else report('tool.load_failed', id, duplicate ? 'DUPLICATE_EXTENSION_ID' : 'INVALID_TOOL', 'tool');
-  }
-  const selection = resolveConfiguration(configuration, projectText, launchOptions, {
-    profiles: new Set(Object.entries(configuration.profiles).flatMap(([id, profile]) => providers.has(profile.provider) ? [id] : [])),
-    skills: new Set(skills.records.flatMap(skill => skill.version ? [skill.id] : [])),
-  });
-  const selectedProfile = selection.kind === 'accepted' ? selection.value.controllerProfile : undefined;
-  const preferences = selection.kind === 'accepted' && (selection.value.preferredRole || selection.value.preferredSkills.length)
-    ? Object.freeze({ roleId: selection.value.preferredRole, skillIds: Object.freeze([...selection.value.preferredSkills]) })
-    : undefined;
-  const catalog = createCatalog(configuration, descriptions, skills, [...tools.values()].map(tool => tool.metadata), {
-    unavailable, preferences,
-  });
   /** @type {Promise<void> | undefined} */
   let closing;
-  return Object.freeze({
-    catalog,
-    selection,
-    async selectController(profileId = selectedProfile) {
-      if (profileId === undefined) return {
-        kind: /** @type {const} */ ('unavailable'), profileId: configuration.controllerProfile, reason: 'PREFERENCES_REJECTED',
-      };
-      const entry = await catalog.resolve('profile', profileId);
-      if (entry?.kind !== 'profile') return { kind: /** @type {const} */ ('unavailable'), profileId, reason: 'UNKNOWN_PROFILE' };
-      const profile = entry.value;
-      const provider = providers.get(profile.providerId);
-      return provider ? { kind: /** @type {const} */ ('available'), profile, provider }
-        : { kind: /** @type {const} */ ('unavailable'), profileId, reason: profile.unavailable ?? 'EXTENSIONS_CLOSED' };
-    },
-    tools: tools.size ? createExternalToolPort(tools) : undefined,
-    /** @param {Profile} profile */
-    providerFor(profile) { return providers.get(profile.providerId); },
-    /** @param {string} providerId */
-    unavailableProvider(providerId) { return unavailable.get(providerId); },
-    close() {
-      providers.clear();
-      plugins.clear();
-      tools.clear();
-      return closing ??= (async () => {
-        for (const release of releases.reverse()) await release();
-      })();
-    },
-  });
+  function close() {
+    providers.clear();
+    plugins.clear();
+    return closing ??= (async () => {
+      for (const release of releases.reverse()) await release();
+    })();
+  }
+  try {
+    const entries = configuration.plugins ?? [];
+    const duplicates = duplicateExtensionIds(entries);
+    for (const { id, module, enabled } of entries) {
+      if (enabled === false) { pluginFailures.set(id, 'PLUGIN_DISABLED'); continue; }
+      if (duplicates.has(id) || builtins.has(id)) {
+        pluginFailures.set(id, 'DUPLICATE_EXTENSION_ID');
+        report('plugin.load_failed', id, 'DUPLICATE_EXTENSION_ID', 'manifest.id');
+        continue;
+      }
+      try {
+        const loaded = await import(pluginSpecifier(module, directory));
+        plugins.set(id, validatePlugin(loaded, id));
+        report('plugin.loaded', id, 'LOADED');
+      } catch (error) {
+        const reason = error instanceof PluginError ? error.code : 'PLUGIN_IMPORT_FAILED';
+        pluginFailures.set(id, reason);
+        report('plugin.load_failed', id, reason, error instanceof PluginError ? error.path : 'module');
+      }
+    }
+    for (const [id, endpoint] of Object.entries(configuration.providers)) {
+      const factory = builtins.get(endpoint.adapter) ?? plugins.get(endpoint.adapter)?.createProvider;
+      if (!factory) {
+        const reason = pluginFailures.get(endpoint.adapter) ?? 'PROVIDER_FACTORY_UNAVAILABLE';
+        unavailable.set(id, reason);
+        report('provider.load_failed', id, reason, 'adapter');
+        continue;
+      }
+      /** @type {(() => void | Promise<void>)[]} */
+      const cleanup = [];
+      async function release() {
+        for (const dispose of cleanup.splice(0).reverse()) {
+          try { await dispose(); } catch { report('provider.cleanup_failed', id, 'PLUGIN_CLEANUP_FAILED'); }
+        }
+      }
+      try {
+        const value = await factory({
+          providerId: id, configuration: structuredClone(endpoint),
+          onClose(dispose) {
+            if (typeof dispose !== 'function') throw new PluginError('INVALID_PROVIDER', 'onClose');
+            cleanup.push(dispose);
+          },
+        });
+        const { provider, description } = await validateProvider(value, id);
+        releases.push(release);
+        providers.set(id, provider);
+        descriptions.push(description);
+        report('provider.loaded', id, 'LOADED');
+      } catch (error) {
+        unavailable.set(id, error instanceof PluginError ? error.code : 'PROVIDER_INIT_FAILED');
+        report('provider.load_failed', id, unavailable.get(id) ?? 'PROVIDER_INIT_FAILED',
+          error instanceof PluginError ? error.path : 'createProvider');
+        await release();
+      }
+    }
+    const skills = await createSkillRegistry(configuration.skills ?? [], plugins);
+    const configuredTools = configuration.tools ?? [];
+    const duplicateTools = duplicateExtensionIds(configuredTools);
+    const tools = new Map();
+    for (const id of new Set(configuredTools.map(tool => tool.id))) {
+      const exports = [...plugins.values()].filter(plugin => plugin.tool?.id === id);
+      const duplicate = duplicateTools.has(id) || exports.length > 1;
+      const tool = !duplicate && exports.length === 1 ? await compileExternalTool(exports[0].tool) : undefined;
+      if (tool) tools.set(id, tool);
+      else report('tool.load_failed', id, duplicate ? 'DUPLICATE_EXTENSION_ID' : 'INVALID_TOOL', 'tool');
+    }
+    const selection = resolveConfiguration(configuration, projectText, launchOptions, {
+      profiles: new Set(Object.entries(configuration.profiles).flatMap(([id, profile]) => providers.has(profile.provider) ? [id] : [])),
+      skills: new Set(skills.records.flatMap(skill => skill.version ? [skill.id] : [])),
+    });
+    const selectedProfile = selection.kind === 'accepted' ? selection.value.controllerProfile : undefined;
+    const preferences = selection.kind === 'accepted' && (selection.value.preferredRole || selection.value.preferredSkills.length)
+      ? Object.freeze({ roleId: selection.value.preferredRole, skillIds: Object.freeze([...selection.value.preferredSkills]) })
+      : undefined;
+    const catalog = createCatalog(configuration, descriptions, skills, [...tools.values()].map(tool => tool.metadata), {
+      unavailable, preferences,
+    });
+    return Object.freeze({
+      catalog,
+      selection,
+      async selectController(profileId = selectedProfile) {
+        if (profileId === undefined) return {
+          kind: /** @type {const} */ ('unavailable'), profileId: configuration.controllerProfile, reason: 'PREFERENCES_REJECTED',
+        };
+        const entry = await catalog.resolve('profile', profileId);
+        if (entry?.kind !== 'profile') return { kind: /** @type {const} */ ('unavailable'), profileId, reason: 'UNKNOWN_PROFILE' };
+        const profile = entry.value;
+        const provider = providers.get(profile.providerId);
+        return provider ? { kind: /** @type {const} */ ('available'), profile, provider }
+          : { kind: /** @type {const} */ ('unavailable'), profileId, reason: profile.unavailable ?? 'EXTENSIONS_CLOSED' };
+      },
+      tools: tools.size ? createExternalToolPort(tools) : undefined,
+      /** @param {Profile} profile */
+      providerFor(profile) { return providers.get(profile.providerId); },
+      /** @param {string} providerId */
+      unavailableProvider(providerId) { return unavailable.get(providerId); },
+      close() {
+        tools.clear();
+        return close();
+      },
+    });
+  } catch (error) {
+    await close();
+    throw error;
+  }
 }
