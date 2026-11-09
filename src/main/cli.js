@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+import { createHash, randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { decodeConfiguration } from '../application/configuration/decode-config.js';
 import { cliPermissions } from '../hosts/cli-permissions.js';
+import { callControl, openControl, readDescriptor } from '../hosts/local-control.js';
 import { runCli } from '../hosts/cli.js';
 import { dispatchCommand, HostError } from '../hosts/commands.js';
 import { openRuntime } from './runtime.js';
@@ -49,14 +52,48 @@ process.exitCode = await runCli(process.argv.slice(2), { cwd, stdin: process.std
     try {
       const handleRequest = cliPermissions(process.stdin, process.stderr,
         Boolean(process.stdin.isTTY && process.stderr.isTTY && !invocation.stdin), interrupt);
-      const runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
-        permissions: { handleRequest }, project: { cwd: invocation.command.cwd }, launch: invocation.launch });
-      try {
-        return await dispatchCommand(runtime.api, invocation.command, operationId => {
-          const cancel = () => { void runtime.api.cancel(operationId, 'client').catch(() => {}); };
-          stop.signal.addEventListener('abort', cancel, { once: true });
-          if (stop.signal.aborted) cancel();
-        });
-      } finally { await runtime.close(); }
+      const configurationRef = 'config:' + createHash('sha256').update(configuration).digest('hex');
+      /** @param {(id: string) => Promise<unknown>} cancel */
+      const onAccepted = cancel => /** @param {string} id */ id => {
+        const cancelForeground = () => { void cancel(id).catch(() => {}); };
+        if (stop.signal.aborted) cancelForeground();
+        else stop.signal.addEventListener('abort', cancelForeground, { once: true });
+      };
+      for (let retries = 0; ; retries++) {
+        const descriptor = await readDescriptor(stateDirectory);
+        if (descriptor) {
+          if (Object.keys(invocation.launch).length) {
+            throw new HostError('CONTROL_LAUNCH_UNAVAILABLE', 'Launch overrides require a new live owner');
+          }
+          const result = await callControl(descriptor, configurationRef, invocation.command, onAccepted(id =>
+            callControl(descriptor, configurationRef, { action: 'cancel', operationId: id, requestId: randomUUID() })));
+          if (result !== undefined) return result;
+        }
+
+        const runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
+          permissions: { handleRequest }, project: { cwd: invocation.command.cwd }, launch: invocation.launch })
+          .catch(error => {
+            if (error?.code === 'STATE_STORE_IN_USE' && retries < 40) return undefined;
+            throw error;
+          });
+        if (!runtime) { await delay(25); continue; }
+        try {
+          if (invocation.command.action === 'cancel') {
+            return { operationId: invocation.command.operationId, status: 'no_live_execution' };
+          }
+          if (invocation.command.action !== 'run' && invocation.command.action !== 'resume') {
+            return await dispatchCommand(runtime.api, invocation.command);
+          }
+          const owner = await openControl(stateDirectory, configurationRef, (command, accepted) =>
+            dispatchCommand(runtime.api, command, accepted)).catch(error => {
+            if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
+            process.stderr.write('CONTROL_UNAVAILABLE: local socket transport unavailable; this process retains writer ownership\n');
+            return undefined;
+          });
+          try {
+            return await dispatchCommand(runtime.api, invocation.command, onAccepted(id => runtime.api.cancel(id, 'client')));
+          } finally { await owner?.close(); }
+        } finally { await runtime.close(); }
+      }
     } finally { process.removeListener('SIGINT', interrupt); }
   });

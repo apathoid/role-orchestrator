@@ -242,3 +242,6 @@
 
 - C10.4 — Терминал показывает ресурс, описание действия и допустимые варианты. Брокер проверяет корреляцию, применяет standing decisions и гасит prompt при отмене. EOF и неинтерактивный ввод дают явный unavailable в stderr.
 - OBSERVED на Linux, Node 24.22.1: `check`, 10 целевых тестов CLI и брокера, `git diff --check`. Следующий шаг — C10.5.
+
+- C10.5 — Владелец CLI публикует локальный control endpoint после открытия writer. Запросы проверяют версию, token, конфигурацию и requestId. Потеря ответа сохраняет работу и позволяет повторить delivery с тем же id. SIGINT адресуется принятой операции. Без владельца cancel возвращает no_live_execution.
+- OBSERVED на Linux, Node 24.22.1: `check`, локальный CLI, `git diff --check`. Среда вернула EPERM на bind AF_UNIX; 2 wire/process теста остаются UNVERIFIED локально и обязательны в GitHub CI. При EPERM standalone-вызов сообщает о недоступном endpoint в stderr и сохраняет single-writer lock. Следующий шаг — C10.6.
