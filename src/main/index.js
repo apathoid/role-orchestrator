@@ -10,4 +10,9 @@ export { createPermissionBroker } from '../application/configuration/permissions
 export { createCodexProvider } from '../adapters/cli/codex-provider.js';
 export { createAcpProvider } from '../adapters/acp/provider.js';
 export { loadExtensions } from './extensions.js';
-export { openOrchestrator, RuntimeError } from './runtime.js';
+export { RuntimeError } from './runtime-error.js';
+
+/** @param {import('./runtime.js').RuntimeOptions} options */
+export async function openOrchestrator(options) {
+  return (await import('./runtime.js')).openOrchestrator(options);
+}

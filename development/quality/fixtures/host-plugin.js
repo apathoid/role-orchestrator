@@ -14,8 +14,10 @@ export function createProvider({ providerId }) {
           else invocation.signal.addEventListener('abort', resolve, { once: true });
         });
       }
+      const latest = invocation.context.findLast(item => item.provenance?.kind === 'user')?.value ?? invocation.context[0].value;
+      const answer = latest === 'cwd' ? invocation.workspaceContext?.cwd : 'Ответ: ' + latest;
       return final(invocation, { finalAssessment: assessment({
-        author: invocation.profile.profileId, answer: 'Ответ: ' + invocation.context[0].value,
+        author: invocation.profile.profileId, answer,
       }) });
     },
     async cancel() {},

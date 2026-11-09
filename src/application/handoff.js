@@ -1,3 +1,4 @@
+import { workspaceContextFor } from '../core/operation.js';
 import { compactContext, unavailableContext } from './context-bundle.js';
 import { coordinationFacts, operationHistory } from './controller-context.js';
 /** @import {LookupStatus} from './recovery.js' */
@@ -42,7 +43,7 @@ export function prepareHandoff(operation, action, catalog) {
   return {
     kind: 'accepted', handoff: {
       kind: 'delegate', operationId: operation.operationId, actionId: action.actionId,
-      objective: action.objective, instructions, profile: profile.value, workspaceContext: operation.request.workspaceContext,
+      objective: action.objective, instructions, profile: profile.value, workspaceContext: workspaceContextFor(operation),
       userConstraints: operation.request.userConstraints, authorityRef: operation.authorityRef,
       attachments: operation.request.attachments.filter(attachment => action.contextRefs.includes(attachment.ref)),
       requiredCapabilities: action.requiredCapabilities,

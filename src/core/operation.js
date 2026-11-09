@@ -32,7 +32,7 @@
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
- *   {kind: 'operation.continued', input: {requestId: string, text: string, questionId?: string}, trusted?: ResumeAuthority} |
+ *   {kind: 'operation.continued', input: ReturnType<typeof import('./contracts.js').followup>, trusted?: ResumeAuthority} |
  *   {kind: 'operation.recovered', trusted: ResumeAuthority} |
  *   {kind: 'operation.finished', assessment: Assessment} |
  *   {kind: 'operation.cancelled', source: CancellationSource}
@@ -88,6 +88,12 @@ export function resourceSnapshot(state) {
     active, charged, remaining: Math.max(0, state.limits.maxInvocations - charged),
     usage: { inputTokens: total('inputTokens'), outputTokens: total('outputTokens'), cost: total('cost') },
   };
+}
+
+/** @param {Operation} operation */
+export function workspaceContextFor(operation) {
+  const latest = operation.events.findLast(event => event.kind === 'operation.continued' && event.input.workspaceContext);
+  return latest?.kind === 'operation.continued' ? latest.input.workspaceContext : operation.request.workspaceContext;
 }
 
 /**

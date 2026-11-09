@@ -13,14 +13,7 @@ import { loadExtensions } from './extensions.js';
 /** @import {DiagnosticPort} from '../core/diagnostics.js' */
 /** @import {AuthorityPort} from '../core/ports.js' */
 
-export class RuntimeError extends Error {
-  /** @param {string} code @param {string} message @param {string} [path] */
-  constructor(code, message, path) {
-    super(message);
-    this.code = code;
-    this.path = path;
-  }
-}
+import { RuntimeError } from './runtime-error.js';
 
 /**
  * @typedef {{
@@ -92,8 +85,8 @@ export async function openRuntime(options) {
         }
       });
     }
-    const { submit, resume, inspect, inspectFinding, cancel } = coordinator;
-    const api = Object.freeze({ submit, resume, inspect, inspectFinding, cancel,
+    const { submit, resume, inspect, inspectFinding, findRequest, cancel } = coordinator;
+    const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel,
       subscribe: diagnostics.subscribe, configurationRef, close });
     return { api, coordinator, permissions, configurationRef, directory, catalog, close };
   } catch (error) {

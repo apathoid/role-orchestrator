@@ -2,7 +2,7 @@ import { admitFindings, checkAssessment, evidenceRefs, findings, recordObservati
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
-import { applyEvent, createOperation, resourceSnapshot, sameRecord } from '../core/operation.js';
+import { applyEvent, createOperation, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
 import { handoffContext, prepareHandoff } from './handoff.js';
@@ -132,6 +132,17 @@ export function createOrchestrator(deps) {
     const state = await store.load(operationId);
     if (!state) throw new OrchestrationError('INVALID_PROPOSAL', 'Unknown operation', '$.operationId');
     return state;
+  }
+
+  /** @param {string} requestId */
+  async function findRequest(requestId) {
+    const entries = await store.list();
+    const operation = entries.filter(isAvailable).find(item => item.request.requestId === requestId ||
+      item.events.some(event => event.kind === 'operation.continued' && event.input.requestId === requestId));
+    if (!operation && entries.some(item => !isAvailable(item))) {
+      throw new OrchestrationError('STORE_UNAVAILABLE', 'Cannot confirm request identity in an unreadable snapshot');
+    }
+    return operation;
   }
 
   /** @param {string} operationId @param {string} findingRef */
@@ -681,7 +692,7 @@ export function createOrchestrator(deps) {
         } : {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
           objective: state.request.text, instructions: controllerInstructions, profile,
-          workspaceContext: state.request.workspaceContext, userConstraints: state.request.userConstraints,
+          workspaceContext: workspaceContextFor(state), userConstraints: state.request.userConstraints,
           context: controllerContext(dispatched, entries, correction, lookups, contextMaxBytes, catalog.preferences), authorityRef: state.authorityRef,
         };
         if (handoff && action) traceHandoff(dispatched, attemptId, action, context.context);
@@ -1046,5 +1057,5 @@ export function createOrchestrator(deps) {
     return inspect(operationId);
   }
 
-  return { submit, resume, inspect, inspectFinding, cancel, close };
+  return { submit, resume, inspect, inspectFinding, findRequest, cancel, close };
 }

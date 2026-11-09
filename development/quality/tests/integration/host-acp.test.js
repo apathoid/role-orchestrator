@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -116,4 +116,78 @@ test('external ACP correlates parallel permission replies and relays only advert
       assert.equal(final(one), 'allow:client bytes');
       assert.equal(final(two), 'deny');
     } finally { await host.close(); }
+  }));
+
+test('ACP disconnect drops delivery, preserves completion and deduplicates a lost acknowledgement', { timeout: 12_000 }, () =>
+  withOwnedRun('C10-acp-disconnect', async cwd => {
+    const config = await fixture(cwd, {
+      providers: { test: { adapter: 'acp', launch: { command: process.execPath,
+        args: [fileURLToPath(new URL('../../fixtures/acp-contract-agent.js', import.meta.url)), 'host-relay'] } } },
+      plugins: [],
+    });
+    const permission = Promise.withResolvers();
+    const first = launch(cwd, config, app => app.onRequest(c.session.requestPermission, ({ params, signal }) => {
+      permission.resolve(params);
+      return new Promise(resolve => signal.addEventListener('abort', () =>
+        resolve({ outcome: { outcome: 'cancelled' } }), { once: true }));
+    }));
+    await initialize(first.agent);
+    const { sessionId } = await first.agent.request(a.session.new, { cwd, mcpServers: [] });
+    const meta = { roleOrchestrator: { requestId: 'retry' } };
+    const lost = prompt(first.agent, sessionId, 'disconnect test', meta);
+    void lost.catch(() => {});
+    assert.equal((await permission.promise).sessionId, sessionId);
+    await first.close();
+
+    let repeatedPermission = 0;
+    const second = launch(cwd, config, app => app.onRequest(c.session.requestPermission, () => {
+      repeatedPermission++;
+      return { outcome: { outcome: 'selected', optionId: 'allow' } };
+    }));
+    try {
+      await initialize(second.agent);
+      await second.agent.request(a.session.load, { sessionId, cwd, mcpServers: [] });
+      assert.equal((await prompt(second.agent, sessionId, 'disconnect test', meta)).stopReason, 'end_turn');
+      assert.equal(repeatedPermission, 0);
+      assert.equal(second.messages.filter(message => message.update.sessionUpdate === 'agent_message_chunk').at(-1).update.content.text, 'cancelled');
+      await assert.rejects(prompt(second.agent, sessionId, 'different prompt', meta), /Request id reused/);
+    } finally { await second.close(); }
+  }));
+
+test('ACP continues in changed cwd and supersedes only the named operation', { timeout: 12_000 }, () =>
+  withOwnedRun('C10-acp-supersede', async cwd => {
+    const config = await fixture(cwd);
+    const next = join(cwd, 'new-directory');
+    await mkdir(next);
+    const first = launch(cwd, config);
+    await initialize(first.agent);
+    const { sessionId } = await first.agent.request(a.session.new, { cwd, mcpServers: [] });
+    await prompt(first.agent, sessionId, 'initial');
+    await first.close();
+    const second = launch(cwd, config);
+    try {
+      await initialize(second.agent);
+      await second.agent.request(a.session.load, { sessionId, cwd: next, mcpServers: [] });
+      await prompt(second.agent, sessionId, 'cwd');
+      assert.equal(second.messages.at(-1).update.content.text, next);
+      const hold = prompt(second.agent, sessionId, 'hold', { roleOrchestrator: { newOperation: true } });
+      void hold.catch(() => {});
+      const path = join(cwd, 'state', 'client-session-' + sessionId + '.json');
+      let current;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const saved = JSON.parse(await readFile(path, 'utf8'));
+        if (saved.operations.length === 2) { current = saved.operations[1]; break; }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      assert.ok(current, (await readdir(join(cwd, 'state'))).join(','));
+      await assert.rejects(prompt(second.agent, sessionId, 'no', {
+        roleOrchestrator: { supersedeOperationId: 'wrong' },
+      }), /active prompt/);
+      const replacement = prompt(second.agent, sessionId, 'replacement', {
+        roleOrchestrator: { supersedeOperationId: current },
+      });
+      assert.equal((await hold).stopReason, 'cancelled');
+      assert.equal((await replacement).stopReason, 'end_turn');
+      assert.equal(second.messages.at(-1).update.content.text, 'Ответ: replacement');
+    } finally { await second.close(); }
   }));

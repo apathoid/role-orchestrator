@@ -30,14 +30,16 @@ export async function runAcpStdio(args) {
     host = serveAcp(runtime.api, runtime.directory,
       ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: 1024 * 1024 }));
     const { connection } = host;
-    const interrupt = () => connection.close();
+    let interrupted = false;
+    const interrupt = () => { interrupted = true; connection.close(); };
     process.once('SIGINT', interrupt);
     process.once('SIGTERM', interrupt);
     try { await connection.closed; }
     finally {
       process.removeListener('SIGINT', interrupt);
       process.removeListener('SIGTERM', interrupt);
-      await runtime.close();
+      if (!interrupted) await host.drain();
+      try { await runtime.close(); } finally { await host.drain(); }
     }
     return 0;
   } catch (error) {

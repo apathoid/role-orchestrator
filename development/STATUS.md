@@ -251,3 +251,6 @@
 
 - C10.7 — Внешний ACP передаёт фактическое описание и варианты через permission broker с привязкой к operation и попытке. Явный `--relay-client-tools` включает C08 bridge с согласованием возможностей конкретного клиента и scoped terminal ownership.
 - OBSERVED на Linux, Node 24.22.1: `check`, 2 ACP stdio теста, включая параллельные allow/deny с одним native tool id и адресный fs relay; `git diff --check`. Следующий шаг — C10.8.
+
+- C10.8 — ACP EOF отделён от user cancel. Принятый turn сохраняет результат после разрыва, а стабильный requestId связывается с журналом для load и повторной доставки. Проверены отказ от чужого supersession, адресная замена и продолжение в изменившемся cwd. Восстановлен ленивый импорт runtime для публичного пакета.
+- OBSERVED на Linux, Node 24.22.1: `check`, 4 ACP stdio теста, 7 проверок resume/mutable context, `check:package`, `git diff --check`. Следующий шаг — C10.9.

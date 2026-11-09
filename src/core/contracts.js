@@ -12,10 +12,11 @@ import { arrayOf, count, decode, id, invalid, measurement, nullable, oneOf, opti
 
 const version = oneOf(1);
 const ids = arrayOf(id);
+const workspaceContext = optional(record({ cwd: optional(id) }));
 export const request = record({
   schemaVersion: version, requestId: id, text,
   attachments: arrayOf(record({ ref: id, mediaType: id })),
-  workspaceContext: optional(record({ cwd: optional(id) })),
+  workspaceContext,
   userConstraints: arrayOf(text), configurationRef: id,
 });
 
@@ -44,7 +45,7 @@ export const assessment = record({
   observationRefs: ids, findingRefs: ids, unresolvedQuestions: arrayOf(text), answer: text,
 });
 
-export const followup = record({ requestId: id, text, questionId: optional(id) });
+export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext });
 const proposal = record({
   schemaVersion: version, decisionId: id, operationId: id, contextCursor: count,
   additions: arrayOf(action), cancellations: ids, acceptedActionIds: optional(ids),
