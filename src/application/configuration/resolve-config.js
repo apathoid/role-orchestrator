@@ -50,9 +50,10 @@ function reject(source, path, constraint) {
  * @param {Configuration} user
  * @param {string | undefined} projectText
  * @param {unknown} [launchOptions]
+ * @param {{profiles: ReadonlySet<string>, skills: ReadonlySet<string>}} [installed]
  * @returns {{kind: 'accepted', value: EffectiveConfiguration} | Rejected}
  */
-export function resolveConfiguration(user, projectText, launchOptions = {}) {
+export function resolveConfiguration(user, projectText, launchOptions = {}, installed) {
   /** @type {unknown} */
   let rawProject = { schemaVersion: 1 };
   if (projectText !== undefined) {
@@ -68,12 +69,19 @@ export function resolveConfiguration(user, projectText, launchOptions = {}) {
     if (values.controllerProfile !== undefined && !Object.hasOwn(user.profiles, values.controllerProfile)) {
       return reject(source, '$.controllerProfile', 'known-profile');
     }
+    if (source === 'project' && values.controllerProfile !== undefined && installed && !installed.profiles.has(values.controllerProfile)) {
+      return reject(source, '$.controllerProfile', 'available-profile');
+    }
     if (values.preferredRole !== undefined && !Object.hasOwn(user.roles ?? {}, values.preferredRole)) {
       return reject(source, '$.preferredRole', 'known-role');
     }
     const skills = new Set((user.skills ?? []).map(skill => skill.id));
     const missing = values.preferredSkills?.findIndex(skill => !skills.has(skill));
     if (missing !== undefined && missing >= 0) return reject(source, '$.preferredSkills[' + missing + ']', 'known-skill');
+    const unavailable = installed && values.preferredSkills?.findIndex(skill => !installed.skills.has(skill));
+    if (unavailable !== undefined && unavailable >= 0) {
+      return reject(source, '$.preferredSkills[' + unavailable + ']', 'available-skill');
+    }
   }
 
   const effective = { ...defaults, ...user.resources };

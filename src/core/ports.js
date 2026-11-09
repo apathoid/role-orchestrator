@@ -6,7 +6,8 @@
  * @typedef {'supported' | 'unsupported' | 'unknown'} Support
  * @typedef {{support: Support, source: 'configured' | 'negotiated', detail?: string}} Capability
  * @typedef {{providerId: string, maxConcurrency: number | null, capabilities: Readonly<Record<string, Capability>>}} ProviderDescription
- * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>}} Profile
+ * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>,
+ *   unavailable?: string}} Profile
  * @typedef {{sessionId: string}} ProviderSession
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
@@ -59,6 +60,7 @@
  *   {kind: 'tool', value: Omit<ToolMetadata, 'inputSchema'>}} CatalogEntry
  * @typedef {{
  *   list: () => Promise<readonly CatalogEntry[]>,
+ *   preferences?: Readonly<{roleId?: string, skillIds: readonly string[]}>,
  *   loadSkill?: (id: string, maxBytes: number, signal: AbortSignal) => Promise<SkillInstructions>,
  *   resolve: (kind: CatalogEntry['kind'], id: string) => Promise<CatalogEntry | undefined>
  * }} Catalog

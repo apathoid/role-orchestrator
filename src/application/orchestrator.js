@@ -648,7 +648,7 @@ export function createOrchestrator(deps) {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
           objective: state.request.text, instructions: controllerInstructions, profile,
           workspaceContext: state.request.workspaceContext, userConstraints: state.request.userConstraints,
-          context: controllerContext(dispatched, entries, correction, lookups, contextMaxBytes), authorityRef: state.authorityRef,
+          context: controllerContext(dispatched, entries, correction, lookups, contextMaxBytes, catalog.preferences), authorityRef: state.authorityRef,
         };
         if (handoff && action) traceHandoff(dispatched, attemptId, action, context.context);
         const selected = action ? new Set(action.contextRefs) : undefined;

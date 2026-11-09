@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { createAcpProvider } from '../adapters/acp/provider.js';
 import { createCodexProvider } from '../adapters/cli/codex-provider.js';
 import { compileExternalTool, createExternalToolPort } from '../application/configuration/external-tools.js';
+import { resolveConfiguration } from '../application/configuration/resolve-config.js';
 import { createCatalog } from '../application/configuration/catalog.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { createSkillRegistry } from './skill-registry.js';
@@ -36,9 +37,13 @@ function pluginSpecifier(specifier, directory) {
  * orchestrators using this registry have stopped. A new trusted config gets a
  * new registry, while the StateStore remains with the calling Host.
  * @param {Configuration} configuration
- * @param {{directory?: string, clock: Clock, ids: IdFactory, diagnostics?: DiagnosticPort}} options
+ * @param {{directory?: string, clock: Clock, ids: IdFactory, diagnostics?: DiagnosticPort,
+ *   projectText?: string, launchOptions?: unknown}} options
  */
-export async function loadExtensions(configuration, { directory, clock, ids, diagnostics = noopDiagnostics }) {
+export async function loadExtensions(configuration, { directory, clock, ids, diagnostics = noopDiagnostics, projectText, launchOptions }) {
+  configuration = structuredClone(configuration);
+  /** @type {Map<string, string>} */
+  const pluginFailures = new Map();
   /** @type {Map<string, Plugin>} */
   const plugins = new Map();
   /** @type {Map<string, ProviderPort>} */
@@ -61,8 +66,9 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
   const entries = configuration.plugins ?? [];
   const duplicates = duplicateExtensionIds(entries);
   for (const { id, module, enabled } of entries) {
-    if (enabled === false) continue;
+    if (enabled === false) { pluginFailures.set(id, 'PLUGIN_DISABLED'); continue; }
     if (duplicates.has(id) || builtins.has(id)) {
+      pluginFailures.set(id, 'DUPLICATE_EXTENSION_ID');
       report('plugin.load_failed', id, 'DUPLICATE_EXTENSION_ID', 'manifest.id');
       continue;
     }
@@ -71,15 +77,17 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       plugins.set(id, validatePlugin(loaded, id));
       report('plugin.loaded', id, 'LOADED');
     } catch (error) {
-      report('plugin.load_failed', id, error instanceof PluginError ? error.code : 'PLUGIN_IMPORT_FAILED',
-        error instanceof PluginError ? error.path : 'module');
+      const reason = error instanceof PluginError ? error.code : 'PLUGIN_IMPORT_FAILED';
+      pluginFailures.set(id, reason);
+      report('plugin.load_failed', id, reason, error instanceof PluginError ? error.path : 'module');
     }
   }
   for (const [id, endpoint] of Object.entries(configuration.providers)) {
     const factory = builtins.get(endpoint.adapter) ?? plugins.get(endpoint.adapter)?.createProvider;
     if (!factory) {
-      unavailable.set(id, 'PROVIDER_FACTORY_UNAVAILABLE');
-      report('provider.load_failed', id, 'PROVIDER_FACTORY_UNAVAILABLE', 'adapter');
+      const reason = pluginFailures.get(endpoint.adapter) ?? 'PROVIDER_FACTORY_UNAVAILABLE';
+      unavailable.set(id, reason);
+      report('provider.load_failed', id, reason, 'adapter');
       continue;
     }
     /** @type {(() => void | Promise<void>)[]} */
@@ -120,11 +128,33 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
     if (tool) tools.set(id, tool);
     else report('tool.load_failed', id, duplicate ? 'DUPLICATE_EXTENSION_ID' : 'INVALID_TOOL', 'tool');
   }
-  const catalog = createCatalog(configuration, descriptions, skills, [...tools.values()].map(tool => tool.metadata));
+  const selection = resolveConfiguration(configuration, projectText, launchOptions, {
+    profiles: new Set(Object.entries(configuration.profiles).flatMap(([id, profile]) => providers.has(profile.provider) ? [id] : [])),
+    skills: new Set(skills.records.flatMap(skill => skill.version ? [skill.id] : [])),
+  });
+  const selectedProfile = selection.kind === 'accepted' ? selection.value.controllerProfile : undefined;
+  const preferences = selection.kind === 'accepted' && (selection.value.preferredRole || selection.value.preferredSkills.length)
+    ? Object.freeze({ roleId: selection.value.preferredRole, skillIds: Object.freeze([...selection.value.preferredSkills]) })
+    : undefined;
+  const catalog = createCatalog(configuration, descriptions, skills, [...tools.values()].map(tool => tool.metadata), {
+    unavailable, preferences,
+  });
   /** @type {Promise<void> | undefined} */
   let closing;
   return Object.freeze({
     catalog,
+    selection,
+    async selectController(profileId = selectedProfile) {
+      if (profileId === undefined) return {
+        kind: /** @type {const} */ ('unavailable'), profileId: configuration.controllerProfile, reason: 'PREFERENCES_REJECTED',
+      };
+      const entry = await catalog.resolve('profile', profileId);
+      if (entry?.kind !== 'profile') return { kind: /** @type {const} */ ('unavailable'), profileId, reason: 'UNKNOWN_PROFILE' };
+      const profile = entry.value;
+      const provider = providers.get(profile.providerId);
+      return provider ? { kind: /** @type {const} */ ('available'), profile, provider }
+        : { kind: /** @type {const} */ ('unavailable'), profileId, reason: profile.unavailable ?? 'EXTENSIONS_CLOSED' };
+    },
     tools: tools.size ? createExternalToolPort(tools) : undefined,
     /** @param {Profile} profile */
     providerFor(profile) { return providers.get(profile.providerId); },

@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C09.6 |
-| Следующий шаг | C09.7, каталог и совместимость конфигурации |
+| Последний локально проверенный шаг | C09.7 |
+| Следующий шаг | C09.8, документация и приёмка |
 | Functional implementation complete | NO |
 | Local regression verified | OBSERVED для C00–C07.7 и C08.1–C08.8 на Linux |
 | Native integration verified | UNVERIFIED |
@@ -216,3 +216,6 @@
 
 - C09.6 — Проверены [MCP-каналы CLI и ACP](reports/C09/MCP_TRANSPORT.md), retrieval с привязкой к попытке и внешний инструмент со схемой, разрешением, отменой, лимитом и наблюдением. Нативные пробы: CLI получил HTTP 401, ACP истёк до prompt.
 - OBSERVED на Linux, Node 24.22.1: `check`, `test:contracts` (46), `test:integration` (135), повтор целевых MCP/ExternalTool (5), `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.7, каталог и совместимость конфигурации.
+
+- C09.7 — Проект выбирает установленные доступные профили и skills, а Controller получает предпочтения. Несовместимый plugin возвращает адресный статус профиля. После disable/uninstall на resume сохранены finding и provenance; новый вызов недоступного профиля отклонён без dispatch.
+- OBSERVED на Linux, Node 24.22.1: `check`, 20 целевых integration-тестов, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.8, документация и приёмка.

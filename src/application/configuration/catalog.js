@@ -8,9 +8,10 @@
  * @param {readonly ProviderDescription[]} [descriptions]
  * @param {{records: readonly import('../../core/ports.js').SkillMetadata[], loadSkill: NonNullable<Catalog['loadSkill']>}} [skills]
  * @param {readonly import('../../core/ports.js').ToolMetadata[]} [tools]
+ * @param {{unavailable?: ReadonlyMap<string, string>, preferences?: Catalog['preferences']}} [options]
  * @returns {Catalog}
  */
-export function createCatalog(configuration, descriptions = [], skills, tools = []) {
+export function createCatalog(configuration, descriptions = [], skills, tools = [], { unavailable, preferences } = {}) {
   const providers = new Map(descriptions.map(item => [item.providerId, item]));
   /** @type {Map<CatalogEntry['kind'], Map<string, CatalogEntry>>} */
   const byKind = new Map([['profile', new Map()], ['role', new Map()], ['skill', new Map()], ['tool', new Map()]]);
@@ -18,7 +19,9 @@ export function createCatalog(configuration, descriptions = [], skills, tools = 
     const description = providers.get(profile.provider);
     const capabilities = Object.freeze(Object.fromEntries(Object.entries(description?.capabilities ?? {})
       .map(([key, value]) => [key, Object.freeze({ ...value })])));
+    const reason = unavailable?.get(profile.provider);
     const value = Object.freeze({
+      ...(reason && { unavailable: reason }),
       profileId, providerId: profile.provider, model: profile.model, capabilities: description ? capabilities : undefined,
     });
     byKind.get('profile')?.set(profileId, Object.freeze({ kind: 'profile', value }));
@@ -41,6 +44,7 @@ export function createCatalog(configuration, descriptions = [], skills, tools = 
   const entries = Object.freeze([...byKind.values()].flatMap(items => [...items.values()]));
   return Object.freeze({
     loadSkill: skills?.loadSkill,
+    preferences,
     async list() { return entries; },
     async resolve(kind, id) { return byKind.get(kind)?.get(id); },
   });

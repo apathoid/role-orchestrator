@@ -1,5 +1,5 @@
 import { compactContext, defaultContextMaxBytes } from './context-bundle.js';
-/** @import {CatalogEntry} from '../core/ports.js' */
+/** @import {Catalog, CatalogEntry} from '../core/ports.js' */
 /** @import {ContextItem} from '../core/observation.js' */
 import { eventFindings, findingRef } from '../core/finding.js';
 import { observation } from '../core/observation.js';
@@ -125,9 +125,10 @@ export function operationHistory(state) {
  * @param {Operation} state @param {readonly CatalogEntry[]} catalog
  * @param {FieldError | undefined} correction
  * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {number} [maxBytes]
+ * @param {Catalog['preferences']} [preferences]
  * @returns {ContextItem[]}
  */
-export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes) {
+export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences) {
   const [request, ...history] = operationHistory(state);
   const { context, omitted, excerpted } = compactContext(history.reverse(), maxBytes, false);
   const previous = state.events.findLast(item => item.kind === 'operation.finished');
@@ -138,6 +139,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     request,
     { ref: 'host:invocation-context', source: 'host_observed', completeness: 'complete', value: {
       operationId: state.operationId, contextCursor: state.revision, catalog,
+      ...(preferences && { preferences }),
       limits: state.limits, resources: resourceSnapshot(state), ...coordinationFacts(state, lookups),
       attachments: state.request.attachments,
       outcomes: state.attempts.flatMap(attempt => {
