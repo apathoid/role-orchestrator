@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C08.8, общий контракт и нативная проба ACP |
-| Следующий шаг | C09.1, Plugin API v1 |
+| Последний локально проверенный шаг | C09.1 |
+| Следующий шаг | C09.2, явная загрузка |
 | Functional implementation complete | NO |
 | Local regression verified | OBSERVED для C00–C07.7 и C08.1–C08.8 на Linux |
 | Native integration verified | UNVERIFIED |
@@ -196,3 +196,8 @@
 - Controller принимает потоковый Decision без `messageId` после нового tool call за одну попытку. В тесте обновление статуса инструмента приходит между чанками JSON.
 - После смены режима адаптер учитывает `config_option_update` и подтверждает модель до prompt. Брокер разрешений получает атрибутированное описание действия, включая пути и детали. Ошибка запуска ссылается на ограниченный stderr, ошибку протокола или наблюдение о процессе.
 - Linux, Node 24.22.1: `check`, `test:foundation` (4), `test:core` (15), `test:contracts` (39), `test:integration` (128), `check:package`, `check:removal` и `git diff --check` прошли. Нативная приёмка по-прежнему UNVERIFIED. Следующий шаг — C09.1.
+
+## C09 — Plugins, skills и внешние инструменты
+
+- C09.1 — Manifest v1 проверяет идентичность, версию API и объявленные exports. Фабрика возвращает ProviderPort с согласованным описанием. Плагин получает конфигурацию своего endpoint и регистрацию cleanup.
+- OBSERVED на Linux, Node 24.22.1: `check`, `test:contracts` (42), `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.2, явная загрузка.
