@@ -1,3 +1,4 @@
+import { bridgeName } from '../mcp-bridge.js';
 import { launchEnvironment } from '../launch-environment.js';
 
 /** @import {ProviderConfig} from '../../application/configuration/decode-config.js' */
@@ -8,10 +9,10 @@ import { launchEnvironment } from '../launch-environment.js';
  * args and options with spawn, writes stdin as UTF-8 and closes the pipe.
  *
  * @param {ProviderConfig} provider
- * @param {{model: string, cwd?: string, prompt: string}} invocation
+ * @param {{model: string, cwd?: string, prompt: string, mcpUrl?: string}} invocation
  * @param {NodeJS.ProcessEnv} environment Trusted parent environment for this launch.
  */
-export function prepareCodexLaunch(provider, { model, cwd, prompt }, environment) {
+export function prepareCodexLaunch(provider, { model, cwd, prompt, mcpUrl }, environment) {
   const { launch, nativeSettings = {} } = provider;
   if (!launch) throw new TypeError('launch is required for Codex CLI');
   checkArgument(launch.command, 'launch.command');
@@ -30,9 +31,14 @@ export function prepareCodexLaunch(provider, { model, cwd, prompt }, environment
     nativeArgs.push(`--profile=${value}`);
   }
 
+  const mcpArgs = mcpUrl === undefined ? [] : [
+    '-c', `mcp_servers.${bridgeName}.url=${JSON.stringify(mcpUrl)}`,
+    '-c', `mcp_servers.${bridgeName}.enabled=true`,
+    '-c', `mcp_servers.${bridgeName}.required=true`,
+  ];
   return {
     command: launch.command,
-    args: [...launcherArgs, 'exec', '--json', '--skip-git-repo-check', `--model=${model}`, ...nativeArgs, '-'],
+    args: [...launcherArgs, 'exec', '--json', '--skip-git-repo-check', `--model=${model}`, ...nativeArgs, ...mcpArgs, '-'],
     options: {
       cwd,
       env: launchEnvironment(launch.env, environment),

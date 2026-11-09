@@ -1,3 +1,5 @@
+import assert from 'node:assert/strict';
+import { retrieveContext } from './mcp-client.js';
 import { agent, RequestError, methods, ndJsonStream } from '@agentclientprotocol/sdk';
 import { Readable, Writable } from 'node:stream';
 import { access, writeFile } from 'node:fs/promises';
@@ -11,6 +13,7 @@ const configOptions = (currentValue, id = 'model') => [{
   id, name: 'Model', category: 'model', type: 'select', currentValue,
   options: [{ value: 'fixture', name: 'Fixture' }, { value: 'other', name: 'Other' }],
 }];
+let mcpUrl;
 let model = 'fixture';
 let mode = 'default';
 let modelSelector = 'model';
@@ -24,10 +27,14 @@ agent()
     if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
-      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} } } };
+      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' } } };
   })
   .onRequest(a.session.new, ({ params }) => {
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
+    if (scenario === 'mcp') {
+      assert.equal(params.mcpServers[0]?.type, 'http');
+      mcpUrl = params.mcpServers[0].url;
+    }
     return { sessionId, configOptions: configOptions(model), ...(modeScenario && {
       modes: { currentModeId: mode, availableModes: [{ id: 'default', name: 'Default' }, { id: 'review', name: 'Review' }] },
     }) };
@@ -67,6 +74,13 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
+    if (scenario === 'mcp') {
+      assert.match(prompt, /Use MCP tools context_list and context_fetch/);
+      const decision = await retrieveContext(mcpUrl, { attemptId, profileId, operationId, context });
+      await message('result', JSON.stringify(decision));
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'mcp-unsupported') assert.match(prompt, /Context retrieval is unavailable/);
     const anonymous = scenario === 'anonymous-controller';
     const modelId = anonymous ? undefined : 'result';
     await message(anonymous ? undefined : 'progress', 'progress ' + attemptId);

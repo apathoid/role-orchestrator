@@ -5,6 +5,7 @@ import { Readable, Writable } from 'node:stream';
 import { capturePrefix } from '../capture-prefix.js';
 import { startCliProcess } from '../cli/owned-process.js';
 import { launchEnvironment } from '../launch-environment.js';
+import { bridgeName, retrievalDetail, startMcpBridge } from '../mcp-bridge.js';
 import { parseDecisionText, renderInvocationPrompt } from '../invocation-prompt.js';
 import { attachmentBlocks, configureSession, modelOption } from './input.js';
 
@@ -46,20 +47,23 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
   const fsCapabilities = { readTextFile: !!bridge['fs/read_text_file'], writeTextFile: !!bridge['fs/write_text_file'] };
   const terminalMethods = /** @type {const} */ (['terminal/create', 'terminal/output', 'terminal/release', 'terminal/wait_for_exit', 'terminal/kill']);
   const terminal = terminalMethods.every(method => !!bridge[method]);
+  const mcpEnabled = configuration.mcpBridge === true;
   const toolBridge = terminal || fsCapabilities.readTextFile || fsCapabilities.writeTextFile;
   /** @type {Map<ProviderSession, Session>} */
   const sessions = new Map();
 
   return {
+    ...(mcpEnabled && { negotiatesCapabilities: ['context.retrieval', 'tools.bridge'] }),
     async describe() {
       return { providerId, maxConcurrency: null, capabilities: {
         'input.text': { support: 'supported', source: 'configured' },
         // Local prerequisites are configured; optional input also needs live negotiation.
         'input.image': { support: resolveAttachment ? 'supported' : 'unsupported', source: 'configured' },
         'output.decision': { support: 'supported', source: 'configured' },
-        'tools.bridge': { support: toolBridge ? 'supported' : 'unsupported', source: 'configured' },
+        'tools.bridge': { support: toolBridge ? 'supported' : mcpEnabled ? 'unknown' : 'unsupported', source: 'configured' },
         'permissions.interactive': { support: 'supported', source: 'configured', detail: 'Requires a bound Host permission broker.' },
-        'context.retrieval': { support: 'unsupported', source: 'configured' },
+        'context.retrieval': { support: mcpEnabled ? 'unknown' : 'unsupported', source: 'configured',
+          detail: mcpEnabled ? 'Requires ACP HTTP MCP negotiation.' : 'No MCP bridge is configured.' },
         'session.resume': { support: 'unsupported', source: 'configured' },
         'attempt.status': { support: 'unsupported', source: 'configured' },
         cancel: { support: 'supported', source: 'configured' },
@@ -113,7 +117,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const supported = new Set(['input.text', 'output.decision', 'cancel']);
     if (resolveAttachment) supported.add('input.image');
-    if (toolBridge) supported.add('tools.bridge');
+    if (toolBridge || (mcpEnabled && invocation.externalTools)) supported.add('tools.bridge');
+    if (mcpEnabled && invocation.contextAccess) supported.add('context.retrieval');
     if (invocation.permissions) supported.add('permissions.interactive');
     if (required.some(key => !supported.has(key))) return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
     const { launch, nativeSettings = {} } = configuration;
@@ -138,6 +143,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let sessionId;
     /** @type {NewSessionResponse | undefined} */
     let session;
+    /** @type {Awaited<ReturnType<typeof startMcpBridge>> | undefined} */
+    let mcp;
     let sent = false;
     let active = false;
     let output = '';
@@ -290,7 +297,21 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
       }
       signal.throwIfAborted();
-      session = await agent.request(a.session.new, { cwd, mcpServers: [] }, { cancellationSignal: signal, stopWaitingOnCancel: true });
+      const httpMcp = mcpEnabled && initialized.agentCapabilities?.mcpCapabilities?.http === true;
+      if (!httpMcp && (required.includes('context.retrieval') || (!toolBridge && required.includes('tools.bridge')))) {
+        const ref = publish({ ref: 'acp-mcp-unavailable', sourceId: invocation.attemptId, kind: 'host_transport',
+          completeness: 'complete', value: { reason: 'Agent did not negotiate HTTP MCP.' } });
+        const refused = resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
+        refused.outcome.diagnostics[0].ref = ref;
+        return refused;
+      }
+      if (httpMcp && (invocation.contextAccess || invocation.externalTools)) {
+        mcp = await startMcpBridge({ ...invocation, signal });
+      }
+      signal.throwIfAborted();
+      session = await agent.request(a.session.new, {
+        cwd, mcpServers: mcp ? [{ type: 'http', name: bridgeName, url: mcp.url, headers: [] }] : [],
+      }, { cancellationSignal: signal, stopWaitingOnCancel: true });
       if (typeof session.sessionId !== 'string' || !session.sessionId.trim()) return resultFor(invocation, 'PROTOCOL_ERROR');
       sessionId = session.sessionId;
       try {
@@ -299,7 +320,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if (!configured || modelOption(session.configOptions)?.currentValue !== model) {
           return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
         }
-        const prompt = renderInvocationPrompt(invocation, 'Context retrieval is unavailable. Use the supplied context and report missing evidence.');
+        const prompt = renderInvocationPrompt(invocation, retrievalDetail(Boolean(mcp && invocation.contextAccess)));
         signal.throwIfAborted();
         active = true;
         sent = true;
@@ -352,6 +373,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       permissionStop.abort();
       cancellation[Symbol.dispose]();
       clearTimeout(cancelDeadline);
+      mcp?.close();
       connection?.close();
       await owner.close();
     }

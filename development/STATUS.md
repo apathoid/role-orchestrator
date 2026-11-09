@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C09.5 |
-| Следующий шаг | C09.6, внешние инструменты |
+| Последний локально проверенный шаг | C09.6 |
+| Следующий шаг | C09.7, каталог и совместимость конфигурации |
 | Functional implementation complete | NO |
 | Local regression verified | OBSERVED для C00–C07.7 и C08.1–C08.8 на Linux |
 | Native integration verified | UNVERIFIED |
@@ -213,3 +213,6 @@
 
 - C09.5 — Worker получает буквальные ограничения skill, приоритет явных требований пользователя и действующие permissions. Тест передаёт запрет provider-native multi-agent review и проверяет, что заявление о разрешении из skill не допускает закрытый профиль.
 - OBSERVED на Linux, Node 24.22.1: `check`, 10 целевых integration-тестов, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.6, внешние инструменты.
+
+- C09.6 — Проверены [MCP-каналы CLI и ACP](reports/C09/MCP_TRANSPORT.md), retrieval с привязкой к попытке и внешний инструмент со схемой, разрешением, отменой, лимитом и наблюдением. Нативные пробы: CLI получил HTTP 401, ACP истёк до prompt.
+- OBSERVED на Linux, Node 24.22.1: `check`, `test:contracts` (46), `test:integration` (135), повтор целевых MCP/ExternalTool (5), `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.7, каталог и совместимость конфигурации.

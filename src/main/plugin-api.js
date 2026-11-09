@@ -1,5 +1,5 @@
 /** @import {ProviderConfig} from '../application/configuration/decode-config.js' */
-/** @import {ProviderDescription, ProviderPort} from '../core/ports.js' */
+/** @import {ProviderDescription, ProviderPort, ToolDefinition} from '../core/ports.js' */
 
 /**
  * @typedef {{id: string, version: string, apiVersion: 1, exports: readonly ExtensionKind[]}} PluginManifest
@@ -8,7 +8,7 @@
  * @typedef {(options: {providerId: string, configuration: ProviderConfig, onClose: RegisterCleanup}) =>
  *   ProviderPort | Promise<ProviderPort>} ProviderFactory
  * @typedef {(request: {id: string, content: 'metadata' | 'instructions', signal?: AbortSignal}) => Promise<unknown>} SkillLoader
- * @typedef {{manifest: PluginManifest, createProvider?: ProviderFactory, loadSkill?: SkillLoader, tool?: object}} Plugin
+ * @typedef {{manifest: PluginManifest, createProvider?: ProviderFactory, loadSkill?: SkillLoader, tool?: ToolDefinition}} Plugin
  */
 
 /** @param {unknown} value @returns {value is Record<string, unknown>} */
@@ -54,7 +54,7 @@ export function validatePlugin(module, id) {
     manifest: Object.freeze({ id, version: manifest.version, apiVersion: 1, exports: Object.freeze([...names]) }),
     createProvider: names.includes('createProvider') ? /** @type {ProviderFactory} */ (module.createProvider) : undefined,
     loadSkill: names.includes('loadSkill') ? /** @type {SkillLoader} */ (module.loadSkill) : undefined,
-    tool: names.includes('tool') ? /** @type {object} */ (module.tool) : undefined,
+    tool: names.includes('tool') ? /** @type {ToolDefinition} */ (module.tool) : undefined,
   });
 }
 
@@ -76,7 +76,9 @@ export async function validateProvider(value, providerId) {
     if (typeof value[name] !== 'function') throw new PluginError('INVALID_PROVIDER', 'createProvider.' + name);
   }
   if ((value.lookupStatus !== undefined && typeof value.lookupStatus !== 'function') ||
-      (value.supportsIdempotency !== undefined && value.supportsIdempotency !== true)) {
+      (value.supportsIdempotency !== undefined && value.supportsIdempotency !== true) ||
+      (value.negotiatesCapabilities !== undefined && (!Array.isArray(value.negotiatesCapabilities) ||
+        value.negotiatesCapabilities.some(item => !label(item))))) {
     throw new PluginError('INVALID_PROVIDER', 'createProvider.optional');
   }
   const provider = /** @type {ProviderPort} */ (value);

@@ -33,7 +33,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
  *   clock: Clock, ids: IdFactory, limits: Limits, invocationTimeoutMs: number,
  *   context?: {maxBytes?: number}, allowContextShare?: ContextShare,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
- *   approveRetry?: RetryApproval,
+ *   approveRetry?: RetryApproval, tools?: import('../core/ports.js').ToolPort,
  *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
  * }} Dependencies
@@ -78,7 +78,7 @@ export function createOrchestrator(deps) {
   const {
     store, provider, catalog, profile, clock, ids, limits, invocationTimeoutMs, authority, permissions, configurationRef,
     context: { maxBytes: contextMaxBytes = defaultContextMaxBytes } = {}, allowContextShare,
-    diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry,
+    diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry, tools,
     providerFor = selected => selected.providerId === profile.providerId ? provider : undefined,
   } = deps;
   if (!Number.isSafeInteger(invocationTimeoutMs) || invocationTimeoutMs < 1 || invocationTimeoutMs > 2_147_483_647) {
@@ -429,6 +429,7 @@ export function createOrchestrator(deps) {
     const observations = [];
     let acceptingObservations = true;
     let contextOpen = false;
+    const toolStop = new AbortController();
     /** @type {Observation[]} */
     const lateObservations = [];
     /** @type {ProviderResult | undefined} */
@@ -594,7 +595,8 @@ export function createOrchestrator(deps) {
       if (requiredCapabilities.size) {
         signal.throwIfAborted();
         const capabilities = selectedProfile.capabilities ?? (await withinDeadline(executor.describe())).capabilities;
-        const missing = unavailableCapabilities(capabilities, requiredCapabilities);
+        const missing = unavailableCapabilities(capabilities, requiredCapabilities).filter(item =>
+          item.support !== 'unknown' || !executor.negotiatesCapabilities?.includes(item.key));
         if (missing.length) {
           const ref = 'host:capability:' + attemptId;
           observations.push(observation({
@@ -651,16 +653,27 @@ export function createOrchestrator(deps) {
         if (handoff && action) traceHandoff(dispatched, attemptId, action, context.context);
         const selected = action ? new Set(action.contextRefs) : undefined;
         contextOpen = true;
+        const isActive = () => contextOpen && !signal.aborted &&
+          authority.authorize(dispatched.authorityRef, selectedProfile.profileId) === 'ALLOWED';
         const contextAccess = bindContextAccess({
           state: dispatched, store, maxBytes: contextMaxBytes, profileId: selectedProfile.profileId, attemptId,
           selected, allowShare: allowContextShare, newId: () => ids.newId(), now: () => clock.now(), receive,
-          isActive: () => contextOpen && !signal.aborted &&
-            authority.authorize(dispatched.authorityRef, selectedProfile.profileId) === 'ALLOWED',
+          isActive,
+        });
+        const externalTools = tools?.bind({
+          attemptId, operationId: dispatched.operationId, isActive, signal: AbortSignal.any([signal, toolStop.signal]),
+          permissions: boundPermissions, newId: () => ids.newId(), maxBytes: contextMaxBytes,
+          receive(toolId, receipt) {
+            const ref = 'host:tool:' + receipt.callId;
+            receive(observation({ ref, completeness: receipt.status === 'truncated' ? 'truncated' : 'complete', value: receipt },
+              { kind: 'host_transport', sourceId: toolId, receivedAt: clock.now() }));
+            return ref;
+          },
         });
         /** @type {Set<string> | undefined} */
         let rawRefs;
         return { response: withinDeadline(executor.invoke(owned, {
-          ...context, contextAccess, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
         }, item => {
           if (!acceptingObservations) return;
@@ -721,6 +734,7 @@ export function createOrchestrator(deps) {
       // Decisions stop at abort. Facts remain attributable until the adapter
       // acknowledges detachment of this invocation's owned session.
       contextOpen = false;
+      toolStop.abort();
       acceptingObservations = signal.aborted && mayHaveSent;
       boundPermissions?.close();
       clear();

@@ -2,6 +2,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createAcpProvider } from '../adapters/acp/provider.js';
 import { createCodexProvider } from '../adapters/cli/codex-provider.js';
+import { compileExternalTool, createExternalToolPort } from '../application/configuration/external-tools.js';
 import { createCatalog } from '../application/configuration/catalog.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { createSkillRegistry } from './skill-registry.js';
@@ -109,11 +110,22 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
     }
   }
   const skills = await createSkillRegistry(configuration.skills ?? [], plugins);
-  const catalog = createCatalog(configuration, descriptions, skills);
+  const configuredTools = configuration.tools ?? [];
+  const duplicateTools = duplicateExtensionIds(configuredTools);
+  const tools = new Map();
+  for (const id of new Set(configuredTools.map(tool => tool.id))) {
+    const exports = [...plugins.values()].filter(plugin => plugin.tool?.id === id);
+    const duplicate = duplicateTools.has(id) || exports.length > 1;
+    const tool = !duplicate && exports.length === 1 ? compileExternalTool(exports[0].tool) : undefined;
+    if (tool) tools.set(id, tool);
+    else report('tool.load_failed', id, duplicate ? 'DUPLICATE_EXTENSION_ID' : 'INVALID_TOOL', 'tool');
+  }
+  const catalog = createCatalog(configuration, descriptions, skills, [...tools.values()].map(tool => tool.metadata));
   /** @type {Promise<void> | undefined} */
   let closing;
   return Object.freeze({
     catalog,
+    tools: tools.size ? createExternalToolPort(tools) : undefined,
     /** @param {Profile} profile */
     providerFor(profile) { return providers.get(profile.providerId); },
     /** @param {string} providerId */
@@ -121,6 +133,7 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
     close() {
       providers.clear();
       plugins.clear();
+      tools.clear();
       return closing ??= (async () => {
         for (const release of releases.reverse()) await release();
       })();

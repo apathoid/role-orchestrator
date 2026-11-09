@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { unavailableCapabilities } from '../../application/configuration/catalog.js';
+import { startMcpBridge } from '../mcp-bridge.js';
 import { prepareCodexLaunch } from './codex-launch.js';
 import { startCodexProcess } from './codex-output.js';
 import { renderCodexPrompt } from './codex-prompt.js';
@@ -11,7 +12,7 @@ import { receiveCodexResult, unstartedCodexResult } from './codex-result.js';
 const interactiveApprovalDetail = 'Codex CLI headless mode has no host channel for interactive approval.';
 
 /** @type {Readonly<Record<string, Capability>>} */
-const capabilities = Object.freeze({
+const baseCapabilities = Object.freeze({
   'input.text': { support: 'supported', source: 'configured' },
   'input.image': { support: 'unsupported', source: 'configured', detail: 'This adapter accepts text only.' },
   'input.attachments': { support: 'unsupported', source: 'configured', detail: 'This adapter cannot transfer attachments.' },
@@ -34,7 +35,13 @@ const capabilities = Object.freeze({
  * @returns {ProviderPort}
  */
 export function createCodexProvider({ providerId, configuration, environment = process.env }) {
-  /** @type {Map<ProviderSession, {profile: Pick<Profile, 'profileId' | 'model'>, invoked: boolean, closing: boolean,
+  const bridgeEnabled = configuration.mcpBridge === true;
+  /** @type {Readonly<Record<string, Capability>>} */
+  const capabilities = bridgeEnabled ? { ...baseCapabilities,
+    'context.retrieval': { support: 'supported', source: 'configured', detail: 'Invocation MCP channel.' },
+    'tools.bridge': { support: 'supported', source: 'configured', detail: 'Configured external MCP tools, subject to a bound Host permission broker.' },
+  } : baseCapabilities;
+  /** @type {Map<ProviderSession, {profile: Pick<Profile, 'profileId' | 'model'>, invoked: boolean, closing: boolean, stop: AbortController, attemptId?: string, bridgeStartup?: Promise<Awaited<ReturnType<typeof startMcpBridge>>>,
    *   call?: {attemptId: string, process: ReturnType<typeof startCodexProcess>}}>} */
   const sessions = new Map();
   return {
@@ -47,7 +54,7 @@ export function createCodexProvider({ providerId, configuration, environment = p
       signal.throwIfAborted();
       if (profile.providerId !== providerId) throw new Error('Profile belongs to a different provider');
       const session = Object.freeze({ sessionId: randomUUID() });
-      sessions.set(session, { profile: { profileId: profile.profileId, model: profile.model }, invoked: false, closing: false });
+      sessions.set(session, { profile: { profileId: profile.profileId, model: profile.model }, invoked: false, closing: false, stop: new AbortController() });
       return session;
     },
     async invoke(session, request, observe) {
@@ -57,12 +64,19 @@ export function createCodexProvider({ providerId, configuration, environment = p
         return unstartedCodexResult(request.attemptId, 'PROTOCOL_ERROR');
       }
       state.invoked = true;
+      state.attemptId = request.attemptId;
+      request = { ...request, signal: AbortSignal.any([request.signal, state.stop.signal]) };
       if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
       const required = new Set(request.requiredCapabilities);
       for (const { mediaType } of request.attachments ?? []) {
         required.add(mediaType.toLowerCase().startsWith('image/') ? 'input.image' : 'input.attachments');
       }
-      const missing = unavailableCapabilities(capabilities, required);
+      const missing = unavailableCapabilities({
+        ...capabilities,
+        ...(!request.contextAccess && { 'context.retrieval': { support: 'unsupported', source: 'configured' } }),
+        ...(!request.externalTools && { 'tools.bridge': { support: 'unsupported', source: 'configured',
+          detail: bridgeEnabled ? 'No external tools are bound to this invocation.' : baseCapabilities['tools.bridge'].detail } }),
+      }, required);
       if (missing.length) {
         const result = unstartedCodexResult(request.attemptId, 'CAPABILITY_UNAVAILABLE');
         const ref = observe({ ref: 'codex-capability', kind: 'host_transport', sourceId: request.attemptId,
@@ -71,30 +85,47 @@ export function createCodexProvider({ providerId, configuration, environment = p
         return result;
       }
 
-      const prompt = renderCodexPrompt(request, interactiveApprovalDetail);
-      let launch;
+      /** @type {Awaited<ReturnType<typeof startMcpBridge>> | undefined} */
+      let mcp;
       try {
-        launch = prepareCodexLaunch(configuration, { model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt }, environment);
+        if (bridgeEnabled && (request.contextAccess || request.externalTools)) {
+          mcp = await (state.bridgeStartup = startMcpBridge(request));
+        }
+        if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
+        const prompt = renderCodexPrompt(request, interactiveApprovalDetail, Boolean(mcp && request.contextAccess));
+        const launch = prepareCodexLaunch(configuration, {
+          model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt, mcpUrl: mcp?.url,
+        }, environment);
+        const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal });
+        state.call = { attemptId: request.attemptId, process };
+        return receiveCodexResult(await process.finished, request, observe);
       } catch (error) {
-        if (!(error instanceof TypeError)) throw error;
+        if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
+        if (state.call) throw error;
         const result = unstartedCodexResult(request.attemptId, 'PROVIDER_START_FAILED');
         const ref = observe({ ref: 'codex-launch', kind: 'host_transport', sourceId: request.attemptId,
-          completeness: 'complete', value: { message: error.message } });
+          completeness: 'complete', value: { message: error instanceof TypeError ? error.message : 'MCP or process startup failed.' } });
         result.outcome.diagnostics[0].ref = ref;
         return result;
+      } finally {
+        mcp?.close();
       }
-      const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal });
-      state.call = { attemptId: request.attemptId, process };
-      return receiveCodexResult(await process.finished, request, observe);
     },
     async cancel(session, attemptId) {
-      const call = sessions.get(session)?.call;
-      if (call?.attemptId === attemptId) call.process.cancel();
+      const state = sessions.get(session);
+      if (state?.attemptId !== attemptId) return;
+      if (state.call) state.call.process.cancel();
+      else state.stop.abort();
     },
     async close(session) {
       const state = sessions.get(session);
       if (!state) return;
       state.closing = true;
+      if (!state.call) {
+        state.stop.abort();
+        const bridge = await state.bridgeStartup?.catch(() => undefined);
+        bridge?.close();
+      }
       await state.call?.process.close();
       sessions.delete(session);
     },

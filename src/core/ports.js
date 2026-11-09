@@ -12,11 +12,12 @@
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal, contextAccess?: ContextPort, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
+ *   signal: AbortSignal, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,
+ *   negotiatesCapabilities?: readonly string[],
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
  *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => string | undefined) => Promise<ProviderResult>,
  *   lookupStatus?: (query: {operationId: string, attemptId: string, profile: Profile, signal: AbortSignal}) =>
@@ -55,12 +56,23 @@
  * @typedef {{kind: 'profile', value: Profile} |
  *   {kind: 'role', value: {id: string, instructions: string, purpose?: string, preferredProfiles?: readonly string[]}} |
  *   {kind: 'skill', value: SkillMetadata} |
- *   {kind: 'tool', value: {id: string, description: string}}} CatalogEntry
+ *   {kind: 'tool', value: Omit<ToolMetadata, 'inputSchema'>}} CatalogEntry
  * @typedef {{
  *   list: () => Promise<readonly CatalogEntry[]>,
  *   loadSkill?: (id: string, maxBytes: number, signal: AbortSignal) => Promise<SkillInstructions>,
  *   resolve: (kind: CatalogEntry['kind'], id: string) => Promise<CatalogEntry | undefined>
  * }} Catalog
+ * @typedef {{id: string, description: string, resource: string, effect: 'read' | 'write',
+ *   inputSchema: Record<string, unknown>}} ToolMetadata
+ * @typedef {{attemptId: string, operationId: string, callId: string, signal: AbortSignal}} ToolScope
+ * @typedef {ToolMetadata & {invoke: (input: unknown, scope: ToolScope) => Promise<unknown>,
+ *   cancel?: (scope: ToolScope) => void | Promise<void>}} ToolDefinition
+ * @typedef {{status: 'completed' | 'failed' | 'truncated' | 'invalid_input' | 'denied' | 'unavailable' | 'closed' | 'unknown' | 'budget',
+ *   effect: 'none' | 'possible' | 'unknown', output?: unknown, callId?: string, ref?: string}} ToolResult
+ * @typedef {{list: () => ToolMetadata[], call: (id: string, input: unknown) => Promise<ToolResult>}} AttemptTools
+ * @typedef {{bind: (scope: {attemptId: string, operationId: string, signal: AbortSignal, isActive: () => boolean,
+ *   permissions?: Pick<AttemptPermissions, 'request'>, newId: () => string, maxBytes: number,
+ *   receive: (toolId: string, receipt: ToolResult & {toolId: string, attemptId: string}) => string}) => AttemptTools}} ToolPort
  * @typedef {{
  *   list: (cursor?: number) => ContextList,
  *   fetch: (ref: string | ContextPosition, sourceOperationId?: string) => Promise<ContextFetch>,

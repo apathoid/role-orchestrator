@@ -83,7 +83,8 @@
       "properties": {
         "adapter": { "$ref": "#/definitions/id" },
         "launch": { "$ref": "#/definitions/launch" },
-        "nativeSettings": { "type": "object" }
+        "nativeSettings": { "type": "object" },
+        "mcpBridge": { "type": "boolean" }
       }
     },
     "profile": {

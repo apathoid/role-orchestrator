@@ -14,9 +14,9 @@ const linux = { skip: process.platform !== 'linux', timeout: 12_000 };
 const profile = { providerId: 'acp', profileId: 'primary', model: 'fixture' };
 const script = fileURLToPath(new URL('../../fixtures/acp-contract-agent.js', import.meta.url));
 
-function provider(cwd, scenario, { nativeSettings, ...options } = {}) {
+function provider(cwd, scenario, { nativeSettings, mcpBridge, ...options } = {}) {
   return createAcpProvider({ providerId: 'acp', defaultCwd: cwd,
-    configuration: { adapter: 'acp', launch: { command: process.execPath, args: [script, scenario ?? 'basic'] }, nativeSettings },
+    configuration: { adapter: 'acp', launch: { command: process.execPath, args: [script, scenario ?? 'basic'] }, nativeSettings, mcpBridge },
     ...options });
 }
 
@@ -333,4 +333,17 @@ test('ACP startup failure links to the protocol error when stderr is empty', lin
     const error = call.observations.find(item => item.ref === result.outcome.diagnostics[0].ref);
     assert.equal(error.kind, 'provider_report');
     assert.deepEqual(error.value, { code: -32000, message: 'ACP fixture initialization rejected' });
+  }));
+
+test('ACP requires negotiated HTTP for retrieval and reports unavailable when optional', linux, () =>
+  withOwnedRun('C09-acp-mcp-unavailable', async cwd => {
+    const endpoint = provider(cwd, 'mcp-unsupported', { mcpBridge: true });
+    assert.equal((await endpoint.describe()).capabilities['context.retrieval'].support, 'unknown');
+    const contextAccess = { list() { assert.fail('unnegotiated retrieval'); } };
+    await using blocked = await invoke(endpoint, { contextAccess, requiredCapabilities: ['context.retrieval'] });
+    const refused = await blocked.completion;
+    assert.equal(refused.dispatchCertainty, 'not_sent');
+    assert.equal(refused.outcome.diagnostics[0].code, 'CAPABILITY_UNAVAILABLE');
+    await using ordinary = await invoke(endpoint, { contextAccess });
+    assert.equal((await ordinary.completion).outcome.terminal, 'completed');
   }));
