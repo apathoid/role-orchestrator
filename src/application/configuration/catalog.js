@@ -6,12 +6,13 @@
  * environment references and adapter-native settings remain in composition.
  * @param {Configuration} configuration
  * @param {readonly ProviderDescription[]} [descriptions]
+ * @param {{records: readonly import('../../core/ports.js').SkillMetadata[], loadSkill: NonNullable<Catalog['loadSkill']>}} [skills]
  * @returns {Catalog}
  */
-export function createCatalog(configuration, descriptions = []) {
+export function createCatalog(configuration, descriptions = [], skills) {
   const providers = new Map(descriptions.map(item => [item.providerId, item]));
   /** @type {Map<CatalogEntry['kind'], Map<string, CatalogEntry>>} */
-  const byKind = new Map([['profile', new Map()], ['role', new Map()]]);
+  const byKind = new Map([['profile', new Map()], ['role', new Map()], ['skill', new Map()]]);
   for (const [profileId, profile] of Object.entries(configuration.profiles)) {
     const description = providers.get(profile.provider);
     const capabilities = Object.freeze(Object.fromEntries(Object.entries(description?.capabilities ?? {})
@@ -28,8 +29,12 @@ export function createCatalog(configuration, descriptions = []) {
     });
     byKind.get('role')?.set(id, Object.freeze({ kind: 'role', value }));
   }
+  for (const skill of skills?.records ?? []) {
+    byKind.get('skill')?.set(skill.id, Object.freeze({ kind: 'skill', value: skill }));
+  }
   const entries = Object.freeze([...byKind.values()].flatMap(items => [...items.values()]));
   return Object.freeze({
+    loadSkill: skills?.loadSkill,
     async list() { return entries; },
     async resolve(kind, id) { return byKind.get(kind)?.get(id); },
   });

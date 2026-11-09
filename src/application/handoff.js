@@ -36,7 +36,7 @@ export function prepareHandoff(operation, action, catalog) {
   for (const id of action.skills ?? []) {
     const skill = catalog.find(item => item.kind === 'skill' && item.value.id === id);
     if (skill?.kind !== 'skill') return missing(id);
-    instructions.push(skill.value.instructions);
+    if (skill.value.instructions !== undefined) instructions.push(skill.value.instructions);
   }
 
   return {

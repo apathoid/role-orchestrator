@@ -576,6 +576,16 @@ export function createOrchestrator(deps) {
       signal.throwIfAborted();
       requireAuthority();
       retryKey(state);
+      /** @type {import('../core/ports.js').SkillInstructions[]} */
+      const skillInstructions = [];
+      let skillBytes = contextMaxBytes;
+      for (const id of new Set(action?.skills)) {
+        if (!catalog.loadSkill) break;
+        signal.throwIfAborted();
+        const skill = await withinDeadline(catalog.loadSkill(id, skillBytes, signal));
+        skillInstructions.push(skill);
+        if (skill.instructions !== undefined) skillBytes -= Buffer.byteLength(JSON.stringify(skill.instructions)) - 2;
+      }
       const attachments = handoff ? handoff.attachments ?? [] : state.request.attachments;
       const requiredCapabilities = new Set(handoff?.requiredCapabilities);
       if (attachments.some(item => item.mediaType.toLowerCase().startsWith('image/'))) {
@@ -625,7 +635,7 @@ export function createOrchestrator(deps) {
         if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
         // Keep the dispatch decision and actual provider call in the same turn.
         const context = handoff ? {
-          ...handoff, context: handoffContext(dispatched, action?.contextRefs ?? [], contextMaxBytes, lookups),
+          ...handoff, ...(skillInstructions.length ? { skillInstructions } : {}), context: handoffContext(dispatched, action?.contextRefs ?? [], contextMaxBytes, lookups),
         } : {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
           objective: state.request.text, instructions: controllerInstructions, profile,

@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C09.3 |
-| Следующий шаг | C09.4, источник skills |
+| Последний локально проверенный шаг | C09.4 |
+| Следующий шаг | C09.5, семантика ограничений skill |
 | Functional implementation complete | NO |
 | Local regression verified | OBSERVED для C00–C07.7 и C08.1–C08.8 на Linux |
 | Native integration verified | UNVERIFIED |
@@ -207,3 +207,6 @@
 
 - C09.3 — Отдельный тестовый plugin проходит общий ProviderPort suite, включая отмену и закрытие. Сквозной сценарий проверяет выбор его профиля Controller через каталог и доставку результата штатным координатором.
 - OBSERVED на Linux, Node 24.22.1: 13 целевых contract/integration-тестов, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.4, источник skills.
+
+- C09.4 — Каталог предоставляет версию, описание и ссылки на ресурсы. Инструкции загружаются для выбранного Controller handoff, с общим лимитом текста и явными причинами недоступности. Изменившаяся версия не подменяет показанную в каталоге.
+- OBSERVED на Linux, Node 24.22.1: `check`, 6 целевых integration-тестов, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.5, семантика ограничений skill.

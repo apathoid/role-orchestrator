@@ -4,6 +4,7 @@ import { createAcpProvider } from '../adapters/acp/provider.js';
 import { createCodexProvider } from '../adapters/cli/codex-provider.js';
 import { createCatalog } from '../application/configuration/catalog.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
+import { createSkillRegistry } from './skill-registry.js';
 import { duplicateExtensionIds, PluginError, validatePlugin, validateProvider } from './plugin-api.js';
 
 /** @import {Configuration} from '../application/configuration/decode-config.js' */
@@ -107,7 +108,8 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       await release();
     }
   }
-  const catalog = createCatalog(configuration, descriptions);
+  const skills = await createSkillRegistry(configuration.skills ?? [], plugins);
+  const catalog = createCatalog(configuration, descriptions, skills);
   /** @type {Promise<void> | undefined} */
   let closing;
   return Object.freeze({
@@ -118,6 +120,7 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
     unavailableProvider(providerId) { return unavailable.get(providerId); },
     close() {
       providers.clear();
+      plugins.clear();
       return closing ??= (async () => {
         for (const release of releases.reverse()) await release();
       })();

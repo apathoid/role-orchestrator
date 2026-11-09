@@ -11,7 +11,7 @@
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
- *   userConstraints: readonly string[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
+ *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
  *   signal: AbortSignal, contextAccess?: ContextPort, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
  * @typedef {{
@@ -48,11 +48,17 @@
  *   artifactPresence: (reference: ArtifactReference) => Promise<ArtifactPresence>
  * }} ArtifactStore
  *
+ * @typedef {{id: string, version?: string, description?: string, resources?: readonly string[], unavailable?: string,
+ *   instructions?: string}} SkillMetadata
+ * @typedef {{id: string, version?: string, status: 'complete' | 'truncated' | 'unavailable',
+ *   instructions?: string, reason?: string}} SkillInstructions
  * @typedef {{kind: 'profile', value: Profile} |
- *   {kind: 'role' | 'skill', value: {id: string, instructions: string, purpose?: string, preferredProfiles?: readonly string[]}} |
+ *   {kind: 'role', value: {id: string, instructions: string, purpose?: string, preferredProfiles?: readonly string[]}} |
+ *   {kind: 'skill', value: SkillMetadata} |
  *   {kind: 'tool', value: {id: string, description: string}}} CatalogEntry
  * @typedef {{
  *   list: () => Promise<readonly CatalogEntry[]>,
+ *   loadSkill?: (id: string, maxBytes: number, signal: AbortSignal) => Promise<SkillInstructions>,
  *   resolve: (kind: CatalogEntry['kind'], id: string) => Promise<CatalogEntry | undefined>
  * }} Catalog
  * @typedef {{

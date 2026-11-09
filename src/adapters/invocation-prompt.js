@@ -22,7 +22,7 @@ When adding actions, specify a wait policy. Assessment cannot accompany new acti
 /** @param {Invocation} request @param {string} transportDetail */
 export function renderInvocationPrompt(request, transportDetail) {
   const { kind, operationId, attemptId, actionId, profile: { profileId }, objective,
-    instructions, userConstraints, context, expectedResult, continuationReference } = request;
+    instructions, skillInstructions, userConstraints, context, expectedResult, continuationReference } = request;
   const output = kind === 'controller' ? decisionFormat :
     'Return the requested result in your final message. Plain text or the structured text specified by the task is accepted.';
   return output + '\n' + transportDetail + '\n\nInvocation (JSON):\n' + JSON.stringify({

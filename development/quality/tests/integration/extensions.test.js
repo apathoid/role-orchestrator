@@ -99,3 +99,29 @@ test('Controller discovers and selects a plugin profile through the normal deleg
     await extensions.close();
   }
 });
+
+test('skill catalog lists metadata and loads only selected versions within budget', async () => {
+  const { randomUUID } = await import('node:crypto');
+  const { fileURLToPath } = await import('node:url');
+  const source = 'fixture-skills';
+  const extensions = await loadExtensions({
+    ...config,
+    plugins: [{ id: source, module: fileURLToPath(new URL('../../fixtures/skills-plugin.js', import.meta.url)) }],
+    skills: ['missing', 'duplicate', 'duplicate', 'changed', 'oversized', 'checks'].map(id => ({ id, source })),
+  }, { clock: { now: Date.now }, ids: { newId: randomUUID } });
+  try {
+    const { catalog } = extensions;
+    const { value: skill } = await catalog.resolve('skill', 'checks');
+    assert.deepEqual(skill, { id: 'checks', version: 'v1', description: 'Apply checks', resources: ['guide'] });
+    const signal = new AbortController().signal;
+    const load = id => catalog.loadSkill(id, 9, signal);
+    for (const [id, reason] of Object.entries({
+      missing: 'resource_unavailable', duplicate: 'duplicate_id', changed: 'version_changed',
+    })) {
+      assert.deepEqual(await load(id), { id, status: 'unavailable', reason });
+    }
+    assert.deepEqual(await load('oversized'), { id: 'oversized', version: 'v1', status: 'truncated', instructions: '😀😀' });
+  } finally {
+    await extensions.close();
+  }
+});

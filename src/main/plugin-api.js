@@ -7,7 +7,7 @@
  * @typedef {(cleanup: () => void | Promise<void>) => void} RegisterCleanup
  * @typedef {(options: {providerId: string, configuration: ProviderConfig, onClose: RegisterCleanup}) =>
  *   ProviderPort | Promise<ProviderPort>} ProviderFactory
- * @typedef {(request: {id: string, content: 'metadata' | 'instructions'}) => Promise<unknown>} SkillLoader
+ * @typedef {(request: {id: string, content: 'metadata' | 'instructions', signal?: AbortSignal}) => Promise<unknown>} SkillLoader
  * @typedef {{manifest: PluginManifest, createProvider?: ProviderFactory, loadSkill?: SkillLoader, tool?: object}} Plugin
  */
 
@@ -89,8 +89,8 @@ export async function validateProvider(value, providerId) {
     throw new PluginError('INVALID_PROVIDER', 'describe');
   }
   for (const capability of Object.values(description.capabilities)) {
-    if (!object(capability) || !['supported', 'unsupported', 'unknown'].includes(String(capability.support)) ||
-        !['configured', 'negotiated'].includes(String(capability.source)) ||
+    if (!object(capability) || (capability.support !== 'supported' && capability.support !== 'unsupported' && capability.support !== 'unknown') ||
+        (capability.source !== 'configured' && capability.source !== 'negotiated') ||
         (capability.detail !== undefined && typeof capability.detail !== 'string')) {
       throw new PluginError('INVALID_PROVIDER', 'describe.capabilities');
     }
