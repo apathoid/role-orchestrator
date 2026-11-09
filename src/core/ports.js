@@ -99,7 +99,7 @@
  * @typedef {{kind: 'selected', option: string} | {kind: 'denied' | 'cancelled' | 'unavailable' | 'invalid'}} PermissionResult
  * @typedef {{request: (request: PermissionRequest) => Promise<PermissionResult>, close: () => void}} AttemptPermissions
  * @typedef {{
- *   bind: (attempt: {attemptId: string, authorityRef: string, profileId: string, signal: AbortSignal,
+ *   bind: (attempt: {operationId?: string, attemptId: string, authorityRef: string, profileId: string, signal: AbortSignal,
  *     report?: (event: 'permission.requested' | 'permission.resolved' | 'permission.expired', reason: string) => void
  *   }) => AttemptPermissions
  * }} PermissionPort

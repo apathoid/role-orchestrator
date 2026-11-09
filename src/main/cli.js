@@ -4,6 +4,7 @@ import { constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { decodeConfiguration } from '../application/configuration/decode-config.js';
+import { cliPermissions } from '../hosts/cli-permissions.js';
 import { runCli } from '../hosts/cli.js';
 import { dispatchCommand, HostError } from '../hosts/commands.js';
 import { openRuntime } from './runtime.js';
@@ -42,8 +43,20 @@ process.exitCode = await runCli(process.argv.slice(2), { cwd, stdin: process.std
         error.code === 'ENOENT' ? 'not_created' : 'unavailable');
       return { configuration: path, stateDirectory, state, providers };
     }
-    const runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
-      project: { cwd: invocation.command.cwd }, launch: invocation.launch });
-    try { return await dispatchCommand(runtime.api, invocation.command); }
-    finally { await runtime.close(); }
+    const stop = new AbortController();
+    const interrupt = () => stop.abort();
+    process.on('SIGINT', interrupt);
+    try {
+      const handleRequest = cliPermissions(process.stdin, process.stderr,
+        Boolean(process.stdin.isTTY && process.stderr.isTTY && !invocation.stdin), interrupt);
+      const runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
+        permissions: { handleRequest }, project: { cwd: invocation.command.cwd }, launch: invocation.launch });
+      try {
+        return await dispatchCommand(runtime.api, invocation.command, operationId => {
+          const cancel = () => { void runtime.api.cancel(operationId, 'client').catch(() => {}); };
+          stop.signal.addEventListener('abort', cancel, { once: true });
+          if (stop.signal.aborted) cancel();
+        });
+      } finally { await runtime.close(); }
+    } finally { process.removeListener('SIGINT', interrupt); }
   });

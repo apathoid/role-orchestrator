@@ -664,7 +664,7 @@ export function createOrchestrator(deps) {
         requireAuthority();
         retryKey(dispatched);
         boundPermissions = permissions?.bind({
-          attemptId, profileId: selectedProfile.profileId, authorityRef: state.authorityRef, signal,
+          operationId: state.operationId, attemptId, profileId: selectedProfile.profileId, authorityRef: state.authorityRef, signal,
           report: (event, reason) => trace(dispatched, event, reason, attemptId),
         });
         mayHaveSent = true;

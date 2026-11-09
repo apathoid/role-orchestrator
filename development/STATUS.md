@@ -239,3 +239,6 @@
 
 - C10.3 — CLI предоставляет run/resume/inspect/cancel/diagnose/trace/export-diagnostics. Проверены аргументы, stdin Unicode, пустой ввод, non-Git cwd и разделение JSON stdout и ошибок. Trace/export используют безопасную проекцию сохранённого журнала с указанием отсутствующих данных.
 - OBSERVED на Linux, Node 24.22.1: `check`, сквозной тест CLI и `git diff --check`. Следующий шаг — C10.4.
+
+- C10.4 — Терминал показывает ресурс, описание действия и допустимые варианты. Брокер проверяет корреляцию, применяет standing decisions и гасит prompt при отмене. EOF и неинтерактивный ввод дают явный unavailable в stderr.
+- OBSERVED на Linux, Node 24.22.1: `check`, 10 целевых тестов CLI и брокера, `git diff --check`. Следующий шаг — C10.5.

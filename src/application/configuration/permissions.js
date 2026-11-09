@@ -4,9 +4,10 @@ import { sameRecord } from '../../core/operation.js';
 /** @import {AuthorityPort, PermissionPort, PermissionRequest, PermissionResult} from '../../core/ports.js' */
 
 /**
- * @typedef {PermissionRequest & {requestId: string, attemptId: string, profileId: string}} PendingPermission
+ * @typedef {PermissionRequest & {requestId: string, attemptId: string, profileId: string, operationId?: string}} PendingPermission
  * @typedef {{request: PendingPermission, settle: (result: PermissionResult) => void,
  *   authorized: () => boolean}} Pending
+ * @typedef {(request: PendingPermission, signal: AbortSignal) => Promise<PermissionResult>} PermissionHandler
  * @typedef {{requestId: string, attemptId: string, providerRequestId: string, optionId: string}} PermissionReply
  */
 
@@ -15,11 +16,11 @@ import { sameRecord } from '../../core/operation.js';
  * for its own attempt. A UI or other trusted client calls respond().
  * @param {{
  *   authority: AuthorityPort, ids: IdFactory,
- *   onRequest?: (request: PendingPermission) => void,
+ *   onRequest?: (request: PendingPermission) => void, handleRequest?: PermissionHandler,
  *   standing?: readonly {profileId: string, resource: string, optionId: string, kind: 'allow' | 'deny'}[]
  * }} options
  */
-export function createPermissionBroker({ authority, ids, onRequest, standing = [] }) {
+export function createPermissionBroker({ authority, ids, onRequest, handleRequest, standing = [] }) {
   const standingDecisions = standing.map(item => ({ ...item }));
   /** @type {Map<string, Pending>} */
   const pending = new Map();
@@ -41,7 +42,8 @@ export function createPermissionBroker({ authority, ids, onRequest, standing = [
   }
 
   /** @type {PermissionPort['bind']} */
-  function bind({ attemptId, authorityRef, profileId, signal, report }) {
+  function bind({ operationId, attemptId, authorityRef, profileId, signal, report }) {
+    const delivery = new AbortController();
     let closed = signal.aborted;
     /** @type {Map<string, {input: PermissionRequest, result: Promise<PermissionResult>}>} */
     const deliveries = new Map();
@@ -55,6 +57,7 @@ export function createPermissionBroker({ authority, ids, onRequest, standing = [
 
     function close() {
       closed = true;
+      delivery.abort();
       signal.removeEventListener('abort', close);
       for (const requestId of owned) pending.get(requestId)?.settle({ kind: 'cancelled' });
       deliveries.clear();
@@ -94,7 +97,7 @@ export function createPermissionBroker({ authority, ids, onRequest, standing = [
           resolve(choice ? { kind: 'selected', option: choice.id } : { kind: 'denied' });
           return promise;
         }
-        if (!onRequest) {
+        if (!onRequest && !handleRequest) {
           trace('permission.resolved', 'PERMISSION_UNAVAILABLE');
           resolve({ kind: 'unavailable' });
           return promise;
@@ -105,7 +108,7 @@ export function createPermissionBroker({ authority, ids, onRequest, standing = [
           return promise;
         }
         const request = Object.freeze({
-          ...requestData, options: Object.freeze(requestData.options), requestId, attemptId, profileId,
+          ...requestData, options: Object.freeze(requestData.options), requestId, attemptId, profileId, operationId,
         });
         owned.add(requestId);
         const settle = /** @param {PermissionResult} result */ result => {
@@ -118,8 +121,19 @@ export function createPermissionBroker({ authority, ids, onRequest, standing = [
         };
         pending.set(requestId, { request, settle, authorized });
         trace('permission.requested', 'AWAITING_TRUSTED_REPLY');
-        try { onRequest(request); }
-        catch { if (owned.has(requestId)) settle({ kind: 'unavailable' }); }
+        if (handleRequest) {
+          void Promise.resolve().then(() => owned.has(requestId)
+            ? handleRequest(request, delivery.signal) : undefined).then(result => {
+            if (!result || !owned.has(requestId)) return;
+            if (result.kind === 'selected') {
+              const reply = respond({ requestId, attemptId, providerRequestId: input.providerRequestId, optionId: result.option });
+              if (reply.kind === 'rejected' && owned.has(requestId)) settle({ kind: 'invalid' });
+            } else settle(result);
+          }).catch(() => { if (owned.has(requestId)) settle({ kind: 'unavailable' }); });
+        } else {
+          try { onRequest?.(request); }
+          catch { if (owned.has(requestId)) settle({ kind: 'unavailable' }); }
+        }
         return promise;
       },
     };
