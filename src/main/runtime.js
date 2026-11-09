@@ -7,7 +7,7 @@ import { createAuthorityGrant } from '../application/configuration/authority.js'
 import { decodeConfiguration } from '../application/configuration/decode-config.js';
 import { createPermissionBroker } from '../application/configuration/permissions.js';
 import { createOrchestrator } from '../application/orchestrator.js';
-import { noopDiagnostics } from '../core/diagnostics.js';
+import { createEventStream } from '../application/events.js';
 import { loadExtensions } from './extensions.js';
 
 /** @import {DiagnosticPort} from '../core/diagnostics.js' */
@@ -33,7 +33,7 @@ export class RuntimeError extends Error {
 
 /** @param {RuntimeOptions} options */
 export async function openRuntime(options) {
-  const { diagnostics = noopDiagnostics } = options;
+  const diagnostics = createEventStream(options.diagnostics);
   const config = await decodeConfiguration(options.configuration);
   if (config.kind === 'rejected') {
     throw new RuntimeError(config.reason.code, config.reason.constraint, config.reason.path);
@@ -81,24 +81,32 @@ export async function openRuntime(options) {
     });
     /** @type {Promise<void> | undefined} */
     let closing;
-    return {
-      coordinator, permissions, configurationRef, directory, catalog,
-      close() {
-        return closing ??= coordinator.close().finally(async () => {
-          try { await registry.close(); }
-          finally {
-            try { await diagnostics.flush(); } catch { /* Best effort. */ }
-            await store.close();
-          }
-        });
-      },
-    };
+    function close() {
+      return closing ??= coordinator.close().finally(async () => {
+        try { await registry.close(); }
+        finally {
+          try { await diagnostics.flush(); } catch { /* Best effort. */ }
+          diagnostics.close();
+          await store.close();
+        }
+      });
+    }
+    const { submit, resume, inspect, inspectFinding, cancel } = coordinator;
+    const api = Object.freeze({ submit, resume, inspect, inspectFinding, cancel,
+      subscribe: diagnostics.subscribe, configurationRef, close });
+    return { api, coordinator, permissions, configurationRef, directory, catalog, close };
   } catch (error) {
     try { await extensions?.close(); }
     finally {
       try { await diagnostics.flush(); } catch { /* Best effort. */ }
+      diagnostics.close();
       await store.close();
     }
     throw error;
   }
+}
+
+/** @param {RuntimeOptions} options */
+export async function openOrchestrator(options) {
+  return (await openRuntime(options)).api;
 }

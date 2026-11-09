@@ -233,3 +233,6 @@
 
 - C10.1 — Composition root владеет конфигурацией, локальным store, расширениями, брокером и coordinator. Shutdown закрывает допуск, останавливает принадлежащие runtime вызовы и освобождает ресурсы. Проверка неуспешного запуска подтверждает cleanup плагина и освобождение writer lock без вызова модели.
 - OBSERVED на Linux, Node 24.22.1: `check`, `test:integration` (143), `git diff --check`. Следующий шаг — C10.2.
+
+- C10.2 — `openOrchestrator` экспортирует submit/resume/inspect/inspectFinding/cancel, подписку на типизированные события и close. Проверены независимые каталоги состояния, дедупликация requestId, отписка, форма результата и ошибки.
+- OBSERVED на Linux, Node 24.22.1: `check`, 2 целевых интеграционных теста и `git diff --check`. Следующий шаг — C10.3.

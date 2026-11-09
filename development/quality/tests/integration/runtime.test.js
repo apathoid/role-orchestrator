@@ -36,3 +36,40 @@ test('startup failure unwinds acquired plugin and store; startup never opens a m
     await runtime.close();
     assert.equal(await readFile(marker, 'utf8'), 'create\nclose\ncreate\nclose\n');
   }));
+
+test('public API isolates stores, deduplicates requests and unsubscribes', () =>
+  withOwnedRun('C10-api', async directory => {
+    const { openOrchestrator, OrchestrationError } = await import('../../../../src/main/index.js');
+    const { request } = await import('../../fixtures/core.js');
+    const { fileURLToPath } = await import('node:url');
+    const configuration = JSON.stringify({
+      schemaVersion: 1, controllerProfile: 'primary', profiles: { primary: { provider: 'test', model: 'fixture' } },
+      providers: { test: { adapter: 'host-fixture' } },
+      plugins: [{ id: 'host-fixture', module: fileURLToPath(new URL('../../fixtures/host-plugin.js', import.meta.url)) }],
+    });
+    const [first, second] = await Promise.all(['first', 'second'].map(name =>
+      openOrchestrator({ configuration, stateDirectory: join(directory, name) })));
+    try {
+      const input = request({ configurationRef: first.configurationRef });
+      const events = [];
+      const unsubscribe = first.subscribe(event => events.push(event));
+      const [submission, duplicate, independent] = await Promise.all([
+        first.submit(input), first.submit(input), second.submit(input),
+      ]);
+      assert.equal(submission.operation.operationId, duplicate.operation.operationId);
+      assert.notEqual(submission.operation.operationId, independent.operation.operationId);
+      assert.equal((await submission.completion).assessment.answer, 'Ответ: Literal task');
+      assert.equal((await independent.completion).status, 'finished');
+      assert.ok(events.length > 1);
+      assert.ok(events.every(event => event.schemaVersion === 1 && event.operationId === submission.operation.operationId));
+      unsubscribe();
+      const count = events.length;
+      await (await first.submit({ ...input, requestId: 'next' })).completion;
+      assert.equal(events.length, count);
+      await assert.rejects(first.submit({ ...input, text: 'Conflict' }), error =>
+        error instanceof OrchestrationError && error.code === 'IDENTITY_CONFLICT');
+      await assert.rejects(second.inspect(submission.operation.operationId), { code: 'INVALID_PROPOSAL', path: '$.operationId' });
+    } finally {
+      await Promise.all([first.close(), second.close()]);
+    }
+  }));
