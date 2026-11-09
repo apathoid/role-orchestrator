@@ -4,13 +4,13 @@ import { isAbsolute, join } from 'node:path';
 import { agent, methods, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
 import { hostError } from './commands.js';
 
-/** @import {AgentContext, AgentConnection, Stream, StopReason} from '@agentclientprotocol/sdk' */
+/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, StopReason} from '@agentclientprotocol/sdk' */
 /** @import {DiagnosticEvent} from '../core/diagnostics.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {HostApi} from './commands.js' */
 /** @typedef {HostApi & {subscribe: (listener: (event: DiagnosticEvent) => void) => () => void}} AcpApi */
 /** @typedef {{sessionId: string, cwd: string, operations: string[]}} Session */
-/** @typedef {{operationId?: string, cancelled: boolean}} Turn */
+/** @typedef {{operationId?: string, cancelled: boolean, client: AgentContext}} Turn */
 
 const a = methods.agent;
 const c = methods.client;
@@ -41,6 +41,8 @@ export function serveAcp(api, directory, stream) {
   /** @type {Map<string, Turn>} */
   const turns = new Map();
   let initialized = false;
+  /** @type {ClientCapabilities} */
+  let capabilities = {};
 
   /** @param {string} sessionId */
   function sessionPath(sessionId) {
@@ -94,6 +96,7 @@ export function serveAcp(api, directory, stream) {
       if (initialized) throw invalid('ACP connection is already initialized');
       if (params.protocolVersion !== PROTOCOL_VERSION) throw invalid('Unsupported ACP protocol version', { supported: PROTOCOL_VERSION });
       initialized = true;
+      capabilities = params.clientCapabilities ?? {};
       return {
         protocolVersion: PROTOCOL_VERSION, agentInfo: { name: 'role-orchestrator', version: '0.1.0-dev.0' },
         agentCapabilities: { loadSession: true, promptCapabilities: { image: false, audio: false, embeddedContext: false } },
@@ -140,7 +143,7 @@ export function serveAcp(api, directory, stream) {
       const text = prompt.map(block => block.type === 'text' ? block.text : '').join('\n');
       if (!text.trim()) throw invalid('A nonempty prompt is required');
       /** @type {Turn} */
-      const turn = { cancelled: false };
+      const turn = { cancelled: false, client };
       turns.set(sessionId, turn);
       const unsubscribe = api.subscribe(event => {
         if (event.operationId !== turn.operationId || event.eventName !== 'controller.requested' || connection.signal.aborted) return;
@@ -173,5 +176,16 @@ export function serveAcp(api, directory, stream) {
 
   /** @type {AgentConnection} */
   const connection = app.connect(stream);
-  return connection;
+  return {
+    connection,
+    /** @param {string | undefined} operationId */
+    route(operationId) {
+      if (!operationId || connection.signal.aborted) return undefined;
+      for (const [sessionId, turn] of turns) {
+        if (turn.operationId === operationId && !turn.cancelled) {
+          return { sessionId, client: turn.client, signal: connection.signal, capabilities };
+        }
+      }
+    },
+  };
 }

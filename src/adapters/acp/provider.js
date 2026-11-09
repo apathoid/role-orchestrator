@@ -14,7 +14,7 @@ import { attachmentBlocks, configureSession, modelOption } from './input.js';
 /** @import {Outcome, ReasonCode} from '../../core/contracts.js' */
 /** @import {ResolveAttachment} from './input.js' */
 /** @import {ProviderConfig} from '../../application/configuration/decode-config.js' */
-/** @typedef {{attemptId: string, operationId: string, authorityRef: string, signal: AbortSignal}} ToolScope */
+/** @typedef {{attemptId: string, operationId: string, authorityRef: string, signal: AbortSignal, lifecycleSignal: AbortSignal}} ToolScope */
 /** @typedef {Partial<{[M in keyof ClientRequestParamsByMethod]: (params: ClientRequestParamsByMethod[M], scope: ToolScope) => Promise<ClientRequestResponsesByMethod[M]>}>} Bridge */
 /** @typedef {{attemptId: string, stop: AbortController, result: Promise<ProviderResult>}} Call */
 /** @typedef {{profile: Profile, call?: Call, closing?: Promise<void>}} Session */
@@ -38,17 +38,18 @@ function resultFor(invocation, code, terminal = 'failed', certainty = 'not_sent'
  * One process and one native session per invocation. The local handle is allocated
  * before dispatch, but the agent is started only when invocation cwd is available.
  * @param {{providerId: string, configuration: ProviderConfig, defaultCwd?: string, environment?: NodeJS.ProcessEnv,
- *   resolveAttachment?: ResolveAttachment, bridge?: Bridge}} options
+ *   resolveAttachment?: ResolveAttachment, bridge?: Bridge,
+ *   bridgeCapabilities?: (operationId: string) => {terminal?: boolean, fs?: {readTextFile?: boolean, writeTextFile?: boolean}}}} options
  * @returns {ProviderPort}
  */
 export function createAcpProvider({ providerId, configuration, defaultCwd = process.cwd(), environment = process.env,
-  resolveAttachment, bridge: suppliedBridge }) {
+  resolveAttachment, bridge: suppliedBridge, bridgeCapabilities }) {
   const bridge = { ...suppliedBridge };
-  const fsCapabilities = { readTextFile: !!bridge['fs/read_text_file'], writeTextFile: !!bridge['fs/write_text_file'] };
+  const configuredFs = { readTextFile: !!bridge['fs/read_text_file'], writeTextFile: !!bridge['fs/write_text_file'] };
   const terminalMethods = /** @type {const} */ (['terminal/create', 'terminal/output', 'terminal/release', 'terminal/wait_for_exit', 'terminal/kill']);
-  const terminal = terminalMethods.every(method => !!bridge[method]);
+  const configuredTerminal = terminalMethods.every(method => !!bridge[method]);
   const mcpEnabled = configuration.mcpBridge === true;
-  const toolBridge = terminal || fsCapabilities.readTextFile || fsCapabilities.writeTextFile;
+  const toolBridge = configuredTerminal || configuredFs.readTextFile || configuredFs.writeTextFile;
   /** @type {Map<ProviderSession, Session>} */
   const sessions = new Map();
 
@@ -60,7 +61,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         // Local prerequisites are configured; optional input also needs live negotiation.
         'input.image': { support: resolveAttachment ? 'supported' : 'unsupported', source: 'configured' },
         'output.decision': { support: 'supported', source: 'configured' },
-        'tools.bridge': { support: toolBridge ? 'supported' : mcpEnabled ? 'unknown' : 'unsupported', source: 'configured' },
+        'tools.bridge': { support: toolBridge && !bridgeCapabilities ? 'supported' : toolBridge || mcpEnabled ? 'unknown' : 'unsupported', source: 'configured' },
         'permissions.interactive': { support: 'supported', source: 'configured', detail: 'Requires a bound Host permission broker.' },
         'context.retrieval': { support: mcpEnabled ? 'unknown' : 'unsupported', source: 'configured',
           detail: mcpEnabled ? 'Requires ACP HTTP MCP negotiation.' : 'No MCP bridge is configured.' },
@@ -117,7 +118,14 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const supported = new Set(['input.text', 'output.decision', 'cancel']);
     if (resolveAttachment) supported.add('input.image');
-    if (toolBridge || (mcpEnabled && invocation.externalTools)) supported.add('tools.bridge');
+    const clientCapabilities = bridgeCapabilities?.(invocation.operationId);
+    const terminal = configuredTerminal && (!bridgeCapabilities || clientCapabilities?.terminal === true);
+    const fsCapabilities = {
+      readTextFile: configuredFs.readTextFile && (!bridgeCapabilities || clientCapabilities?.fs?.readTextFile === true),
+      writeTextFile: configuredFs.writeTextFile && (!bridgeCapabilities || clientCapabilities?.fs?.writeTextFile === true),
+    };
+    if (terminal || fsCapabilities.readTextFile || fsCapabilities.writeTextFile ||
+      (mcpEnabled && invocation.externalTools)) supported.add('tools.bridge');
     if (mcpEnabled && invocation.contextAccess) supported.add('context.retrieval');
     if (invocation.permissions) supported.add('permissions.interactive');
     if (required.some(key => !supported.has(key))) return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
@@ -222,7 +230,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const scopeSignal = AbortSignal.any([toolSignal, requestSignal]);
         scopeSignal.throwIfAborted();
         const value = await handler(params, { attemptId: invocation.attemptId, operationId: invocation.operationId,
-          authorityRef: invocation.authorityRef, signal: scopeSignal });
+          authorityRef: invocation.authorityRef, signal: scopeSignal, lifecycleSignal: toolSignal });
         scopeSignal.throwIfAborted();
         return value;
       };

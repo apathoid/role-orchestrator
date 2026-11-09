@@ -27,6 +27,7 @@ export class RuntimeError extends Error {
  *   configuration: string, configurationDirectory?: string, stateDirectory?: string,
  *   project?: {cwd?: string, path?: string}, launch?: unknown,
  *   diagnostics?: DiagnosticPort, authority?: AuthorityPort,
+ *   acp?: NonNullable<Parameters<typeof loadExtensions>[1]['acp']>,
  *   permissions?: Omit<Parameters<typeof createPermissionBroker>[0], 'authority' | 'ids'>
  * }} RuntimeOptions
  */
@@ -58,7 +59,7 @@ export async function openRuntime(options) {
   let extensions;
   try {
     const registry = extensions = await loadExtensions(config.value, {
-      directory: options.configurationDirectory, clock, ids, diagnostics, launchOptions: options.launch,
+      directory: options.configurationDirectory, clock, ids, diagnostics, launchOptions: options.launch, acp: options.acp,
       projectText: project.kind === 'available' ? project.text : undefined,
     });
     const { selection, catalog } = registry;

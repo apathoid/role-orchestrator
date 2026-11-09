@@ -13,18 +13,19 @@ const entry = fileURLToPath(new URL('../../../../src/main/cli.js', import.meta.u
 const a = methods.agent;
 const c = methods.client;
 
-async function fixture(cwd) {
+async function fixture(cwd, overrides = {}) {
   const config = join(cwd, 'config.json');
   await writeFile(config, JSON.stringify({
     schemaVersion: 1, controllerProfile: 'primary', profiles: { primary: { provider: 'test', model: 'fixture' } },
     providers: { test: { adapter: 'host-fixture' } }, storage: { directory: 'state' },
     plugins: [{ id: 'host-fixture', module: fileURLToPath(new URL('../../fixtures/host-plugin.js', import.meta.url)) }],
+    ...overrides,
   }));
   return config;
 }
 
-function launch(cwd, config, setup = app => app) {
-  const child = spawn(process.execPath, [entry, 'acp', '--config', config], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+function launch(cwd, config, setup = app => app, flags = []) {
+  const child = spawn(process.execPath, [entry, 'acp', '--config', config, ...flags], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
   const messages = [];
   const progress = Promise.withResolvers();
   let wire = '';
@@ -79,4 +80,40 @@ test('external ACP v1 serves separate non-Git sessions, progress, cancellation a
       await reopened.agent.request(a.session.load, { sessionId, cwd, mcpServers: [] });
       assert.deepEqual(reopened.messages.map(message => message.update.content?.text), ['Привет', 'Ответ: Привет']);
     } finally { await reopened.close(); }
+  }));
+
+test('external ACP correlates parallel permission replies and relays only advertised client tools', { timeout: 12_000 }, () =>
+  withOwnedRun('C10-acp-relay', async cwd => {
+    const config = await fixture(cwd, {
+      providers: { test: { adapter: 'acp', launch: { command: process.execPath,
+        args: [fileURLToPath(new URL('../../fixtures/acp-contract-agent.js', import.meta.url)), 'host-relay'] } } },
+      plugins: [],
+    });
+    const both = Promise.withResolvers();
+    const seen = [];
+    const reads = [];
+    const host = launch(cwd, config, app => app
+      .onRequest(c.session.requestPermission, async ({ params }) => {
+        seen.push(params);
+        if (seen.length === 2) both.resolve();
+        await both.promise;
+        return { outcome: { outcome: 'selected', optionId: params.sessionId === one ? 'allow' : 'deny' } };
+      })
+      .onRequest(c.fs.readTextFile, ({ params }) => {
+        reads.push(params);
+        return { content: 'client bytes' };
+      }), ['--relay-client-tools']);
+    let one;
+    try {
+      await host.agent.request(a.initialize, { protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: { readTextFile: true } } });
+      ({ sessionId: one } = await host.agent.request(a.session.new, { cwd, mcpServers: [] }));
+      const { sessionId: two } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
+      await Promise.all([prompt(host.agent, one, 'one'), prompt(host.agent, two, 'two')]);
+      assert.deepEqual(new Set(seen.map(request => request.sessionId)), new Set([one, two]));
+      assert.notEqual(seen[0].toolCall.toolCallId, seen[1].toolCall.toolCallId);
+      assert.deepEqual(reads.map(request => [request.sessionId, request.path]), [[one, '/example']]);
+      const final = id => host.messages.filter(item => item.sessionId === id && item.update.sessionUpdate === 'agent_message_chunk').at(-1).update.content.text;
+      assert.equal(final(one), 'allow:client bytes');
+      assert.equal(final(two), 'deny');
+    } finally { await host.close(); }
   }));

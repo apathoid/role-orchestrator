@@ -248,3 +248,6 @@
 
 - C10.6 — Внешний `acp` использует стабильный ACP v1 SDK 2.4.0 и общий application API. Создание, загрузка с воспроизведением сохранённой истории, несколько сессий, progress и явный cancel проверены через stdio. Идентификаторы клиентской сессии генерируются независимо от cwd и сессий исполнителей.
 - OBSERVED на Linux, Node 24.22.1: `check`, сквозные CLI и ACP stdio fixtures, `git diff --check`. Реальный Zed остаётся UNVERIFIED. Следующий шаг — C10.7.
+
+- C10.7 — Внешний ACP передаёт фактическое описание и варианты через permission broker с привязкой к operation и попытке. Явный `--relay-client-tools` включает C08 bridge с согласованием возможностей конкретного клиента и scoped terminal ownership.
+- OBSERVED на Linux, Node 24.22.1: `check`, 2 ACP stdio теста, включая параллельные allow/deny с одним native tool id и адресный fs relay; `git diff --check`. Следующий шаг — C10.8.

@@ -16,10 +16,12 @@ const configOptions = (currentValue, id = 'model') => [{
 let mcpUrl;
 let model = 'fixture';
 let mode = 'default';
+let clientCapabilities;
 let modelSelector = 'model';
 const modeScenario = ['mode', 'mode-reroutes', 'mode-model-unavailable'].includes(scenario);
 agent()
-  .onRequest(a.initialize, async () => {
+  .onRequest(a.initialize, async ({ params }) => {
+    clientCapabilities = params.clientCapabilities;
     if (scenario === 'init-stderr') {
       await new Promise(resolve => process.stderr.write('Missing ACP fixture configuration\n' + 'x'.repeat(70_000), resolve));
       process.exit(9);
@@ -74,6 +76,24 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
+    if (scenario === 'host-relay') {
+      const permission = await client.request(c.session.requestPermission, {
+        sessionId, toolCall: { toolCallId: 'shared-native-id', title: objective, locations: [{ path: '/example' }] },
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }, { optionId: 'deny', name: 'Deny', kind: 'reject_once' }],
+      });
+      let text = permission.outcome.outcome === 'selected' ? permission.outcome.optionId : 'cancelled';
+      if (clientCapabilities?.fs?.readTextFile && text === 'allow') {
+        const result = await client.request(c.fs.readTextFile, { sessionId, path: '/example' });
+        text += ':' + result.content;
+      }
+      assert.equal(Boolean(clientCapabilities?.terminal), false);
+      await message('result', JSON.stringify({
+        schemaVersion: 1, operationId, decisionId: 'relay-decision', contextCursor: 0, additions: [], cancellations: [],
+        finalAssessment: { author: profileId, overall: 'complete', requirements: [], observationRefs: [],
+          findingRefs: [], unresolvedQuestions: [], answer: text },
+      }));
+      return { stopReason: 'end_turn' };
+    }
     if (scenario === 'mcp') {
       assert.match(prompt, /Use MCP tools context_list and context_fetch/);
       const decision = await retrieveContext(mcpUrl, { attemptId, profileId, operationId, context });

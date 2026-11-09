@@ -38,9 +38,9 @@ function pluginSpecifier(specifier, directory) {
  * new registry, while the StateStore remains with the calling Host.
  * @param {Configuration} configuration
  * @param {{directory?: string, clock: Clock, ids: IdFactory, diagnostics?: DiagnosticPort,
- *   projectText?: string, launchOptions?: unknown}} options
+ *   projectText?: string, launchOptions?: unknown, acp?: Pick<Parameters<typeof createAcpProvider>[0], 'bridge' | 'bridgeCapabilities'>}} options
  */
-export async function loadExtensions(configuration, { directory, clock, ids, diagnostics = noopDiagnostics, projectText, launchOptions }) {
+export async function loadExtensions(configuration, { directory, clock, ids, diagnostics = noopDiagnostics, projectText, launchOptions, acp }) {
   configuration = structuredClone(configuration);
   /** @type {Map<string, string>} */
   const pluginFailures = new Map();
@@ -109,6 +109,7 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       }
       try {
         const value = await factory({
+          ...(endpoint.adapter === 'acp' && acp),
           providerId: id, configuration: structuredClone(endpoint),
           onClose(dispose) {
             if (typeof dispose !== 'function') throw new PluginError('INVALID_PROVIDER', 'onClose');
