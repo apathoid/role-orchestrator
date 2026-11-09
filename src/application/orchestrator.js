@@ -446,9 +446,9 @@ export function createOrchestrator(deps) {
       ...item, provenance: provenance && { ...provenance, receivedAt: undefined },
     });
 
-    /** @param {Observation} item */
-    function receive(item) {
-      if (!signal.aborted) observations.push(item);
+    /** @param {Observation} item @param {boolean} [late] */
+    function receive(item, late = false) {
+      if (!late && !signal.aborted) observations.push(item);
       else {
         lateObservations.push(item);
         scheduleLateCommit();
@@ -664,9 +664,9 @@ export function createOrchestrator(deps) {
           attemptId, operationId: dispatched.operationId, isActive, signal: AbortSignal.any([signal, toolStop.signal]),
           permissions: boundPermissions, newId: () => ids.newId(), maxBytes: contextMaxBytes,
           receive(toolId, receipt) {
-            const ref = 'host:tool:' + receipt.callId;
+            const ref = (receipt.late ? 'host:tool-late:' : 'host:tool:') + receipt.callId;
             receive(observation({ ref, completeness: receipt.status === 'truncated' ? 'truncated' : 'complete', value: receipt },
-              { kind: 'host_transport', sourceId: toolId, receivedAt: clock.now() }));
+              { kind: 'host_transport', sourceId: toolId, receivedAt: clock.now() }), receipt.late);
             return ref;
           },
         });

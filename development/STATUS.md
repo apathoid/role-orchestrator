@@ -222,3 +222,9 @@
 
 - C09.8 — Добавлено [руководство по расширениям](../docs/EXTENSIONS.md). Локально закрыты [A31/A32/A39](reports/C09/ACCEPTANCE.md) на уровне контрактов и управляемых адаптеров. Чистая установка tarball проверяет явную загрузку skill и инструмента без Git и development. Нативная проба skill вернула HTTP 401.
 - OBSERVED на Linux, Node 24.22.1: `check`, `test:foundation` (4), `test:core` (15), `test:contracts` (46), `test:integration` (139), `check:package`, `check:removal`, пример из документации, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C10.1, Composition root.
+
+### Исправления после ревью C09
+
+- Поздний ответ запущенного внешнего инструмента сохраняется отдельным наблюдением с исходным `callId` и `attemptId` даже после закрытия сессии провайдера. Начальный receipt и оценка эффекта сохраняются. Журнал доступен после переоткрытия store.
+- Запрос разрешения показывает явно перечисленные автором инструмента скалярные поля `permissionPreviewFields`. Остальные значения скрываются. Лимит 4 КиБ отмечается в preview. Исходный ввод инструмента и standing decisions сохраняют свой контракт.
+- OBSERVED на Linux, Node 24.22.1: дефекты воспроизведены на `cb49007`. После исправления прошли `check`, `test:foundation` (4), `test:core` (15), `test:contracts` (46), `test:integration` (142), `check:package`, `check:removal` и `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C10.1.

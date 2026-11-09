@@ -24,6 +24,7 @@ async function bind(overrides = {}) {
     permissions: { async request(request) {
       prompts++;
       assert.equal(request.resource, 'resource:example');
+      assert.deepEqual(JSON.parse(request.action.details), { arguments: {}, redacted: true, truncated: false });
       return { kind: 'selected', option: overrides.deny ? 'deny' : 'allow' };
     } },
     newId: () => String(++serial), maxBytes: 64,
@@ -71,7 +72,11 @@ test('deadline preserves unknown effect and cancels only the correlated tool cal
   assert.equal(await stopped.promise, scope);
   assert.deepEqual(await result, { status: 'unknown', effect: 'unknown', callId: '1', ref: 'ref:1' });
   assert.deepEqual(await fixture.bound.call('example', { name: 'late' }), { status: 'closed', effect: 'none' });
-  late.resolve('late');
-  assert.equal(fixture.receipts.length, 1);
+  late.resolve('x'.repeat(200));
+  await new Promise(setImmediate);
+  assert.equal(fixture.receipts.length, 2);
+  assert.deepEqual(fixture.receipts[1], { toolId: 'example', receipt: {
+    status: 'truncated', effect: 'unknown', callId: '1', toolId: 'example', attemptId: 'attempt', late: true,
+  } });
   assert.equal(fixture.calls, 1);
 });

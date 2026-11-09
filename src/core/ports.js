@@ -68,13 +68,14 @@
  *   inputSchema: Record<string, unknown>}} ToolMetadata
  * @typedef {{attemptId: string, operationId: string, callId: string, signal: AbortSignal}} ToolScope
  * @typedef {ToolMetadata & {invoke: (input: unknown, scope: ToolScope) => Promise<unknown>,
- *   cancel?: (scope: ToolScope) => void | Promise<void>}} ToolDefinition
+ *   cancel?: (scope: ToolScope) => void | Promise<void>, permissionPreviewFields?: readonly string[]}} ToolDefinition
  * @typedef {{status: 'completed' | 'failed' | 'truncated' | 'invalid_input' | 'denied' | 'unavailable' | 'closed' | 'unknown' | 'budget',
  *   effect: 'none' | 'possible' | 'unknown', output?: unknown, callId?: string, ref?: string}} ToolResult
+ * @typedef {ToolResult & {callId: string, toolId: string, attemptId: string, late?: true}} ToolReceipt
  * @typedef {{list: () => ToolMetadata[], call: (id: string, input: unknown) => Promise<ToolResult>}} AttemptTools
  * @typedef {{bind: (scope: {attemptId: string, operationId: string, signal: AbortSignal, isActive: () => boolean,
  *   permissions?: Pick<AttemptPermissions, 'request'>, newId: () => string, maxBytes: number,
- *   receive: (toolId: string, receipt: ToolResult & {toolId: string, attemptId: string}) => string}) => AttemptTools}} ToolPort
+ *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
  * @typedef {{
  *   list: (cursor?: number) => ContextList,
  *   fetch: (ref: string | ContextPosition, sourceOperationId?: string) => Promise<ContextFetch>,
