@@ -139,20 +139,23 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       if (tool) tools.set(id, tool);
       else report('tool.load_failed', id, duplicate ? 'DUPLICATE_EXTENSION_ID' : 'INVALID_TOOL', 'tool');
     }
-    const selection = resolveConfiguration(configuration, projectText, launchOptions, {
+    const installed = {
       profiles: new Set(Object.entries(configuration.profiles).flatMap(([id, profile]) => providers.has(profile.provider) ? [id] : [])),
       skills: new Set(skills.records.flatMap(skill => skill.version ? [skill.id] : [])),
-    });
+    };
+    /** @param {string} [text] */
+    const resolveProject = text => resolveConfiguration(configuration, text, launchOptions, installed);
+    const selection = resolveProject(projectText);
     const selectedProfile = selection.kind === 'accepted' ? selection.value.controllerProfile : undefined;
-    const preferences = selection.kind === 'accepted' && (selection.value.preferredRole || selection.value.preferredSkills.length)
-      ? Object.freeze({ roleId: selection.value.preferredRole, skillIds: Object.freeze([...selection.value.preferredSkills]) })
-      : undefined;
-    const catalog = createCatalog(configuration, descriptions, skills, [...tools.values()].map(tool => tool.metadata), {
-      unavailable, preferences,
-    });
+    const catalog = createCatalog(configuration, descriptions, skills, [...tools.values()].map(tool => tool.metadata), { unavailable });
+    /** @param {import('../application/configuration/resolve-config.js').EffectiveConfiguration} value */
+    function projectCatalog(value) {
+      return { ...catalog, preferences: value.preferredRole || value.preferredSkills.length
+        ? Object.freeze({ roleId: value.preferredRole, skillIds: Object.freeze([...value.preferredSkills]) }) : undefined };
+    }
     return Object.freeze({
-      catalog,
-      selection,
+      catalog: selection.kind === 'accepted' ? Object.freeze(projectCatalog(selection.value)) : catalog,
+      selection, resolveProject, projectCatalog,
       async selectController(profileId = selectedProfile) {
         if (profileId === undefined) return {
           kind: /** @type {const} */ ('unavailable'), profileId: configuration.controllerProfile, reason: 'PREFERENCES_REJECTED',

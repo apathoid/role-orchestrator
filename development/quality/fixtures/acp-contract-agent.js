@@ -77,6 +77,13 @@ agent()
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
     if (scenario === 'host-relay') {
+      if (objective === 'slow-relay') {
+        await writeFile('relay-ready', '');
+        while (true) {
+          try { await access('relay-go'); break; }
+          catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
+        }
+      }
       const permission = await client.request(c.session.requestPermission, {
         sessionId, toolCall: { toolCallId: 'shared-native-id', title: objective, locations: [{ path: '/example' }] },
         options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }, { optionId: 'deny', name: 'Deny', kind: 'reject_once' }],
@@ -87,6 +94,7 @@ agent()
         text += ':' + result.content;
       }
       assert.equal(Boolean(clientCapabilities?.terminal), false);
+      if (objective === 'slow-relay') await writeFile('relay-result', text);
       await message('result', JSON.stringify({
         schemaVersion: 1, operationId, decisionId: 'relay-decision', contextCursor: 0, additions: [], cancellations: [],
         finalAssessment: { author: profileId, overall: 'complete', requirements: [], observationRefs: [],

@@ -13,7 +13,7 @@
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
+ *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,

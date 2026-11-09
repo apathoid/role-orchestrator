@@ -52,6 +52,7 @@ export async function openControl(directory, configurationRef, execute, launch) 
   /** @type {Map<string, {fingerprint: string, operationId?: string, result: Promise<unknown>, settled: boolean, clients: Set<Socket>}>} */
   const requests = new Map();
   let closing = false;
+  let stopping = false;
 
   const server = createServer(socket => {
     sockets.add(socket);
@@ -89,7 +90,6 @@ export async function openControl(directory, configurationRef, execute, launch) 
 
   /** @param {unknown} raw @param {Socket} socket */
   async function run(raw, socket) {
-    if (closing) throw new HostError('CONTROL_CLOSING', 'The live owner is closing');
     const decoded = decode(shape, raw);
     if (decoded.kind === 'rejected') throw new HostError('CONTROL_INVALID', 'Invalid control request: ' + decoded.reason.path);
     const { requestId, action, operationId, payload, token } = decoded.value;
@@ -103,6 +103,9 @@ export async function openControl(directory, configurationRef, execute, launch) 
     const fingerprint = JSON.stringify([action, operationId, payload]);
     let entry = requests.get(requestId);
     if (entry && entry.fingerprint !== fingerprint) throw new HostError('IDENTITY_CONFLICT', 'Request id reused');
+    if (stopping || (closing && !entry && (action === 'run' || action === 'resume'))) {
+      throw new HostError('CONTROL_CLOSING', 'The live owner is closing');
+    }
     if (!entry) {
       // Application also deduplicates durable submit and continuation IDs.
       // Keep current replies only for this owner's lifetime.
@@ -150,9 +153,11 @@ export async function openControl(directory, configurationRef, execute, launch) 
   return {
     close() {
       return shutdown ??= (async () => {
-        while (active.size) await Promise.allSettled([...active]);
         closing = true;
+        await Promise.allSettled([...active]);
+        stopping = true;
         const closed = new Promise(resolve => server.close(resolve));
+        await Promise.allSettled([...active]);
         for (const socket of sockets) socket.destroySoon();
         await closed;
         try {

@@ -41,8 +41,19 @@ export function createAcpRelay(route) {
     }
   }
 
-  /** @type {Map<string, Set<string>>} */
+  /** @type {Map<string, Map<string, () => void>>} */
   const terminals = new Map();
+
+  /** @param {string} attemptId @param {string} terminalId */
+  function forgetTerminal(attemptId, terminalId) {
+    const owned = terminals.get(attemptId);
+    const detach = owned?.get(terminalId);
+    if (!owned || !detach) return false;
+    owned.delete(terminalId);
+    if (!owned.size) terminals.delete(attemptId);
+    detach();
+    return true;
+  }
 
   /** @template {ClientRequestMethod} M @param {M} method */
   function relay(method) {
@@ -67,19 +78,19 @@ export function createAcpRelay(route) {
       if (method === c.terminal.create && result && typeof result === 'object' && 'terminalId' in result && typeof result.terminalId === 'string') {
         const id = result.terminalId;
         const release = () => {
-          if (terminals.get(scope.attemptId)?.delete(id)) {
-            if (!terminals.get(scope.attemptId)?.size) terminals.delete(scope.attemptId);
+          if (forgetTerminal(scope.attemptId, id)) {
             if (!destination.signal.aborted) void client.request(c.terminal.release, { sessionId, terminalId: id },
               { cancellationSignal: AbortSignal.timeout(1000), stopWaitingOnCancel: true }).catch(() => {});
           }
         };
         let owned = terminals.get(scope.attemptId);
-        if (!owned) terminals.set(scope.attemptId, owned = new Set());
-        owned.add(id);
+        if (!owned) terminals.set(scope.attemptId, owned = new Map());
+        owned.get(id)?.();
+        owned.set(id, () => scope.lifecycleSignal.removeEventListener('abort', release));
         if (signal.aborted) release();
         else scope.lifecycleSignal.addEventListener('abort', release, { once: true });
       }
-      if (method === c.terminal.release && terminalId) terminals.get(scope.attemptId)?.delete(terminalId);
+      if (method === c.terminal.release && terminalId) forgetTerminal(scope.attemptId, terminalId);
       signal.throwIfAborted();
       return /** @type {ClientRequestResponsesByMethod[M]} */ (result);
     };

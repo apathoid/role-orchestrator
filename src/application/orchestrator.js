@@ -28,15 +28,16 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {AttemptPermissions, AuthorityPort, Catalog, ContextShare, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
+ * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number}} Execution
+ * @typedef {(workspace: Operation['request']['workspaceContext']) => Promise<Execution>} ResolveExecution
  * @typedef {{
- *   store: StateStore, provider: ProviderPort, catalog: Catalog, profile: Profile,
- *   clock: Clock, ids: IdFactory, limits: Limits, invocationTimeoutMs: number,
+ *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
  *   context?: {maxBytes?: number}, allowContextShare?: ContextShare,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
  *   approveRetry?: RetryApproval, tools?: import('../core/ports.js').ToolPort,
  *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
- * }} Dependencies
+ * } & (Execution & {resolveExecution?: undefined} | {resolveExecution: ResolveExecution})} Dependencies
  * @typedef {{operation: Operation, completion: Promise<Operation>}} Submission
  * @typedef {{signal: AbortController, completion: Promise<Operation>}} Running
  */
@@ -73,15 +74,21 @@ function failedOutcome(attemptId, code, mayHaveSent) {
   };
 }
 
+/** @param {((id: string) => void) | undefined} listener @param {string} id */
+function notifyAccepted(listener, id) {
+  try { listener?.(id); } catch { /* Delivery cannot prevent a committed operation from starting. */ }
+}
+
 /** @param {Dependencies} deps */
 export function createOrchestrator(deps) {
   const {
-    store, provider, catalog, profile, clock, ids, limits, invocationTimeoutMs, authority, permissions, configurationRef,
+    store, clock, ids, limits, authority, permissions, configurationRef,
     context: { maxBytes: contextMaxBytes = defaultContextMaxBytes } = {}, allowContextShare,
     diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry, tools,
-    providerFor = selected => selected.providerId === profile.providerId ? provider : undefined,
+    providerFor = selected => !deps.resolveExecution && selected.providerId === deps.profile.providerId ? deps.provider : undefined,
   } = deps;
-  if (!Number.isSafeInteger(invocationTimeoutMs) || invocationTimeoutMs < 1 || invocationTimeoutMs > 2_147_483_647) {
+  if (!deps.resolveExecution && (!Number.isSafeInteger(deps.invocationTimeoutMs) || deps.invocationTimeoutMs < 1 ||
+      deps.invocationTimeoutMs > 2_147_483_647)) {
     throw new RangeError('invocationTimeoutMs must be an integer from 1 to 2147483647');
   }
   if (!Number.isSafeInteger(contextMaxBytes) || contextMaxBytes < 1) {
@@ -97,7 +104,10 @@ export function createOrchestrator(deps) {
   const undetached = new Set();
   /** @type {Set<string>} */
   const liveAttempts = new Set();
-  const trusted = { authorityRef: authority.reference, configurationRef, limits: { ...limits } };
+  /** @type {ResolveExecution} */
+  const resolveExecution = deps.resolveExecution ?? (async () => /** @type {Execution} */ (deps));
+  /** @param {Execution} execution */
+  const trusted = execution => ({ authorityRef: authority.reference, configurationRef, limits: execution.limits });
 
   /** @param {string} attemptId */
   function releaseAttempt(attemptId) {
@@ -250,14 +260,14 @@ export function createOrchestrator(deps) {
     return { operation: state, completion: running.get(state.operationId)?.completion ?? Promise.resolve(state) };
   }
 
-  /** @param {Operation} state @param {boolean} [recover] @returns {Submission} */
-  function launch(state, recover = false) {
+  /** @param {Operation} state @param {Execution} execution @param {boolean} [recover] @returns {Submission} */
+  function launch(state, execution, recover = false) {
     const signal = new AbortController();
     const pending = workers.get(state.operationId) ?? new Map();
     workers.set(state.operationId, pending);
     const completion = (async () => {
-      const lookups = recover ? await recoverAttempts(state.operationId, signal.signal) : undefined;
-      return drive(state.operationId, signal.signal, pending, lookups);
+      const lookups = recover ? await recoverAttempts(state.operationId, signal.signal, execution) : undefined;
+      return drive(state.operationId, signal.signal, pending, execution, lookups);
     })().finally(() => {
       if (running.get(state.operationId)?.signal === signal) running.delete(state.operationId);
       void Promise.allSettled([...pending.values()].map(worker => worker.completion)).then(() => {
@@ -271,8 +281,8 @@ export function createOrchestrator(deps) {
     return { operation: state, completion };
   }
 
-  /** @param {unknown} input @returns {Promise<Submission>} */
-  async function submit(input) {
+  /** @param {unknown} input @param {(id: string) => void} [accepted] @returns {Promise<Submission>} */
+  async function submit(input, accepted) {
     const parsed = decodeRequest(input);
     if (parsed.kind === 'rejected') {
       throw new OrchestrationError(parsed.reason.code, parsed.reason.expected, parsed.reason.path);
@@ -302,22 +312,29 @@ export function createOrchestrator(deps) {
       if (entries.some(item => 'kind' in item && item.requestMatch === 'unknown')) {
         throw new OrchestrationError('STORE_UNAVAILABLE', 'An unreadable snapshot lacks a request reference');
       }
-      const state = createOperation(ids.newId(), request, authority.reference, limits, clock.now());
+      const execution = await resolveExecution(request.workspaceContext);
+      requireRunning();
+      const state = createOperation(ids.newId(), request, authority.reference, execution.limits, clock.now());
       const failure = await commit(state, null);
       if (failure) throw failure.error;
       trace(state, 'operation.accepted', 'ACCEPTED');
-      return launch(state);
+      notifyAccepted(accepted, state.operationId);
+      return launch(state, execution);
     });
   }
 
-  /** @param {string} operationId @param {unknown} [input] @returns {Promise<Submission>} */
-  async function resume(operationId, input) {
+  /** @param {string} operationId @param {unknown} [input] @param {(id: string) => void} [accepted] @returns {Promise<Submission>} */
+  async function resume(operationId, input, accepted) {
     if (input === undefined) {
       return serialize(async () => {
         requireRunning();
         const state = await inspect(operationId);
         if (state.status !== 'active' || running.has(operationId)) return activeSubmission(state);
-        return launch(await transition(state, { kind: 'operation.recovered', trusted }), true);
+        const execution = await resolveExecution(workspaceContextFor(state));
+        requireRunning();
+        const next = await transition(state, { kind: 'operation.recovered', trusted: trusted(execution) });
+        notifyAccepted(accepted, operationId);
+        return launch(next, execution, true);
       });
     }
     const parsed = decode(followup, input);
@@ -344,8 +361,11 @@ export function createOrchestrator(deps) {
       if (follow.questionId !== question?.questionId) {
         throw new OrchestrationError('INVALID_PROPOSAL', 'Question is missing, closed or belongs to another operation', '$.questionId');
       }
-      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted });
-      return launch(next, true);
+      const execution = await resolveExecution(follow.workspaceContext ?? workspaceContextFor(state));
+      requireRunning();
+      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution) });
+      notifyAccepted(accepted, operationId);
+      return launch(next, execution, true);
     });
   }
 
@@ -363,8 +383,8 @@ export function createOrchestrator(deps) {
     return current;
   }
 
-  /** @param {string} operationId @param {AbortSignal} stop */
-  async function recoverAttempts(operationId, stop) {
+  /** @param {string} operationId @param {AbortSignal} stop @param {Execution} execution */
+  async function recoverAttempts(operationId, stop, { invocationTimeoutMs, catalog }) {
     const state = await serialize(async () => {
       const current = await inspect(operationId);
       return stop.aborted ? current : settleOrphans(current);
@@ -456,10 +476,10 @@ export function createOrchestrator(deps) {
 
   /**
    * @param {Operation} state @param {string} attemptId @param {AbortSignal} stop
-   * @param {FieldError | undefined} correction @param {Handoff} [handoff] @param {ProviderPort} [executor]
+   * @param {Execution} execution @param {FieldError | undefined} correction @param {Handoff} [handoff] @param {ProviderPort} [executor]
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {Action} [action]
    */
-  async function invoke(state, attemptId, stop, correction, handoff, executor = provider, lookups, action) {
+  async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs }, correction, handoff, executor = provider, lookups, action) {
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal, shuttingDown.signal]);
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
@@ -721,7 +741,7 @@ export function createOrchestrator(deps) {
         /** @type {Set<string> | undefined} */
         let rawRefs;
         return { response: withinDeadline(executor.invoke(owned, {
-          ...context, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, isActive, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
         }, item => {
           if (!acceptingObservations) return;
@@ -828,10 +848,13 @@ export function createOrchestrator(deps) {
           return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
         }
         const active = new Set([...undetached, ...liveAttempts]);
-        if (undetached.size >= limits.maxConcurrentInvocations) {
+        const detachedPending = state.attempts.filter(attempt =>
+          attempt.status === 'terminal' && undetached.has(attempt.attemptId)).length;
+        if (undetached.size >= limits.maxConcurrentInvocations || detachedPending >= state.limits.maxConcurrentInvocations) {
           return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
         }
-        if (active.size >= limits.maxConcurrentInvocations) {
+        if (active.size >= limits.maxConcurrentInvocations ||
+          resources.active + detachedPending >= state.limits.maxConcurrentInvocations) {
           if (!notified && actionId) {
             notified = true;
             await transition(state, { kind: 'action.deferred', actionId, code: 'RESOURCE_LIMIT', resource: 'concurrency' });
@@ -848,12 +871,12 @@ export function createOrchestrator(deps) {
     }
   }
 
-  /** @param {Operation} state @param {Action} action @param {AbortSignal} stop
+  /** @param {Operation} state @param {Action} action @param {AbortSignal} stop @param {Execution} execution
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] */
-  async function dispatchWorker(state, action, stop, lookups) {
+  async function dispatchWorker(state, action, stop, execution, lookups) {
     const current = await inspect(state.operationId);
     if (stop.aborted || current.status !== 'active') return false;
-    const entries = await catalog.list();
+    const entries = await execution.catalog.list();
     const handoff = prepareHandoff(current, action, entries);
     const executor = handoff.kind === 'accepted' ? providerFor(handoff.handoff.profile) : undefined;
     if (handoff.kind === 'rejected' || !executor) {
@@ -870,7 +893,8 @@ export function createOrchestrator(deps) {
     }
     const attemptId = reserved.attemptId;
     try {
-      const response = await invoke(reserved.state, attemptId, stop, undefined, handoff.handoff, executor, lookups, action);
+      const invocation = { ...handoff.handoff, workspaceContext: workspaceContextFor(state) };
+      const response = await invoke(reserved.state, attemptId, stop, execution, undefined, invocation, executor, lookups, action);
       await serialize(async () => {
         const current = await inspect(state.operationId);
         const receipt = {
@@ -956,10 +980,11 @@ export function createOrchestrator(deps) {
     return { admissions, selected: [...new Set(selected)], newlyAdmitted, actions, newResult };
   }
 
-  /** @param {string} operationId @param {AbortSignal} stop @param {Map<string, PendingAction>} pending
+  /** @param {string} operationId @param {AbortSignal} stop @param {Map<string, PendingAction>} pending @param {Execution} execution
    * @param {ReadonlyMap<string, LookupStatus>} [lookups]
    */
-  async function drive(operationId, stop, pending, lookups) {
+  async function drive(operationId, stop, pending, execution, lookups) {
+    const { profile } = execution;
     /** @type {FieldError | undefined} */
     let correction;
     while (!stop.aborted) {
@@ -971,7 +996,7 @@ export function createOrchestrator(deps) {
       let selection;
       /** @type {Promise<boolean>[]} */
       let settleCancellation = [];
-      const response = await invoke(reserved.state, attemptId, stop, correction, undefined, provider, lookups)
+      const response = await invoke(reserved.state, attemptId, stop, execution, correction, undefined, undefined, lookups)
         .catch(error => {
           releaseAttempt(attemptId);
           throw error;
@@ -1053,7 +1078,7 @@ export function createOrchestrator(deps) {
       if (next.status !== 'active') return next;
       if (settleCancellation.length) await Promise.all(settleCancellation);
       if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
-        (action, signal) => dispatchWorker(next, action, signal, lookups),
+        (action, signal) => dispatchWorker(next, action, signal, execution, lookups),
         (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
         pending, selection.policy, selection.newResult);
     }

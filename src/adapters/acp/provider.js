@@ -231,9 +231,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if (!active || toolSignal.aborted || (/** @type {{sessionId?: string}} */ (/** @type {unknown} */ (params))).sessionId !== sessionId) throw RequestError.requestCancelled();
         const scopeSignal = AbortSignal.any([toolSignal, requestSignal]);
         scopeSignal.throwIfAborted();
+        if (invocation.isActive?.() === false) throw RequestError.requestCancelled();
         const value = await handler(params, { attemptId: invocation.attemptId, operationId: invocation.operationId,
           authorityRef: invocation.authorityRef, signal: scopeSignal, lifecycleSignal: toolSignal });
         scopeSignal.throwIfAborted();
+        if (invocation.isActive?.() === false) throw RequestError.requestCancelled();
         return value;
       };
     }

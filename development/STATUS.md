@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C09.8 |
-| Следующий шаг | C10.1, Composition root |
-| Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.7, C08.1–C08.8 и C09.1–C09.8 на Linux |
+| Последний локально проверенный шаг | C10.10 и исправления по ревью C10 |
+| Следующий шаг | C11.1, аудит событий |
+| Functional implementation complete | NO для всего продукта, C11–C12 остаются в плане |
+| Local regression verified | OBSERVED через C10 на Linux. Unix socket проверяется в GitHub Actions |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -268,3 +268,10 @@
 - После финальной проверки усилены shutdown и корреляция CLI cancel при двух одновременно стартующих процессах. Явные launch overrides сравниваются после соединения с живым владельцем. ACP-адаптер допускает negotiation требуемого client-tool bridge с реальными возможностями сессии.
 - OBSERVED локально после уточнений: `check`, `check:package`, `check:removal`, `test:integration` (157 прошли, 2 socket-теста для CI), `git diff --check`. Нативная приёмка Zed и NixOS остаётся UNVERIFIED. Следующий шаг — C11.1.
 - C10.4 — Постоянные разрешения из доверенного `permissions.standing` применяются в CLI и ACP через тот же broker. Проверены отказ без prompt в запущенном CLI, отклонение неизвестного профиля/дубликата и запрет project preferences задавать правила. OBSERVED: `check`, 15 целевых проверок конфигурации, CLI и broker, `git diff --check`.
+
+### Исправления по ревью C10
+
+- ACP сохраняет связь операции с клиентской сессией после завершения prompt. Продолжающийся worker может запросить permission и client tool. Вызовы проверяют соединение, попытку и действующий grant. Явный terminal release очищает ownership и abort listener.
+- CLI и ACP разрешают project preferences по cwd принятой или продолженной операции. Профиль, предпочтения, таймаут и лимиты применяются в одном coordinator с общим пределом параллельности. Уже допущенные workers сохраняют исходные параметры вызова.
+- Local control закрывает допуск новых run/resume сразу при shutdown. Принятые запросы, их повторная доставка, inspect и cancel могут завершиться. Владелец CLI публикует endpoint до загрузки провайдеров. Ожидание готовности ограничено 30 секундами после начала инициализации. CLI может инспектировать и отменять работу живого ACP Host. Запуск и продолжение ACP work требуют его клиентской сессии.
+- OBSERVED на `108c7b1`: воспроизведены потеря ACP relay после clarification и применение профиля/таймаута по умолчанию вместо project preferences. После исправлений локально прошли `check`, `test:foundation` (4), `test:core` (15), `test:contracts` (46), `test:integration` (160), `check:package` и `git diff --check`. Пять AF_UNIX проверок и чистая установка из lock выполняются в [CI ветки](https://github.com/apathoid/role-orchestrator/actions/workflows/ci.yml?query=branch%3Agreenfield%2Fmodel-first-core). Zed, реальные модельные вызовы и NixOS остаются UNVERIFIED. Следующий шаг — C11.1.

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
+import { getEventListeners, once } from 'node:events';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
+import { createAcpRelay } from '../../../../src/hosts/acp-relay.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
 
 const entry = fileURLToPath(new URL('../../../../src/main/cli.js', import.meta.url));
@@ -257,3 +258,125 @@ test('API, CLI and ACP share direct, delegated, partial, permission and continua
       assert.equal(host.messages.at(-1).update.content.text, 'Ответ: scope');
     } finally { await host.close(); }
   }));
+
+test('external ACP keeps a background worker permission and client read after clarification', { timeout: 12_000 }, () =>
+  withOwnedRun('C10-acp-background-relay', async cwd => {
+    const config = await fixture(cwd, {
+      profiles: { primary: { provider: 'test', model: 'fixture' }, relay: { provider: 'nested', model: 'fixture' } },
+      providers: {
+        test: { adapter: 'host-fixture' },
+        nested: { adapter: 'acp', launch: { command: process.execPath,
+          args: [fileURLToPath(new URL('../../fixtures/acp-contract-agent.js', import.meta.url)), 'host-relay'] } },
+      },
+      resources: { invocationTimeoutMs: 4000 },
+    });
+    const permissions = [];
+    const reads = [];
+    const host = launch(cwd, config, app => app
+      .onRequest(c.session.requestPermission, ({ params }) => {
+        permissions.push(params.sessionId);
+        return { outcome: { outcome: 'selected', optionId: 'allow' } };
+      })
+      .onRequest(c.fs.readTextFile, ({ params }) => {
+        reads.push(params.sessionId);
+        return { content: 'late client bytes' };
+      }), ['--relay-client-tools']);
+    try {
+      await host.agent.request(a.initialize, { protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: { readTextFile: true } } });
+      const { sessionId } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
+      assert.equal((await prompt(host.agent, sessionId, 'relay-clarify')).stopReason, 'end_turn');
+      assert.equal(host.messages.at(-1).update.content.text, 'While the worker runs?');
+      assert.deepEqual(permissions, []);
+      await writeFile(join(cwd, 'relay-go'), '');
+      let result;
+      for (let i = 0; i < 200 && result === undefined; i++) {
+        result = await readFile(join(cwd, 'relay-result'), 'utf8').catch(error => {
+          if (error.code !== 'ENOENT') throw error;
+        });
+        if (result === undefined) await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      assert.equal(result, 'allow:late client bytes');
+      assert.deepEqual(permissions, [sessionId]);
+      assert.deepEqual(reads, [sessionId]);
+    } finally { await host.close(); }
+  }));
+
+test('external ACP resolves project profile and resources in the session cwd on each operation', { timeout: 12_000 }, () =>
+  withOwnedRun('C10-acp-project', async cwd => {
+    const config = await fixture(cwd, {
+      profiles: Object.fromEntries(['primary', 'a', 'b'].map(id => [id, { provider: 'test', model: 'fixture' }])),
+    });
+    const workspaces = await Promise.all(['a', 'b'].map(async (id, index) => {
+      const project = join(cwd, id);
+      await mkdir(project);
+      await writeFile(join(project, '.role-orchestrator.json'), JSON.stringify({
+        schemaVersion: 1, controllerProfile: id, resources: { invocationTimeoutMs: 3000 + index, maxInvocationsPerOperation: 3 - index },
+      }));
+      return project;
+    }));
+    const host = launch(cwd, config);
+    try {
+      await initialize(host.agent);
+      const sessions = [];
+      for (const [index, project] of workspaces.entries()) {
+        const { sessionId } = await host.agent.request(a.session.new, { cwd: project, mcpServers: [] });
+        sessions.push(sessionId);
+        await prompt(host.agent, sessionId, 'settings');
+        assert.deepEqual(JSON.parse(host.messages.at(-1).update.content.text), [index === 0 ? 'a' : 'b', 3000 + index]);
+      }
+      const directory = join(cwd, 'state');
+      const files = (await readdir(directory)).filter(name => /^[a-f0-9]{64}.*\.json$/u.test(name));
+      const limits = await Promise.all(files.map(async file => JSON.parse(await readFile(join(directory, file), 'utf8')).limits.maxInvocations));
+      assert.deepEqual(limits.sort(), [2, 3]);
+      await host.agent.request(a.session.load, { sessionId: sessions[0], cwd: workspaces[1], mcpServers: [] });
+      await prompt(host.agent, sessions[0], 'settings');
+      assert.deepEqual(JSON.parse(host.messages.at(-1).update.content.text), ['b', 3001]);
+    } finally { await host.close(); }
+  }));
+
+test('CLI can inspect and cancel live ACP work while new prompts stay with ACP',
+  { timeout: 12_000, skip: process.env.C10_SOCKET_UNAVAILABLE === '1' }, () =>
+    withOwnedRun('C10-acp-local-control', async (cwd, spawnSync) => {
+      const config = await fixture(cwd);
+      const host = launch(cwd, config);
+      try {
+        await initialize(host.agent);
+        const { sessionId } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
+        const held = prompt(host.agent, sessionId, 'hold');
+        void held.catch(() => {});
+        await host.progress;
+        const state = join(cwd, 'state');
+        const file = (await readdir(state)).find(name => /^[a-f0-9]{64}.*\.json$/u.test(name));
+        const { operationId } = JSON.parse(await readFile(join(state, file), 'utf8'));
+        const cli = (...args) => spawnSync(process.execPath, [entry, ...args, '--config', config, '--format', 'json'], { cwd });
+        const inspected = cli('inspect', operationId);
+        assert.equal(inspected.status, 0, inspected.stderr);
+        assert.equal(JSON.parse(inspected.stdout).status, 'active');
+        assert.match(cli('run', 'new').stderr, /CONTROL_ACP_SESSION_REQUIRED/);
+        const cancelled = cli('cancel', operationId);
+        assert.equal(cancelled.status, 0, cancelled.stderr);
+        assert.equal(JSON.parse(cancelled.stdout).status, 'cancelled');
+        assert.equal((await held).stopReason, 'cancelled');
+      } finally { await host.close(); }
+    }));
+
+test('explicit ACP terminal release detaches ownership and its abort listener', async () => {
+  const stop = new AbortController();
+  const lifecycle = new AbortController();
+  const calls = [];
+  const relay = createAcpRelay(() => ({
+    sessionId: 'external', signal: stop.signal, capabilities: { terminal: true },
+    client: { async request(method, params) {
+      calls.push([method, params.sessionId]);
+      return method === c.terminal.create ? { terminalId: 'terminal' } : {};
+    } },
+  }));
+  const scope = { operationId: 'operation', attemptId: 'attempt', signal: stop.signal, lifecycleSignal: lifecycle.signal };
+  await relay.bridge[c.terminal.create]({ sessionId: 'inner', command: 'fixture' }, scope);
+  assert.equal(getEventListeners(lifecycle.signal, 'abort').length, 1);
+  await relay.bridge[c.terminal.release]({ sessionId: 'inner', terminalId: 'terminal' }, scope);
+  assert.equal(getEventListeners(lifecycle.signal, 'abort').length, 0);
+  lifecycle.abort();
+  assert.deepEqual(calls, [[c.terminal.create, 'external'], [c.terminal.release, 'external']]);
+  await assert.rejects(relay.bridge[c.terminal.output]({ sessionId: 'inner', terminalId: 'terminal' }, scope), /Unknown terminal/);
+});

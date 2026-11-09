@@ -7,7 +7,7 @@ import { delimiter, isAbsolute, resolve } from 'node:path';
 import { cliPermissions } from '../hosts/cli-permissions.js';
 import { callControl, openControl, readDescriptor } from '../hosts/local-control.js';
 import { runCli } from '../hosts/cli.js';
-import { dispatchCommand } from '../hosts/commands.js';
+import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
 import { cliConfiguration } from './cli-config.js';
 import { openRuntime } from './runtime.js';
 
@@ -51,7 +51,9 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
         if (stop.signal.aborted) cancelForeground();
         else stop.signal.addEventListener('abort', cancelForeground, { once: true });
       };
-      for (let retries = 0; ; retries++) {
+      const startsWork = invocation.command.action === 'run' || invocation.command.action === 'resume';
+      const discoveryDeadline = performance.now() + 5_000;
+      for (;;) {
         const descriptor = await readDescriptor(stateDirectory);
         if (descriptor) {
           const result = await callControl(descriptor, configurationRef, invocation.command, onAccepted(id =>
@@ -61,30 +63,52 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
           if (result !== undefined) return result;
         }
 
-        const runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
-          permissions: { handleRequest }, project: { cwd: invocation.command.cwd }, launch: invocation.launch })
-          .catch(error => {
-            if (error?.code === 'STATE_STORE_IN_USE' && retries < 40) return undefined;
-            throw error;
-          });
-        if (!runtime) { await delay(25); continue; }
+        /** @type {Awaited<ReturnType<typeof openControl>> | undefined} */
+        let owner;
+        /** @type {Awaited<ReturnType<typeof openRuntime>> | undefined} */
+        let runtime;
+        /** @type {PromiseWithResolvers<Awaited<ReturnType<typeof openRuntime>>>} */
+        const readiness = Promise.withResolvers();
+        void readiness.promise.catch(() => {});
         try {
+          runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
+            permissions: { handleRequest }, launch: invocation.launch,
+          }, startsWork ? async () => {
+            const startupDeadline = performance.now() + 30_000;
+            owner = await openControl(stateDirectory, configurationRef, async (command, accepted) => {
+              if (runtime) return dispatchCommand(runtime.api, command, accepted);
+              const timer = new AbortController();
+              try {
+                const ready = await Promise.race([
+                  readiness.promise,
+                  delay(Math.max(0, startupDeadline - performance.now()), undefined, { ref: false, signal: timer.signal })
+                    .then(() => { throw new HostError('CONTROL_STARTUP_TIMEOUT', 'The live owner has not finished initialization'); }),
+                ]);
+                return dispatchCommand(ready.api, command, accepted);
+              } finally { timer.abort(); }
+            }, invocation.launch).catch(error => {
+              if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
+              process.stderr.write('CONTROL_UNAVAILABLE: local socket transport unavailable; this process retains writer ownership\n');
+              return undefined;
+            });
+          } : undefined);
+          readiness.resolve(runtime);
           if (invocation.command.action === 'cancel') {
             return { operationId: invocation.command.operationId, status: 'no_live_execution' };
           }
-          if (invocation.command.action !== 'run' && invocation.command.action !== 'resume') {
-            return await dispatchCommand(runtime.api, invocation.command);
+          const api = runtime.api;
+          return await dispatchCommand(api, invocation.command, onAccepted(id => api.cancel(id, 'client')));
+        } catch (error) {
+          readiness.reject(error);
+          if (runtime || hostError(error).code !== 'STATE_STORE_IN_USE') throw error;
+          if (stop.signal.aborted) throw new HostError('CANCELLED', 'Interrupted while waiting for the local owner');
+          if (performance.now() >= discoveryDeadline) {
+            throw new HostError('STATE_STORE_IN_USE', 'State store has a writer without a reachable CLI control endpoint');
           }
-          const owner = await openControl(stateDirectory, configurationRef, (command, accepted) =>
-            dispatchCommand(runtime.api, command, accepted), invocation.launch).catch(error => {
-            if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
-            process.stderr.write('CONTROL_UNAVAILABLE: local socket transport unavailable; this process retains writer ownership\n');
-            return undefined;
-          });
-          try {
-            return await dispatchCommand(runtime.api, invocation.command, onAccepted(id => runtime.api.cancel(id, 'client')));
-          } finally { await owner?.close(); }
-        } finally { await runtime.close(); }
+        } finally {
+          try { await owner?.close(); } finally { await runtime?.close(); }
+        }
+        await delay(25);
       }
     } finally { process.removeListener('SIGINT', interrupt); }
   });

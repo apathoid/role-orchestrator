@@ -5,7 +5,8 @@ import { parseArgs } from 'node:util';
 import { ndJsonStream } from '@agentclientprotocol/sdk';
 import { createAcpRelay } from '../hosts/acp-relay.js';
 import { serveAcp } from '../hosts/acp.js';
-import { hostError } from '../hosts/commands.js';
+import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
+import { openControl } from '../hosts/local-control.js';
 import { cliConfiguration } from './cli-config.js';
 import { openRuntime } from './runtime.js';
 
@@ -27,25 +28,42 @@ export async function runAcpStdio(args) {
       ...options, permissions: { handleRequest: relay.handleRequest },
       acp: values['relay-client-tools'] ? relay : undefined,
     });
-    host = serveAcp(runtime.api, runtime.directory,
-      ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: 1024 * 1024 }));
-    const { connection } = host;
-    const interrupt = () => {
-      connection.close();
-      void runtime.close().catch(() => {});
-    };
-    process.once('SIGINT', interrupt);
-    process.once('SIGTERM', interrupt);
-    try { await connection.closed; }
-    finally {
+    /** @type {Awaited<ReturnType<typeof openControl>> | undefined} */
+    let owner;
+    /** @type {Promise<void> | undefined} */
+    let stopping;
+    function shutdown() {
+      return stopping ??= (async () => {
+        try { await owner?.close(); } finally { await runtime.close(); }
+      })();
+    }
+    try {
+      owner = await openControl(runtime.directory, runtime.configurationRef, command => {
+        if (command.action === 'run' || command.action === 'resume') {
+          throw new HostError('CONTROL_ACP_SESSION_REQUIRED', 'Use the owning ACP session to submit or continue work');
+        }
+        return dispatchCommand(runtime.api, command);
+      }).catch(error => {
+        if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
+        return undefined;
+      });
+      host = serveAcp(runtime.api, runtime.directory,
+        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: 1024 * 1024 }));
+      const { connection } = host;
+      const interrupt = () => {
+        connection.close();
+        void shutdown().catch(() => {});
+      };
+      process.once('SIGINT', interrupt);
+      process.once('SIGTERM', interrupt);
       try {
+        await connection.closed;
         await host.drain();
-        await runtime.close();
       } finally {
         process.removeListener('SIGINT', interrupt);
         process.removeListener('SIGTERM', interrupt);
       }
-    }
+    } finally { await shutdown(); }
     return 0;
   } catch (error) {
     const issue = hostError(error);

@@ -25,15 +25,13 @@ import { RuntimeError } from './runtime-error.js';
  * }} RuntimeOptions
  */
 
-/** @param {RuntimeOptions} options */
-export async function openRuntime(options) {
+/** @param {RuntimeOptions} options @param {() => Promise<void>} [onStoreOpen] */
+export async function openRuntime(options, onStoreOpen) {
   const diagnostics = createEventStream(options.diagnostics);
   const config = await decodeConfiguration(options.configuration);
   if (config.kind === 'rejected') {
     throw new RuntimeError(config.reason.code, config.reason.constraint, config.reason.path);
   }
-  const project = await loadProjectPreferences(options.project ?? {});
-  if (project.kind === 'unavailable') throw new RuntimeError('INVALID_CONFIGURATION', 'Cannot read project preferences', project.path);
   const location = options.stateDirectory ?? config.value.storage?.directory;
   if (!location || (!isAbsolute(location) && !options.configurationDirectory)) {
     throw new RuntimeError('INVALID_CONFIGURATION', 'State directory requires an absolute path or a configuration directory', '/storage/directory');
@@ -51,29 +49,49 @@ export async function openRuntime(options) {
   /** @type {Awaited<ReturnType<typeof loadExtensions>> | undefined} */
   let extensions;
   try {
+    await onStoreOpen?.();
     const registry = extensions = await loadExtensions(config.value, {
       directory: options.configurationDirectory, clock, ids, diagnostics, launchOptions: options.launch, acp: options.acp,
-      projectText: project.kind === 'available' ? project.text : undefined,
     });
     const { selection, catalog } = registry;
-    if (selection.kind === 'rejected') {
-      throw new RuntimeError('INVALID_CONFIGURATION', selection.source + ': ' + selection.constraint, selection.path);
+    /** @param {typeof selection} resolved */
+    function requireConfiguration(resolved) {
+      if (resolved.kind === 'rejected') {
+        throw new RuntimeError('INVALID_CONFIGURATION', resolved.source + ': ' + resolved.constraint, resolved.path);
+      }
+      return resolved.value;
     }
-    const selected = await registry.selectController();
-    if (selected.kind === 'unavailable') {
-      throw new RuntimeError('CAPABILITY_UNAVAILABLE', selected.reason, '/controllerProfile');
+    const base = requireConfiguration(selection);
+    /** @param {import('../core/contracts.js').Request['workspaceContext']} workspace */
+    async function resolveExecution(workspace) {
+      const project = await loadProjectPreferences(options.project?.path !== undefined
+        ? options.project : { cwd: workspace?.cwd ?? options.project?.cwd });
+      if (project.kind === 'unavailable') throw new RuntimeError('INVALID_CONFIGURATION', 'Cannot read project preferences', project.path);
+      const selectedConfig = project.kind === 'available' ? requireConfiguration(registry.resolveProject(project.text)) : base;
+      const selected = await registry.selectController(selectedConfig.controllerProfile);
+      if (selected.kind === 'unavailable') {
+        throw new RuntimeError('CAPABILITY_UNAVAILABLE', selected.reason, '/controllerProfile');
+      }
+      return {
+        catalog: registry.projectCatalog(selectedConfig), profile: selected.profile, provider: selected.provider,
+        limits: {
+          maxInvocations: selectedConfig.resources.maxInvocationsPerOperation,
+          maxConcurrentInvocations: selectedConfig.resources.maxConcurrentInvocations,
+        },
+        invocationTimeoutMs: selectedConfig.resources.invocationTimeoutMs,
+      };
     }
+    if (options.project) await resolveExecution(undefined);
     const permissions = createPermissionBroker({
       standing: config.value.permissions?.standing, ...options.permissions, authority, ids,
     });
     const coordinator = createOrchestrator({
-      store, catalog, profile: selected.profile, provider: selected.provider, providerFor: registry.providerFor,
+      store, resolveExecution, providerFor: registry.providerFor,
       clock, ids, authority, permissions, configurationRef, diagnostics, tools: registry.tools,
-      context: selection.value.context, limits: {
-        maxInvocations: selection.value.resources.maxInvocationsPerOperation,
-        maxConcurrentInvocations: selection.value.resources.maxConcurrentInvocations,
+      context: base.context, limits: {
+        maxInvocations: base.resources.maxInvocationsPerOperation,
+        maxConcurrentInvocations: base.resources.maxConcurrentInvocations,
       },
-      invocationTimeoutMs: selection.value.resources.invocationTimeoutMs,
     });
     /** @type {Promise<void> | undefined} */
     let closing;

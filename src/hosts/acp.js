@@ -11,7 +11,7 @@ import { hostError } from './commands.js';
 /** @import {HostApi} from './commands.js' */
 /** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribe: (listener: (event: DiagnosticEvent) => void) => () => void}} AcpApi */
 /** @typedef {{sessionId: string, cwd: string, operations: string[], requests: {requestId: string, fingerprint: string, operationId?: string}[]}} Session */
-/** @typedef {{operationId?: string, cancelled: boolean, client: AgentContext, settled: Promise<void>}} Turn */
+/** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>}} Turn */
 
 const a = methods.agent;
 const c = methods.client;
@@ -186,7 +186,7 @@ export function serveAcp(api, directory, stream) {
       }
       const settled = Promise.withResolvers();
       /** @type {Turn} */
-      const turn = { cancelled: false, client, settled: settled.promise };
+      const turn = { cancelled: false, settled: settled.promise };
       turns.set(sessionId, turn);
       const unsubscribe = api.subscribe(event => {
         if (event.operationId !== turn.operationId || event.eventName !== 'controller.requested' || connection.signal.aborted) return;
@@ -207,16 +207,21 @@ export function serveAcp(api, directory, stream) {
           const target = continueOperationId ?? (newOperation || supersedeOperationId ? undefined : last);
           const prior = target && await api.inspect(target);
           const workspaceContext = { cwd: session.cwd };
+          const delivery = request;
+          /** @param {string} id */
+          const accepted = id => {
+            turn.operationId = id;
+            attach(session, delivery, id);
+          };
           const submission = prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished')
             ? await api.resume(prior.operationId, { requestId: durableRequestId, text, workspaceContext,
-              questionId: prior.waiting?.kind === 'question' ? prior.waiting.questionId : undefined })
+              questionId: prior.waiting?.kind === 'question' ? prior.waiting.questionId : undefined }, accepted)
             : await api.submit({
               schemaVersion: 1, requestId: durableRequestId, text, attachments: [], userConstraints: [],
               configurationRef: api.configurationRef, workspaceContext,
-            });
-          turn.operationId = submission.operation.operationId;
+            }, accepted);
+          accepted(submission.operation.operationId);
           if (turn.cancelled) await cancel(sessionId);
-          attach(session, request, turn.operationId);
           // Retain ownership of a submitted operation even if the session journal write fails.
           await save(session).finally(() => submission.completion.then(() => {}, () => {}));
           operation = await submission.completion;
@@ -249,9 +254,11 @@ export function serveAcp(api, directory, stream) {
     /** @param {string | undefined} operationId */
     route(operationId) {
       if (!operationId || connection.signal.aborted) return undefined;
-      for (const [sessionId, turn] of turns) {
-        if (turn.operationId === operationId && !turn.cancelled) {
-          return { sessionId, client: turn.client, signal: connection.signal, capabilities };
+      for (const [sessionId, session] of sessions) {
+        if (session.operations.includes(operationId)) {
+          const turn = turns.get(sessionId);
+          if (turn?.operationId === operationId && turn.cancelled) return undefined;
+          return { sessionId, client: connection.client, signal: connection.signal, capabilities };
         }
       }
     },

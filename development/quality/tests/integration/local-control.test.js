@@ -104,3 +104,117 @@ test('separate CLI processes share one owner and cancel only the foreground oper
       assert.equal((await call('cancel', cancelled.operationId).completed).status, 'no_live_execution');
     } finally { first.process.kill('SIGKILL'); second.process.kill('SIGKILL'); }
   }));
+
+test('shutdown rejects new work while inspect, cancel and redelivery can drain accepted work',
+  { timeout: 10_000, skip: localSocketCheck }, () => withOwnedRun('C10-control-drain', async directory => {
+    const started = Promise.withResolvers();
+    const cancelled = Promise.withResolvers();
+    const calls = [];
+    const server = await openControl(directory, 'config', async (command, accepted) => {
+      calls.push(command.action);
+      if (command.action === 'run') {
+        accepted('operation');
+        started.resolve();
+        await cancelled.promise;
+      }
+      if (command.action === 'cancel') cancelled.resolve();
+      return { action: command.action };
+    });
+    try {
+      const descriptor = await readDescriptor(directory);
+      const run = { action: 'run', requestId: 'accepted', text: 'task' };
+      const inFlight = callControl(descriptor, 'config', run);
+      await started.promise;
+      const closing = server.close();
+      const attached = Promise.withResolvers();
+      const retry = callControl(descriptor, 'config', run, attached.resolve);
+      await attached.promise;
+      await assert.rejects(callControl(descriptor, 'config', { ...run, requestId: 'new' }), { code: 'CONTROL_CLOSING' });
+      await assert.rejects(callControl(descriptor, 'config', { action: 'resume', requestId: 'resume', operationId: 'operation' }),
+        { code: 'CONTROL_CLOSING' });
+      assert.deepEqual(await callControl(descriptor, 'config', { action: 'inspect', requestId: 'read', operationId: 'operation' }),
+        { action: 'inspect' });
+      assert.deepEqual(await callControl(descriptor, 'config', { action: 'cancel', requestId: 'cancel', operationId: 'operation' }),
+        { action: 'cancel' });
+      assert.deepEqual(await Promise.all([inFlight, retry]), [{ action: 'run' }, { action: 'run' }]);
+      await closing;
+      assert.deepEqual(calls, ['run', 'inspect', 'cancel']);
+      assert.equal(await readDescriptor(directory), undefined);
+    } finally {
+      cancelled.resolve();
+      await server.close();
+    }
+  }));
+
+test('a peer waits for slow CLI initialization and uses its own workspace configuration',
+  { timeout: 15_000, skip: localSocketCheck }, () => withOwnedRun('C10-control-startup', async cwd => {
+    const config = join(cwd, 'config.json');
+    const directory = join(cwd, 'state');
+    const module = join(cwd, 'slow-provider.mjs');
+    const started = join(cwd, 'factory-started');
+    const release = join(cwd, 'factory-release');
+    const fixture = new URL('../../fixtures/host-plugin.js', import.meta.url).href;
+    await writeFile(module, `
+      import { access, writeFile } from 'node:fs/promises';
+      import { setTimeout as delay } from 'node:timers/promises';
+      import { createProvider as fixture } from ${JSON.stringify(fixture)};
+      export { manifest } from ${JSON.stringify(fixture)};
+      export async function createProvider(options) {
+        await writeFile(${JSON.stringify(started)}, '');
+        while (true) {
+          try { await access(${JSON.stringify(release)}); break; }
+          catch (error) { if (error.code !== 'ENOENT') throw error; await delay(10); }
+        }
+        return fixture(options);
+      }
+    `);
+    await writeFile(config, JSON.stringify({
+      schemaVersion: 1, controllerProfile: 'primary',
+      profiles: Object.fromEntries(['primary', 'a', 'b'].map(id => [id, { provider: 'test', model: 'fixture' }])),
+      providers: { test: { adapter: 'host-fixture' } }, storage: { directory },
+      plugins: [{ id: 'host-fixture', module }],
+    }));
+    for (const [index, id] of ['a', 'b'].entries()) {
+      await mkdir(join(cwd, id));
+      await writeFile(join(cwd, id, '.role-orchestrator.json'), JSON.stringify({
+        schemaVersion: 1, controllerProfile: id, resources: { invocationTimeoutMs: 3000 + index, maxInvocationsPerOperation: 3 - index },
+      }));
+    }
+    const children = [];
+    function launch(...args) {
+      const child = spawn(process.execPath, [entry, ...args, '--config', config, '--format', 'json'], { cwd });
+      children.push(child);
+      let output = '';
+      let stderr = '';
+      child.stdout.on('data', chunk => { output += chunk; });
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      const done = once(child, 'close').then(([code]) => ({ code, output, stderr }));
+      return { child, done };
+    }
+    const owner = launch('run', '--cwd', join(cwd, 'a'), 'hold');
+    try {
+      for (let i = 0; ; i++) {
+        if (await readFile(started, 'utf8').then(() => true, error => {
+          if (error.code === 'ENOENT') return false;
+          throw error;
+        })) break;
+        assert.ok(i < 200, 'provider factory did not start');
+        await delay(10);
+      }
+      const peer = launch('run', '--cwd', join(cwd, 'b'), 'settings');
+      // The startup hold exceeds the previous retry window.
+      await delay(1700);
+      assert.equal(peer.child.exitCode, null);
+      assert.equal((await readDescriptor(directory)).pid, owner.child.pid);
+      await writeFile(release, '');
+      const result = await peer.done;
+      assert.equal(result.code, 0, result.stderr);
+      const operation = JSON.parse(result.output);
+      assert.deepEqual(JSON.parse(operation.assessment.answer), ['b', 3001]);
+      assert.equal(operation.resources.remaining, 1);
+      owner.child.kill('SIGINT');
+      const stopped = await owner.done;
+      assert.equal(stopped.code, 0, stopped.stderr);
+      assert.equal(JSON.parse(stopped.output).cancellation, 'client');
+    } finally { for (const child of children) child.kill('SIGKILL'); }
+  }));
