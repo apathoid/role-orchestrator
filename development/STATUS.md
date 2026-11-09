@@ -236,3 +236,6 @@
 
 - C10.2 — `openOrchestrator` экспортирует submit/resume/inspect/inspectFinding/cancel, подписку на типизированные события и close. Проверены независимые каталоги состояния, дедупликация requestId, отписка, форма результата и ошибки.
 - OBSERVED на Linux, Node 24.22.1: `check`, 2 целевых интеграционных теста и `git diff --check`. Следующий шаг — C10.3.
+
+- C10.3 — CLI предоставляет run/resume/inspect/cancel/diagnose/trace/export-diagnostics. Проверены аргументы, stdin Unicode, пустой ввод, non-Git cwd и разделение JSON stdout и ошибок. Trace/export используют безопасную проекцию сохранённого журнала с указанием отсутствующих данных.
+- OBSERVED на Linux, Node 24.22.1: `check`, сквозной тест CLI и `git diff --check`. Следующий шаг — C10.4.
