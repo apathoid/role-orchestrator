@@ -97,8 +97,9 @@ Mock Controller fixtures задают решения, позволяющие п�
 
 | ID | Статус | Проверка |
 |---|---|---|
-| A06, A07, A24 | OBSERVED, API / CLI / ACP fixture | `host-acp.test.js`, `host-cli.test.js`: уточнение, продолжение с сохранением расхода, повторная доставка без dispatch, запуск без Git |
-| A16 | OBSERVED, API / CLI / ACP fixture | `host-cli-permissions.test.js`, `host-acp.test.js`, `permissions.test.js`: реальные варианты запроса, адресный deny, unknown/late reply, отмена, unavailable |
-| A20 | OBSERVED, адаптеры и внешний ACP fixture | `host-acp.test.js`, `acp-provider.test.js`, `cli-process.test.js`: явная отмена, отсоединение транспорта, поздний результат и cleanup. Нативная часть открыта |
-| A38 | UNVERIFIED | Zed отсутствует в среде разработки. Контролируемые ACP-сессии подтверждают протокол и application semantics |
-| A40 | OBSERVED, C10 CLI presentation | Inspect показывает budget, route, attempts и unknown effects, trace/export ограничены технической проекцией журнала. Rotation и эксплуатационная приёмка относятся к C11 |
+| `A06`, `A07`, `A24` | OBSERVED, API / CLI / ACP fixture | `host-acp.test.js`, `host-cli.test.js`: уточнение, продолжение с сохранением расхода, повторная доставка без dispatch, запуск без Git |
+| `A16` | OBSERVED, API / CLI / ACP fixture | `host-cli-permissions.test.js`, `host-acp.test.js`, `permissions.test.js`: реальные варианты запроса, адресный deny, unknown/late reply, отмена, unavailable |
+| `A20` | OBSERVED, адаптеры и внешний ACP fixture | `host-acp.test.js`, `acp-provider.test.js`, `cli-process.test.js`: явная отмена, отсоединение транспорта, поздний результат и cleanup. Нативная часть открыта |
+| `A38` | UNVERIFIED | Zed отсутствует в среде разработки. Контролируемые ACP-сессии подтверждают протокол и application semantics |
+| `A40` | OBSERVED, C10 CLI presentation | Inspect показывает budget, route, attempts и unknown effects, trace/export ограничены технической проекцией журнала. Rotation и эксплуатационная приёмка относятся к C11 |
+| `A42` | OBSERVED npm package; Nix smoke подключён в CI | `check:package`, `check:removal`, `check-nix-install.sh` и flake `cli-smoke`. Нативная приёмка NixOS отдельно |

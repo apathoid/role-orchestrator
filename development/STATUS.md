@@ -257,3 +257,7 @@
 
 - C10.9 — Общий fixture проверяет direct answer, delegation, partial result, permission и clarification/resume через API, CLI и внешний ACP. Отдельные сквозные проверки покрывают явную отмену, разрыв клиента, non-Git и повторную доставку. Обновлена матрица A06/A07/A16/A20/A24/A38/A40.
 - OBSERVED на Linux, Node 24.22.1: 5 сквозных тестов ACP/общих поверхностей, `check:package`, `git diff --check`. Zed в среде отсутствует, нативная часть A20/A38 остаётся UNVERIFIED. Следующий шаг — C10.10.
+
+- C10.10 — npm bin и устанавливаемый flake с Node 24, named/default packages/apps и CLI smoke. Source closure состоит из файлов продукта. Hash кэша вычислен `prefetch-npm-deps` на [GitHub Actions](https://github.com/apathoid/role-orchestrator/actions/runs/42619282319) для committed lockfile. В CI добавлены сборка, запуск обоих apps, установка во временный profile, non-Git cwd, внешний state, PATH и smoke бинарника Codex.
+- OBSERVED локально на Linux, Node 24.22.1: `check`, `test:foundation` (4), `test:core` (15), `test:contracts` (46), `test:integration` (156 прошли, 2 socket-теста требуют CI), `check:package`, `check:removal`, `git diff --check`. [Проверка ветки](https://github.com/apathoid/role-orchestrator/actions/workflows/ci.yml?query=branch%3Agreenfield%2Fmodel-first-core) включает Nix и AF_UNIX. Приёмка на NixOS и в настоящем Zed остаётся UNVERIFIED.
+- Реализация C10 завершена. Следующий шаг плана — C11.1, аудит событий.

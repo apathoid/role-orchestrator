@@ -1,4 +1,4 @@
-name: Foundation checks
+name: Role Orchestrator checks
 
 on:
   push:
@@ -29,8 +29,9 @@ jobs:
           diagnostic-endpoint: ""
       - name: Check flake metadata
         run: nix flake check --no-update-lock-file --print-build-logs
-      - name: Calculate locked npm cache hash for C10 packaging
-        run: nix run github:NixOS/nixpkgs/f9a75f41be3a74eab55d3a7679d34ad6cc0da977#prefetch-npm-deps -- package-lock.json
+      - name: Install and exercise the CLI outside the checkout
+        if: ${{ hashFiles('development/quality/scripts/check-nix-install.sh') != '' }}
+        run: nix develop --no-update-lock-file --command bash development/quality/scripts/check-nix-install.sh
       - name: Check Node in development shell
         run: nix develop --no-update-lock-file --command node --version
       - name: Install locked npm dependencies in Node 24 without lifecycle scripts

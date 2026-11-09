@@ -22,5 +22,8 @@
     "@agentclientprotocol/sdk": "2.4.0",
     "ajv": "8.20.0"
   },
-  "exports": "./src/main/index.js"
+  "exports": "./src/main/index.js",
+  "bin": {
+    "role-orchestrator": "./src/main/cli.js"
+  }
 }

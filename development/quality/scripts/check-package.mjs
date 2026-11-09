@@ -27,6 +27,8 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
   }
   const [packed] = JSON.parse(checked('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory], product));
   assert.ok(packed.files.some(({ path }) => path === pkg.exports.slice(2)));
+  const executable = pkg.bin['role-orchestrator'].slice(2);
+  assert.ok(packed.files.some(({ path, mode }) => path === executable && (mode & 0o111) !== 0));
   const allowed = new Set(await readdir(product));
   for (const { path } of packed.files) {
     assert.ok(allowed.has(path.split('/')[0]) && !path.startsWith('node_modules/'), path);
@@ -53,7 +55,9 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
     assert.equal(typeof api.emitDiagnostic, 'function');
     assert.equal(typeof api.createCodexProvider, 'function');
     assert.equal(typeof api.loadExtensions, 'function');
+    assert.equal(typeof api.openOrchestrator, 'function');
   `], consumer, { ...process.env, PATH: '' });
+  assert.match(checked(process.execPath, [join(installed, executable), '--help'], consumer), /Usage: role-orchestrator/);
   if (removal) {
     // Resolve the pinned validator from the clean install while exercising the
     // actual schema shipped in the tarball.

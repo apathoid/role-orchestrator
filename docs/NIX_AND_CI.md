@@ -6,13 +6,13 @@ Production-код пишется на JavaScript `.js` с ESM (`type: module`), 
 
 В `package.json` сохранены версии, предоставленные пользователем: `@agentclientprotocol/codex-acp` 2.5.0 и `@agentclientprotocol/sdk` 2.4.0. Их наличие не делает Codex обязательным исполнителем или допустимой зависимостью core. Конкретные imports и нативные особенности остаются в adapters. `package-lock.json` фиксирует действительное дерево npm dependencies.
 
-Стартовый manifest содержит ESM, Node engines, metadata и allowlist поставляемых файлов. `private: true` защищает от случайной npm-публикации на стадии разработки; это не запрет локальной/Nix-установки. Manifest экспортирует реализованные контракты JavaScript через `src/main/index.js`. CLI entrypoint появится вместе с реализацией CLI. Для импорта и исполнения JavaScript не нужна компиляция.
+Стартовый manifest содержит ESM, Node engines, metadata и allowlist поставляемых файлов. `private: true` защищает от случайной npm-публикации на стадии разработки; это не запрет локальной/Nix-установки. Manifest экспортирует реализованные контракты JavaScript через `src/main/index.js`. Исполняемый entrypoint `role-orchestrator` указан в `bin`. Для импорта и исполнения JavaScript не нужна компиляция.
 
-## Flake сейчас и готовый продукт
+## Flake и устанавливаемый продукт
 
 В корне находятся `flake.nix` и `flake.lock`, полученный настоящим Nix на CI-раннере. Nixpkgs input указывает точную upstream revision; lock хранит результат её разрешения с настоящим narHash. Lock-файлы не составляются из придуманных hashes. При изменении dependency обновить lock явно и проверить воспроизводимость.
 
-Текущие outputs: `devShells.<system>.default` с Node 24 и `checks.<system>.package-metadata`, проверяющий manifest/lock. Объявлены x86_64/aarch64 Linux и Darwin; наличие output не является заявлением о native проверке каждой платформы. CI первоначально выполняет Linux-проверку.
+Flake предоставляет Node 24 devShell, package, apps, проверку metadata и CLI smoke. Объявлены x86_64/aarch64 Linux и Darwin; наличие output не является заявлением о native проверке каждой платформы. CI первоначально выполняет Linux-проверку.
 
 Команды для стартовой инфраструктуры после установки Nix с включёнными `nix-command` и `flakes`:
 
@@ -23,7 +23,7 @@ nix flake check --no-update-lock-file
 
 Обычный CI использует committed lock без обновления. Для осознанного обновления Nixpkgs изменить pinned input, разрешить его настоящим Nix, сохранить новый flake.lock и выполнить проверки. CI сам не обновляет зависимости.
 
-**До появления реального CLI `nix build`/`nix run` для приложения не заявлены работающими.** Завершённая реализация MUST предоставить:
+Flake публикует следующие outputs.
 
 | Output | Назначение |
 |---|---|
@@ -33,15 +33,15 @@ nix flake check --no-update-lock-file
 | `devShells.<system>.default` | Инструменты разработки |
 | `checks.<system>` | Metadata и затем package/CLI smoke; dev suites только при наличии harness |
 
-Выполнить packaging через `buildNpmPackage` с Node 24, реальным `package-lock.json` и вычисленным `npmDepsHash`. Для прямого JS использовать `dontNpmBuild = true`, если настоящая сборка ресурсов не требуется. Указать `bin` реального entrypoint и `meta.mainProgram`; проверить executable permissions и корректный Node wrapper. Не присваивать проекту лицензию, которую пользователь не выбрал.
+Пакет собирается через `buildNpmPackage` с Node 24, реальным `package-lock.json` и вычисленным `npmDepsHash`. Для прямого JS использовать `dontNpmBuild = true`, если настоящая сборка ресурсов не требуется. Manifest указывает `bin`, derivation задаёт `meta.mainProgram`. CLI smoke проверяет запуск wrapper.
 
 Source closure продукта MUST исключать development, node_modules рабочего checkout, runs и CI evidence. Runtime dependencies не заимствуются из development harness. Проверить platform-specific transitive binaries, install scripts и dynamic linking на NixOS. Если конкретный провайдер требует отдельного бинарника, оформлять это через adapter/явную конфигурацию; не скачивать его скрыто при запуске и не требовать Codex для обычного core.
 
 State, логи, secrets и конфигурация пользователя MUST располагаться вне read-only Nix store. Рабочий каталог остаётся выбранным пользователем, не каталогом установки. Wrapper не сбрасывает cwd и не уничтожает доступ к инструментам окружения. Никакого требования `.git` в каталоге пользователя.
 
-## Установка после реализации packages/apps
+## Установка
 
-Следующие команды — целевой приёмочный контракт для готового CLI:
+Из checkout выполните следующие команды.
 
 ```sh
 nix build .#role-orchestrator
@@ -57,7 +57,7 @@ Nix-сборка и immutable store не меняют архитектурный
 
 Постоянный entrypoint — `.github/workflows/ci.yml`; permissions `contents: read`, Actions закреплены полными commit SHA. Начальные checks: Markdown/specification при наличии development, npm package listing, Nix flake metadata, Node devShell, установка npm из lock без lifecycle scripts и неизменность lock-файлов. Это **foundation checks**, не бизнес-regression и не native integration.
 
-При C00 подключить синтаксические и JSDoc type checks, install из lock и harness. По появлению функций подключать соответствующие core/contract/integration suites; при C10 добавить `nix build` и CLI smoke. При C12 обязательны package/removal/regression checks. Не использовать пустые успешные suites или `continue-on-error` для обязательных проверок. Отсутствующий development означает явный skip только dev suites; сборка и установка продукта продолжают проверяться.
+При C00 подключить синтаксические и JSDoc type checks, install из lock и harness. По появлению функций подключать соответствующие core/contract/integration suites; C10 добавляет `nix build`, CLI smoke и установку во временный profile. При C12 обязательны package/removal/regression checks. Не использовать пустые успешные suites или `continue-on-error` для обязательных проверок. Отсутствующий development означает явный skip только dev suites; сборка и установка продукта продолжают проверяться.
 
 Native model/Zed tests отдельно opt-in с явным доступом и бюджетом; отсутствие credentials не должно выдавать PASS и не должно раскрывать secrets в PR из внешнего источника. CI не делает auto-merge, auto-publish или изменения пользовательского проекта.
 
