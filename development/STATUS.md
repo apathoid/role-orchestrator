@@ -261,3 +261,9 @@
 - C10.10 — npm bin и устанавливаемый flake с Node 24, named/default packages/apps и CLI smoke. Source closure состоит из файлов продукта. Hash кэша вычислен `prefetch-npm-deps` на [GitHub Actions](https://github.com/apathoid/role-orchestrator/actions/runs/42619282319) для committed lockfile. В CI добавлены сборка, запуск обоих apps, установка во временный profile, non-Git cwd, внешний state, PATH и smoke бинарника Codex.
 - OBSERVED локально на Linux, Node 24.22.1: `check`, `test:foundation` (4), `test:core` (15), `test:contracts` (46), `test:integration` (156 прошли, 2 socket-теста требуют CI), `check:package`, `check:removal`, `git diff --check`. [Проверка ветки](https://github.com/apathoid/role-orchestrator/actions/workflows/ci.yml?query=branch%3Agreenfield%2Fmodel-first-core) включает Nix и AF_UNIX. Приёмка на NixOS и в настоящем Zed остаётся UNVERIFIED.
 - Реализация C10 завершена. Следующий шаг плана — C11.1, аудит событий.
+
+### Итоговая проверка C10
+
+- OBSERVED на GitHub Actions (Ubuntu x86_64, Node 24): [Nix build и flake check, оба apps, временный profile, запуск вне Git с внешним state, smoke Codex и интеграционные тесты с AF_UNIX](https://github.com/apathoid/role-orchestrator/actions/runs/42619871758).
+- После финальной проверки усилены shutdown и корреляция CLI cancel при двух одновременно стартующих процессах. Явные launch overrides сравниваются после соединения с живым владельцем. ACP-адаптер допускает negotiation требуемого client-tool bridge с реальными возможностями сессии.
+- OBSERVED локально после уточнений: `check`, `check:package`, `check:removal`, `test:integration` (157 прошли, 2 socket-теста для CI), `git diff --check`. Нативная приёмка Zed и NixOS остаётся UNVERIFIED. Следующий шаг — C11.1.

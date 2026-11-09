@@ -7,7 +7,7 @@ import { delimiter, isAbsolute, resolve } from 'node:path';
 import { cliPermissions } from '../hosts/cli-permissions.js';
 import { callControl, openControl, readDescriptor } from '../hosts/local-control.js';
 import { runCli } from '../hosts/cli.js';
-import { dispatchCommand, HostError } from '../hosts/commands.js';
+import { dispatchCommand } from '../hosts/commands.js';
 import { cliConfiguration } from './cli-config.js';
 import { openRuntime } from './runtime.js';
 
@@ -54,11 +54,10 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
       for (let retries = 0; ; retries++) {
         const descriptor = await readDescriptor(stateDirectory);
         if (descriptor) {
-          if (Object.keys(invocation.launch).length) {
-            throw new HostError('CONTROL_LAUNCH_UNAVAILABLE', 'Launch overrides require a new live owner');
-          }
           const result = await callControl(descriptor, configurationRef, invocation.command, onAccepted(id =>
-            callControl(descriptor, configurationRef, { action: 'cancel', operationId: id, requestId: randomUUID() })));
+            callControl(descriptor, configurationRef, {
+              action: 'cancel', operationId: id, requestId: randomUUID(), cancellationSource: 'client',
+            })), invocation.launch);
           if (result !== undefined) return result;
         }
 
@@ -77,7 +76,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             return await dispatchCommand(runtime.api, invocation.command);
           }
           const owner = await openControl(stateDirectory, configurationRef, (command, accepted) =>
-            dispatchCommand(runtime.api, command, accepted)).catch(error => {
+            dispatchCommand(runtime.api, command, accepted), invocation.launch).catch(error => {
             if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
             process.stderr.write('CONTROL_UNAVAILABLE: local socket transport unavailable; this process retains writer ownership\n');
             return undefined;

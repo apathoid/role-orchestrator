@@ -3,12 +3,13 @@ import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { createConnection, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { decode, id, oneOf, optional, record, text } from '../core/decode.js';
+import { arrayOf, decode, id, oneOf, optional, record, text } from '../core/decode.js';
 import { HostError, hostError } from './commands.js';
 
 /** @import {Command} from './commands.js' */
 /** @import {Socket} from 'node:net' */
 /** @typedef {{path: string, token: string, pid: number}} Descriptor */
+/** @typedef {{controllerProfile?: string, preferredSkills?: string[]}} LaunchOverrides */
 /** @typedef {(command: Command, accepted: (operationId: string) => void) => Promise<unknown>} Execute */
 
 const version = 1;
@@ -18,7 +19,11 @@ const shape = record({
   version: oneOf(version), token: id, requestId: id,
   action: oneOf('run', 'resume', 'inspect', 'cancel', 'trace', 'export-diagnostics'),
   operationId: optional(id),
-  payload: record({ text: optional(text), cwd: optional(id), questionId: optional(id), configurationRef: id }),
+  payload: record({
+    text: optional(text), cwd: optional(id), questionId: optional(id), configurationRef: id,
+    cancellationSource: optional(oneOf('client')),
+    launch: optional(record({ controllerProfile: optional(id), preferredSkills: optional(arrayOf(id)) })),
+  }),
 });
 
 /** @param {Socket} socket @param {unknown} value @param {boolean} [last] */
@@ -29,8 +34,13 @@ function send(socket, value, last = false) {
   else socket.write(line);
 }
 
-/** @param {string} directory @param {string} configurationRef @param {Execute} execute */
-export async function openControl(directory, configurationRef, execute) {
+/** @param {LaunchOverrides} [overrides] */
+function launchKey(overrides = {}) {
+  return JSON.stringify([overrides.controllerProfile ?? null, overrides.preferredSkills ?? null]);
+}
+
+/** @param {string} directory @param {string} configurationRef @param {Execute} execute @param {LaunchOverrides} [launch] */
+export async function openControl(directory, configurationRef, execute, launch) {
   const parent = await mkdtemp(join(tmpdir(), 'ro-control-'));
   const descriptor = { path: join(parent, 's'), token: randomUUID(), pid: process.pid };
   const location = join(directory, descriptorName);
@@ -86,6 +96,9 @@ export async function openControl(directory, configurationRef, execute) {
     if (token !== descriptor.token) throw new HostError('CONTROL_UNAUTHORIZED', 'Invalid control session token');
     if (payload.configurationRef !== configurationRef) {
       throw new HostError('CONTROL_CONFIGURATION_MISMATCH', 'Live owner uses a different configuration');
+    }
+    if (payload.launch && launchKey(payload.launch) !== launchKey() && launchKey(payload.launch) !== launchKey(launch)) {
+      throw new HostError('CONTROL_LAUNCH_UNAVAILABLE', 'Live owner uses different launch preferences');
     }
     const fingerprint = JSON.stringify([action, operationId, payload]);
     let entry = requests.get(requestId);
@@ -162,18 +175,18 @@ export async function readDescriptor(directory) {
 }
 
 /** @param {Descriptor} descriptor @param {string} configurationRef @param {Command} command
- * @param {(operationId: string) => void} [accepted]
+ * @param {(operationId: string) => void} [accepted] @param {LaunchOverrides} [launch]
  */
-export function callControl(descriptor, configurationRef, command, accepted) {
+export function callControl(descriptor, configurationRef, command, accepted, launch) {
   return new Promise((resolve, reject) => {
     const socket = createConnection(descriptor.path);
     let sent = false;
     const lost = () => reject(new HostError('CONTROL_RESPONSE_LOST', 'Control reply was lost. Request id: ' + command.requestId));
     socket.once('connect', () => {
       sent = true;
-      const { requestId, action, operationId, text, cwd, questionId } = command;
+      const { requestId, action, operationId, text, cwd, questionId, cancellationSource } = command;
       send(socket, { version, token: descriptor.token, requestId, action, operationId,
-        payload: { text, cwd, questionId, configurationRef } });
+        payload: { text, cwd, questionId, configurationRef, cancellationSource, launch } });
     });
     socket.once('error', error => {
       if (!sent && ('code' in error) && ['ENOENT', 'ECONNREFUSED', 'EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(String(error.code))) resolve(undefined);

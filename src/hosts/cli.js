@@ -69,7 +69,7 @@ export function parseCli(argv, cwd) {
     config: typeof values.config === 'string' ? resolve(cwd, values.config) : undefined,
     launch: {
       ...(typeof values.profile === 'string' && { controllerProfile: values.profile }),
-      ...(Array.isArray(values.skill) && { preferredSkills: values.skill }),
+      ...(Array.isArray(values.skill) && { preferredSkills: /** @type {string[]} */ (values.skill) }),
     },
   };
 }

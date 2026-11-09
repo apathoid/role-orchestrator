@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -80,23 +80,27 @@ test('separate CLI processes share one owner and cancel only the foreground oper
       return { process, completed };
     }
     const first = call('run', 'hold', '--request-id', 'held');
-    let second;
+    const second = call('run', 'hold second', '--request-id', 'second');
     try {
-      let descriptor;
-      for (let attempt = 0; attempt < 100; attempt++) {
-        descriptor = await readDescriptor(directory);
-        if (descriptor?.pid === first.process.pid) break;
+      let operations = [];
+      for (let attempt = 0; attempt < 120; attempt++) {
+        const files = (await readdir(directory)).filter(name => /^[a-f0-9]{64}.*\.json$/u.test(name));
+        operations = (await Promise.all(files.map(name => readFile(join(directory, name), 'utf8').then(JSON.parse)
+          .catch(error => { if (error.code !== 'ENOENT') throw error; })))).filter(Boolean);
+        if (operations.filter(item => item.attempts.some(attempt => attempt.status === 'dispatched')).length === 2) break;
         await delay(25);
       }
-      assert.equal(descriptor?.pid, first.process.pid);
-      second = call('run', 'parallel', '--request-id', 'parallel');
-      const unrelated = await second.completed;
-      assert.equal(unrelated.status, 'finished');
+      assert.equal(operations.length, 2);
+      const secondId = operations.find(item => item.request.requestId === 'second').operationId;
+      const descriptor = await readDescriptor(directory);
+      assert.ok([first.process.pid, second.process.pid].includes(descriptor?.pid));
       first.process.kill('SIGINT');
-      const cancelled = await first.completed;
+      assert.equal((await call('cancel', secondId).completed).status, 'cancelled');
+      const [cancelled, unrelated] = await Promise.all([first.completed, second.completed]);
       assert.equal(cancelled.status, 'cancelled');
       assert.equal(cancelled.cancellation, 'client');
+      assert.equal(unrelated.cancellation, 'user');
       assert.equal(await readDescriptor(directory), undefined);
       assert.equal((await call('cancel', cancelled.operationId).completed).status, 'no_live_execution');
-    } finally { first.process.kill('SIGKILL'); second?.process.kill('SIGKILL'); }
+    } finally { first.process.kill('SIGKILL'); second.process.kill('SIGKILL'); }
   }));

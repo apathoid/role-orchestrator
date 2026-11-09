@@ -15,7 +15,7 @@ export function createProvider({ providerId }) {
           outputRefs: [{ ref, source: 'model_claim', kind: 'output' }],
         }), output: 'Worker completed' };
       }
-      if (invocation.context[0].value === 'hold') {
+      if (typeof invocation.context[0].value === 'string' && invocation.context[0].value.startsWith('hold')) {
         await new Promise(resolve => {
           if (invocation.signal.aborted) resolve();
           else invocation.signal.addEventListener('abort', resolve, { once: true });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { openRuntime } from '../../../../src/main/runtime.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
 
@@ -41,7 +42,6 @@ test('public API isolates stores, deduplicates requests and unsubscribes', () =>
   withOwnedRun('C10-api', async directory => {
     const { openOrchestrator, OrchestrationError } = await import('../../../../src/main/index.js');
     const { request } = await import('../../fixtures/core.js');
-    const { fileURLToPath } = await import('node:url');
     const configuration = JSON.stringify({
       schemaVersion: 1, controllerProfile: 'primary', profiles: { primary: { provider: 'test', model: 'fixture' } },
       providers: { test: { adapter: 'host-fixture' } },
@@ -72,4 +72,32 @@ test('public API isolates stores, deduplicates requests and unsubscribes', () =>
     } finally {
       await Promise.all([first.close(), second.close()]);
     }
+  }));
+
+test('closing a running API instance persists shutdown and refuses new submissions', () =>
+  withOwnedRun('C10-shutdown', async directory => {
+    const { openOrchestrator } = await import('../../../../src/main/index.js');
+    const { request } = await import('../../fixtures/core.js');
+    const configuration = JSON.stringify({
+      schemaVersion: 1, controllerProfile: 'primary', profiles: { primary: { provider: 'test', model: 'fixture' } },
+      providers: { test: { adapter: 'host-fixture' } },
+      plugins: [{ id: 'host-fixture', module: fileURLToPath(new URL('../../fixtures/host-plugin.js', import.meta.url)) }],
+    });
+    const first = await openOrchestrator({ configuration, stateDirectory: directory });
+    const started = Promise.withResolvers();
+    first.subscribe(event => { if (event.eventName === 'controller.requested') started.resolve(); });
+    const input = request({ text: 'hold', configurationRef: first.configurationRef });
+    const pending = await first.submit(input);
+    await started.promise;
+    const closed = first.close();
+    await assert.rejects(first.submit({ ...input, requestId: 'new' }), { code: 'CANCELLED' });
+    await closed;
+    assert.equal((await pending.completion).cancellation, 'shutdown');
+    const reopened = await openOrchestrator({ configuration, stateDirectory: directory });
+    try {
+      const saved = await reopened.inspect(pending.operation.operationId);
+      assert.equal(saved.status, 'cancelled');
+      assert.equal(saved.cancellation, 'shutdown');
+      assert.ok(saved.attempts.every(attempt => attempt.status === 'terminal'));
+    } finally { await reopened.close(); }
   }));

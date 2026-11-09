@@ -54,7 +54,9 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
   const sessions = new Map();
 
   return {
-    ...(mcpEnabled && { negotiatesCapabilities: ['context.retrieval', 'tools.bridge'] }),
+    ...(mcpEnabled || bridgeCapabilities ? {
+      negotiatesCapabilities: mcpEnabled ? ['context.retrieval', 'tools.bridge'] : ['tools.bridge'],
+    } : {}),
     async describe() {
       return { providerId, maxConcurrency: null, capabilities: {
         'input.text': { support: 'supported', source: 'configured' },

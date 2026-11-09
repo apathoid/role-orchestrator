@@ -107,6 +107,7 @@ export function createOrchestrator(deps) {
   let writes = Promise.resolve();
   /** @type {Promise<void> | undefined} */
   let closing;
+  const shuttingDown = new AbortController();
 
   function requireRunning() {
     if (closing) throw new OrchestrationError('CANCELLED', 'Orchestrator is closing');
@@ -418,6 +419,7 @@ export function createOrchestrator(deps) {
   async function cancel(operationId, source = 'user') {
     return serialize(async () => {
       const state = await inspect(operationId);
+      if (source === 'shutdown' && state.status === 'finished') return state;
       const next = await transition(state, { kind: 'operation.cancelled', source }).finally(() => {
         if (source === 'shutdown') stopOperation(operationId, source);
       });
@@ -434,6 +436,7 @@ export function createOrchestrator(deps) {
   }
 
   function close() {
+    shuttingDown.abort('shutdown');
     return closing ??= (async () => {
       await writes;
       const active = [...new Set([...running.keys(), ...workers.keys()])].filter(id =>
@@ -458,7 +461,7 @@ export function createOrchestrator(deps) {
    */
   async function invoke(state, attemptId, stop, correction, handoff, executor = provider, lookups, action) {
     const local = new AbortController();
-    const signal = AbortSignal.any([stop, local.signal]);
+    const signal = AbortSignal.any([stop, local.signal, shuttingDown.signal]);
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
     /** @type {Promise<ProviderSession> | undefined} */
     let opening;
@@ -770,7 +773,7 @@ export function createOrchestrator(deps) {
       }
     } catch (error) {
       if (error instanceof OrchestrationError && ['STORE_CONFLICT', 'STORE_UNAVAILABLE'].includes(error.code)) throw error;
-      const code = denied ?? (stop.aborted ? 'CANCELLED' : local.signal.aborted ? 'DEADLINE_EXCEEDED'
+      const code = denied ?? (stop.aborted || shuttingDown.signal.aborted ? 'CANCELLED' : local.signal.aborted ? 'DEADLINE_EXCEEDED'
         : mayHaveSent ? 'PROVIDER_DISCONNECTED' : 'PROVIDER_START_FAILED');
       certainty = mayHaveSent ? 'unknown' : 'not_sent';
       outcome = failedOutcome(attemptId, code, mayHaveSent);

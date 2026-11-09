@@ -6,7 +6,7 @@ import { resourceSnapshot } from '../core/operation.js';
 /** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string}} HostApi */
 /** @typedef {{
  *   action: 'run' | 'resume' | 'inspect' | 'cancel' | 'trace' | 'export-diagnostics' | 'diagnose',
- *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string
+ *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client'
  * }} Command */
 
 export class HostError extends Error {
@@ -19,7 +19,7 @@ export class HostError extends Error {
 
 /** @param {HostApi} api @param {Command} command @param {(id: string) => void} [accepted] */
 export async function dispatchCommand(api, command, accepted) {
-  const { action, operationId, requestId, text, cwd, questionId } = command;
+  const { action, operationId, requestId, text, cwd, questionId, cancellationSource } = command;
   if (action === 'run') {
     if (!text?.trim()) throw new HostError('INVALID_ARGUMENT', 'A nonempty request is required');
     const submission = await api.submit({
@@ -36,7 +36,7 @@ export async function dispatchCommand(api, command, accepted) {
     accepted?.(submission.operation.operationId);
     return submission.completion;
   }
-  if (action === 'cancel') return api.cancel(operationId);
+  if (action === 'cancel') return api.cancel(operationId, cancellationSource);
   const operation = await api.inspect(operationId);
   return action === 'trace' || action === 'export-diagnostics' ? operationTrace(operation) : operation;
 }
