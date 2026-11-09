@@ -1,0 +1,40 @@
+import { Console } from 'node:console';
+import { resolve } from 'node:path';
+import { Readable, Writable } from 'node:stream';
+import { parseArgs } from 'node:util';
+import { ndJsonStream } from '@agentclientprotocol/sdk';
+import { serveAcp } from '../hosts/acp.js';
+import { hostError } from '../hosts/commands.js';
+import { cliConfiguration } from './cli-config.js';
+import { openRuntime } from './runtime.js';
+
+/** @param {string[]} args */
+export async function runAcpStdio(args) {
+  try {
+    const { values } = parseArgs({ args, options: { config: { type: 'string' }, help: { type: 'boolean' } } });
+    if (values.help) {
+      process.stdout.write('Usage: role-orchestrator acp [--config FILE]\n');
+      return 0;
+    }
+    // In this executable mode stdout is reserved for protocol frames.
+    globalThis.console = new Console({ stdout: process.stderr, stderr: process.stderr });
+    const options = await cliConfiguration(values.config && resolve(values.config));
+    const runtime = await openRuntime(options);
+    const connection = serveAcp(runtime.api, runtime.directory,
+      ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin)));
+    const interrupt = () => connection.close();
+    process.once('SIGINT', interrupt);
+    process.once('SIGTERM', interrupt);
+    try { await connection.closed; }
+    finally {
+      process.removeListener('SIGINT', interrupt);
+      process.removeListener('SIGTERM', interrupt);
+      await runtime.close();
+    }
+    return 0;
+  } catch (error) {
+    const issue = hostError(error);
+    process.stderr.write(issue.code + ': ' + issue.message + '\n');
+    return 1;
+  }
+}

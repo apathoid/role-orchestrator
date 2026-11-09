@@ -245,3 +245,6 @@
 
 - C10.5 — Владелец CLI публикует локальный control endpoint после открытия writer. Запросы проверяют версию, token, конфигурацию и requestId. Потеря ответа сохраняет работу и позволяет повторить delivery с тем же id. SIGINT адресуется принятой операции. Без владельца cancel возвращает no_live_execution.
 - OBSERVED на Linux, Node 24.22.1: `check`, локальный CLI, `git diff --check`. Среда вернула EPERM на bind AF_UNIX; 2 wire/process теста остаются UNVERIFIED локально и обязательны в GitHub CI. При EPERM standalone-вызов сообщает о недоступном endpoint в stderr и сохраняет single-writer lock. Следующий шаг — C10.6.
+
+- C10.6 — Внешний `acp` использует стабильный ACP v1 SDK 2.4.0 и общий application API. Создание, загрузка с воспроизведением сохранённой истории, несколько сессий, progress и явный cancel проверены через stdio. Идентификаторы клиентской сессии генерируются независимо от cwd и сессий исполнителей.
+- OBSERVED на Linux, Node 24.22.1: `check`, сквозные CLI и ACP stdio fixtures, `git diff --check`. Реальный Zed остаётся UNVERIFIED. Следующий шаг — C10.7.

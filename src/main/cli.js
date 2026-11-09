@@ -1,20 +1,17 @@
 #!/usr/bin/env node
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { access, readFile } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { homedir } from 'node:os';
-import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
-import { decodeConfiguration } from '../application/configuration/decode-config.js';
+import { delimiter, isAbsolute, resolve } from 'node:path';
 import { cliPermissions } from '../hosts/cli-permissions.js';
 import { callControl, openControl, readDescriptor } from '../hosts/local-control.js';
 import { runCli } from '../hosts/cli.js';
 import { dispatchCommand, HostError } from '../hosts/commands.js';
+import { cliConfiguration } from './cli-config.js';
 import { openRuntime } from './runtime.js';
 
 const cwd = process.cwd();
-const defaultConfig = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'role-orchestrator', 'config.json');
-const defaultState = join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'role-orchestrator');
 
 /** @param {string} command @param {string} workdir */
 async function executable(command, workdir) {
@@ -27,18 +24,13 @@ async function executable(command, workdir) {
   return false;
 }
 
-process.exitCode = await runCli(process.argv.slice(2), { cwd, stdin: process.stdin, stdout: process.stdout, stderr: process.stderr },
+process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).runAcpStdio(process.argv.slice(3))
+  : await runCli(process.argv.slice(2), { cwd, stdin: process.stdin, stdout: process.stdout, stderr: process.stderr },
   async invocation => {
-    const path = invocation.config ?? defaultConfig;
-    const configuration = await readFile(path, 'utf8').catch(() => {
-      throw new HostError('CONFIGURATION_UNAVAILABLE', 'Cannot read configuration at ' + path);
-    });
-    const parsed = await decodeConfiguration(configuration);
-    if (parsed.kind === 'rejected') throw new HostError(parsed.reason.code, parsed.reason.path + ' ' + parsed.reason.constraint);
-    const configurationDirectory = dirname(path);
-    const stateDirectory = resolve(configurationDirectory, parsed.value.storage?.directory ?? defaultState);
+    const { path, configuration, configurationDirectory, stateDirectory, providers: configuredProviders } =
+      await cliConfiguration(invocation.config);
     if (invocation.command.action === 'diagnose') {
-      const providers = await Promise.all(Object.entries(parsed.value.providers).map(async ([providerId, provider]) => ({
+      const providers = await Promise.all(Object.entries(configuredProviders).map(async ([providerId, provider]) => ({
         providerId, adapter: provider.adapter, launch: provider.launch
           ? (await executable(provider.launch.command, cwd) ? 'executable' : 'unavailable') : 'adapter_default',
       })));

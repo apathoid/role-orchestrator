@@ -13,6 +13,7 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
   inspect ID              Show status, attempts and budget
   cancel ID               Cancel an operation
   diagnose                Check local configuration and launch paths
+  acp                     Serve ACP v1 over stdio
   trace ID                Show redacted operation journal
   export-diagnostics ID   Write a redacted journal to --output PATH
 
