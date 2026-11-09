@@ -14,6 +14,7 @@
  *   context?: {maxBytes?: number},
  *   storage?: {directory: string, artifactRetention?: import('../../core/ports.js').ArtifactRetention},
  *   diagnostics?: {level?: 'debug' | 'info' | 'warn' | 'error', maxFileBytes?: number, retainedFiles?: number, captureBodies?: boolean},
+ *   permissions?: {standing?: import('./permissions.js').StandingDecision[]},
  *   plugins?: {id: string, module: string, enabled?: boolean}[],
  *   skills?: {id: string, source: string}[],
  *   tools?: {id: string}[]
@@ -79,6 +80,14 @@ export async function decodeConfiguration(input) {
     if (missing !== undefined && missing >= 0) {
       return reject('/roles/' + escapePointer(id) + '/preferredProfiles/' + missing, 'known-profile');
     }
+  }
+  const standing = new Set();
+  for (const [index, rule] of (config.permissions?.standing ?? []).entries()) {
+    const path = '/permissions/standing/' + index;
+    if (!Object.hasOwn(config.profiles, rule.profileId)) return reject(path + '/profileId', 'known-profile');
+    const key = JSON.stringify([rule.profileId, rule.resource]);
+    if (standing.has(key)) return reject(path, 'unique-profile-resource');
+    standing.add(key);
   }
   return { kind: 'accepted', value: config };
 }

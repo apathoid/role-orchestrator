@@ -4,6 +4,7 @@ import { sameRecord } from '../../core/operation.js';
 /** @import {AuthorityPort, PermissionPort, PermissionRequest, PermissionResult} from '../../core/ports.js' */
 
 /**
+ * @typedef {{profileId: string, resource: string, optionId: string, kind: 'allow' | 'deny'}} StandingDecision
  * @typedef {PermissionRequest & {requestId: string, attemptId: string, profileId: string, operationId?: string}} PendingPermission
  * @typedef {{request: PendingPermission, settle: (result: PermissionResult) => void,
  *   authorized: () => boolean}} Pending
@@ -17,7 +18,7 @@ import { sameRecord } from '../../core/operation.js';
  * @param {{
  *   authority: AuthorityPort, ids: IdFactory,
  *   onRequest?: (request: PendingPermission) => void, handleRequest?: PermissionHandler,
- *   standing?: readonly {profileId: string, resource: string, optionId: string, kind: 'allow' | 'deny'}[]
+ *   standing?: readonly StandingDecision[]
  * }} options
  */
 export function createPermissionBroker({ authority, ids, onRequest, handleRequest, standing = [] }) {

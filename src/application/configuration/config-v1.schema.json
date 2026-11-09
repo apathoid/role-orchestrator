@@ -52,6 +52,26 @@
         "captureBodies": { "type": "boolean" }
       }
     },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "standing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["profileId", "resource", "optionId", "kind"],
+            "properties": {
+              "profileId": { "$ref": "#/definitions/id" },
+              "resource": { "$ref": "#/definitions/id" },
+              "optionId": { "$ref": "#/definitions/id" },
+              "kind": { "enum": ["allow", "deny"] }
+            }
+          }
+        }
+      }
+    },
     "plugins": { "type": "array", "items": { "$ref": "#/definitions/plugin" } },
     "skills": { "type": "array", "items": { "$ref": "#/definitions/skill" } },
     "tools": { "type": "array", "items": { "$ref": "#/definitions/tool" } }

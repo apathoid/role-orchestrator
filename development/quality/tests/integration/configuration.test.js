@@ -46,11 +46,14 @@ test('schema failures point to unknown keys, versions, missing controller and ba
 });
 
 test('referential errors point to the actual declaration and reject prototype names', async () => {
+  const standing = { profileId: 'primary', resource: 'example', optionId: 'deny', kind: 'deny' };
   const cases = [
     [{ controllerProfile: 'constructor' }, '/controllerProfile'],
     [{ profiles: { primary: config.profiles.primary, 'unknown/provider': { provider: 'missing', model: 'other' } } },
       '/profiles/unknown~1provider/provider'],
     [{ roles: { reviewer: { instructions: 'Read', preferredProfiles: ['other'] } } }, '/roles/reviewer/preferredProfiles/0'],
+    [{ permissions: { standing: [{ ...standing, profileId: 'unknown' }] } }, '/permissions/standing/0/profileId'],
+    [{ permissions: { standing: [standing, { ...standing, optionId: 'allow', kind: 'allow' }] } }, '/permissions/standing/1'],
   ];
   for (const [overrides, path] of cases) {
     assert.equal((await decode(overrides)).reason.path, path);
@@ -89,7 +92,7 @@ test('sources merge by field and project preferences cannot add authority', asyn
   assert.equal(launchWins.value.controllerProfile, 'primary');
   assert.deepEqual(launchWins.value.preferredSkills, []);
 
-  for (const key of ['providers', 'plugins', 'authority', 'storage', 'context']) {
+  for (const key of ['providers', 'plugins', 'authority', 'storage', 'context', 'permissions']) {
     const result = resolveConfiguration(value, JSON.stringify({ schemaVersion: 1, [key]: 'synthetic' }));
     assert.equal(result.kind, 'rejected');
     assert.equal(result.path, '$.' + key);

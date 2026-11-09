@@ -63,7 +63,9 @@ export async function openRuntime(options) {
     if (selected.kind === 'unavailable') {
       throw new RuntimeError('CAPABILITY_UNAVAILABLE', selected.reason, '/controllerProfile');
     }
-    const permissions = createPermissionBroker({ ...options.permissions, authority, ids });
+    const permissions = createPermissionBroker({
+      standing: config.value.permissions?.standing, ...options.permissions, authority, ids,
+    });
     const coordinator = createOrchestrator({
       store, catalog, profile: selected.profile, provider: selected.provider, providerFor: registry.providerFor,
       clock, ids, authority, permissions, configurationRef, diagnostics, tools: registry.tools,

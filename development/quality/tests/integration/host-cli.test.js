@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -35,4 +35,12 @@ test('CLI validates arguments, accepts Unicode stdin outside Git and isolates JS
     assert.equal(exported.status, 0, exported.stderr);
     const diagnose = call(['diagnose', '--config', config, '--format', 'json']);
     assert.equal(JSON.parse(diagnose.stdout).state, 'accessible');
+    const trusted = JSON.parse(await readFile(config, 'utf8'));
+    trusted.permissions = { standing: [{ profileId: 'primary', resource: 'fixture:read', optionId: 'deny', kind: 'deny' }] };
+    await writeFile(config, JSON.stringify(trusted));
+    const standing = call(['run', 'permission', '--config', config, '--format', 'json']);
+    assert.equal(standing.status, 0, standing.stderr);
+    assert.equal(JSON.parse(standing.stdout).assessment.answer, 'deny');
+    assert.doesNotMatch(standing.stderr, /Permission requested|Permission unavailable/);
+
   }));
