@@ -77,7 +77,13 @@ export function createPermissionBroker({ authority, ids, onRequest, standing = [
         }
         const earlier = deliveries.get(input.providerRequestId);
         if (earlier) return sameRecord(earlier.input, input) ? earlier.result : { kind: 'invalid' };
-        const requestData = { ...input, options: input.options.map(item => Object.freeze({ ...item })) };
+        const requestData = {
+          ...input, options: input.options.map(item => Object.freeze({ ...item })),
+          ...(input.action && { action: Object.freeze({
+            ...input.action, locations: input.action.locations &&
+              Object.freeze(input.action.locations.map(location => Object.freeze({ ...location }))),
+          }) }),
+        };
         const { promise, resolve } = /** @type {{promise: Promise<PermissionResult>, resolve: (result: PermissionResult) => void}} */ (Promise.withResolvers());
         deliveries.set(input.providerRequestId, { input: requestData, result: promise });
 

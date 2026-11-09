@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { addAbortListener } from 'node:events';
 import { resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
+import { capturePrefix } from '../capture-prefix.js';
 import { startCliProcess } from '../cli/owned-process.js';
 import { launchEnvironment } from '../launch-environment.js';
 import { parseDecisionText, renderInvocationPrompt } from '../invocation-prompt.js';
-import { attachmentBlocks, configureSession } from './input.js';
+import { attachmentBlocks, configureSession, modelOption } from './input.js';
 
-/** @import {ClientConnection, ClientRequestParamsByMethod, ClientRequestResponsesByMethod, InitializeResponse, SessionUpdate} from '@agentclientprotocol/sdk' */
+/** @import {ClientConnection, ClientRequestParamsByMethod, ClientRequestResponsesByMethod, InitializeResponse, NewSessionResponse, SessionUpdate, ToolCallUpdate} from '@agentclientprotocol/sdk' */
 /** @import {Invocation, Profile, ProviderPort, ProviderResult, ProviderSession} from '../../core/ports.js' */
 /** @import {Outcome, ReasonCode} from '../../core/contracts.js' */
 /** @import {ResolveAttachment} from './input.js' */
@@ -19,6 +20,8 @@ import { attachmentBlocks, configureSession } from './input.js';
 
 const maxOutputBytes = 1024 * 1024;
 const closeGraceMs = 300;
+const maxStderrBytes = 64 * 1024;
+const maxErrorBytes = 4 * 1024;
 
 /** @param {Invocation} invocation @param {ReasonCode} [code] @param {Outcome['terminal']} [terminal] @param {ProviderResult['dispatchCertainty']} [certainty] */
 function resultFor(invocation, code, terminal = 'failed', certainty = 'not_sent') {
@@ -121,13 +124,20 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let env;
     try { env = launchEnvironment(launch.env, environment); }
     catch { return resultFor(invocation, 'PROVIDER_START_FAILED'); }
+    const stderr = capturePrefix(maxStderrBytes);
     const owner = startCliProcess({
       command: launch.command, args: launch.args ?? [], options: { cwd, env, shell: false },
-    }, { timeoutMs: invocation.timeoutMs, signal: new AbortController().signal, onOutput() {} });
+    }, {
+      timeoutMs: invocation.timeoutMs,
+      signal: new AbortController().signal,
+      onOutput(stream, chunk) { if (stream === 'stderr') stderr.append(chunk); },
+    });
     /** @type {ClientConnection | undefined} */
     let connection;
     /** @type {string | undefined} */
     let sessionId;
+    /** @type {NewSessionResponse | undefined} */
+    let session;
     let sent = false;
     let active = false;
     let output = '';
@@ -138,6 +148,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let truncated = false;
     let line = 0;
     const updates = new Set();
+    /** @type {Map<string, ToolCallUpdate>} */
+    const tools = new Map();
     /** @type {Outcome['outputRefs']} */
     const refs = [];
     const permissionStop = new AbortController();
@@ -150,6 +162,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         kind: item.kind === 'agent_exit' ? 'agent_exit' : 'output',
         source: item.kind === 'model' ? 'model_claim' :
           item.kind === 'host_transport' || item.kind === 'agent_exit' ? 'host_observed' : 'provider_reported' });
+      return ref;
     }
     function flushMessage(complete = true) {
       if (!pendingText) return;
@@ -180,9 +193,14 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         }
         return;
       }
-      flushMessage();
       if (updates.has(encoded)) return;
       updates.add(encoded);
+      flushMessage();
+      // With anonymous chunks, a new tool call separates progress from the
+      // subsequent answer. Tool status updates can interleave with the answer.
+      if (invocation.kind === 'controller' && messageId === null &&
+          update.sessionUpdate === 'tool_call' && !tools.has(update.toolCallId)) output = '';
+      tools.set(update.toolCallId, mergeToolCall(tools.get(update.toolCallId), update));
       // Keep opaque native payload as text to avoid recursive decoding of unbounded shapes.
       publish({ ref: 'acp-update-' + ++line, sourceId: update.toolCallId, kind: 'provider_tool', completeness: 'complete',
         value: { status: update.status, type: update.sessionUpdate, json: encoded } });
@@ -212,13 +230,14 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       void connection?.agent.notify(a.session.cancel, { sessionId }).catch(() => {});
       cancelDeadline = setTimeout(() => { connection?.close(); owner.cancel(); }, closeGraceMs);
     });
-    /** @type {ProviderResult | undefined} */
-    let result;
-    try {
+    async function exchange() {
       if (!owner.pipes) return resultFor(invocation, 'PROVIDER_START_FAILED');
       const app = client()
         .onNotification(m.session.update, ({ params }) => {
-          if (active && params.sessionId === sessionId) receive(params.update);
+          if (params.sessionId !== sessionId) return;
+          if (session && params.update.sessionUpdate === 'config_option_update') {
+            session.configOptions = params.update.configOptions;
+          } else if (active) receive(params.update);
         })
         .onRequest(m.session.requestPermission, async ({ params, requestId, signal: requestSignal }) => {
           const cancelled = /** @type {const} */ ({ outcome: { outcome: 'cancelled' } });
@@ -234,9 +253,14 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
           const interrupted = Promise.withResolvers();
           const listener = addAbortListener(permissionSignal, () => interrupted.resolve({ kind: 'cancelled' }));
           try {
+            const tool = mergeToolCall(tools.get(params.toolCall.toolCallId), params.toolCall);
+            const { title, kind, locations, rawInput, content } = tool;
             const reply = await Promise.race([interrupted.promise, invocation.permissions.request({
               providerRequestId: JSON.stringify([sessionId, requestId]),
-              resource: 'acp-tool:' + JSON.stringify([sessionId, params.toolCall.toolCallId]), options,
+              resource: 'acp-tool:' + JSON.stringify([sessionId, tool.toolCallId]), options,
+              action: { source: 'provider_reported', title: title ?? undefined, kind: kind ?? undefined,
+                locations: locations?.map(({ path, line }) => ({ path, line: line ?? undefined })),
+                details: rawInput != null || content != null ? JSON.stringify({ rawInput, content }) : undefined },
             })]);
             if (!permissionSignal.aborted && reply.kind === 'selected' && options.some(option => option.id === reply.option)) {
               return { outcome: { outcome: 'selected', optionId: reply.option } };
@@ -266,11 +290,13 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
       }
       signal.throwIfAborted();
-      const session = await agent.request(a.session.new, { cwd, mcpServers: [] }, { cancellationSignal: signal, stopWaitingOnCancel: true });
+      session = await agent.request(a.session.new, { cwd, mcpServers: [] }, { cancellationSignal: signal, stopWaitingOnCancel: true });
       if (typeof session.sessionId !== 'string' || !session.sessionId.trim()) return resultFor(invocation, 'PROTOCOL_ERROR');
       sessionId = session.sessionId;
       try {
-        if (!await configureSession(agent, a.session, session, invocation.profile.model, mode, signal)) {
+        const model = invocation.profile.model;
+        const configured = await configureSession(agent, a.session, session, model, typeof mode === 'string' ? mode : undefined, signal);
+        if (!configured || modelOption(session.configOptions)?.currentValue !== model) {
           return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
         }
         const prompt = renderInvocationPrompt(invocation, 'Context retrieval is unavailable. Use the supplied context and report missing evidence.');
@@ -282,6 +308,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         clearTimeout(cancelDeadline);
         active = false;
         permissionStop.abort();
+        let result;
         if (signal.aborted || stopReason === 'cancelled') result = resultFor(invocation, 'CANCELLED', stopReason === 'cancelled' ? 'cancelled' : 'unknown', 'sent');
         else if (stopReason === 'end_turn' && !truncated) {
           result = resultFor(invocation, undefined, 'completed', 'sent');
@@ -294,6 +321,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         flushMessage(!truncated && result.outcome.terminal === 'completed');
         publish({ ref: 'acp-stop', sourceId: sessionId, kind: 'provider_report', completeness: 'complete',
           value: { stopReason: stopReason ?? null, truncated, cancelRequested: signal.aborted } });
+        return result;
       } finally {
         active = false;
         permissionStop.abort();
@@ -301,7 +329,20 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
           await agent.request(a.session.close, { sessionId }, { cancellationSignal: AbortSignal.timeout(closeGraceMs), stopWaitingOnCancel: true }).catch(() => {});
         }
       }
+    }
+
+    let result;
+    let errorRef;
+    try {
+      result = await exchange();
     } catch (error) {
+      if (error instanceof Error) {
+        const text = Buffer.from(error.message);
+        errorRef = publish({ ref: 'acp-error', sourceId: invocation.attemptId,
+          kind: error instanceof RequestError && !connection?.signal.aborted ? 'provider_report' : 'host_transport',
+          completeness: text.length > maxErrorBytes ? 'truncated' : 'complete',
+          value: { message: text.subarray(0, maxErrorBytes).toString('utf8'), code: error instanceof RequestError ? error.code : null } });
+      }
       const code = signal.aborted || (sent && error instanceof RequestError && error.code === -32800) ? 'CANCELLED' :
         error instanceof RequestError && !connection?.signal.aborted && sent ? 'PROTOCOL_ERROR' :
           sent ? 'PROVIDER_DISCONNECTED' : 'PROVIDER_START_FAILED';
@@ -319,10 +360,29 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       result.outcome.diagnostics = [{ code: 'DEADLINE_EXCEEDED', ref: undefined }];
     }
     flushMessage(false);
-    publish({ ref: 'acp-process', sourceId: invocation.attemptId, completeness: 'complete',
+    const captured = stderr.result();
+    const stderrRef = result.outcome.diagnostics.length && captured.bytes.length ? publish({
+      ref: 'acp-stderr', sourceId: invocation.attemptId, kind: 'provider_report',
+      completeness: captured.truncated || processResult.errors.stderr ? 'truncated' : 'complete',
+      value: { text: captured.bytes.toString('utf8'), receivedBytes: captured.receivedBytes },
+    }) : undefined;
+    const processRef = publish({ ref: 'acp-process', sourceId: invocation.attemptId, completeness: 'complete',
       ...(processResult.exitCode === null ? { kind: 'host_transport' } : { kind: 'agent_exit', exitCode: processResult.exitCode }),
       value: { reason: processResult.reason, signal: processResult.signal, errors: processResult.errors, cancelRequested: signal.aborted } });
+    for (const diagnostic of result.outcome.diagnostics) diagnostic.ref ??= stderrRef || errorRef || processRef;
     result.outcome.outputRefs = refs;
     return result;
   }
+}
+
+/** @param {ToolCallUpdate | undefined} previous @param {ToolCallUpdate} update @returns {ToolCallUpdate} */
+function mergeToolCall(previous, update) {
+  return {
+    toolCallId: update.toolCallId,
+    title: update.title ?? previous?.title,
+    kind: update.kind ?? previous?.kind,
+    locations: update.locations ?? previous?.locations,
+    rawInput: update.rawInput ?? previous?.rawInput,
+    content: update.content ?? previous?.content,
+  };
 }

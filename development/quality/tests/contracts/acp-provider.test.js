@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { access, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { createAcpProvider } from '../../../../src/main/index.js';
+import { createAcpProvider, createAuthorityGrant, createPermissionBroker } from '../../../../src/main/index.js';
 import { setup } from '../../fixtures/application.js';
 import { request } from '../../fixtures/core.js';
 import { providerContract } from '../../fixtures/provider-contract.js';
@@ -247,4 +247,90 @@ test('ACP delivers resource links and negotiated embedded resources', linux, () 
     assert.equal((await rejected.completion).outcome.diagnostics[0].code, 'CAPABILITY_UNAVAILABLE');
     await using supported = await invoke(provider(cwd, 'resource', options), input);
     assert.equal((await supported.completion).output, 'resource_link,resource');
+  }));
+
+test('ACP Controller accepts anonymous Decision chunks after a tool call in one attempt', linux, () =>
+  withOwnedRun('C08-anonymous-controller', async cwd => {
+    const { api } = setup({ provider: provider(cwd, 'anonymous-controller'), profile, maxInvocations: 2 });
+    const state = await (await api.submit(request({ workspaceContext: { cwd } }))).completion;
+    assert.equal(state.status, 'finished');
+    assert.equal(state.assessment.answer, 'ACP Controller response');
+    assert.equal(state.attempts.length, 1);
+  }));
+
+test('ACP confirms the requested model after a mode changes the model and selector', linux, () =>
+  withOwnedRun('C08-mode-reroutes', async cwd => {
+    const settings = { nativeSettings: { mode: 'review' } };
+    const prompted = join(cwd, 'prompt-model');
+    await using refused = await invoke(provider(cwd, 'mode-model-unavailable', settings));
+    const failure = await refused.completion;
+    assert.equal(failure.dispatchCertainty, 'not_sent');
+    assert.equal(failure.outcome.diagnostics[0].code, 'CAPABILITY_UNAVAILABLE');
+    await assert.rejects(access(prompted), { code: 'ENOENT' });
+
+    await using restored = await invoke(provider(cwd, 'mode-reroutes', settings));
+    assert.equal((await restored.completion).outcome.terminal, 'completed');
+    assert.equal(await readFile(prompted, 'utf8'), profile.model);
+  }));
+
+test('ACP delivers the proposed action to the trusted permission consumer', linux, () =>
+  withOwnedRun('C08-permission-description', async cwd => {
+    const delivered = [];
+    let sequence = 0;
+    const authority = createAuthorityGrant({ reference: 'grant', origin: 'user', profileIds: [profile.profileId] });
+    const broker = createPermissionBroker({ authority, ids: { newId: () => 'permission-' + ++sequence },
+      onRequest(request) {
+        delivered.push(request);
+        broker.respond({ requestId: request.requestId, attemptId: request.attemptId,
+          providerRequestId: request.providerRequestId, optionId: 'deny' });
+      },
+    });
+    const signal = new AbortController().signal;
+    const permissions = broker.bind({ attemptId: 'attempt-test', authorityRef: 'grant', profileId: profile.profileId, signal });
+    try {
+      await using call = await invoke(provider(cwd, 'permission-description'), { permissions });
+      assert.equal((await call.completion).output, 'permissions answered');
+      assert.equal(delivered.length, 2);
+      for (const entry of delivered) {
+        assert.equal(entry.attemptId, 'attempt-test');
+        assert.equal(entry.action.source, 'provider_reported');
+        assert.equal(entry.action.title, 'Write project configuration');
+        assert.equal(entry.action.kind, 'edit');
+        assert.deepEqual(entry.action.locations.map(location => location.path), ['/project/config.json']);
+        assert.ok(Object.isFrozen(entry.action.locations[0]));
+        assert.deepEqual(JSON.parse(entry.action.details), {
+          rawInput: { text: 'enabled' },
+          content: [{ type: 'diff', path: '/project/config.json', oldText: 'disabled', newText: 'enabled' }],
+        });
+        assert.ok(Object.isFrozen(entry.action));
+      }
+    } finally {
+      permissions.close();
+    }
+  }));
+
+test('ACP startup failure links to bounded stderr and retains the process exit code', linux, () =>
+  withOwnedRun('C08-stderr', async cwd => {
+    await using call = await invoke(provider(cwd, 'init-stderr'));
+    const result = await call.completion;
+    const diagnostic = result.outcome.diagnostics[0];
+    assert.equal(diagnostic.code, 'PROVIDER_START_FAILED');
+    assert.equal(result.dispatchCertainty, 'not_sent');
+    const stderr = call.observations.find(item => item.ref === diagnostic.ref);
+    assert.equal(stderr.kind, 'provider_report');
+    assert.equal(stderr.completeness, 'truncated');
+    assert.ok(stderr.value.text.startsWith('Missing ACP fixture configuration'));
+    assert.equal(Buffer.byteLength(stderr.value.text), 64 * 1024);
+    assert.ok(stderr.value.receivedBytes > 64 * 1024);
+    assert.ok(result.outcome.outputRefs.some(item => item.ref === diagnostic.ref));
+    assert.ok(call.observations.some(item => item.kind === 'agent_exit' && item.exitCode === 9));
+  }));
+
+test('ACP startup failure links to the protocol error when stderr is empty', linux, () =>
+  withOwnedRun('C08-rpc-error', async cwd => {
+    await using call = await invoke(provider(cwd, 'init-rpc-error'));
+    const result = await call.completion;
+    const error = call.observations.find(item => item.ref === result.outcome.diagnostics[0].ref);
+    assert.equal(error.kind, 'provider_report');
+    assert.deepEqual(error.value, { code: -32000, message: 'ACP fixture initialization rejected' });
   }));

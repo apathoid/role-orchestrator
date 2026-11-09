@@ -72,7 +72,9 @@
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>
  *   'ALLOWED' | 'PERMISSION_DENIED' | 'REVOKED'}} AuthorityPort
  * @typedef {{id: string, kind: 'allow' | 'deny', label?: string, scope?: 'once' | 'always'}} PermissionOption
- * @typedef {{providerRequestId: string, resource: string, options: readonly PermissionOption[]}} PermissionRequest
+ * @typedef {{source: 'provider_reported', title?: string, kind?: string,
+ *   locations?: readonly {path: string, line?: number}[], details?: string}} PermissionAction
+ * @typedef {{providerRequestId: string, resource: string, options: readonly PermissionOption[], action?: PermissionAction}} PermissionRequest
  * @typedef {{kind: 'selected', option: string} | {kind: 'denied' | 'cancelled' | 'unavailable' | 'invalid'}} PermissionResult
  * @typedef {{request: (request: PermissionRequest) => Promise<PermissionResult>, close: () => void}} AttemptPermissions
  * @typedef {{

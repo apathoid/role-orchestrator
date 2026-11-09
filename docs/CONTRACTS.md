@@ -65,9 +65,11 @@ Provider может сообщить completion без деталей вложе
 | StateStore | open(retention?), load(id), commit(id, expectedRevision, nextSnapshot), list(), close() | атомарность snapshot, чтение результата неизвестного commit по attemptId |
 | Catalog | list(), resolve(profile/role/skill/tool) | immutable versioned config snapshot на запуск; явная переоценка на resume |
 | ContextPort | invocation-bound list(cursor?), fetch(ref, sourceOperationId?) и captureArtifact(bytes) для доверенного адаптера | выбранные ссылки специалиста, точное разрешение на обмен между operations, bounded output, explicit unavailable |
-| PermissionPort | request(attemptId, providerRequestId, options), cancel(requestId) | решение пользователя связано с живым запросом; неизвестный option не принимается |
+| PermissionPort | request(attemptId, providerRequestId, options, action?), cancel(requestId) | решение пользователя связано с живым запросом; неизвестный option не принимается |
 | DiagnosticPort | emit(event), flush() | best-effort, bounded, не source of truth и не источник семантических переходов |
 | Clock / IdFactory | now(), monotonic deadline support, newId() | тестируемость без настоящего ожидания и случайных гонок |
+
+Опциональное `action` запроса разрешения содержит описание провайдера с источником `provider_reported`, названием, видом действия, местами и подробностями при наличии. Клиент может показать их вместе с вариантами ответа. Полномочия определяются доверенным grant и решением по коррелированному запросу.
 
 ## Жизненный цикл и конкуренция
 

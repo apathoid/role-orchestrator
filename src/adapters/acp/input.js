@@ -7,7 +7,7 @@ import { addAbortListener } from 'node:events';
 /** @typedef {(attachment: Attachment, signal: AbortSignal) => Promise<ContentBlock | undefined>} ResolveAttachment */
 
 /** @param {SessionConfigOption[] | null | undefined} options */
-function modelOption(options) {
+export function modelOption(options) {
   const models = options?.filter(item => item.category === 'model') ?? [];
   return models.length === 1 && models[0].type === 'select' ? models[0] : undefined;
 }
@@ -18,17 +18,21 @@ function modelOption(options) {
  */
 export async function configureSession(agent, methods, session, model, mode, signal) {
   const { sessionId } = session;
-  if (mode !== undefined && mode !== session.modes?.currentModeId) {
+  const modeChanged = mode !== undefined && mode !== session.modes?.currentModeId;
+  if (modeChanged) {
     if (!session.modes?.availableModes.some(item => item.id === mode)) return false;
     await agent.request(methods.setMode, { sessionId, modeId: mode }, { cancellationSignal: signal, stopWaitingOnCancel: true });
   }
   const option = modelOption(session.configOptions);
   if (!option) return false;
-  if (option.currentValue === model) return true;
+  // A legacy set_mode response contains no model state. Confirm the exact
+  // model with set_config_option even if the last advertised value matches.
+  if (option.currentValue === model && !modeChanged) return true;
   const choices = option.options.flatMap(item => 'options' in item ? item.options : [item]);
   if (!choices.some(item => item.value === model)) return false;
   const response = await agent.request(methods.setConfigOption, { sessionId, configId: option.id, value: model }, { cancellationSignal: signal, stopWaitingOnCancel: true });
-  return modelOption(response.configOptions)?.currentValue === model;
+  session.configOptions = response.configOptions;
+  return true;
 }
 
 /**

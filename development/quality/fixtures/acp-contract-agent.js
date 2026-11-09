@@ -1,4 +1,4 @@
-import { agent, methods, ndJsonStream } from '@agentclientprotocol/sdk';
+import { agent, RequestError, methods, ndJsonStream } from '@agentclientprotocol/sdk';
 import { Readable, Writable } from 'node:stream';
 import { access, writeFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -7,32 +7,46 @@ const { agent: a, client: c } = methods;
 const scenario = process.argv[2];
 const stop = Promise.withResolvers();
 const sessionId = 'native-fixture';
-const configOptions = currentValue => [{
-  id: 'model', name: 'Model', category: 'model', type: 'select', currentValue,
+const configOptions = (currentValue, id = 'model') => [{
+  id, name: 'Model', category: 'model', type: 'select', currentValue,
   options: [{ value: 'fixture', name: 'Fixture' }, { value: 'other', name: 'Other' }],
 }];
 let model = 'fixture';
 let mode = 'default';
+let modelSelector = 'model';
+const modeScenario = ['mode', 'mode-reroutes', 'mode-model-unavailable'].includes(scenario);
 agent()
-  .onRequest(a.initialize, () => {
+  .onRequest(a.initialize, async () => {
+    if (scenario === 'init-stderr') {
+      await new Promise(resolve => process.stderr.write('Missing ACP fixture configuration\n' + 'x'.repeat(70_000), resolve));
+      process.exit(9);
+    }
+    if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
       agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} } } };
   })
   .onRequest(a.session.new, ({ params }) => {
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
-    return { sessionId, configOptions: configOptions(model), ...(scenario === 'mode' && {
+    return { sessionId, configOptions: configOptions(model), ...(modeScenario && {
       modes: { currentModeId: mode, availableModes: [{ id: 'default', name: 'Default' }, { id: 'review', name: 'Review' }] },
     }) };
   })
   .onRequest(a.session.setConfigOption, ({ params }) => {
-    if (params.sessionId !== sessionId) throw Error('session mismatch');
-    if (scenario !== 'ignore-model') model = params.value;
-    return { configOptions: configOptions(model) };
+    if (params.sessionId !== sessionId || params.configId !== modelSelector) throw Error('unexpected model selector');
+    if (!['ignore-model', 'mode-model-unavailable'].includes(scenario)) model = params.value;
+    return { configOptions: configOptions(model, modelSelector) };
   })
-  .onRequest(a.session.setMode, ({ params }) => {
+  .onRequest(a.session.setMode, async ({ params, client }) => {
     if (params.sessionId !== sessionId || params.modeId !== 'review') throw Error('unexpected mode');
     mode = params.modeId;
+    if (scenario === 'mode-reroutes' || scenario === 'mode-model-unavailable') {
+      model = 'other';
+      modelSelector = 'model-in-review';
+      await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'config_option_update', configOptions: configOptions(model, modelSelector),
+      } });
+    }
     return {};
   })
   .onNotification(a.session.cancel, ({ params }) => {
@@ -53,7 +67,10 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
-    await message('progress', 'progress ' + attemptId);
+    const anonymous = scenario === 'anonymous-controller';
+    const modelId = anonymous ? undefined : 'result';
+    await message(anonymous ? undefined : 'progress', 'progress ' + attemptId);
+    if (modeScenario) await writeFile('prompt-model', model);
     if (objective === 'hold') {
       await writeFile(attemptId + '.ready', '');
       const untilReleased = async () => {
@@ -76,7 +93,18 @@ agent()
     }
     if (scenario === 'provider-cancel') return { stopReason: 'cancelled' };
     if (objective === 'failure') return { stopReason: 'refusal' };
-    if (['permission', 'pending-permission', 'permission-disconnect'].includes(scenario)) {
+    if (scenario === 'permission-description') {
+      const toolCall = { toolCallId: 'edit-config', title: 'Write project configuration', kind: 'edit',
+        locations: [{ path: '/project/config.json' }], rawInput: { text: 'enabled' },
+        content: [{ type: 'diff', path: '/project/config.json', oldText: 'disabled', newText: 'enabled' }],
+      };
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'tool_call', ...toolCall } });
+      for (const tool of [{ toolCallId: toolCall.toolCallId }, { ...toolCall, toolCallId: 'edit-config-direct' }]) {
+        await client.request(c.session.requestPermission, { sessionId, toolCall: tool,
+          options: [{ optionId: 'deny', name: 'Deny', kind: 'reject_once' }] });
+      }
+      await message('result', 'permissions answered');
+    } else if (['permission', 'pending-permission', 'permission-disconnect'].includes(scenario)) {
       const options = [{ optionId: 'allow', name: 'Allow always', kind: 'allow_always' },
         { optionId: 'deny', name: 'Reject once', kind: 'reject_once' }];
       const ask = toolCallId => client.request(c.session.requestPermission, { sessionId, toolCall: { toolCallId }, options });
@@ -118,8 +146,14 @@ agent()
           author: profileId, overall: 'partial', requirements: [], observationRefs: [], findingRefs: [],
           unresolvedQuestions: [], answer: 'ACP Controller response',
         } });
-      await message('result', decision.slice(0, 30));
-      await message('result', decision.slice(30));
+      if (anonymous) await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'tool_call', toolCallId: 'inspect-config', title: 'Inspect configuration',
+      } });
+      await message(modelId, decision.slice(0, 30));
+      if (anonymous) await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'tool_call_update', toolCallId: 'inspect-config', status: 'completed',
+      } });
+      await message(modelId, decision.slice(30));
     } else if (scenario === 'mode') {
       await message('result', mode);
     } else if (scenario === 'selected-model') {
