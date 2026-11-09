@@ -59,3 +59,43 @@ test('load failures are local and failed initialization unwinds registered resou
     }
     assert.equal(await readFile(log, 'utf8'), 'second\nfirst\n');
   }));
+
+test('Controller discovers and selects a plugin profile through the normal delegate path', async () => {
+  const { randomUUID } = await import('node:crypto');
+  const { fileURLToPath } = await import('node:url');
+  const { createAuthorityGrant } = await import('../../../../src/main/index.js');
+  const { final, setup } = await import('../../fixtures/application.js');
+  const { request } = await import('../../fixtures/core.js');
+  const extensions = await loadExtensions({
+    ...config,
+    providers: { ...config.providers, broken: { adapter: 'fixture-echo' } },
+    plugins: [{ id: 'fixture-echo', module: fileURLToPath(new URL('../../fixtures/echo-plugin.js', import.meta.url)) }],
+  }, { clock: { now: Date.now }, ids: { newId: randomUUID } });
+  try {
+    const { value: profile } = await extensions.catalog.resolve('profile', 'primary');
+    const { api } = setup({
+      profile, catalog: extensions.catalog, providerFor: extensions.providerFor,
+      authority: createAuthorityGrant({ origin: 'user', reference: 'fixture-authority', profileIds: ['primary', 'secondary'] }),
+      respond(invocation, count) {
+        if (count === 1) {
+          const entry = invocation.context[1].value.catalog.find(item => item.value.profileId === 'secondary');
+          assert.equal(entry.value.capabilities['fixture.echo'].support, 'supported');
+          return final(invocation, {
+            finalAssessment: undefined, additions: [{
+              kind: 'delegate', actionId: 'echo', profileId: entry.value.profileId, objective: 'success',
+              contextRefs: [], dependsOn: [], expectedResult: 'echo', requiredCapabilities: ['fixture.echo'],
+            }], waitPolicy: { kind: 'all_requested', targets: [{ kind: 'action', id: 'echo' }] },
+          });
+        }
+        const result = invocation.context.find(item => item.ref.startsWith('attempt-output:'));
+        assert.match(result.value, /^result id-/);
+        return final(invocation);
+      },
+    });
+    const completed = await (await api.submit(request())).completion;
+    assert.equal(completed.status, 'finished');
+    assert.equal(completed.attempts.find(attempt => attempt.actionId === 'echo').route.providerId, 'broken');
+  } finally {
+    await extensions.close();
+  }
+});

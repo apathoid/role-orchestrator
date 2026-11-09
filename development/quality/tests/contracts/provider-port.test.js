@@ -3,77 +3,28 @@ import { access, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { createCodexProvider } from '../../../../src/main/index.js';
-import { outcome } from '../../fixtures/core.js';
+import { randomUUID } from 'node:crypto';
+import { createCodexProvider, loadExtensions } from '../../../../src/main/index.js';
 import { providerContract } from '../../fixtures/provider-contract.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
 
-providerContract('controlled ProviderPort', async run => {
-  const profile = { profileId: 'contract', providerId: 'controlled', model: 'fixture' };
-  const sessions = new Map();
-  const calls = new Map();
-  let sequence = 0;
-
-  const provider = {
-    async describe() { return { providerId: profile.providerId, maxConcurrency: null, capabilities: {} }; },
-    async open(selected, signal) {
-      signal.throwIfAborted();
-      assert.deepEqual(selected, profile);
-      const session = { sessionId: 'session-' + ++sequence };
-      sessions.set(session, {});
-      return session;
-    },
-    invoke(session, request, observe) {
-      const state = sessions.get(session);
-      const { attemptId, objective, signal } = request;
-      const { promise, resolve } = Promise.withResolvers();
-      const stop = () => resolve('cancelled');
-      const refs = [];
-      function message(kind) {
-        const ref = observe({ ref: kind, kind: 'model', sourceId: attemptId, completeness: 'complete',
-          value: kind + ' ' + attemptId });
-        if (ref !== undefined) refs.push({ ref, kind: 'output', source: 'model_claim' });
-      }
-      message('progress');
-      state.stop = stop;
-      state.attemptId = attemptId;
-      state.finished = promise.then(terminal => {
-        if (terminal === 'completed') message('result');
-        const diagnostics = terminal === 'completed' ? [] : [
-          { code: terminal === 'cancelled' ? 'CANCELLED' : 'PROVIDER_DISCONNECTED' },
-        ];
-        return {
-          dispatchCertainty: 'sent',
-          outcome: outcome(attemptId, {
-            terminal, effect: 'unknown', diagnostics, outputRefs: refs,
-            ...(objective === 'known-usage' && { usage: { inputTokens: 0, outputTokens: 4, cost: null } }),
-          }),
-          output: terminal === 'completed' ? 'result ' + attemptId : undefined,
-        };
-      }).finally(() => signal.removeEventListener('abort', stop));
-      calls.set(attemptId, { release: () => resolve('completed') });
-      signal.addEventListener('abort', stop, { once: true });
-      if (signal.aborted) stop();
-      else if (objective !== 'hold') resolve(objective === 'failure' ? 'failed' : 'completed');
-      return state.finished;
-    },
-    async cancel(session, attemptId) {
-      const state = sessions.get(session);
-      if (state?.attemptId === attemptId) state.stop();
-    },
-    async close(session) {
-      const state = sessions.get(session);
-      state?.stop?.();
-      await state?.finished;
-      sessions.delete(session);
-    },
+providerContract('configured echo plugin ProviderPort', async run => {
+  const configuration = {
+    schemaVersion: 1,
+    providers: { echo: { adapter: 'fixture-echo' } },
+    profiles: { contract: { provider: 'echo', model: 'fixture' } },
+    controllerProfile: 'contract',
+    plugins: [{ id: 'fixture-echo', module: fileURLToPath(new URL('../../fixtures/echo-plugin.js', import.meta.url)) }],
   };
-
-  await run({
-    provider, profile,
-    ready(id) { assert.ok(calls.has(id), 'invocation has not started'); },
-    release(id) { calls.get(id).release(); },
-  });
+  const extensions = await loadExtensions(configuration, { clock: { now: Date.now }, ids: { newId: randomUUID } });
+  try {
+    const { value: profile } = await extensions.catalog.resolve('profile', 'contract');
+    assert.equal(profile.capabilities['fixture.echo'].support, 'supported');
+    const provider = extensions.providerFor(profile);
+    await run({ provider, profile, ready: provider.ready, release: provider.release });
+  } finally {
+    await extensions.close();
+  }
 });
 
 providerContract('Codex CLI ProviderPort', run => withOwnedRun('C07-provider-contract', async cwd => {
