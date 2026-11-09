@@ -111,7 +111,8 @@
       "required": ["id", "module"],
       "properties": {
         "id": { "$ref": "#/definitions/id" },
-        "module": { "$ref": "#/definitions/id" }
+        "module": { "$ref": "#/definitions/id" },
+        "enabled": { "type": "boolean" }
       }
     },
     "skill": {

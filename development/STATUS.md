@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C09.1 |
-| Следующий шаг | C09.2, явная загрузка |
+| Последний локально проверенный шаг | C09.2 |
+| Следующий шаг | C09.3, conformance провайдера |
 | Functional implementation complete | NO |
 | Local regression verified | OBSERVED для C00–C07.7 и C08.1–C08.8 на Linux |
 | Native integration verified | UNVERIFIED |
@@ -201,3 +201,6 @@
 
 - C09.1 — Manifest v1 проверяет идентичность, версию API и объявленные exports. Фабрика возвращает ProviderPort с согласованным описанием. Плагин получает конфигурацию своего endpoint и регистрацию cleanup.
 - OBSERVED на Linux, Node 24.22.1: `check`, `test:contracts` (42), `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.2, явная загрузка.
+
+- C09.2 — Composition загружает только доверенный список modules, пропускает disabled, локализует отказ и освобождает ресурсы неуспешной фабрики в обратном порядке. Project preferences не добавляют executable extensions.
+- OBSERVED на Linux, Node 24.22.1: `check`, целевые integration-тесты конфигурации и загрузки, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.3, conformance провайдера.

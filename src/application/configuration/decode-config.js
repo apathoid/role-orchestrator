@@ -14,7 +14,7 @@
  *   context?: {maxBytes?: number},
  *   storage?: {directory: string, artifactRetention?: import('../../core/ports.js').ArtifactRetention},
  *   diagnostics?: {level?: 'debug' | 'info' | 'warn' | 'error', maxFileBytes?: number, retainedFiles?: number, captureBodies?: boolean},
- *   plugins?: {id: string, module: string}[],
+ *   plugins?: {id: string, module: string, enabled?: boolean}[],
  *   skills?: {id: string, source: string}[],
  *   tools?: {id: string}[]
  * }} Configuration
