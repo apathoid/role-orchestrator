@@ -124,7 +124,7 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
   for (const id of new Set(configuredTools.map(tool => tool.id))) {
     const exports = [...plugins.values()].filter(plugin => plugin.tool?.id === id);
     const duplicate = duplicateTools.has(id) || exports.length > 1;
-    const tool = !duplicate && exports.length === 1 ? compileExternalTool(exports[0].tool) : undefined;
+    const tool = !duplicate && exports.length === 1 ? await compileExternalTool(exports[0].tool) : undefined;
     if (tool) tools.set(id, tool);
     else report('tool.load_failed', id, duplicate ? 'DUPLICATE_EXTENSION_ID' : 'INVALID_TOOL', 'tool');
   }

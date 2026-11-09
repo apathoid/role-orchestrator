@@ -1,4 +1,3 @@
-import { Ajv } from 'ajv';
 import { decode, jsonValue } from '../../core/decode.js';
 
 /** @import {ToolDefinition, ToolMetadata, ToolPort, ToolResult} from '../../core/ports.js' */
@@ -10,7 +9,7 @@ const maxOutputBytes = 64 * 1024;
 const maxCalls = 32;
 
 /** @param {unknown} raw */
-export function compileExternalTool(raw) {
+export async function compileExternalTool(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const tool = /** @type {Partial<ToolDefinition>} */ (raw);
   const { id, description, resource, effect, inputSchema, invoke, cancel } = tool;
@@ -24,6 +23,7 @@ export function compileExternalTool(raw) {
     const json = decode(jsonValue, inputSchema);
     if (json.kind !== 'accepted' || Buffer.byteLength(JSON.stringify(json.value)) > maxInputBytes) return undefined;
     const schema = /** @type {Record<string, unknown>} */ (json.value);
+    const { Ajv } = await import('ajv');
     const validate = new Ajv({ strict: true, ownProperties: true }).compile(schema);
     if ('$async' in validate && validate.$async === true) return undefined;
     return { metadata: { id, description, resource, effect, inputSchema: schema }, validate, invoke, cancel };

@@ -42,7 +42,7 @@ export function createCodexProvider({ providerId, configuration, environment = p
     'tools.bridge': { support: 'supported', source: 'configured', detail: 'Configured external MCP tools, subject to a bound Host permission broker.' },
   } : baseCapabilities;
   /** @type {Map<ProviderSession, {profile: Pick<Profile, 'profileId' | 'model'>, invoked: boolean, closing: boolean, stop: AbortController, attemptId?: string, bridgeStartup?: Promise<Awaited<ReturnType<typeof startMcpBridge>>>,
-   *   call?: {attemptId: string, process: ReturnType<typeof startCodexProcess>}}>} */
+   *   process?: ReturnType<typeof startCodexProcess>}>} */
   const sessions = new Map();
   return {
     async describe() {
@@ -97,11 +97,11 @@ export function createCodexProvider({ providerId, configuration, environment = p
           model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt, mcpUrl: mcp?.url,
         }, environment);
         const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal });
-        state.call = { attemptId: request.attemptId, process };
+        state.process = process;
         return receiveCodexResult(await process.finished, request, observe);
       } catch (error) {
         if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
-        if (state.call) throw error;
+        if (state.process) throw error;
         const result = unstartedCodexResult(request.attemptId, 'PROVIDER_START_FAILED');
         const ref = observe({ ref: 'codex-launch', kind: 'host_transport', sourceId: request.attemptId,
           completeness: 'complete', value: { message: error instanceof TypeError ? error.message : 'MCP or process startup failed.' } });
@@ -114,19 +114,17 @@ export function createCodexProvider({ providerId, configuration, environment = p
     async cancel(session, attemptId) {
       const state = sessions.get(session);
       if (state?.attemptId !== attemptId) return;
-      if (state.call) state.call.process.cancel();
-      else state.stop.abort();
+      state.stop.abort();
+      state.process?.cancel();
     },
     async close(session) {
       const state = sessions.get(session);
       if (!state) return;
       state.closing = true;
-      if (!state.call) {
-        state.stop.abort();
-        const bridge = await state.bridgeStartup?.catch(() => undefined);
-        bridge?.close();
-      }
-      await state.call?.process.close();
+      state.stop.abort();
+      const bridge = await state.bridgeStartup?.catch(() => undefined);
+      bridge?.close();
+      await state.process?.close();
       sessions.delete(session);
     },
   };

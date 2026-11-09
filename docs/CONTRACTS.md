@@ -25,7 +25,7 @@
 
 Handoff — материализованная часть Invocation: задача, назначение специалиста, применимые инструкции, буквальные ограничения пользователя, релевантный контекст, ожидаемая форма результата. Не копировать весь журнал каждому специалисту. Controller может делегировать исполнителю исследование/изменение/проверку в одной задаче; Host не раскладывает её на фиксированные подэтапы.
 
-Контракт `delegate` вызывает исполнителя, который сам применяет инструменты. Для зарегистрированного внешнего tool, доступного через bridge, используется отдельный тип `tool_call` с toolId/typed arguments; он необязателен для coding-сценариев и не заменяет native terminal/edit. Tool-result имеет ту же корреляцию attempt, но capability/effect описание относится к конкретному tool, а не угадывается из имени.
+Контракт `delegate` вызывает исполнителя, который сам применяет инструменты. Зарегистрированный внешний инструмент вызывается через bridge с toolId и типизированными аргументами; он необязателен для coding-сценариев и не заменяет native terminal/edit. Tool-result имеет ту же корреляцию attempt, но capability/effect описание относится к конкретному tool, а не угадывается из имени.
 
 ## Decision: валидация и применение
 
@@ -64,6 +64,7 @@ Provider может сообщить completion без деталей вложе
 | ProviderPort | describe(), open(profile), invoke(Invocation), cancel(attemptId), close(session) | callback/AsyncIterable событий + один logical outcome; одновременность явно объявлена |
 | StateStore | open(retention?), load(id), commit(id, expectedRevision, nextSnapshot), list(), close() | атомарность snapshot, чтение результата неизвестного commit по attemptId |
 | Catalog | list(), resolve(profile/role/skill/tool) | immutable versioned config snapshot на запуск; явная переоценка на resume |
+| External ToolPort | `bind` для попытки, `list()`, `call(toolId, input)` | schema validation, проверка permission, коррелированный receipt и ограниченный результат |
 | ContextPort | invocation-bound list(cursor?), fetch(ref, sourceOperationId?) и captureArtifact(bytes) для доверенного адаптера | выбранные ссылки специалиста, точное разрешение на обмен между operations, bounded output, explicit unavailable |
 | PermissionPort | request(attemptId, providerRequestId, options, action?), cancel(requestId) | решение пользователя связано с живым запросом; неизвестный option не принимается |
 | DiagnosticPort | emit(event), flush() | best-effort, bounded, не source of truth и не источник семантических переходов |

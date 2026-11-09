@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { compileExternalTool, createExternalToolPort } from '../../../../src/application/configuration/external-tools.js';
 
-function bind(overrides = {}) {
+async function bind(overrides = {}) {
   const stop = new AbortController();
   const receipts = [];
   let serial = 0;
   let calls = 0;
   let prompts = 0;
-  const tool = compileExternalTool({
+  const tool = await compileExternalTool({
     id: 'example', description: 'Example tool', resource: 'resource:example', effect: 'write',
     inputSchema: { type: 'object', properties: { name: { type: 'string' } },
       required: ['name'], additionalProperties: false },
@@ -33,7 +33,7 @@ function bind(overrides = {}) {
 }
 
 test('external tool rejects schema failures before requesting permissions or invoking', async () => {
-  const fixture = bind({ deny: true });
+  const fixture = await bind({ deny: true });
   assert.deepEqual(await fixture.bound.call('example', { name: 3 }),
     { status: 'invalid_input', effect: 'none', callId: '1', ref: 'ref:1' });
   assert.equal(fixture.prompts, 0);
@@ -44,7 +44,7 @@ test('external tool rejects schema failures before requesting permissions or inv
 });
 
 test('external output is bounded and correlated with its actual invocation', async () => {
-  const fixture = bind();
+  const fixture = await bind();
   const results = await Promise.all([
     fixture.bound.call('example', { name: 'x'.repeat(200) }), fixture.bound.call('example', { name: 'short' }),
   ]);
@@ -61,7 +61,7 @@ test('deadline preserves unknown effect and cancels only the correlated tool cal
   const started = Promise.withResolvers();
   const stopped = Promise.withResolvers();
   const late = Promise.withResolvers();
-  const fixture = bind({
+  const fixture = await bind({
     invoke(input, scope) { started.resolve(scope); return late.promise; },
     cancel(scope) { stopped.resolve(scope); },
   });

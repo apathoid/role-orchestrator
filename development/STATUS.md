@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C09.7 |
-| Следующий шаг | C09.8, документация и приёмка |
+| Последний локально проверенный шаг | C09.8 |
+| Следующий шаг | C10.1, Composition root |
 | Functional implementation complete | NO |
-| Local regression verified | OBSERVED для C00–C07.7 и C08.1–C08.8 на Linux |
+| Local regression verified | OBSERVED для C00–C07.7, C08.1–C08.8 и C09.1–C09.8 на Linux |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -219,3 +219,6 @@
 
 - C09.7 — Проект выбирает установленные доступные профили и skills, а Controller получает предпочтения. Несовместимый plugin возвращает адресный статус профиля. После disable/uninstall на resume сохранены finding и provenance; новый вызов недоступного профиля отклонён без dispatch.
 - OBSERVED на Linux, Node 24.22.1: `check`, 20 целевых integration-тестов, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C09.8, документация и приёмка.
+
+- C09.8 — Добавлено [руководство по расширениям](../docs/EXTENSIONS.md). Локально закрыты [A31/A32/A39](reports/C09/ACCEPTANCE.md) на уровне контрактов и управляемых адаптеров. Чистая установка tarball проверяет явную загрузку skill и инструмента без Git и development. Нативная проба skill вернула HTTP 401.
+- OBSERVED на Linux, Node 24.22.1: `check`, `test:foundation` (4), `test:core` (15), `test:contracts` (46), `test:integration` (139), `check:package`, `check:removal`, пример из документации, `git diff --check`. Нативная приёмка остаётся UNVERIFIED. Следующий шаг — C10.1, Composition root.
