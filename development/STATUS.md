@@ -18,7 +18,7 @@
 - P1 retry: route содержит `requestHash` от полного материализованного worker-input (objective, expectedResult, context/evidence, instructions, skillInstructions, attachments, permissions-related constraints, выбранный профиль). Provider idempotency разрешён лишь при том же hash и прежнем route; legacy без hash отклоняется без предположения эквивалентности. `no_effect` и `user_approval` не изменены. CI ожидается.
 - P2 snapshot: при worker dispatch проверяется связь `route.reasoning.level/selectionSource` с принятым Action, включая подмену journal и summary. Исторический nativeValue не вычисляется из текущего конфига.
 - P2 diagnostics: ACK берётся из всех `attempt.outcome.observations` для attemptId, а не только последнего; добавлен тест позднего уточняющего outcome без повторного ACK.
-- Все пять замечаний исправлены в коде; ожидается совокупная проверка CI перед окончательной отметкой. C12 ещё не начат.
+- Все пять замечаний исправлены в коде. Старый позитивный retry-test уточнён: identical route сам по себе не разрешает replay, если provider получил изменённые coordination facts. Добавлены позитивный случай полного совпадения materialized worker input и негативные случаи изменённых objective/contextRefs/expectedResult/capabilities. CI ожидается; C12 ещё не начат.
 
 ## C11R — ход реализации (2026-11-10)
 
