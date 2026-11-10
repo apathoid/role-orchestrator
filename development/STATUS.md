@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11R.9; cluster CI ожидается |
-| Следующий шаг | C11R.10 |
+| Последний проверенный шаг | C11R.10; cluster CI ожидается |
+| Следующий шаг | C11R.11 |
 | Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
 | Regression verified | OBSERVED: [CI 42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), Node 24/Linux — foundation 4, core 19, contracts 46, integration 190, Nix/package PASS; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
@@ -22,7 +22,8 @@
 - **C11R.7 implemented / CI PENDING.** Codex CLI получает только trusted выбранное nativeValue через отдельный `-c model_reasoning_effort=<quoted>` в argv для одной invocation; native/отсутствие выбора не задаёт флаг, секреты/промпт не добавлены в argv, shell=false. Разные selections не изменяют provider config; регрессионные тесты проверяют аргументы, quoting и NUL.
 - **C11R.8 implemented / CI PENDING.** ACP v1 выбирает nativeValue лишь по единственному объявленному select-option категории thought_level через session/set_config_option. После выбора проверяются effective value и неизменность model; native/omission не меняют ACP option. Отсутствующий/неизвестный/игнорируемый/меняющий model выбор завершает attempt с CAPABILITY_UNAVAILABLE/not_sent до prompt. Добавлен настоящий ACP fixture integration с подтверждением.
 - **C11R.9 implemented / CI PENDING.** Существующие CAS/unknown outcomes и retryKey с C11R.4 сравнивают всю route.reasoning + configurationRef; изменение native mapping запрещает provider_idempotency retry, а независимый worker продолжает работу. Добавлены file-backed checkpoints до/после Decision/reserve/dispatch/outcome, reopen и проверка сохранения pending/consumed/native route. Historical not-recorded не доказывает эквивалентность.
-- Следующий шаг: **C11R.10** — inspect/trace/export, resource budget и redaction. Реальные CLI/ACP/Zed остаются UNVERIFIED.
+- **C11R.10 implemented / CI PENDING.** Trace/export содержит per-attempt requested/source/effective native mapping/configurationRef/submission и ACP session config acknowledgment, с явным `not_recorded` без нативного подтверждения; Controller selection pending/consumed связана с decision и attempt. Export bounded (256 events и последние 256 attempts), known-secret redaction; inspect даёт pending. Убрана утечка nativeValue в Controller context: модель видит только levels и source, не провайдерский mapping. ACP-адаптер записывает подтверждение своего config option как локальное observation, не как доказательство внутреннего reasoning. Регрессии: отключенный diagnostics sink, redaction, history.
+- Следующий шаг: **C11R.11** — сквозные регрессии и native evidence. Реальные CLI/ACP/Zed остаются UNVERIFIED.
 
 ## C11 — диагностика и устойчивость
 

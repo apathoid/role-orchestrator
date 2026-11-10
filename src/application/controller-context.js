@@ -145,7 +145,13 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       limits: state.limits, resources: resourceSnapshot(state), ...coordinationFacts(state, lookups),
       attachments: state.request.attachments,
       controllerReasoning: {
-        current: state.attempts.findLast(attempt => attempt.attemptId === attempt.actionId)?.route?.reasoning ?? 'not_recorded',
+        // Native adapter values are trusted Host configuration, not model catalog data.
+        current: (() => {
+          const current = state.attempts.findLast(attempt => attempt.attemptId === attempt.actionId)?.route?.reasoning;
+          return !current ? 'not_recorded' : current.mode === 'native' ? {mode: 'native'} : {
+            mode: 'selectable', level: current.level, selectionSource: current.selectionSource,
+          };
+        })(),
         pending: pendingControllerReasoning(state) ?? null,
       },
       outcomes: state.attempts.flatMap(attempt => {

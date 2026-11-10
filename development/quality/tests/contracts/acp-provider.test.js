@@ -357,6 +357,8 @@ test('C11R.8 ACP uses negotiated thought_level for an isolated session and confi
     const result=await selected.completion;
     assert.equal(result.outcome.terminal,'completed');
     assert.equal(result.output,'high-native');
+    assert.ok(selected.observations.some(item => item.ref === 'acp-reasoning-ack' &&
+      item.value.status === 'config_option_confirmed' && item.value.level === 'high'));
     assert.equal(await readFile(join(cwd,'prompt-effort'),'utf8'),'high-native');
     await using native=await invoke(endpoint,{reasoning:{mode:'native'}});
     assert.equal((await native.completion).output,'low-native');

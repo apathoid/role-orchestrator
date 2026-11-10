@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { journalReasonCode, resourceSnapshot } from '../core/operation.js';
+import { journalReasonCode, pendingControllerReasoning, resourceSnapshot } from '../core/operation.js';
 import { redactDiagnostic } from '../application/redact-diagnostic.js';
 
 /** @import {Operation} from '../core/operation.js' */
@@ -57,6 +57,35 @@ export function operationTrace(operation, redaction = {}) {
   ];
   const resources = resourceSnapshot(operation);
   const actionByAttempt = new Map(operation.attempts.map(attempt => [attempt.attemptId, attempt.actionId]));
+  const decisions = new Map(events.flatMap(event => event.kind === 'controller.responded'
+    ? [[event.decision.decisionId, event.decision]] : []));
+  const actions = new Map(events.flatMap(event => event.kind === 'controller.responded'
+    ? event.decision.additions.map(action => [action.actionId, action]) : []));
+  const receipts = new Map(events.flatMap(event => event.kind === 'attempt.outcome'
+    ? [[event.outcome.attemptId, event.observations ?? []]] : []));
+  const attemptStart = Math.max(0, operation.attempts.length - limit);
+  const visibleAttempts = operation.attempts.slice(attemptStart);
+  /** @param {Operation['attempts'][number]} attempt */
+  function reasoningInfo(attempt) {
+    const route = attempt.route;
+    const selection = route?.reasoning;
+    const controlling = attempt.reasoningDecisionId
+      ? decisions.get(attempt.reasoningDecisionId)?.nextController : undefined;
+    const requestedLevel = attempt.attemptId === attempt.actionId
+      ? controlling?.reasoningLevel : actions.get(attempt.actionId)?.reasoningLevel;
+    const acknowledged = (receipts.get(attempt.attemptId) ?? []).some(observation =>
+      observation.providerRef === 'acp-reasoning-ack' &&
+      observation.provenance?.kind === 'host_transport' &&
+      observation.value && typeof observation.value === 'object' &&
+      !Array.isArray(observation.value) &&
+      'status' in observation.value && observation.value.status === 'config_option_confirmed');
+    return {
+      requestedLevel, source: selection?.mode === 'selectable' ? selection.selectionSource : undefined,
+      effective: selection ?? 'not_recorded', configurationRef: route?.configurationRef,
+      nativeConfigAcknowledgment: acknowledged ? 'adapter_confirmed' : 'not_recorded',
+      submission: attempt.dispatchCertainty,
+    };
+  }
   const waiting = operation.waiting?.kind === 'technical'
     ? { kind: 'technical', code: operation.waiting.reason.code,
       attemptId: operation.waiting.reason.attemptId,
@@ -73,10 +102,14 @@ export function operationTrace(operation, redaction = {}) {
       origin: 'durable-state', transientDiagnosticsIncluded: false,
       missing, truncatedEvents: start, eventCount: events.length },
     status: operation.status, waiting, resources,
-    attempts: operation.attempts.map(attempt => ({
+    controllerReasoning: { pending: pendingControllerReasoning(operation) ?? null,
+      consumed: visibleAttempts.flatMap(attempt => attempt.reasoningDecisionId
+        ? [{attemptId:attempt.attemptId, decisionId:attempt.reasoningDecisionId}] : []) },
+    omittedAttempts: attemptStart,
+    attempts: visibleAttempts.map(attempt => ({
       attemptId: attempt.attemptId, actionId: attempt.actionId, status: attempt.status,
       profileId: attempt.route?.profileId, providerId: attempt.route?.providerId,
-      dispatchCertainty: attempt.dispatchCertainty,
+      reasoning: reasoningInfo(attempt), dispatchCertainty: attempt.dispatchCertainty,
       effect: attempt.outcome?.effect ?? (attempt.status === 'dispatched' ? 'unknown' : undefined),
       terminal: attempt.outcome?.terminal,
       reasonCode: attempt.outcome?.diagnostics[0]?.code,
@@ -104,6 +137,7 @@ export function operationTrace(operation, redaction = {}) {
 export function operationView(operation) {
   return {
     operationId: operation.operationId, status: operation.status, revision: operation.revision,
+    pendingControllerReasoning: pendingControllerReasoning(operation) ?? null,
     waiting: operation.waiting, cancellation: operation.cancellation, assessment: operation.assessment,
     resources: resourceSnapshot(operation), attempts: operation.attempts.map(attempt => ({
       attemptId: attempt.attemptId, actionId: attempt.actionId, status: attempt.status, route: attempt.route,

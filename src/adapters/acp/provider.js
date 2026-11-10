@@ -338,6 +338,13 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if (!configuredEffort || modelOption(session.configOptions)?.currentValue !== model) {
           return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
         }
+        if (invocation.reasoning?.mode === 'selectable') {
+          publish({ref:'acp-reasoning-ack',kind:'host_transport',sourceId:invocation.attemptId,
+            completeness:'complete',value:{
+              status:'config_option_confirmed',level:invocation.reasoning.level,profileId:invocation.profile.profileId,
+              // The nativeValue stays in the trusted route, never the model context.
+            }});
+        }
         const prompt = renderInvocationPrompt(invocation, retrievalDetail(Boolean(mcp && invocation.contextAccess)));
         signal.throwIfAborted();
         active = true;
