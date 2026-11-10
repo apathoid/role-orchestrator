@@ -4,14 +4,19 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11R.12 + исправления ревью P1×3/P2×2, CI PASS на 949292a |
-| Следующий шаг | **C12.0** — реорганизация репозитория (ПЛАН, НЕ РЕАЛИЗОВАНА), затем C12.1 |
+| Последний проверенный шаг | C12.0.1 — инвентаризация и baseline; pre-migration CI PASS на cbd8e70 |
+| Следующий шаг | **C12.0.2** — консолидация документации, затем C12.0.3–C12.0.8 и C12.1 |
 | Functional implementation complete | NO для всего продукта; C11R implementation complete, C12 не завершён |
 | Regression verified | OBSERVED: [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211) на 949292a, Node 24/Linux — foundation 4/4, core 25/25, contracts 52/52, integration 217/217, всего 298/298 PASS; Nix/checkJs/package/removal/lockfiles PASS. Native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
-## Следующий этап: C12.0 (согласованный план, не реализация)
+## C12.0.1 — baseline и реестр (2026-11-10)
+
+- Завершена инвентаризация всех файлов development на HEAD cbd8e70 (см. [реестр](reports/C12/MIGRATION_REGISTER.md)). Ничего не удалено. Последний исходный CI [42868825084](https://github.com/apathoid/role-orchestrator/actions/runs/42868825084) SUCCESS; миграция ещё не проверена.
+- Следующий шаг: C12.0.2. Нативные ACP/Zed/NixOS и реальная модель UNVERIFIED.
+
+## Следующий этап: C12.0 (переход в процессе)
 
 - Новый принцип: исходные tests/fixtures/scripts/.agents/ в постоянных местах; `docs/roadmap/` — единственный оперативный план и STATUS **после миграции**. Старые пути действуют до завершения C12.0.
 - C12.0 проверяет карту старых/новых знаний, миграцию checker и npm/Nix/CI, сохранение regression, независимость установленного пакета, правила обновления документации и инженерные критерии M01–M04. Подробности — `plan/clusters/C12_ACCEPTANCE_DELIVERY.md`.
