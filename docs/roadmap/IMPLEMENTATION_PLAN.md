@@ -20,8 +20,8 @@
 | C12.2 | Clean full regression | Реализован, acceptance CI pending |
 | C12.3 | Два реальных независимых исполнителя, CLI/ACP | Протокол готов; **real native UNVERIFIED** |
 | C12.4 | Настоящий Zed/ACP, session/load/permissions | Протокол готов; **Zed native UNVERIFIED** |
-| C12.5 | Mutable workspace acceptance | **Следующий независимо от native блокировки** |
-| C12.6 | Clean installation outside checkout | После C12.5 |
+| C12.5 | Mutable workspace acceptance | Добавлен тест, CI pending |
+| C12.6 | Clean installation outside checkout | **Следующий независимо от native блокировки** |
 | C12.7 | Архитектурный audit | После C12.6 |
 | C12.8 | Release комплект/changelog/diagnostics | После C12.7 |
 | C12.9 | Nix/NixOS/CI acceptance | После C12.8 |

@@ -4,13 +4,18 @@
 |---|---|
 | Ветка | `greenfield/model-first-core` |
 | Исходный HEAD для C12 | `cbd8e70baca3ab380a2ed3d43ae1fdd667616412` |
-| Последний выполненный этап | C12.4 — Zed/ACP native test matrix documented; external client inaccessible/unverified |
-| Следующий этап | **C12.5** — mutable workspace acceptance (independent); C12.3/C12.4 native remain UNVERIFIED |
+| Последний выполненный этап | C12.5 — mutable workspace acceptance: Git branch/index edited during worker; CI pending |
+| Следующий этап | **C12.6** — clean installed-product independence; C12.3/C12.4 native remain UNVERIFIED |
 | Implementation complete | C00–C11R и C12.0 реализованы; весь C12 пока **NO** |
 | Regression verified | OBSERVED [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) — SUCCESS на `1341d75` после удаления `development`; следующий commit до CI PENDING |
 | Detailed suites baseline | 298/298 (4+25+52+217) на `949292a`, [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211); исторический результат |
 | Native integration verified | **UNVERIFIED**: реальный Codex CLI/ACP model, Zed, NixOS и adaptive reasoning |
 | Production ready | **NO / NATIVE ACCEPTANCE PENDING** |
+
+## C12.5 — изменяемое рабочее окружение
+
+- Добавлен исполняемый regression `tests/acceptance/mutable-workspace.test.js`: реальный Git fixture, внешний branch switch и staging во время запущенного worker, без Host reconcile/cancel, отдельный финальный ход Controller. Требование Git относится только к тестовому fixture.
+- Существующие `tests/integration/mutable-context.test.js` проверяют редактирование связанных/несвязанных файлов и модельный выбор targeted re-read; `external-tool-review.test.js` — tool error/late outcomes. **Новый Git-сценарий на текущем commit до CI UNVERIFIED.**
 
 ## C12.4 — реальный Zed/ACP client (UNVERIFIED)
 
