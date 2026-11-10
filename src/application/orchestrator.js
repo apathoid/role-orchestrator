@@ -616,7 +616,27 @@ export function createOrchestrator(deps) {
       signal.throwIfAborted();
       const entries = handoff ? [] : await withinDeadline(catalog.list());
       const selectedProfile = handoff?.profile ?? profile;
-      const reasoning = handoff?.reasoning ?? Object.freeze({mode: /** @type {const} */ ('native')});
+      const binding = state.attempts.find(item => item.attemptId === attemptId)?.reasoningDecisionId;
+      const selectedDecision = binding && state.events.find(item =>
+        item.kind === 'controller.responded' && item.decision.decisionId === binding);
+      const requestedLevel = selectedDecision?.kind === 'controller.responded'
+        ? selectedDecision.decision.nextController?.reasoningLevel : undefined;
+      const choice = handoff
+        ? {kind: /** @type {const} */ ('selected'),
+          selection: handoff.reasoning ?? /** @type {const} */ ({mode: 'native'})}
+        : resolveRequestedReasoning(catalog, selectedProfile, requestedLevel);
+      if (choice.kind === 'rejected') {
+        const ref = 'host:reasoning:' + attemptId;
+        observations.push(observation({ref, completeness: 'complete', value: {
+          profileId: choice.profileId, requestedLevel: choice.requestedLevel,
+          availableLevels: choice.availableLevels, reason: 'unavailable_reasoning_level',
+        }}, {kind:'host_transport', sourceId:selectedProfile.providerId, receivedAt:clock.now()}));
+        const failure = failedOutcome(attemptId, 'CAPABILITY_UNAVAILABLE', false);
+        failure.diagnostics[0].ref = ref;
+        return {outcome: failure, certainty: /** @type {const} */ ('not_sent'),
+          output, observations, contextCursor, recordLate};
+      }
+      const reasoning = choice.selection;
       function requireAuthority() {
         const decision = authority.authorize(state.authorityRef, selectedProfile.profileId);
         if (decision !== 'ALLOWED') {
@@ -1050,7 +1070,7 @@ export function createOrchestrator(deps) {
           } else if (value.contextCursor > response.contextCursor) {
             correction = { code: 'INVALID_PROPOSAL', path: '$.contextCursor', expected: 'an observed revision' };
           } else if ((value.waitPolicy && value.clarification) ||
-            (value.additions.length && !value.waitPolicy)) {
+            (value.additions.length && !value.waitPolicy && !value.nextController?.continue)) {
             correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'a clarification, final assessment or action wait policy' };
           } else if (assessment && !value.waitPolicy && [...live].some(id => !value.cancellations.includes(id))) {
             correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'an explicit wait or cancellation for each pending action' };
@@ -1083,6 +1103,9 @@ export function createOrchestrator(deps) {
               } });
               if (value.waitPolicy) selection = {
                 ...round, policy: value.waitPolicy.kind,
+              };
+              else if (value.nextController?.continue && round.newlyAdmitted.length) selection = {
+                ...round, selected: [], policy: 'next_completion', newResult: true,
               };
               return state;
             }

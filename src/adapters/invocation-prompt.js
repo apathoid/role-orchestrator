@@ -5,10 +5,11 @@ Decision v1 (fields marked ? are optional and should be omitted when absent):
   schemaVersion: 1, decisionId: new string id, operationId: invocation.operationId,
   contextCursor: host:invocation-context.value.contextCursor, additions: Action[], cancellations: string[],
   acceptedActionIds?: string[], waitPolicy?: {kind: "all_requested" | "next_completion", targets: {kind: "action" | "attempt", id: string}[]},
-  clarification?: {question: string}, finalAssessment?: Assessment, findings?: Finding[]
+  clarification?: {question: string}, finalAssessment?: Assessment, findings?: Finding[],
+  nextController?: {reasoningLevel?: string, continue?: true}
 Action: {actionId: string, kind: "delegate", objective: string, profileId: string, contextRefs: string[],
   dependsOn: {actionId: string, kind: "after_terminal" | "after_model_acceptance"}[], expectedResult: string,
-  roleId?: string, skills?: string[], requiredCapabilities?: string[], continuationReference?: string,
+  roleId?: string, reasoningLevel?: string, skills?: string[], requiredCapabilities?: string[], continuationReference?: string,
   retryOf?: string, retryBasis?: "no_effect" | "provider_idempotency" | "user_approval"}
 Assessment: {author: invocation.profileId, overall: "complete" | "partial" | "unresolved",
   requirements: {requirementId: string, status: "fulfilled" | "partial" | "unverified" | "unavailable",
@@ -16,8 +17,11 @@ Assessment: {author: invocation.profileId, overall: "complete" | "partial" | "un
   observationRefs: string[], findingRefs: string[], unresolvedQuestions: string[], answer: string}
 Finding: {findingId: string, author: invocation.profileId, claim: string, subject: string,
   supports: string[], uncertainties: string[], supersedes?: string}
-Use only the named fields. Include an assessment, clarification, wait policy, addition, or cancellation.
-When adding actions, specify a wait policy. Assessment cannot accompany new actions or clarification.`;
+Use only the named fields. Include an assessment, clarification, wait policy, addition, cancellation, or nextController.continue:true.
+Reasoning levels are identifiers provided by the trusted catalog; omit for native/default. Different models are not equivalently intelligent at the same level.
+For an independent new Controller turn use nextController:{continue:true,reasoningLevel?:string}. No worker or new event is required.
+Additions with continue:true are allowed; otherwise specify a wait policy for additions. Do not combine continue:true with waitPolicy.
+Do not combine nextController with finalAssessment or clarification. Assessment cannot accompany new actions or clarification.`;
 
 /** @param {Invocation} request @param {string} transportDetail */
 export function renderInvocationPrompt(request, transportDetail) {
