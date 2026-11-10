@@ -39,6 +39,9 @@ test('a configured byte budget compacts history and preserves selected refs and 
         assert.ok(page.items.some(item => item.ref === ref));
         assert.deepEqual(await invocation.contextAccess.fetch(ref),
           { kind: 'unavailable', reason: 'payload' });
+        const recent = await invocation.contextAccess.fetch(refs.get('recent'));
+        assert.equal(recent.kind, 'available');
+        assert.equal(recent.item.value, 'small report');
       }
       return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
     }
@@ -69,7 +72,11 @@ test('a configured byte budget compacts history and preserves selected refs and 
   assert.ok(excerpt.excerpt.length > 0 && large.startsWith(excerpt.excerpt) && excerpt.excerpt.isWellFormed());
   assert.equal(excerpt.provenance.kind, 'provider_tool');
   assert.equal(excerpt.attemptId, sourceAttempt.attemptId);
-  assert.equal(recent.value, 'small report');
+  // The small original value is fetched explicitly above if the optional
+  // prompt budget was consumed by preceding selected records.
+  assert.equal(recent.value, undefined);
+  assert.equal(recent.completeness, 'unavailable');
+  assert.equal(recent.unavailableReason, 'budget');
   assert.ok(Buffer.byteLength(JSON.stringify([excerpt, recent])) <= maxBytes);
   assert.equal(missing.unavailableReason, 'missing');
   assert.equal(summary.value.omitted, 1);
