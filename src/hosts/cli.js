@@ -149,7 +149,8 @@ export async function runCli(args, io, execute) {
             ? (view.waiting.reason.profileId ? 'Error: ' : 'Waiting: ') + view.waiting.reason.code +
               (view.waiting.reason.profileId ? ' profile=' + view.waiting.reason.profileId +
                 ' reasoningLevel=' + (view.waiting.reason.reasoningLevel ?? '(default)') +
-                ' available=' + (view.waiting.reason.availableLevels ?? []).join(',') : '')
+                ' available=' + (view.waiting.reason.availableLevels ?? []).join(',') +
+                (view.waiting.reason.reasoningCause ? ' cause=' + view.waiting.reason.reasoningCause : '') : '')
             : view.status)) + '\n');
       } else io.stdout.write(JSON.stringify(view, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     } else io.stdout.write(JSON.stringify(result, null, invocation.format === 'text' ? 2 : undefined) + '\n');

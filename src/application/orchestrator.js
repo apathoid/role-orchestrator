@@ -570,7 +570,13 @@ export function createOrchestrator(deps) {
       if (parsed.kind === 'rejected' || parsed.value.attemptId !== attemptId ||
           !['not_sent', 'sent', 'unknown'].includes(reply.dispatchCertainty) ||
           (reply.dispatchCertainty === 'not_sent' && parsed.value.effect !== 'none')) return undefined;
-      const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty, output: reply.output, findings: reply.findings };
+      const validReasoningIssue = reply.reasoningUnavailable &&
+        ['session_option_unavailable', 'session_option_rejected'].includes(reply.reasoningUnavailable) &&
+        parsed.value.diagnostics[0]?.code === 'CAPABILITY_UNAVAILABLE' &&
+        parsed.value.terminal === 'failed' && reply.dispatchCertainty === 'not_sent';
+      const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty,
+        output: reply.output, findings: reply.findings,
+        reasoningUnavailable: validReasoningIssue ? reply.reasoningUnavailable : undefined };
       if (acceptingObservations) {
         receivedReply = result;
         if (result.output !== undefined) {
@@ -601,6 +607,8 @@ export function createOrchestrator(deps) {
     let outcome;
     /** @type {'sent' | 'not_sent' | 'unknown'} */
     let certainty = 'not_sent';
+    /** @type {{profileId: string, reasoningLevel?: string, availableLevels: string[], reasoningCause: string} | undefined} */
+    let reasoningFailure;
     const abort = () => {
       interrupted.reject(signal.reason);
       const owned = session;
@@ -829,6 +837,16 @@ export function createOrchestrator(deps) {
       } else {
         ({ dispatchCertainty: certainty, output, findings: reportedFindings } = reply);
         outcome = bindOutcomeEvidence(state.operationId, reply.outcome, observations);
+        if (!handoff && reply.reasoningUnavailable && reasoning.mode === 'selectable') {
+          const catalogProfile = entries.find(item => item.kind === 'profile' &&
+            item.value.profileId === selectedProfile.profileId);
+          reasoningFailure = {
+            profileId: selectedProfile.profileId, reasoningLevel: reasoning.level,
+            availableLevels: catalogProfile?.kind === 'profile' && catalogProfile.value.reasoning?.mode === 'selectable'
+              ? [...catalogProfile.value.reasoning.levels] : [],
+            reasoningCause: reply.reasoningUnavailable,
+          };
+        }
       }
     } catch (error) {
       if (error instanceof OrchestrationError && ['STORE_CONFLICT', 'STORE_UNAVAILABLE'].includes(error.code)) throw error;
@@ -867,6 +885,7 @@ export function createOrchestrator(deps) {
     }
     return {
       outcome, certainty, output, contextCursor, recordLate, reportedFindings,
+      reasoningFailure,
       observations: certainty === 'not_sent' ? observations.filter(item => !item.summary) : observations,
     };
   }

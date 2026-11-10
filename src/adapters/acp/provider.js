@@ -335,9 +335,25 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         }
         // Selection is session-local; the native agent must explicitly advertise
         // and confirm its effective value before receiving any prompt.
-        const configuredEffort = await configureReasoning(agent, a.session, session, invocation.reasoning, signal);
+        let configuredEffort = false;
+        try {
+          configuredEffort = await configureReasoning(agent, a.session, session, invocation.reasoning, signal);
+        } catch (error) {
+          if (signal.aborted) throw error;
+          if (invocation.reasoning?.mode === 'selectable') {
+            return {...resultFor(invocation, 'CAPABILITY_UNAVAILABLE'),
+              reasoningUnavailable: /** @type {const} */ ('session_option_rejected')};
+          }
+          throw error;
+        }
         if (!configuredEffort || modelOption(session.configOptions)?.currentValue !== model) {
-          return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
+          const failure = resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
+          // Distinguish missing/refused reasoning from unrelated model selection
+          // failures: only this signal becomes a user-visible effort error.
+          if (invocation.reasoning?.mode === 'selectable') {
+            failure.reasoningUnavailable = 'session_option_unavailable';
+          }
+          return failure;
         }
         if (invocation.reasoning?.mode === 'selectable') {
           publish({ref:'acp-reasoning-ack',kind:'host_transport',sourceId:invocation.attemptId,

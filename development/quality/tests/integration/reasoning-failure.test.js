@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createCatalog} from '../../../../src/application/configuration/catalog.js';
 import {operationView, operationTrace} from '../../../../src/hosts/commands.js';
+import {runCli} from '../../../../src/hosts/cli.js';
+import {Readable, Writable} from 'node:stream';
 import {setup, final} from '../../fixtures/application.js';
 import {decision, outcome, request} from '../../fixtures/core.js';
 
@@ -52,5 +54,48 @@ test('C11R.6 unsupported configured Controller default fails before opening prov
   assert.equal(result.waiting.reason.profileId,'primary');
   assert.deepEqual(result.waiting.reason.availableLevels,['one']);
   assert.equal(invocations.length,0);
+  await api.close();
+});
+
+test('C11R review P1: ACP session effort refusal becomes visible Host failure and nonzero CLI exit',async()=>{
+  const profile={profileId:'primary',providerId:'fixture',model:'same'};
+  const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
+    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[
+      {level:'low',effort:'native-low'}, {level:'high',effort:'native-high'},
+    ],defaultReasoningLevel:'low'}},controllerProfile:'primary'});
+  let calls=0;
+  const {api,invocations}=setup({profile,catalog,maxInvocations:4,respond(i,n){
+    calls++;
+    if(n===1)return {dispatchCertainty:'sent',outcome:outcome(i.attemptId),
+      output:decision({operationId:i.operationId,decisionId:'high',
+        finalAssessment:undefined,nextController:{continue:true,reasoningLevel:'high'}})};
+    return {dispatchCertainty:'not_sent',
+      outcome:outcome(i.attemptId,{terminal:'failed',effect:'none',
+        diagnostics:[{code:'CAPABILITY_UNAVAILABLE'}]}),
+      reasoningUnavailable:'session_option_unavailable'};
+  }});
+  const waiting=await(await api.submit(request({requestId:'acp-error'}))).completion;
+  assert.equal(waiting.status,'waiting');
+  assert.equal(waiting.waiting.reason.profileId,'primary');
+  assert.equal(waiting.waiting.reason.reasoningLevel,'high');
+  assert.equal(waiting.waiting.reason.reasoningCause,'session_option_unavailable');
+  assert.deepEqual(waiting.waiting.reason.availableLevels,['high','low']);
+  assert.equal(calls,2);
+  assert.equal(invocations.length,2);
+  assert.equal(waiting.attempts[1].outcome.effect,'none');
+  assert.equal(operationTrace(waiting).waiting.reasoningCause,'session_option_unavailable');
+
+  let stdout='',stderr='';
+  const output=()=>new Writable({write(chunk,enc,done){stdout+=chunk.toString();done();}});
+  const err=()=>new Writable({write(chunk,enc,done){stderr+=chunk.toString();done();}});
+  const exit=await runCli(['run','check','--format','text'],
+    {cwd:process.cwd(),stdin:Readable.from([]),stdout:output(),stderr:err()},
+    async()=>waiting);
+  assert.equal(exit,1);
+  assert.match(stdout,/Error: CAPABILITY_UNAVAILABLE/);
+  assert.match(stdout,/reasoningLevel=high/);
+  assert.match(stdout,/cause=session_option_unavailable/);
+  assert.equal(stderr,'');
+  assert.equal((await api.inspect(waiting.operationId)).status,'waiting');
   await api.close();
 });

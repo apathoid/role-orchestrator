@@ -382,3 +382,17 @@ for (const [scenario, reason] of [
       await assert.rejects(access(join(cwd,'prompt-effort')),{code:'ENOENT'});
     }));
 }
+
+test('C11R review P1: ACP refusal carries specific pre-prompt reasoning cause', linux, () =>
+  withOwnedRun('C11R-review-acp-refusal', async cwd => {
+    const endpoint=provider(cwd,'reasoning-no-option');
+    await using call=await invoke(endpoint,{reasoning:{
+      mode:'selectable',level:'high',nativeValue:'high-native',selectionSource:'model',
+    }});
+    const result=await call.completion;
+    assert.equal(result.outcome.diagnostics[0].code,'CAPABILITY_UNAVAILABLE');
+    assert.equal(result.reasoningUnavailable,'session_option_unavailable');
+    assert.equal(result.dispatchCertainty,'not_sent');
+    assert.equal(result.outcome.effect,'none');
+    await assert.rejects(access(join(cwd,'prompt-effort')),{code:'ENOENT'});
+  }));

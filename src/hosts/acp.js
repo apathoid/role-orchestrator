@@ -44,7 +44,8 @@ function operationMessage(operation) {
     return reason.profileId
       ? 'Error: ' + reason.code + ' operation=' + operation.operationId +
         ' profile=' + reason.profileId + ' reasoningLevel=' + (reason.reasoningLevel ?? '(default)') +
-        ' available=' + (reason.availableLevels ?? []).join(',')
+        ' available=' + (reason.availableLevels ?? []).join(',') +
+        (reason.reasoningCause ? ' cause=' + reason.reasoningCause : '')
       : 'Waiting: ' + reason.code;
   }
 }
