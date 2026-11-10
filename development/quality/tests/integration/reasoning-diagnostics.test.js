@@ -25,7 +25,7 @@ test('C11R.10 redact native mapping from Controller context, preserve bounded pe
   assert.deepEqual(invocations.map(i=>i.reasoning.nativeValue),['internal-low-token','internal-high-token']);
   assert.ok(!JSON.stringify(invocations[1].context).includes('internal-low-token'));
   assert.ok(!JSON.stringify(invocations[1].context).includes('internal-high-token'));
-  assert.equal(invocations[1].context[1].value.controllerReasoning.current.level,'low');
+  assert.equal(invocations[1].context[1].value.controllerReasoning.current.level,'high');
   const trace=operationTrace(state);
   assert.equal(trace.attempts.length,2);
   assert.equal(trace.attempts[0].reasoning.effective.nativeValue,'internal-low-token');
