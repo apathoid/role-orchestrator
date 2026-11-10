@@ -617,8 +617,8 @@ export function createOrchestrator(deps) {
       const entries = handoff ? [] : await withinDeadline(catalog.list());
       const selectedProfile = handoff?.profile ?? profile;
       const binding = state.attempts.find(item => item.attemptId === attemptId)?.reasoningDecisionId;
-      const selectedDecision = binding && state.events.find(item =>
-        item.kind === 'controller.responded' && item.decision.decisionId === binding);
+      const selectedDecision = binding ? state.events.find(item =>
+        item.kind === 'controller.responded' && item.decision.decisionId === binding) : undefined;
       const requestedLevel = selectedDecision?.kind === 'controller.responded'
         ? selectedDecision.decision.nextController?.reasoningLevel : undefined;
       const choice = handoff
