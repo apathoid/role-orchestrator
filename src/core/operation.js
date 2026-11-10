@@ -137,6 +137,37 @@ export function resolveOutcome(prior, event) {
   return { outcome: { ...base, terminal, effect, usage, outputRefs }, dispatchCertainty: certainty };
 }
 
+/**
+ * Subject and next technical route for transitions that can stop, defer or
+ * resume work. IDs stay in the event's dedicated correlation fields.
+ * @param {Event} event
+ * @returns {{details?: Readonly<Record<string, string>>}}
+ */
+function diagnosticContext(event) {
+  switch (event.kind) {
+    case 'action.deferred':
+      return { details: { subject: 'action', next: 'retry_when_capacity_allows' } };
+    case 'action.rejected':
+      return { details: { subject: 'action', next: 'controller_replan' } };
+    case 'action.cancelled':
+      return { details: { subject: 'action', next: 'inspect' } };
+    case 'attempt.cancel_requested':
+      return { details: { subject: 'attempt', next: 'await_terminal_or_unknown' } };
+    case 'operation.waiting':
+      return { details: { subject: event.waiting.kind === 'question' ? 'question' :
+        event.waiting.reason.attemptId ? 'attempt' : 'operation', next: 'explicit_resume' } };
+    case 'operation.continued':
+    case 'operation.recovered':
+      return { details: { subject: 'operation', next: 'controller_dispatch' } };
+    case 'operation.cancelled':
+      return { details: { subject: 'operation', next: 'inspect' } };
+    case 'attempt.late_outcome':
+      return { details: { subject: 'attempt', next: 'inspect' } };
+    default:
+      return {};
+  }
+}
+
 /** @param {Operation} state @param {Event} event @returns {Transition} */
 export function applyEvent(state, event) {
   const attemptId = event.kind === 'attempt.outcome' ? event.outcome.attemptId
@@ -168,6 +199,8 @@ export function applyEvent(state, event) {
         schemaVersion: 1, eventId: event.eventId, receivedAt: event.receivedAt, sequence: revision,
         level: eventName.endsWith('discrepancy') ? 'warn' : 'info', component: 'core', eventName,
         reasonCode, operationId: state.operationId, attemptId, actionId, decisionId,
+        // Taxonomy is technical only; never persist questions, proposals or tool bodies.
+        ...diagnosticContext(event),
       },
     };
   }

@@ -214,7 +214,9 @@ export function createOrchestrator(deps) {
     emitDiagnostic(diagnostics, {
       schemaVersion: 1, eventId: ids.newId(), receivedAt: clock.now(), sequence: state.revision,
       level: eventName.endsWith('invalid_proposal') ? 'warn' : 'info', component: 'application',
-      eventName, reasonCode, operationId: state.operationId, attemptId, ...context,
+      eventName, reasonCode, operationId: state.operationId, attemptId,
+      ...(attemptId && { actionId: state.attempts.find(item => item.attemptId === attemptId)?.actionId }),
+      ...context,
     });
   }
 
