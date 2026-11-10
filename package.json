@@ -25,5 +25,22 @@
   "exports": "./src/main/index.js",
   "bin": {
     "role-orchestrator": "./src/main/cli.js"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "24.10.0"
+  },
+  "scripts": {
+    "check": "node scripts/check-specification.mjs && node scripts/check-javascript.mjs && npm run check:boundaries",
+    "test:foundation": "node --test tests/foundation/*.test.js",
+    "test:core": "node scripts/run-suite.mjs core",
+    "test:contracts": "node scripts/run-suite.mjs contracts",
+    "test:integration": "node scripts/run-suite.mjs integration",
+    "test:acceptance": "node scripts/run-suite.mjs acceptance",
+    "test:native": "node scripts/run-suite.mjs native",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:package": "node scripts/check-package.mjs",
+    "check:removal": "node scripts/check-package.mjs --removal",
+    "test": "npm run test:foundation && npm run test:core && npm run test:contracts && npm run test:integration"
   }
 }
