@@ -24,6 +24,10 @@
 | C12.6 | Clean installation outside checkout | Усилен tarball E2E, CI pending |
 | C12.7 | Архитектурный audit | Static paths reviewed; no reproduced defect |
 | C12.8 | Release комплект/changelog/diagnostics | Manifest + CI artifact, verification pending |
-| C12.9 | Nix/NixOS/CI acceptance | **Следующий** |
+| C12.9 | Nix/NixOS/CI acceptance | Linux Nix/CI + NixOS eval implemented; current CI pending; NixOS boot UNVERIFIED |
 
 Полные критерии C12.0.1–C12.9: [C12 acceptance and delivery](C12_ACCEPTANCE_DELIVERY.md). Не отмечать недоступные native пробы как PASS; implementation, regression, native readiness различаются. Каждый шаг отдельным коммитом и фактическим обновлением STATUS.
+
+## Нативные блокеры финальной приёмки
+
+C12.0–.2 и C12.5–.9 имеют отдельные implementation commits и обязательные CI, но **C12 как целое не закрыт**: C12.3 требует двух независимых реально работающих моделей/провайдеров, C12.4 — живой Zed/ACP-клиент; реальная NixOS эксплуатация тоже не проверена. Детальный безопасный план выполнения: [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). После получения доказательств обновить единственную [матрицу](../../tests/ACCEPTANCE_MATRIX.md) и [STATUS](STATUS.md), повторить clean full CI. Нельзя преобразовывать UNVERIFIED в PASS из GitHub Actions fixtures.

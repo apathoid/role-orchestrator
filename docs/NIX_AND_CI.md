@@ -68,3 +68,7 @@ Native model/Zed tests отдельно opt-in с явным доступом и
 - [Nixpkgs buildNpmPackage](https://github.com/NixOS/nixpkgs/blob/master/doc/languages-frameworks/javascript.section.md).
 
 Точные SDK/API детали проверяются при реализации адаптера; наличие стартового npm dependency не подтверждает работоспособность провайдера.
+
+## C12.9 — граница NixOS-проверки
+
+Команда `bash scripts/check-nixos-evaluation.sh` через настоящий pinned nixpkgs `lib.nixosSystem` проверяет, что NixOS module `environment.systemPackages` принимает `packages.x86_64-linux.role-orchestrator`. CI также выполняет `nix flake check`, `nix build`, `nix run`, `nix profile add` и контролируемый CLI сценарий вне Git по `scripts/check-nix-install.sh`. Это проверяет Linux Nix build, evaluation и установленный artifact, но **не** загрузку настоящей NixOS системы, драйверы/динамическую линковку на пользовательской машине или реальный ACP/CLI LLM. NixOS native эксплуатация остаётся **UNVERIFIED** до запуска на подходящем NixOS хосте.

@@ -4,13 +4,19 @@
 |---|---|
 | Ветка | `greenfield/model-first-core` |
 | Исходный HEAD для C12 | `cbd8e70baca3ab380a2ed3d43ae1fdd667616412` |
-| Последний выполненный этап | C12.8 — release checksum manifest and uploaded CI artifact (new CI pending) |
-| Следующий этап | **C12.9** — final Nix/NixOS/CI acceptance; C12.3/C12.4 native UNVERIFIED |
-| Implementation complete | C00–C11R и C12.0 реализованы; весь C12 пока **NO** |
+| Последний выполненный этап | C12.9 — NixOS module eval and complete Linux CI; final current-HEAD CI pending |
+| Следующий этап | **Remaining:** C12.3 (two real LLM providers), C12.4 (Zed/ACP), real NixOS boot/native. Все независимые C12.0–.2/.5–.9 changes committed, проверка current HEAD PENDING |
+| Implementation complete | C00–C11R и независимые C12.0–.2/.5–.9 реализованы; C12.3/.4 **не приняты (native unavailable)**, весь C12 **INCOMPLETE** |
 | Regression verified | OBSERVED [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) — SUCCESS на `1341d75` после удаления `development`; следующий commit до CI PENDING |
 | Detailed suites baseline | 298/298 (4+25+52+217) на `949292a`, [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211); исторический результат |
 | Native integration verified | **UNVERIFIED**: реальный Codex CLI/ACP model, Zed, NixOS и adaptive reasoning |
 | Production ready | **NO / NATIVE ACCEPTANCE PENDING** |
+
+## C12.9 — Nix / NixOS / CI
+
+- Добавлена `scripts/check-nixos-evaluation.sh`: действительно вызывает pinned nixpkgs `lib.nixosSystem` и проверяет включение пакета в `environment.systemPackages` на `x86_64-linux`. Это проверка вычисления конфигурации, **не boot/host native test**.
+- CI обязан запускать root/npm acceptance, `nix flake check`, `nix build/run/profile`, npm tarball E2E, checksum/двойной pack, NixOS evaluation и сохранять release artifact. Для текущего commit полный итог **PENDING**.
+- **Незакрытые требования:** реальный Codex/независимый ACP model session, реальные permissions/cancel/resume, Zed как внешний клиент, native effort и NixOS deployment. На имеющейся GitHub-сессии это нельзя достоверно выполнить. Общий C12 не объявляется завершённым; production readiness = NO.
 
 ## C12.8 — поставка, журнал изменений и контроль целостности
 

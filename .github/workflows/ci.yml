@@ -56,6 +56,8 @@ jobs:
         run: |
           nix develop --no-update-lock-file --command npm pack --dry-run --ignore-scripts --json
           nix develop --no-update-lock-file --command node --input-type=module -e "import('role-orchestrator')"
+      - name: Evaluate NixOS systemPackages integration
+        run: nix develop --no-update-lock-file --command bash scripts/check-nixos-evaluation.sh
       - name: Prepare reproducible release archive and checksum
         run: nix develop --no-update-lock-file --command node scripts/prepare-release.mjs release-artifacts
       - name: Capture Nix store archive metadata
