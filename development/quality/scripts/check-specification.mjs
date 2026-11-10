@@ -48,7 +48,7 @@ const clusters = await markdownFiles(resolve(root, 'development/plan/clusters'))
 const ids = [];
 for (const path of clusters) {
   const text = await readFile(path, 'utf8');
-  const steps = [...text.matchAll(/^## (C\d\d)\.(\d+) —/gm)];
+  const steps = [...text.matchAll(/^## (C\d\d(?:R)?)\.(\d+) —/gm)];
   assert.ok(steps.length > 0, `No steps: ${path}`);
   for (const [index, match] of steps.entries()) {
     assert.equal(Number(match[2]), index + 1, `Non-contiguous steps: ${path}`);

@@ -74,7 +74,7 @@ test('C11.1 semantic trace: recovery, unknown effect and cancellation stay disti
     ['attempt.reserved', 'RESERVED', undefined, undefined],
     ['attempt.dispatched', 'DISPATCH_STARTED', undefined, undefined],
     ['operation.recovered', 'RECOVERED', 'operation', 'controller_dispatch'],
-    ['attempt.late_outcome', 'UNKNOWN', undefined, undefined],
+    ['attempt.late_outcome', 'UNKNOWN', 'attempt', 'inspect'],
     ['operation.cancelled', 'CANCELLED', 'operation', 'inspect'],
   ]);
 });

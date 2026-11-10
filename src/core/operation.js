@@ -161,7 +161,7 @@ function diagnosticContext(event) {
       return { details: { subject: 'operation', next: 'controller_dispatch' } };
     case 'operation.cancelled':
       return { details: { subject: 'operation', next: 'inspect' } };
-    case 'attempt.late_outcome':
+    case 'attempt.outcome':
       return { details: { subject: 'attempt', next: 'inspect' } };
     default:
       return {};
