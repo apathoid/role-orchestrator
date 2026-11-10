@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11.8; все C11.1–C11.8 реализованы, Linux GitHub CI PASS |
+| Последний проверенный шаг | C11.8 и исправления ревью C11 P2-1–P2-4, P3; Linux CI PASS |
 | Следующий шаг | C11R.1 (вне текущего поручения) |
 | Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
-| Regression verified | OBSERVED: C11 Linux GitHub Actions — 4 foundation, 19 core, 46 contract, 181 integration, Node 24, Nix и package. Локально в этой сессии Node 24 не запускался |
+| Regression verified | OBSERVED: [CI 42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), Node 24/Linux — foundation 4, core 19, contracts 46, integration 190, Nix/package PASS; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -36,6 +36,16 @@
 - **Приняты C11.1–C11.8:** аудит diagnostic events, bounded NDJSON/rotation/flush/drop summary, redaction и безопасный body capture, inspect/trace/export manifest с атомарной публикацией, side-effect-free diagnose, проверенные гонки cancel/permissions, bounded context, операционная документация. Отдельные коммиты каждого шага сохранены; последующие корректирующие коммиты закрыли CI regressions.
 - **UNVERIFIED:** реальные модельные CLI/ACP сессии, внешний Zed, пользовательский NixOS, недоступные native capabilities. Синтетические тесты не доказывают native readiness. Нет оснований объявлять весь продукт production ready.
 - Следующий кластер — **C11R.1**; C11R не реализован данным поручением.
+
+### Исправления по ревью C11 (2026-11-10)
+
+- **P2-1:** NDJSON sink выдаёт не более одного начального предупреждения и одной итоговой сводки при flush. При `stderr.write() === false` дальнейшие записи не создают давление на поток. Полные счётчики dropped/failed доступны внутри sink; при заблокированном stderr доставку финальной сводки гарантировать нельзя.
+- **P2-2:** Runtime передаёт доверенные известные secret values из `providers.*.launch.env.*.fromEnv` в единую проекцию durable trace/export. Идентификаторы событий, попыток, действий, профилей и провайдеров тоже очищаются. Безопасная обработка произвольных неизвестных секретов не гарантируется.
+- **P2-3:** Trace теперь содержит сохранённый `eventId`, `decisionId` при наличии, корреляцию attempt→action, технические `reasonCode` из общей core mapping и provenance отмены. Исключительные transient классификации позднего или противоречивого outcome остаются отдельно от journal kind.
+- **P2-4:** `compactContext` учитывает размер unavailable/budget markers и число опциональных записей. Неуместившиеся ссылки не вставляются целиком: `host:context-budget` сообщает число непредставленных; исходные сохранённые записи можно адресовать через `ContextPort.list/fetch` в пределах бюджета. Литеральные сообщения пользователя и необходимые coordination facts отделены от optional byte budget.
+- **P3:** `diagnose` проверяет тип state directory и type/execute permission для файлов запуска. Относительные команды и относительный PATH помечаются `cwd_dependent`; это статическая подсказка, а не обещание успешного будущего spawn.
+- **OBSERVED:** [GitHub Actions #42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), HEAD `25abd709965ddf162ef65124a3264d6f760cef89`, Ubuntu x86_64, Node 24: `nix flake check`, CLI/package/install checks, `check`, foundation 4/4, core 19/19, contracts 46/46, integration 190/190, exit 0. Регрессионные тесты для всех пяти замечаний включены в suites. Нативные Codex/ACP/Zed и NixOS остаются **UNVERIFIED**; C11R не начат.
+- Следующий этап — **C11R.1**.
 
 ## C11R — дополнение плана (2026-11-10)
 
