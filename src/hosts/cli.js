@@ -111,7 +111,7 @@ export async function runCli(args, io, execute) {
       io.stdout.write(invocation.format === 'json' ? JSON.stringify({ output: invocation.output }) + '\n' : invocation.output + '\n');
       return 0;
     }
-    if (result && typeof result === 'object' && 'attempts' in result) {
+    if (result && typeof result === 'object' && 'request' in result && 'limits' in result && 'attempts' in result) {
       const view = operationView(/** @type {Operation} */ (result));
       if (invocation.format === 'text' && ['run', 'resume'].includes(invocation.command.action)) {
         io.stdout.write((view.assessment?.answer ?? (view.waiting?.kind === 'question' ? view.waiting.question
