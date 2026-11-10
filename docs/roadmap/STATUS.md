@@ -4,13 +4,18 @@
 |---|---|
 | Ветка | `greenfield/model-first-core` |
 | Исходный HEAD для C12 | `cbd8e70baca3ab380a2ed3d43ae1fdd667616412` |
-| Последний выполненный этап | C12.5 — mutable workspace acceptance: Git branch/index edited during worker; CI pending |
-| Следующий этап | **C12.6** — clean installed-product independence; C12.3/C12.4 native remain UNVERIFIED |
+| Последний выполненный этап | C12.6 — clean install tarball CLI diagnose and controlled E2E outside checkout; CI pending |
+| Следующий этап | **C12.7** — structural architecture audit; C12.3/C12.4 native remain UNVERIFIED |
 | Implementation complete | C00–C11R и C12.0 реализованы; весь C12 пока **NO** |
 | Regression verified | OBSERVED [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) — SUCCESS на `1341d75` после удаления `development`; следующий commit до CI PENDING |
 | Detailed suites baseline | 298/298 (4+25+52+217) на `949292a`, [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211); исторический результат |
 | Native integration verified | **UNVERIFIED**: реальный Codex CLI/ACP model, Zed, NixOS и adaptive reasoning |
 | Production ready | **NO / NATIVE ACCEPTANCE PENDING** |
+
+## C12.6 — проверка установленной поставки вне checkout
+
+- Укреплён `scripts/check-package.mjs --removal`: из **распакованного npm tarball** запускается CLI `diagnose` без побочных эффектов и контролируемый end-to-end с внешним fixture plugin; state находится только у consumer. Проверяется отсутствие тестов, скриптов, agents/roadmap, dev deps/Git в установленном пакете.
+- Nix install/profile/non-Git public runtime уже **OBSERVED** в [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595). Новый tarball E2E на этом commit **UNVERIFIED до CI**; реальная модель native UNVERIFIED.
 
 ## C12.5 — изменяемое рабочее окружение
 

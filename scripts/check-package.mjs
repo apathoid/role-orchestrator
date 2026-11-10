@@ -106,6 +106,59 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
         await registry.close();
       }
     `], consumer, { ...process.env, PATH: '' });
+
+    // Exercise the *extracted tarball* (not the checkout) through the public CLI.
+    // The consumer only supplies its own fixture extension and externally held state.
+    await writeFile(join(consumer, 'fixture-provider.mjs'), `
+      export const manifest = { id: 'fixture', version: '1', apiVersion: 1, exports: ['createProvider'] };
+      export function createProvider({ providerId }) {
+        return {
+          async describe() { return { providerId, maxConcurrency: null, capabilities: {} }; },
+          async open() { return { sessionId: 'fixture-session' }; },
+          async invoke(_session, invocation) {
+            return {
+              dispatchCertainty: 'sent',
+              outcome: { schemaVersion: 1, attemptId: invocation.attemptId,
+                terminal: 'completed', effect: 'none', diagnostics: [], outputRefs: [],
+                usage: { inputTokens: null, outputTokens: null, cost: null } },
+              output: { schemaVersion: 1, decisionId: 'fixture-final',
+                operationId: invocation.operationId, contextCursor: 0,
+                additions: [], cancellations: [], finalAssessment: {
+                  author: invocation.profile.profileId, overall: 'complete',
+                  answer: invocation.workspaceContext.cwd, requirements: [],
+                  observationRefs: [], findingRefs: [], unresolvedQuestions: [],
+                } },
+            };
+          },
+          async cancel() {},
+          async close() {},
+        };
+      }
+    `);
+    const fixtureConfig = join(consumer, 'fixture-config.json');
+    await writeFile(fixtureConfig, JSON.stringify({
+      schemaVersion: 1, controllerProfile: 'primary',
+      profiles: { primary: { provider: 'fixture', model: 'fixture' } },
+      providers: { fixture: { adapter: 'fixture', launch: { command: 'fixture-command' } } },
+      plugins: [{ id: 'fixture', module: './fixture-provider.mjs' }],
+      storage: { directory: join(consumer, 'external-state') },
+    }));
+    const fixtureEnv = { ...process.env, XDG_CONFIG_HOME: join(consumer, 'xdg-config'),
+      XDG_STATE_HOME: join(consumer, 'xdg-state'), PATH: '' };
+    const diagnosis = JSON.parse(checked(process.execPath, [join(installed, executable),
+      'diagnose', '--config', fixtureConfig, '--format', 'json'], consumer, fixtureEnv));
+    assert.equal(diagnosis.state, 'not_created');
+    assert.equal(diagnosis.capabilities.status, 'unknown');
+    assert.equal(diagnosis.sideEffects, 'none');
+    await assert.rejects(access(join(consumer, 'external-state')), { code: 'ENOENT' });
+    const completed = JSON.parse(checked(process.execPath, [join(installed, executable),
+      'run', '--config', fixtureConfig, '--format', 'json', 'Answer from an external consumer'],
+    consumer, fixtureEnv));
+    assert.equal(completed.assessment.answer, consumer);
+    await access(join(consumer, 'external-state'));
+    for (const excluded of ['development', 'tests', 'scripts', '.agents', 'AGENTS.md', 'docs/roadmap']) {
+      await assert.rejects(access(join(installed, excluded)), { code: 'ENOENT' });
+    }
   }
   console.log('PASS ' + (removal ? 'clean install without development or Git' : 'package contents and side-effect-free public import'));
 });
