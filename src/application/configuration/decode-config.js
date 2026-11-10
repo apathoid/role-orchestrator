@@ -7,7 +7,8 @@
  * @typedef {{
  *   schemaVersion: 1,
  *   providers: Record<string, ProviderConfig>,
- *   profiles: Record<string, {provider: string, model: string}>,
+ *   profiles: Record<string, {provider: string, model: string,
+ *     reasoningEffort?: 'native' | {level: string, effort: string}[], defaultReasoningLevel?: string}>,
  *   controllerProfile: string,
  *   roles?: Record<string, {purpose?: string, instructions: string, preferredProfiles?: string[]}>,
  *   resources?: ResourceConfig,
@@ -73,6 +74,23 @@ export async function decodeConfiguration(input) {
   for (const [id, profile] of Object.entries(config.profiles)) {
     if (!Object.hasOwn(config.providers, profile.provider)) {
       return reject('/profiles/' + escapePointer(id) + '/provider', 'known-provider');
+    }
+    const path = '/profiles/' + escapePointer(id);
+    const declared = profile.reasoningEffort;
+    if (declared === undefined || declared === 'native') {
+      if (profile.defaultReasoningLevel !== undefined) return reject(path + '/defaultReasoningLevel', 'selectable-only');
+      continue;
+    }
+    const levels = new Set();
+    for (const [index, entry] of declared.entries()) {
+      if (levels.has(entry.level)) return reject(path + '/reasoningEffort/' + index + '/level', 'unique-level');
+      levels.add(entry.level);
+    }
+    if (declared.length > 1 && profile.defaultReasoningLevel === undefined) {
+      return reject(path + '/defaultReasoningLevel', 'required-for-multiple-levels');
+    }
+    if (profile.defaultReasoningLevel !== undefined && !levels.has(profile.defaultReasoningLevel)) {
+      return reject(path + '/defaultReasoningLevel', 'known-level');
     }
   }
   for (const [id, role] of Object.entries(config.roles ?? {})) {

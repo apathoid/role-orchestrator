@@ -10,6 +10,8 @@
  *   capability?: Capability}} ReasoningCatalog
  * @typedef {{mode: 'native'} | {mode: 'selectable', level: string, nativeValue: string,
  *   selectionSource: 'model' | 'default'}} ReasoningSelection
+ * @typedef {{kind: 'selected', selection: ReasoningSelection} |
+ *   {kind: 'rejected', profileId: string, requestedLevel?: string, availableLevels: readonly string[]}} ReasoningResolution
  * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>,
  *   reasoning?: ReasoningCatalog, unavailable?: string}} Profile
  * @typedef {{sessionId: string}} ProviderSession
@@ -66,7 +68,8 @@
  *   list: () => Promise<readonly CatalogEntry[]>,
  *   preferences?: Readonly<{roleId?: string, skillIds: readonly string[]}>,
  *   loadSkill?: (id: string, maxBytes: number, signal: AbortSignal) => Promise<SkillInstructions>,
- *   resolve: (kind: CatalogEntry['kind'], id: string) => Promise<CatalogEntry | undefined>
+ *   resolve: (kind: CatalogEntry['kind'], id: string) => Promise<CatalogEntry | undefined>,
+ *   selectReasoning?: (profileId: string, level?: string) => ReasoningResolution
  * }} Catalog
  * @typedef {{id: string, description: string, resource: string, effect: 'read' | 'write',
  *   inputSchema: Record<string, unknown>}} ToolMetadata

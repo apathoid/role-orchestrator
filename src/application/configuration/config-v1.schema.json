@@ -3,41 +3,89 @@
   "title": "Role Orchestrator trusted configuration v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "providers", "profiles", "controllerProfile"],
+  "required": [
+    "schemaVersion",
+    "providers",
+    "profiles",
+    "controllerProfile"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
-    "providers": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/definitions/provider" } },
-    "profiles": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/definitions/profile" } },
-    "controllerProfile": { "$ref": "#/definitions/id" },
-    "roles": { "type": "object", "additionalProperties": { "$ref": "#/definitions/role" } },
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "providers": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/definitions/provider"
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/definitions/profile"
+      }
+    },
+    "controllerProfile": {
+      "$ref": "#/definitions/id"
+    },
+    "roles": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/role"
+      }
+    },
     "resources": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "maxConcurrentInvocations": { "$ref": "#/definitions/limit" },
-        "maxInvocationsPerOperation": { "$ref": "#/definitions/limit" },
-        "invocationTimeoutMs": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
+        "maxConcurrentInvocations": {
+          "$ref": "#/definitions/limit"
+        },
+        "maxInvocationsPerOperation": {
+          "$ref": "#/definitions/limit"
+        },
+        "invocationTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        }
       }
     },
     "context": {
       "type": "object",
       "additionalProperties": false,
-      "properties": { "maxBytes": { "$ref": "#/definitions/limit" } }
+      "properties": {
+        "maxBytes": {
+          "$ref": "#/definitions/limit"
+        }
+      }
     },
     "storage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["directory"],
+      "required": [
+        "directory"
+      ],
       "properties": {
-        "directory": { "$ref": "#/definitions/id" },
+        "directory": {
+          "$ref": "#/definitions/id"
+        },
         "artifactRetention": {
           "type": "object",
           "minProperties": 1,
           "additionalProperties": false,
           "properties": {
-            "maxAgeMs": { "$ref": "#/definitions/nonnegativeLimit" },
-            "maxBytes": { "$ref": "#/definitions/nonnegativeLimit" }
+            "maxAgeMs": {
+              "$ref": "#/definitions/nonnegativeLimit"
+            },
+            "maxBytes": {
+              "$ref": "#/definitions/nonnegativeLimit"
+            }
           }
         }
       }
@@ -46,10 +94,23 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "level": { "enum": ["debug", "info", "warn", "error"] },
-        "maxFileBytes": { "$ref": "#/definitions/limit" },
-        "retainedFiles": { "$ref": "#/definitions/limit" },
-        "captureBodies": { "type": "boolean" }
+        "level": {
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
+        },
+        "maxFileBytes": {
+          "$ref": "#/definitions/limit"
+        },
+        "retainedFiles": {
+          "$ref": "#/definitions/limit"
+        },
+        "captureBodies": {
+          "type": "boolean"
+        }
       }
     },
     "permissions": {
@@ -61,95 +122,242 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["profileId", "resource", "optionId", "kind"],
+            "required": [
+              "profileId",
+              "resource",
+              "optionId",
+              "kind"
+            ],
             "properties": {
-              "profileId": { "$ref": "#/definitions/id" },
-              "resource": { "$ref": "#/definitions/id" },
-              "optionId": { "$ref": "#/definitions/id" },
-              "kind": { "enum": ["allow", "deny"] }
+              "profileId": {
+                "$ref": "#/definitions/id"
+              },
+              "resource": {
+                "$ref": "#/definitions/id"
+              },
+              "optionId": {
+                "$ref": "#/definitions/id"
+              },
+              "kind": {
+                "enum": [
+                  "allow",
+                  "deny"
+                ]
+              }
             }
           }
         }
       }
     },
-    "plugins": { "type": "array", "items": { "$ref": "#/definitions/plugin" } },
-    "skills": { "type": "array", "items": { "$ref": "#/definitions/skill" } },
-    "tools": { "type": "array", "items": { "$ref": "#/definitions/tool" } }
+    "plugins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/plugin"
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/skill"
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/tool"
+      }
+    }
   },
   "definitions": {
-    "id": { "type": "string", "pattern": "\\S" },
-    "nonnegativeLimit": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-    "limit": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "id": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "nonnegativeLimit": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
     "secretRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fromEnv"],
-      "properties": { "fromEnv": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" } }
+      "required": [
+        "fromEnv"
+      ],
+      "properties": {
+        "fromEnv": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      }
     },
     "launch": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["command"],
+      "required": [
+        "command"
+      ],
       "properties": {
-        "command": { "$ref": "#/definitions/id" },
-        "args": { "type": "array", "items": { "type": "string" } },
-        "env": { "type": "object", "additionalProperties": { "$ref": "#/definitions/secretRef" } }
+        "command": {
+          "$ref": "#/definitions/id"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/secretRef"
+          }
+        }
       }
     },
     "provider": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["adapter"],
+      "required": [
+        "adapter"
+      ],
       "properties": {
-        "adapter": { "$ref": "#/definitions/id" },
-        "launch": { "$ref": "#/definitions/launch" },
-        "nativeSettings": { "type": "object" },
-        "mcpBridge": { "type": "boolean" }
+        "adapter": {
+          "$ref": "#/definitions/id"
+        },
+        "launch": {
+          "$ref": "#/definitions/launch"
+        },
+        "nativeSettings": {
+          "type": "object"
+        },
+        "mcpBridge": {
+          "type": "boolean"
+        }
       }
     },
     "profile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider", "model"],
+      "required": [
+        "provider",
+        "model"
+      ],
       "properties": {
-        "provider": { "$ref": "#/definitions/id" },
-        "model": { "$ref": "#/definitions/id" }
+        "provider": {
+          "$ref": "#/definitions/id"
+        },
+        "model": {
+          "$ref": "#/definitions/id"
+        },
+        "reasoningEffort": {
+          "anyOf": [
+            {
+              "const": "native"
+            },
+            {
+              "$ref": "#/definitions/reasoningMapping"
+            }
+          ]
+        },
+        "defaultReasoningLevel": {
+          "$ref": "#/definitions/id"
+        }
       }
     },
     "role": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["instructions"],
+      "required": [
+        "instructions"
+      ],
       "properties": {
-        "purpose": { "type": "string" },
-        "instructions": { "$ref": "#/definitions/id" },
-        "preferredProfiles": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/id" } }
+        "purpose": {
+          "type": "string"
+        },
+        "instructions": {
+          "$ref": "#/definitions/id"
+        },
+        "preferredProfiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/id"
+          }
+        }
       }
     },
     "plugin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "module"],
+      "required": [
+        "id",
+        "module"
+      ],
       "properties": {
-        "id": { "$ref": "#/definitions/id" },
-        "module": { "$ref": "#/definitions/id" },
-        "enabled": { "type": "boolean" }
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "module": {
+          "$ref": "#/definitions/id"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
       }
     },
     "skill": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "source"],
+      "required": [
+        "id",
+        "source"
+      ],
       "properties": {
-        "id": { "$ref": "#/definitions/id" },
-        "source": { "$ref": "#/definitions/id" }
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "source": {
+          "$ref": "#/definitions/id"
+        }
       }
     },
     "tool": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id"],
-      "properties": { "id": { "$ref": "#/definitions/id" } }
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        }
+      }
+    },
+    "reasoningMapping": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "level",
+          "effort"
+        ],
+        "properties": {
+          "level": {
+            "$ref": "#/definitions/id"
+          },
+          "effort": {
+            "$ref": "#/definitions/id"
+          }
+        }
+      }
     }
   }
 }

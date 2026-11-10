@@ -13,6 +13,8 @@
  */
 export function createCatalog(configuration, descriptions = [], skills, tools = [], { unavailable, preferences } = {}) {
   const providers = new Map(descriptions.map(item => [item.providerId, item]));
+  /** @type {Map<string, {mode: 'native'} | {mode: 'selectable', defaultLevel: string, values: ReadonlyMap<string, string>}>} */
+  const reasoning = new Map();
   /** @type {Map<CatalogEntry['kind'], Map<string, CatalogEntry>>} */
   const byKind = new Map([['profile', new Map()], ['role', new Map()], ['skill', new Map()], ['tool', new Map()]]);
   for (const [profileId, profile] of Object.entries(configuration.profiles)) {
@@ -20,9 +22,22 @@ export function createCatalog(configuration, descriptions = [], skills, tools = 
     const capabilities = Object.freeze(Object.fromEntries(Object.entries(description?.capabilities ?? {})
       .map(([key, value]) => [key, Object.freeze({ ...value })])));
     const reason = unavailable?.get(profile.provider);
+    const declared = profile.reasoningEffort;
+    const selection = !declared || declared === 'native'
+      ? /** @type {const} */ ({mode: 'native'})
+      : {mode: /** @type {const} */ ('selectable'),
+        defaultLevel: profile.defaultReasoningLevel ?? declared[0].level,
+        values: new Map(declared.map(item => [item.level, item.effort]))};
+    reasoning.set(profileId, selection);
+    const modelView = selection.mode === 'native'
+      ? Object.freeze({mode: /** @type {const} */ ('native')})
+      : Object.freeze({mode: /** @type {const} */ ('selectable'),
+        levels: Object.freeze([...selection.values.keys()].sort()), defaultLevel: selection.defaultLevel,
+        capability: Object.freeze({support: /** @type {const} */ ('unknown'), source: /** @type {const} */ ('configured')})});
     const value = Object.freeze({
       ...(reason && { unavailable: reason }),
-      profileId, providerId: profile.provider, model: profile.model, capabilities: description ? capabilities : undefined,
+      profileId, providerId: profile.provider, model: profile.model, reasoning: modelView,
+      capabilities: description ? capabilities : undefined,
     });
     byKind.get('profile')?.set(profileId, Object.freeze({ kind: 'profile', value }));
   }
@@ -45,6 +60,20 @@ export function createCatalog(configuration, descriptions = [], skills, tools = 
   return Object.freeze({
     loadSkill: skills?.loadSkill,
     preferences,
+    selectReasoning(profileId, level) {
+      const entry = reasoning.get(profileId);
+      const availableLevels = entry?.mode === 'selectable' ? [...entry.values.keys()].sort() : [];
+      if (!entry || (entry.mode === 'native' && level !== undefined) ||
+          (entry.mode === 'selectable' && level !== undefined && !entry.values.has(level))) {
+        return {kind: 'rejected', profileId, requestedLevel: level, availableLevels};
+      }
+      if (entry.mode === 'native') return {kind: 'selected', selection: Object.freeze({mode: 'native'})};
+      const chosen = level ?? entry.defaultLevel;
+      return {kind: 'selected', selection: Object.freeze({
+        mode: 'selectable', level: chosen, nativeValue: /** @type {string} */ (entry.values.get(chosen)),
+        selectionSource: level === undefined ? 'default' : 'model',
+      })};
+    },
     async list() { return entries; },
     async resolve(kind, id) { return byKind.get(kind)?.get(id); },
   });

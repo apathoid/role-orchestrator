@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11.8; C11R.1 реализован, CI ожидается |
-| Следующий шаг | C11R.2 |
+| Последний проверенный шаг | C11R.2; CI для C11R в процессе |
+| Следующий шаг | C11R.3 |
 | Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
 | Regression verified | OBSERVED: [CI 42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), Node 24/Linux — foundation 4, core 19, contracts 46, integration 190, Nix/package PASS; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
@@ -14,7 +14,8 @@
 ## C11R — ход реализации (2026-11-10)
 
 - **C11R.1 implemented / REGRESSION UNVERIFIED до проверки CI.** Добавлены Action.reasoningLevel и Decision.nextController (continue или reasoningLevel) в Decoder v1, независимо от словаря уровней; запрещены несовместимые final/clarification/wait. Продолжение без делегирования является полноценным Decision. Введены JSDoc ReasoningSelection/ReasoningCatalog для профилей и invocation. Тесты проверяют форму, точные пути ошибок, совместимость legacy решений и immutable decision identity.
-- Следующий шаг: **C11R.2** — trusted config v1, default/mapping и каталог. Реальные CLI/ACP/Zed остаются UNVERIFIED.
+- **C11R.2 implemented / CI PENDING.** Расширены JSON Schema v1 и decoder: native/omission, непустые mapping entries, уникальность уровней, deterministic default, точные JSON Pointer ошибки. Каталог отображает только levels/default, закрытый resolver возвращает nativeValue отдельным immutable per-invocation значением. Project preferences не могут добавлять значения. Добавлены интеграционные тесты.
+- Следующий шаг: **C11R.3** — durable route и однократная привязка выбора. Реальные CLI/ACP/Zed остаются UNVERIFIED.
 
 ## C11 — диагностика и устойчивость
 
