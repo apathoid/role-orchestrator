@@ -6,9 +6,10 @@
 
 /**
  * @typedef {'not_sent' | 'sent' | 'unknown'} DispatchCertainty
- * @typedef {{configurationRef: string, profileId: string, providerId: string, model: string, idempotencyKey?: string}} DispatchRoute
+ * @typedef {{configurationRef: string, profileId: string, providerId: string, model: string, idempotencyKey?: string,
+ *   reasoning?: import('./ports.js').ReasoningSelection}} DispatchRoute
  * @typedef {{authorityRef: string, configurationRef: string, limits: Limits}} ResumeAuthority
- * @typedef {{attemptId: string, actionId: string, generation: number, reservedAt: number,
+ * @typedef {{attemptId: string, actionId: string, generation: number, reservedAt: number, reasoningDecisionId?: string,
  *   dispatchedAt?: number, route?: DispatchRoute, dispatchCertainty: DispatchCertainty, cancellation?: CancellationSource}} AttemptRecord
  * @typedef {AttemptRecord & (
  *   {status: 'reserved' | 'dispatched', outcome?: never, endedAt?: never} |
@@ -24,7 +25,7 @@
  *   cancellation?: CancellationSource, status: 'active' | 'waiting' | 'finished' | 'cancelled'}} Operation
  *
  * @typedef {{eventId: string, receivedAt: number, operationId: string} & (
- *   {kind: 'attempt.reserved', actionId: string, attemptId: string} |
+ *   {kind: 'attempt.reserved', actionId: string, attemptId: string, reasoningDecisionId?: string} |
  *   {kind: 'attempt.dispatched', attemptId: string, route?: DispatchRoute} |
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
  *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly Observation[], findings?: readonly Finding[], late?: true} |
@@ -88,6 +89,25 @@ export function resourceSnapshot(state) {
     active, charged, remaining: Math.max(0, state.limits.maxInvocations - charged),
     usage: { inputTokens: total('inputTokens'), outputTokens: total('outputTokens'), cost: total('cost') },
   };
+}
+
+/**
+ * A decision's one-shot Controller preference is pending only until the next
+ * Controller reservation in the same generation. The journal is the sole truth.
+ * @param {Operation} operation
+ * @returns {{decisionId: string, reasoningLevel?: string} | undefined}
+ */
+export function pendingControllerReasoning(operation) {
+  const events = operation.events;
+  const boundary = events.findLastIndex(event => event.kind === 'operation.continued' || event.kind === 'operation.recovered');
+  const current = events.slice(boundary + 1);
+  const index = current.findLastIndex(event => event.kind === 'controller.responded');
+  if (index < 0) return undefined;
+  const candidate = current[index];
+  if (candidate.kind !== 'controller.responded' || !candidate.decision.nextController) return undefined;
+  if (current.slice(index + 1).some(event =>
+    event.kind === 'attempt.reserved' && event.actionId === event.attemptId)) return undefined;
+  return {decisionId: candidate.decision.decisionId, reasoningLevel: candidate.decision.nextController.reasoningLevel};
 }
 
 /** @param {Operation} operation */
@@ -240,6 +260,10 @@ export function applyEvent(state, event) {
   switch (event.kind) {
     case 'attempt.reserved': {
       if (attempt) return reject('IDENTITY_CONFLICT');
+      const pendingReasoning = pendingControllerReasoning(state);
+      if (event.actionId === event.attemptId) {
+        if (event.reasoningDecisionId !== pendingReasoning?.decisionId) return reject('INVALID_PROPOSAL');
+      } else if (event.reasoningDecisionId !== undefined) return reject('INVALID_PROPOSAL');
       if (state.events.some(item => item.kind === 'action.cancelled' && item.actionId === event.actionId)) return reject('CANCELLED');
       if (state.status !== 'active') return reject(state.status === 'cancelled' ? 'CANCELLED' : 'INVALID_PROPOSAL');
       const resources = resourceSnapshot(state);
@@ -248,7 +272,8 @@ export function applyEvent(state, event) {
       }
       return apply({ attempts: [...state.attempts, {
         attemptId: event.attemptId, actionId: event.actionId, generation: state.generation,
-        reservedAt: event.receivedAt, status: 'reserved', dispatchCertainty: 'not_sent',
+        reservedAt: event.receivedAt, reasoningDecisionId: event.reasoningDecisionId,
+        status: 'reserved', dispatchCertainty: 'not_sent',
       }] }, 'RESERVED');
     }
     case 'attempt.dispatched':

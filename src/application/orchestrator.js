@@ -2,7 +2,7 @@ import { admitFindings, checkAssessment, evidenceRefs, findings, recordObservati
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
-import { applyEvent, createOperation, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
+import { applyEvent, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
 import { handoffContext, prepareHandoff } from './handoff.js';
@@ -864,7 +864,10 @@ export function createOrchestrator(deps) {
           return { state, ready: slot.promise };
         }
         const attemptId = ids.newId();
-        const reserved = await transition(state, { kind: 'attempt.reserved', attemptId, actionId: actionId ?? attemptId });
+        const reasoningDecisionId = actionId ? undefined : pendingControllerReasoning(state)?.decisionId;
+        const reserved = await transition(state, {
+          kind: 'attempt.reserved', attemptId, actionId: actionId ?? attemptId, reasoningDecisionId,
+        });
         liveAttempts.add(attemptId);
         return { attemptId, state: reserved };
       });

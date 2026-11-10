@@ -45,9 +45,15 @@ const waiting = tagged('kind', {
 const limit = (input, path) => count(input, path) || invalid(path, 'a positive safe integer');
 const limits = record({ maxInvocations: limit, maxConcurrentInvocations: limit });
 const trusted = record({ authorityRef: id, configurationRef: id, limits });
-const route = record({ configurationRef: id, profileId: id, providerId: id, model: id, idempotencyKey: optional(id) });
+const reasoning = tagged('mode', {
+  native: record({mode: oneOf('native')}),
+  selectable: record({mode: oneOf('selectable'), level: id, nativeValue: id,
+    selectionSource: oneOf('model','default')}),
+});
+const route = record({ configurationRef: id, profileId: id, providerId: id, model: id,
+  idempotencyKey: optional(id), reasoning: optional(reasoning) });
 const attemptFields = {
-  attemptId: id, actionId: id, generation: count, reservedAt: measurement,
+  attemptId: id, actionId: id, generation: count, reservedAt: measurement, reasoningDecisionId: optional(id),
   dispatchedAt: optional(measurement), route: optional(route), dispatchCertainty: certainty, cancellation: optional(cancellation),
 };
 /** @type {Decoder<Attempt>} */
@@ -68,7 +74,7 @@ const admission = tagged('kind', {
 const eventFields = { eventId: id, operationId: id, receivedAt: measurement };
 /** @type {Decoder<Event>} */
 const event = tagged('kind', {
-  'attempt.reserved': record({ ...eventFields, kind: oneOf('attempt.reserved'), attemptId: id, actionId: id }),
+  'attempt.reserved': record({ ...eventFields, kind: oneOf('attempt.reserved'), attemptId: id, actionId: id, reasoningDecisionId: optional(id) }),
   'attempt.dispatched': record({ ...eventFields, kind: oneOf('attempt.dispatched'), attemptId: id, route: optional(route) }),
   'attempt.cancel_requested': record({
     ...eventFields, kind: oneOf('attempt.cancel_requested'), attemptId: id, source: cancellation,
@@ -138,6 +144,10 @@ function snapshot(input, path) {
   /** @type {Map<string, Attempt>} */
   const ledger = new Map();
   let generation = 0;
+  /** @type {{decisionId: string, reasoningLevel?: string} | undefined} */
+  let pendingController;
+  const decisions = new Map(value.events.flatMap(item => item.kind === 'controller.responded'
+    ? [[item.decision.decisionId, item.decision]] : []));
   for (const [index, item] of value.events.entries()) {
     const at = path + '.events[' + index + ']';
     if (item.operationId !== value.operationId) invalid(at + '.operationId', 'the enclosing operation id');
@@ -169,7 +179,15 @@ function snapshot(input, path) {
       recordObservationRefs(refs, item);
     }
     const batch = eventFindings(item);
-    if (item.kind === 'operation.continued' || item.kind === 'operation.recovered') generation++;
+    if (item.kind === 'operation.continued' || item.kind === 'operation.recovered') {
+      generation++;
+      pendingController = undefined;
+    }
+    if (item.kind === 'controller.responded') {
+      pendingController = item.decision.nextController
+        ? {decisionId: item.decision.decisionId, reasoningLevel: item.decision.nextController.reasoningLevel}
+        : undefined;
+    }
     const attemptId = item.kind === 'attempt.outcome' ? item.outcome.attemptId : 'attemptId' in item ? item.attemptId : undefined;
     if (batch?.length) {
       const worker = item.kind === 'attempt.outcome';
@@ -197,14 +215,35 @@ function snapshot(input, path) {
     const prior = ledger.get(attemptId);
     if (item.kind === 'attempt.reserved') {
       if (prior) invalid(at + '.attemptId', 'a single reservation per attempt');
+      if (item.actionId === item.attemptId) {
+        if (item.reasoningDecisionId !== pendingController?.decisionId) {
+          invalid(at + '.reasoningDecisionId', 'the pending Controller selection, if any');
+        }
+        pendingController = undefined;
+      } else if (item.reasoningDecisionId !== undefined) {
+        invalid(at + '.reasoningDecisionId', 'a Controller reservation only');
+      }
       ledger.set(attemptId, {
         attemptId, actionId: item.actionId, generation, reservedAt: item.receivedAt,
+        reasoningDecisionId: item.reasoningDecisionId,
         status: 'reserved', dispatchCertainty: 'not_sent',
       });
     } else {
       if (!prior) invalid(at + '.attemptId', 'a preceding reservation');
       if (item.kind === 'attempt.dispatched') {
         if (prior.status !== 'reserved') invalid(at + '.kind', 'a dispatch of a reserved attempt');
+        const routeReasoning = item.route?.reasoning;
+        if (routeReasoning && prior.actionId === attemptId) {
+          const selected = prior.reasoningDecisionId && decisions.get(prior.reasoningDecisionId)?.nextController;
+          if (routeReasoning.mode === 'selectable' &&
+              (routeReasoning.selectionSource === 'model') !== Boolean(selected?.reasoningLevel)) {
+            invalid(at + '.route.reasoning.selectionSource', 'the recorded Controller preference or default');
+          }
+          if (routeReasoning.mode === 'selectable' && selected?.reasoningLevel &&
+              selected.reasoningLevel !== routeReasoning.level) {
+            invalid(at + '.route.reasoning.level', 'the Controller decision requested level');
+          }
+        }
         ledger.set(attemptId, {
           ...prior, status: 'dispatched', dispatchCertainty: 'unknown', dispatchedAt: item.receivedAt, route: item.route,
         });
@@ -226,7 +265,7 @@ function snapshot(input, path) {
     const recorded = ledger.get(item.attemptId);
     if (!recorded) invalid(at + '.attemptId', 'a recorded reservation');
     for (const key of /** @type {const} */ ([
-      'actionId', 'generation', 'reservedAt', 'status', 'dispatchCertainty', 'dispatchedAt', 'route', 'outcome', 'endedAt',
+      'actionId', 'generation', 'reservedAt', 'reasoningDecisionId', 'status', 'dispatchCertainty', 'dispatchedAt', 'route', 'outcome', 'endedAt',
     ])) {
       if (!sameRecord(item[key], recorded[key])) invalid(at + '.' + key, 'a value consistent with the attempt history');
     }

@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11R.2; CI для C11R в процессе |
-| Следующий шаг | C11R.3 |
+| Последний проверенный шаг | C11R.3; cluster CI ожидается |
+| Следующий шаг | C11R.4 |
 | Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
 | Regression verified | OBSERVED: [CI 42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), Node 24/Linux — foundation 4, core 19, contracts 46, integration 190, Nix/package PASS; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
@@ -15,7 +15,8 @@
 
 - **C11R.1 implemented / REGRESSION UNVERIFIED до проверки CI.** Добавлены Action.reasoningLevel и Decision.nextController (continue или reasoningLevel) в Decoder v1, независимо от словаря уровней; запрещены несовместимые final/clarification/wait. Продолжение без делегирования является полноценным Decision. Введены JSDoc ReasoningSelection/ReasoningCatalog для профилей и invocation. Тесты проверяют форму, точные пути ошибок, совместимость legacy решений и immutable decision identity.
 - **C11R.2 implemented / CI PENDING.** Расширены JSON Schema v1 и decoder: native/omission, непустые mapping entries, уникальность уровней, deterministic default, точные JSON Pointer ошибки. Каталог отображает только levels/default, закрытый resolver возвращает nativeValue отдельным immutable per-invocation значением. Project preferences не могут добавлять значения. Добавлены интеграционные тесты.
-- Следующий шаг: **C11R.3** — durable route и однократная привязка выбора. Реальные CLI/ACP/Zed остаются UNVERIFIED.
+- **C11R.3 implemented / CI PENDING.** Route расширен optional reasoning с различием исторического «не записан» и будущего native, декодер snapshot проверяет mode/level/source. Accepted nextController привязывается к следующей reservation через reasoningDecisionId; pending/consumed выводятся из событий одной generation. Противоречия binding и route rejected; idempotency/effect certainty не менялись.
+- Следующий шаг: **C11R.4** — worker admission, immutable per-invocation selection. Реальные CLI/ACP/Zed остаются UNVERIFIED.
 
 ## C11 — диагностика и устойчивость
 
