@@ -45,6 +45,7 @@ export function createCodexProvider({ providerId, configuration, environment = p
    *   process?: ReturnType<typeof startCodexProcess>}>} */
   const sessions = new Map();
   return {
+    supportsReasoningSelection: true,
     async describe() {
       return { providerId, maxConcurrency: null, capabilities: Object.fromEntries(
         Object.entries(capabilities).map(([key, value]) => [key, { ...value }]),

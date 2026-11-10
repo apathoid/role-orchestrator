@@ -625,11 +625,23 @@ export function createOrchestrator(deps) {
         ? {kind: /** @type {const} */ ('selected'),
           selection: handoff.reasoning ?? /** @type {const} */ ({mode: 'native'})}
         : resolveRequestedReasoning(catalog, selectedProfile, requestedLevel);
-      if (choice.kind === 'rejected') {
+      const adapterMissing = choice.kind === 'selected' && choice.selection.mode === 'selectable' &&
+        executor.supportsReasoningSelection !== true;
+      const selectableLevels = entries.find(item => item.kind === 'profile' &&
+        item.value.profileId === selectedProfile.profileId);
+      const unavailableChoice = choice.kind === 'rejected' ? choice : adapterMissing ? {
+        profileId: selectedProfile.profileId,
+        requestedLevel: choice.selection.mode === 'selectable' ? choice.selection.level : undefined,
+        availableLevels: selectableLevels?.kind === 'profile' && selectableLevels.value.reasoning?.mode === 'selectable'
+          ? selectableLevels.value.reasoning.levels : [],
+      } : undefined;
+      if (unavailableChoice) {
+        const choice = unavailableChoice;
         const ref = 'host:reasoning:' + attemptId;
         observations.push(observation({ref, completeness: 'complete', value: {
           profileId: choice.profileId, requestedLevel: choice.requestedLevel,
-          availableLevels: choice.availableLevels, reason: 'unavailable_reasoning_level',
+          availableLevels: choice.availableLevels,
+          reason: adapterMissing ? 'adapter_without_selectable_support' : 'unavailable_reasoning_level',
         }}, {kind:'host_transport', sourceId:selectedProfile.providerId, receivedAt:clock.now()}));
         const failure = failedOutcome(attemptId, 'CAPABILITY_UNAVAILABLE', false);
         failure.diagnostics[0].ref = ref;
@@ -919,6 +931,12 @@ export function createOrchestrator(deps) {
     if (handoff.kind === 'rejected' || !executor) {
       await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
         handoff.kind === 'rejected' ? handoff.resource : action.profileId);
+      return false;
+    }
+    if (choice?.kind === 'selected' && choice.selection.mode === 'selectable' &&
+        executor.supportsReasoningSelection !== true) {
+      await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
+        'reasoning:adapter_without_selectable_support:' + action.profileId);
       return false;
     }
     const reserved = await reserve(state.operationId, stop, action.actionId);

@@ -54,6 +54,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
   const sessions = new Map();
 
   return {
+    supportsReasoningSelection: true,
     ...(mcpEnabled || bridgeCapabilities ? {
       negotiatesCapabilities: mcpEnabled ? ['context.retrieval', 'tools.bridge'] : ['tools.bridge'],
     } : {}),

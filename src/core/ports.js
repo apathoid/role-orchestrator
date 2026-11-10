@@ -24,6 +24,7 @@
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,
+ *   supportsReasoningSelection?: true,
  *   negotiatesCapabilities?: readonly string[],
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
  *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => string | undefined) => Promise<ProviderResult>,

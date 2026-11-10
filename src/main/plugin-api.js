@@ -77,6 +77,7 @@ export async function validateProvider(value, providerId) {
   }
   if ((value.lookupStatus !== undefined && typeof value.lookupStatus !== 'function') ||
       (value.supportsIdempotency !== undefined && value.supportsIdempotency !== true) ||
+      (value.supportsReasoningSelection !== undefined && value.supportsReasoningSelection !== true) ||
       (value.negotiatesCapabilities !== undefined && (!Array.isArray(value.negotiatesCapabilities) ||
         value.negotiatesCapabilities.some(item => !label(item))))) {
     throw new PluginError('INVALID_PROVIDER', 'createProvider.optional');

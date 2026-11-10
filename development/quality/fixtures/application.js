@@ -44,7 +44,7 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
     invocationTimeoutMs: 10000, schedule,
     catalog: catalog ?? { async list() { return [{ kind: 'profile', value: profile }, ...extraCatalog]; }, async resolve() {} },
     provider: injectedProvider ?? {
-      lookupStatus, supportsIdempotency,
+      lookupStatus, supportsIdempotency, supportsReasoningSelection: true,
       async describe() { return { providerId: profile.providerId, maxConcurrency: maxConcurrentInvocations, capabilities }; },
       async open(profile, signal) {
         if (open) await open(signal);
