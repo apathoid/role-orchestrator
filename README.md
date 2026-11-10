@@ -20,7 +20,7 @@ Role Orchestrator координирует работу одной или нес
 - [Диагностика и эксплуатация](docs/DIAGNOSTICS.md).
 - [Архитектурные решения](docs/DECISIONS.md).
 - [Nix, установка и CI](docs/NIX_AND_CI.md).
-- [Текущий план и статус C12](docs/roadmap/README.md) (C12.0 — поэтапный переход).
+- [Текущий план и статус C12](https://github.com/apathoid/role-orchestrator/tree/greenfield%2Fmodel-first-core/docs/roadmap) (C12.0 — поэтапный переход).
 
 В этих документах слово MUST означает обязательное свойство. SHOULD допускает обоснованное отклонение, записанное в архитектурном решении. Примеры wire-форматов задают семантику; номера версий внешних SDK не фиксируются без проверки реальной доступности.
 
@@ -41,4 +41,4 @@ role-orchestrator run --config /path/to/config.json 'Опиши содержим
 
 Программный клиент вызывает `openOrchestrator({ configuration, stateDirectory })`, где `configuration` содержит доверенный JSON, и передаёт выданный `configurationRef` в `submit`. Операция возвращается после принятия, итог доступен через `completion`. Для остановки экземпляра вызовите `close`.
 
-Обязательные ограничения для работающих в репозитории агентов находятся в [AGENTS.md](AGENTS.md) и связанных инструкциях [.agents/REASONING.md](.agents/REASONING.md); текущий STATUS — [roadmap](docs/roadmap/STATUS.md). Документация описывает самостоятельный новый продукт; знание какой-либо предыдущей реализации не требуется.
+Обязательные ограничения для работающих в репозитории агентов находятся в [AGENTS.md](https://github.com/apathoid/role-orchestrator/blob/greenfield/model-first-core/AGENTS.md) и связанных инструкциях [.agents/REASONING.md](https://github.com/apathoid/role-orchestrator/blob/greenfield/model-first-core/.agents/REASONING.md); текущий STATUS — [roadmap](https://github.com/apathoid/role-orchestrator/blob/greenfield/model-first-core/docs/roadmap/STATUS.md). Документация описывает самостоятельный новый продукт; знание какой-либо предыдущей реализации не требуется.

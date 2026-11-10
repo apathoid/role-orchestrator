@@ -13,9 +13,20 @@
   },
   "files": [
     "src/",
-    "docs/",
+    "docs/PRODUCT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/CONTRACTS.md",
+    "docs/EXECUTION.md",
+    "docs/CONTEXT_AND_RECOVERY.md",
+    "docs/PROVIDERS_AND_CONFIGURATION.md",
+    "docs/REASONING_EFFORT.md",
+    "docs/DIAGNOSTICS.md",
+    "docs/DECISIONS.md",
+    "docs/NIX_AND_CI.md",
+    "docs/EXTENSIONS.md",
+    "docs/CAPABILITIES.md",
     "README.md",
-    "AGENTS.md"
+    "CHANGELOG.md"
   ],
   "dependencies": {
     "@agentclientprotocol/codex-acp": "2.5.0",

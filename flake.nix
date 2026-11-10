@@ -12,7 +12,8 @@
       productSource = nixpkgs.lib.fileset.toSource {
         root = ./.;
         fileset = nixpkgs.lib.fileset.unions [
-          ./src ./docs ./package.json ./package-lock.json ./.npmrc ./README.md ./AGENTS.md
+          ./src ./package.json ./package-lock.json ./.npmrc ./README.md ./CHANGELOG.md
+          ./docs/PRODUCT.md ./docs/ARCHITECTURE.md ./docs/CONTRACTS.md ./docs/EXECUTION.md ./docs/CONTEXT_AND_RECOVERY.md ./docs/PROVIDERS_AND_CONFIGURATION.md ./docs/REASONING_EFFORT.md ./docs/DIAGNOSTICS.md ./docs/DECISIONS.md ./docs/NIX_AND_CI.md ./docs/EXTENSIONS.md ./docs/CAPABILITIES.md
         ];
       };
       packageFor = pkgs: pkgs.buildNpmPackage {

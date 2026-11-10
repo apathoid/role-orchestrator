@@ -12,4 +12,4 @@
 | Diagnostics and bounded export | [DIAGNOSTICS](DIAGNOSTICS.md) | Synthetic failure/race tests; native traces pending |
 | Installable npm/Nix package | [NIX_AND_CI](NIX_AND_CI.md) | CI on source-layout HEAD; migrated package must be reverified |
 
-См. [архитектурные решения](DECISIONS.md), [текущий план и доступные проверки](roadmap/README.md). Нативные версии Zed/ACP/CLI, подтверждение поведения реальной модели и проверка NixOS не заявлены как PASS.
+См. [архитектурные решения](DECISIONS.md), [текущий план и доступные проверки](https://github.com/apathoid/role-orchestrator/blob/greenfield/model-first-core/docs/roadmap/README.md). Нативные версии Zed/ACP/CLI, подтверждение поведения реальной модели и проверка NixOS не заявлены как PASS.

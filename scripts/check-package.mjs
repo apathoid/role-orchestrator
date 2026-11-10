@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { access, cp, mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { root, withOwnedRun } from './owned-run.mjs';
 
 const removal = process.argv.includes('--removal');
@@ -9,9 +9,10 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
   const product = join(directory, 'product');
   await mkdir(product);
   for (const file of ['package.json', 'package-lock.json', '.npmrc', ...pkg.files]) {
+    await mkdir(dirname(join(product, file)), { recursive: true });
     await cp(join(root, file), join(product, file), { recursive: true });
   }
-  for (const directoryName of ['development', 'tests', 'scripts', '.agents']) {
+  for (const directoryName of ['development', 'tests', 'scripts', '.agents', 'AGENTS.md', 'docs/roadmap', 'node_modules']) {
     await assert.rejects(access(join(product, directoryName)), { code: 'ENOENT' });
   }
   await assert.rejects(access(join(product, '.git')), { code: 'ENOENT' });
@@ -24,8 +25,10 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
   }
 
   if (removal) {
-    checked('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund', '--engine-strict'], product);
+    checked('npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--engine-strict'], product);
     assert.deepEqual(await readFile(join(product, 'package-lock.json')), await readFile(join(root, 'package-lock.json')));
+    await assert.rejects(access(join(product,'node_modules','typescript')), {code:'ENOENT'});
+    await assert.rejects(access(join(product,'node_modules','@types','node')), {code:'ENOENT'});
   }
   const [packed] = JSON.parse(checked('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory], product));
   assert.ok(packed.files.some(({ path }) => path === pkg.exports.slice(2)));
