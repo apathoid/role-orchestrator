@@ -54,7 +54,10 @@ const matrix = await read('tests/ACCEPTANCE_MATRIX.md');
 const product = await read('docs/PRODUCT.md');
 const requirements = [...product.matchAll(/^\| (R\d+) \|/gm)].map(m => m[1]);
 assert.equal(requirements.length, 33, 'R01-R33 source requirements');
-for (const id of requirements) assert.ok(new RegExp('\\b' + id + '\\b').test(matrix), 'Unmapped requirement: ' + id);
+for (const id of requirements) {
+  assert.ok(new RegExp('\\b' + id + '\\b').test(matrix), 'Unmapped requirement: ' + id);
+  assert.ok(new RegExp('^\\| ' + id + ' \\| A\\d+', 'm').test(matrix), 'Missing R->A traceability row: ' + id);
+}
 const scenarios = [...matrix.matchAll(/^\| (A\d+) \|/gm)].map(m => m[1]);
 assert.equal(scenarios.length, 54, 'A01-A54 must be present');
 assert.equal(scenarios.length, new Set(scenarios).size, 'Duplicate acceptance identifiers');
