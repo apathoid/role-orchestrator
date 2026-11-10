@@ -6,12 +6,16 @@
  * @typedef {'supported' | 'unsupported' | 'unknown'} Support
  * @typedef {{support: Support, source: 'configured' | 'negotiated', detail?: string}} Capability
  * @typedef {{providerId: string, maxConcurrency: number | null, capabilities: Readonly<Record<string, Capability>>}} ProviderDescription
+ * @typedef {{mode: 'native'} | {mode: 'selectable', levels: readonly string[], defaultLevel: string,
+ *   capability?: Capability}} ReasoningCatalog
+ * @typedef {{mode: 'native'} | {mode: 'selectable', level: string, nativeValue: string,
+ *   selectionSource: 'model' | 'default'}} ReasoningSelection
  * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>,
- *   unavailable?: string}} Profile
+ *   reasoning?: ReasoningCatalog, unavailable?: string}} Profile
  * @typedef {{sessionId: string}} ProviderSession
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
- *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[],
+ *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
  *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown'}} ProviderResult

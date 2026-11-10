@@ -4,12 +4,17 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11.8 и исправления ревью C11 P2-1–P2-4, P3; Linux CI PASS |
-| Следующий шаг | C11R.1 (вне текущего поручения) |
+| Последний проверенный шаг | C11.8; C11R.1 реализован, CI ожидается |
+| Следующий шаг | C11R.2 |
 | Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
 | Regression verified | OBSERVED: [CI 42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), Node 24/Linux — foundation 4, core 19, contracts 46, integration 190, Nix/package PASS; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
+
+## C11R — ход реализации (2026-11-10)
+
+- **C11R.1 implemented / REGRESSION UNVERIFIED до проверки CI.** Добавлены Action.reasoningLevel и Decision.nextController (continue или reasoningLevel) в Decoder v1, независимо от словаря уровней; запрещены несовместимые final/clarification/wait. Продолжение без делегирования является полноценным Decision. Введены JSDoc ReasoningSelection/ReasoningCatalog для профилей и invocation. Тесты проверяют форму, точные пути ошибок, совместимость legacy решений и immutable decision identity.
+- Следующий шаг: **C11R.2** — trusted config v1, default/mapping и каталог. Реальные CLI/ACP/Zed остаются UNVERIFIED.
 
 ## C11 — диагностика и устойчивость
 

@@ -22,7 +22,7 @@ export const request = record({
 
 const actionFields = record({
   actionId: id, kind: oneOf('delegate'), objective: text, profileId: id,
-  roleId: optional(id), skills: optional(ids), contextRefs: ids, requiredCapabilities: optional(ids),
+  roleId: optional(id), reasoningLevel: optional(id), skills: optional(ids), contextRefs: ids, requiredCapabilities: optional(ids),
   dependsOn: arrayOf(record({ actionId: id, kind: oneOf('after_terminal', 'after_model_acceptance') })),
   expectedResult: text, continuationReference: optional(id),
   retryOf: optional(id), retryBasis: optional(oneOf('no_effect', 'provider_idempotency', 'user_approval')),
@@ -46,6 +46,13 @@ export const assessment = record({
 });
 
 export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext });
+/** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
+const nextController = (input, path) => {
+  const value = record({ reasoningLevel: optional(id), continue: optional((value, at) =>
+    value === true ? true : invalid(at, 'true')) })(input, path);
+  if (!value.continue && !value.reasoningLevel) invalid(path, 'a reasoningLevel or continue: true');
+  return value;
+};
 const proposal = record({
   schemaVersion: version, decisionId: id, operationId: id, contextCursor: count,
   additions: arrayOf(action), cancellations: ids, acceptedActionIds: optional(ids),
@@ -53,7 +60,7 @@ const proposal = record({
     kind: oneOf('all_requested', 'next_completion'),
     targets: arrayOf(record({ kind: oneOf('action', 'attempt'), id })),
   })),
-  clarification: optional(record({ question: id })),
+  clarification: optional(record({ question: id })), nextController: optional(nextController),
   finalAssessment: optional(assessment), findings: optional(findings),
 });
 
@@ -95,11 +102,21 @@ export const decodeDecision = input => decode(decision, input);
 export const decision = (value, path) => {
   const decision = proposal(value, path);
   if (decision.waitPolicy?.targets.length === 0) invalid(path + '.waitPolicy.targets', 'at least one target');
+  if (decision.nextController && (decision.finalAssessment || decision.clarification)) {
+    invalid(path + '.nextController', 'no continuation after a final assessment or clarification');
+  }
+  if (decision.nextController?.continue && decision.waitPolicy) {
+    invalid(path + '.nextController.continue', 'no simultaneous wait policy');
+  }
+  if (decision.nextController?.reasoningLevel && !decision.nextController.continue &&
+      !decision.additions.length && !decision.cancellations.length && !decision.waitPolicy) {
+    invalid(path + '.nextController.continue', 'true or a separate reason for the next Controller turn');
+  }
   if (decision.finalAssessment && (decision.clarification || decision.additions.length)) {
     invalid(path + '.finalAssessment', 'a final assessment without clarification or additions');
   }
   if (!(decision.clarification || decision.finalAssessment || decision.waitPolicy ||
-      decision.additions.length || decision.cancellations.length)) {
+      decision.additions.length || decision.cancellations.length || decision.nextController?.continue)) {
     invalid(path, 'a decision with an action, wait policy, question or assessment');
   }
   return decision;
