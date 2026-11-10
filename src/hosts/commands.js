@@ -61,8 +61,14 @@ export function operationTrace(operation, redaction = {}) {
     ? [[event.decision.decisionId, event.decision]] : []));
   const actions = new Map(events.flatMap(event => event.kind === 'controller.responded'
     ? event.decision.additions.map(action => [action.actionId, action]) : []));
-  const receipts = new Map(events.flatMap(event => event.kind === 'attempt.outcome'
-    ? [[event.outcome.attemptId, event.observations ?? []]] : []));
+  /** @type {Map<string, import('../core/observation.js').Observation[]>} */
+  const receipts = new Map();
+  for (const event of events) {
+    if (event.kind !== 'attempt.outcome') continue;
+    const known = receipts.get(event.outcome.attemptId) ?? [];
+    known.push(...(event.observations ?? []));
+    receipts.set(event.outcome.attemptId, known);
+  }
   const attemptStart = Math.max(0, operation.attempts.length - limit);
   const visibleAttempts = operation.attempts.slice(attemptStart);
   /** @param {Operation['attempts'][number]} attempt */

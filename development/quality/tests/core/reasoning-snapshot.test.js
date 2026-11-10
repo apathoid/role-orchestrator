@@ -46,3 +46,33 @@ test('C11R.3 generation boundary discards unused choice and preserves legacy rou
   assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
   assert.equal(decodeSnapshot(encodeSnapshot(state)).value.attempts[0].route.reasoning,undefined);
 });
+
+test('C11R review P2: worker route is bound to the admitted Action, even if both route copies are tampered',()=>{
+  let state=createOperation('op-1',request(),'grant',{maxInvocations:5,maxConcurrentInvocations:2});
+  const selected={actionId:'w1',kind:'delegate',objective:'Analyze',profileId:'worker',
+    reasoningLevel:'high',contextRefs:[],dependsOn:[],expectedResult:'Findings'};
+  state=apply(state,{kind:'controller.responded',
+    decision:decision({finalAssessment:undefined,additions:[selected],
+      waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'w1'}]}}),
+    admissions:[{kind:'accepted',action:selected}]},1);
+  state=apply(state,{kind:'attempt.reserved',attemptId:'worker-attempt',actionId:'w1'},2);
+  state=apply(state,{kind:'attempt.dispatched',attemptId:'worker-attempt',
+    route:{configurationRef:'cfg',profileId:'worker',providerId:'p',model:'m',
+      reasoning:{mode:'selectable',level:'high',nativeValue:'ultra',selectionSource:'model'}}},3);
+  assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
+  const tampered=JSON.parse(encodeSnapshot(state));
+  tampered.events[2].route.reasoning.level='low';
+  tampered.attempts[0].route.reasoning.level='low';
+  assert.equal(decodeSnapshot(JSON.stringify(tampered)).reason.path,'$.events[2].route.reasoning.level');
+  const wrongSource=JSON.parse(encodeSnapshot(state));
+  wrongSource.events[2].route.reasoning.selectionSource='default';
+  wrongSource.attempts[0].route.reasoning.selectionSource='default';
+  assert.equal(decodeSnapshot(JSON.stringify(wrongSource)).reason.path,'$.events[2].route.reasoning.selectionSource');
+  const missing=JSON.parse(encodeSnapshot(state));
+  missing.events[2].route.reasoning.mode='native';
+  delete missing.events[2].route.reasoning.level;
+  delete missing.events[2].route.reasoning.nativeValue;
+  delete missing.events[2].route.reasoning.selectionSource;
+  missing.attempts[0].route.reasoning={mode:'native'};
+  assert.equal(decodeSnapshot(JSON.stringify(missing)).reason.path,'$.events[2].route.reasoning.level');
+});

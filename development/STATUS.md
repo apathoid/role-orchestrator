@@ -16,7 +16,9 @@
 - P1 recovery: технический `operation.recovered` сохраняет непотреблённый выбор Controller, только `operation.continued` его сбрасывает. Добавлены file-backed crash → reopen → resume → dispatch и repeated recovery тесты. CI после исправления ожидается.
 - P1 ACP: `ProviderResult.reasoningUnavailable` сообщает только отказ выбора effort в сессии; application преобразует его в `technical waiting` с причиной, profile/level/known logical levels, а CLI и ACP отображают её. Для `runCli` подтверждается nonzero exit. Нет fallback/нового model prompt. CI ожидается.
 - P1 retry: route содержит `requestHash` от полного материализованного worker-input (objective, expectedResult, context/evidence, instructions, skillInstructions, attachments, permissions-related constraints, выбранный профиль). Provider idempotency разрешён лишь при том же hash и прежнем route; legacy без hash отклоняется без предположения эквивалентности. `no_effect` и `user_approval` не изменены. CI ожидается.
-- Следующие исправления: P2 worker route binding, P2 late acknowledgment. C12 не начинается до проверки всех пяти.
+- P2 snapshot: при worker dispatch проверяется связь `route.reasoning.level/selectionSource` с принятым Action, включая подмену journal и summary. Исторический nativeValue не вычисляется из текущего конфига.
+- P2 diagnostics: ACK берётся из всех `attempt.outcome.observations` для attemptId, а не только последнего; добавлен тест позднего уточняющего outcome без повторного ACK.
+- Все пять замечаний исправлены в коде; ожидается совокупная проверка CI перед окончательной отметкой. C12 ещё не начат.
 
 ## C11R — ход реализации (2026-11-10)
 

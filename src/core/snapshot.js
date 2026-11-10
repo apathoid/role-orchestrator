@@ -150,6 +150,11 @@ function snapshot(input, path) {
   let pendingController;
   const decisions = new Map(value.events.flatMap(item => item.kind === 'controller.responded'
     ? [[item.decision.decisionId, item.decision]] : []));
+  // Only admitted Actions are the historical authority for a worker route.
+  // Never infer its logical request from the current catalog's native mapping.
+  const acceptedActions = new Map(value.events.flatMap(item => item.kind === 'controller.responded'
+    ? (item.admissions ?? []).flatMap(admission => admission.kind === 'accepted'
+      ? [[admission.action.actionId, admission.action]] : []) : []));
   for (const [index, item] of value.events.entries()) {
     const at = path + '.events[' + index + ']';
     if (item.operationId !== value.operationId) invalid(at + '.operationId', 'the enclosing operation id');
@@ -236,15 +241,30 @@ function snapshot(input, path) {
       if (item.kind === 'attempt.dispatched') {
         if (prior.status !== 'reserved') invalid(at + '.kind', 'a dispatch of a reserved attempt');
         const routeReasoning = item.route?.reasoning;
-        if (routeReasoning && prior.actionId === attemptId) {
-          const selected = prior.reasoningDecisionId ? decisions.get(prior.reasoningDecisionId)?.nextController : undefined;
-          if (routeReasoning.mode === 'selectable' &&
-              (routeReasoning.selectionSource === 'model') !== Boolean(selected?.reasoningLevel)) {
-            invalid(at + '.route.reasoning.selectionSource', 'the recorded Controller preference or default');
-          }
-          if (routeReasoning.mode === 'selectable' && selected?.reasoningLevel &&
-              selected.reasoningLevel !== routeReasoning.level) {
-            invalid(at + '.route.reasoning.level', 'the Controller decision requested level');
+        if (routeReasoning) {
+          if (prior.actionId === attemptId) {
+            const selected = prior.reasoningDecisionId ? decisions.get(prior.reasoningDecisionId)?.nextController : undefined;
+            if (routeReasoning.mode === 'selectable' &&
+                (routeReasoning.selectionSource === 'model') !== Boolean(selected?.reasoningLevel)) {
+              invalid(at + '.route.reasoning.selectionSource', 'the recorded Controller preference or default');
+            }
+            if (routeReasoning.mode === 'selectable' && selected?.reasoningLevel &&
+                selected.reasoningLevel !== routeReasoning.level) {
+              invalid(at + '.route.reasoning.level', 'the Controller decision requested level');
+            }
+          } else {
+            const requested = acceptedActions.get(prior.actionId);
+            if (!requested) invalid(at + '.route.reasoning', 'a previously admitted worker action');
+            if (requested.reasoningLevel) {
+              if (routeReasoning.mode !== 'selectable' || routeReasoning.level !== requested.reasoningLevel) {
+                invalid(at + '.route.reasoning.level', 'the admitted worker action level');
+              }
+              if (routeReasoning.selectionSource !== 'model') {
+                invalid(at + '.route.reasoning.selectionSource', 'model selection for the explicit worker level');
+              }
+            } else if (routeReasoning.mode === 'selectable' && routeReasoning.selectionSource !== 'default') {
+              invalid(at + '.route.reasoning.selectionSource', 'the worker profile default');
+            }
           }
         }
         ledger.set(attemptId, {
