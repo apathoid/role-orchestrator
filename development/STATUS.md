@@ -4,12 +4,17 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C12.0.1 — инвентаризация и baseline; pre-migration CI PASS на cbd8e70 |
-| Следующий шаг | **C12.0.2** — консолидация документации, затем C12.0.3–C12.0.8 и C12.1 |
+| Последний проверенный шаг | C12.0.2 — topical docs consolidated; post-change CI pending |
+| Следующий шаг | **C12.0.3** — roadmap/STATUS/matrix/changelog, затем C12.0.4–C12.0.8 и C12.1 |
 | Functional implementation complete | NO для всего продукта; C11R implementation complete, C12 не завершён |
 | Regression verified | OBSERVED: [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211) на 949292a, Node 24/Linux — foundation 4/4, core 25/25, contracts 52/52, integration 217/217, всего 298/298 PASS; Nix/checkJs/package/removal/lockfiles PASS. Native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
+
+## C12.0.2 — консолидация знаний (2026-11-10)
+
+- Дополнены предметные docs актуальными контрактами, native-пробами (CLI 401/ACP session deadline), границей runtime/testing, отдельной readiness; добавлен навигационный CAPABILITIES. Не подменён native результат.
+- Следующий шаг: C12.0.3. Post-change CI до публикации не запускался; проверка на HEAD ожидается.
 
 ## C12.0.1 — baseline и реестр (2026-11-10)
 
