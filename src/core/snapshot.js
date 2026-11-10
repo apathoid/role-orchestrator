@@ -182,7 +182,8 @@ function snapshot(input, path) {
     const batch = eventFindings(item);
     if (item.kind === 'operation.continued' || item.kind === 'operation.recovered') {
       generation++;
-      pendingController = undefined;
+      // A crash/reopen is not a user decision to supersede an unconsumed choice.
+      if (item.kind === 'operation.continued') pendingController = undefined;
     }
     if (item.kind === 'controller.responded') {
       pendingController = item.decision.nextController

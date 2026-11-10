@@ -11,6 +11,11 @@
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
+## Исправления ревью C11R (10 ноября 2026)
+
+- P1 recovery: технический `operation.recovered` сохраняет непотреблённый выбор Controller, только `operation.continued` его сбрасывает. Добавлены file-backed crash → reopen → resume → dispatch и repeated recovery тесты. CI после исправления ожидается.
+- Следующие исправления: P1 ACP error propagation, P1 retry request equivalence, P2 worker route binding, P2 late acknowledgment. C12 не начинается до завершения и проверки всех пяти.
+
 ## C11R — ход реализации (2026-11-10)
 
 - **C11R.1 implemented / REGRESSION UNVERIFIED до проверки CI.** Добавлены Action.reasoningLevel и Decision.nextController (continue или reasoningLevel) в Decoder v1, независимо от словаря уровней; запрещены несовместимые final/clarification/wait. Продолжение без делегирования является полноценным Decision. Введены JSDoc ReasoningSelection/ReasoningCatalog для профилей и invocation. Тесты проверяют форму, точные пути ошибок, совместимость legacy решений и immutable decision identity.

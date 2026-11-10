@@ -94,13 +94,14 @@ export function resourceSnapshot(state) {
 
 /**
  * A decision's one-shot Controller preference is pending only until the next
- * Controller reservation in the same generation. The journal is the sole truth.
+ * Controller reservation. Technical recovery may advance the generation, but
+ * only explicit user continuation supersedes the model's pending choice.
  * @param {Operation} operation
  * @returns {{decisionId: string, reasoningLevel?: string} | undefined}
  */
 export function pendingControllerReasoning(operation) {
   const events = operation.events;
-  const boundary = events.findLastIndex(event => event.kind === 'operation.continued' || event.kind === 'operation.recovered');
+  const boundary = events.findLastIndex(event => event.kind === 'operation.continued');
   const current = events.slice(boundary + 1);
   const index = current.findLastIndex(event => event.kind === 'controller.responded');
   if (index < 0) return undefined;
