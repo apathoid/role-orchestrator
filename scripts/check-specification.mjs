@@ -4,6 +4,7 @@ import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+await access(resolve(root, 'development')).then(() => { throw new Error('Legacy development/ must not exist'); }, error => { if (error.code !== 'ENOENT') throw error; });
 const read = async path => readFile(resolve(root, path), 'utf8');
 const pkg = JSON.parse(await read('package.json'));
 const lock = JSON.parse(await read('package-lock.json'));

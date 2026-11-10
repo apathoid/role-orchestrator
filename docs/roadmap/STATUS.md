@@ -4,9 +4,9 @@
 |---|---|
 | Ветка | `greenfield/model-first-core` |
 | Исходный HEAD для C12 | `cbd8e70baca3ab380a2ed3d43ae1fdd667616412` |
-| Последний выполненный этап | C12.0.7 — clean product package without coding tools (post-change CI pending) |
-| Следующий этап | **C12.0.8** — удалить legacy, сравнить регрессию и handoff, затем C12.1–C12.9 |
-| Implementation complete | C00–C11R реализованы; C12 пока **NO** |
+| Последний выполненный этап | C12.0.8 — удалён legacy development; full CI for deletion commit pending |
+| Следующий этап | **C12.1** — трассировка R01–R33 ↔ A01–A54, затем C12.2–C12.9 |
+| Implementation complete | C00–C11R и C12.0 реализованы; весь C12 пока **NO** |
 | Regression verified | OBSERVED baseline CI [42868825084](https://github.com/apathoid/role-orchestrator/actions/runs/42868825084) — SUCCESS на `cbd8e70` (до миграции); для текущего коммита **PENDING** |
 | Detailed suites baseline | 298/298 (4+25+52+217) на `949292a`, [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211); исторический результат |
 | Native integration verified | **UNVERIFIED**: реальный Codex CLI/ACP model, Zed, NixOS и adaptive reasoning |
@@ -16,6 +16,7 @@
 
 - **C12.0.1**, `d9645c5`: полный Git inventory 128 development files; реестр перехода, baseline, known gaps; старые файлы не удалялись.
 - **C12.0.2**, `87b79a1`: текущие ограничения ProviderPort, native Codex CLI HTTP 401, ACP 2.5.0 session/new deadline, C11R и доказательства различены в предметных docs.
+- **C12.0.8**: прежние 128 tracked development files удалены после переноса. CI на C12.0.7: [run 42873650467](https://github.com/apathoid/role-orchestrator/actions/runs/42873650467) — SUCCESS (root specification/checkJs/boundaries, foundation/core/contracts/integration и npm test, Nix install/check и clean product pack), на удалённом дереве CI ещё pending. Следующий шаг C12.1; native UNKNOWN/UNVERIFIED без реальных исполнителей.
 - **C12.0.7**: npm files и Nix productSource являются явным whitelist предметных docs и runtime src; AGENTS/.agents/tests/scripts/roadmap/dev deps исключены из installed package. `check:removal` теперь устанавливает prod-only зависимости. Новый installed/Nix smoke обязателен в CI; результат пока pending.
 - **C12.0.6**: убраны conditional skips development, root suites обязательно исполняются в GitHub Actions, hash Nix npm-deps пересчитан по OBSERVED hash mismatch на CI run 42872888360 (`got: sha256-zVo+cwI0Sj/6Es/PhL7VOyTo/IeIWqPUTg+7yOX3a54=`). Полный новый CI ещё не проверен.
 - **C12.0.5**: 54 test files, 20 fixtures, 7 scripts перенесены с path changes; корневой npm+lock/JS config. Обязательные npm/CI прогоны на новом дереве ещё не подтверждены, SHA и результаты сверить на C12.0.6.

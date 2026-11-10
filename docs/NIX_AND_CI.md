@@ -1,6 +1,6 @@
 # JavaScript, Nix и CI
 
-**Текущее состояние: C12.0.6 — обязательные проверки запускаются из корня; npm/Nix lock, JS checker и CI перенесены. Итог новой CI регрессии подтверждается отдельно по SHA в roadmap STATUS. Native acceptance не подтверждена.**
+**Текущее состояние после C12.0:** корневые npm/checkJs/CI suites и Nix package работают независимо от удалённого `development/`; конкретный результат CI и native gaps ведутся в roadmap STATUS. Native acceptance не подтверждена.
 
 ## Язык и manifest
 

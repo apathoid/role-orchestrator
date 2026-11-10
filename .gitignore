@@ -1,6 +1,4 @@
 node_modules/
 result
 result-*
-development/runs/
-development/experiments/tmp/
 *.tgz

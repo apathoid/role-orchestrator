@@ -4,7 +4,7 @@
 
 ## Unreleased — C12 integration and delivery
 
-- Реорганизация инженерных знаний и тестов из временного `development/` в обычные каталоги репозитория без изменения runtime semantics (поэтапная работа C12.0).
+- C12.0: инженерные знания и тесты перенесены из временного `development/` в `tests/`, `scripts/`, `.agents/`, `docs/roadmap/`, корневые npm/Nix/CI. Runtime semantics не изменены.
 - Реальная CLI/ACP/Zed/NixOS интеграция и подтверждение native effort пока не завершены; не обещается production readiness.
 
 ## 0.1.0-dev.0 — функциональные приращения
