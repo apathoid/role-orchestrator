@@ -124,3 +124,7 @@ Mock Controller fixtures задают решения, позволяющие п�
 | `A38` | UNVERIFIED | Zed отсутствует в среде разработки. Контролируемые ACP-сессии подтверждают протокол и application semantics |
 | `A40` | OBSERVED, C10 CLI presentation | Inspect показывает budget, route, attempts и unknown effects, trace/export ограничены технической проекцией журнала. Rotation и эксплуатационная приёмка относятся к C11 |
 | `A42` | OBSERVED npm package и Nix x86_64-linux / Ubuntu | `check:package`, `check:removal`, [GitHub Actions](https://github.com/apathoid/role-orchestrator/actions/runs/42619871758) для `nix build`, named/default apps, profile install, non-Git cwd и внешнего state. Нативная приёмка NixOS остаётся UNVERIFIED |
+
+## C11 — проверки реализации (проверить CI перед закрытием)
+
+C11.1: `development/quality/tests/core/diagnostics-taxonomy.test.js` — semantics и корреляция direct/parallel/defer/recovery; C11.2: `development/quality/tests/integration/diagnostic-sink.test.js` — bounded NDJSON/rotation/fault injection; C11.3: `diagnostic-redaction.test.js`; C11.4: `diagnostic-export.test.js`; C11.5: `host-cli.test.js`; C11.6: `diagnostic-races.test.js`; C11.7: `diagnostic-bounds.test.js`. В этих проверках нет настоящих сессий Zed; native остаётся UNVERIFIED. Применимость для A21/A22/A27/A28/A29/A34/A36/A40 фиксировать только после успешного CI конкретного HEAD.

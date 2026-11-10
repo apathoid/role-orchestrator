@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C10.10 и исправления по ревью C10; C11.1–C11.7 implementation, CI pending |
-| Следующий шаг | C11.8, эксплуатационная документация |
+| Последний локально проверенный шаг | C10.10 и исправления по ревью C10; C11.1–C11.8 implementation, CI pending |
+| Следующий шаг | Проверка CI C11, исправление регрессий; затем C11R.1 |
 | Functional implementation complete | NO для всего продукта, C11 → C11R → C12 остаются в плане |
 | Local regression verified | OBSERVED через C10 на Linux. Unix socket проверяется в GitHub Actions |
 | Native integration verified | UNVERIFIED |
@@ -27,6 +27,8 @@
 - C11.6 — Добавлены повторяемые barrier-сценарии cancel/invoke и pending permission. Проверяются терминальность, отсутствие нового dispatch и позднего разрешения; наблюдаемое поведение подтверждается CI, ожидается.
 
 - C11.7 — Лимит 128 optional context records предотвращает неограниченное размножение missing markers. Handoff сообщает число опущенных выбранных ссылок технической сводкой, не объявляя их доступными. Добавлены тесты 1500 ссылок и 4 МБ output. CI ожидается.
+
+- C11.8 — Обновлена продуктовая эксплуатационная документация с фактическими командами, форматами, пределами NDJSON, redaction и native-ограничениями. Строки A21/A22/A27–A29/A34/A36/A40 проверяются по CI, а не считаются закрытыми одним описанием.
 
 ## C11R — дополнение плана (2026-11-10)
 
