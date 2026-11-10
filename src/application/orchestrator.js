@@ -631,7 +631,7 @@ export function createOrchestrator(deps) {
         item.value.profileId === selectedProfile.profileId);
       const unavailableChoice = choice.kind === 'rejected' ? choice : adapterMissing ? {
         profileId: selectedProfile.profileId,
-        requestedLevel: choice.selection.mode === 'selectable' ? choice.selection.level : undefined,
+        requestedLevel: choice.kind === 'selected' && choice.selection.mode === 'selectable' ? choice.selection.level : undefined,
         availableLevels: selectableLevels?.kind === 'profile' && selectableLevels.value.reasoning?.mode === 'selectable'
           ? selectableLevels.value.reasoning.levels : [],
       } : undefined;
