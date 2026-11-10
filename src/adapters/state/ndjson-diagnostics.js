@@ -25,12 +25,24 @@ export function createNdjsonSink(options) {
   let dropped = 0, failed = 0, bytes = 0, initialized = false, stopped = false;
   /** @type {Promise<void> | undefined} */
   let worker;
-  let lastReport = '';
+  let warned = false, summaryWritten = false, stderrBlocked = false;
   /** @param {string} message */
-  function report(message) {
-    if (lastReport === message) return;
-    lastReport = message;
-    try { stderr.write('DIAGNOSTICS: ' + message + '\n'); } catch { /* stderr is optional */ }
+  function writeWarning(message) {
+    if (stderrBlocked) return;
+    try {
+      // Never buffer more warnings behind an already backpressured stderr.
+      if (stderr.write('DIAGNOSTICS: ' + message + '\n') === false) stderrBlocked = true;
+    } catch { stderrBlocked = true; }
+  }
+  function reportFailure() {
+    if (warned) return;
+    warned = true;
+    writeWarning('diagnostic events were lost; totals will be reported on flush');
+  }
+  function reportSummary() {
+    if (summaryWritten) return;
+    summaryWritten = true;
+    if (dropped || failed) writeWarning('flush summary dropped=' + dropped + ' failed=' + failed);
   }
   async function initialize() {
     if (initialized) return;
@@ -62,13 +74,13 @@ export function createNdjsonSink(options) {
         await initialize();
         const line = JSON.stringify(event) + '\n';
         const size = Buffer.byteLength(line);
-        if (size > maxFileBytes) { dropped++; continue; }
+        if (size > maxFileBytes) { dropped++; reportFailure(); continue; }
         if (bytes + size > maxFileBytes) await rotate();
         await writeLine(path, line);
         bytes += size;
       } catch {
         failed++;
-        report('write failed; dropped=' + dropped + ' failed=' + failed);
+        reportFailure();
       }
     }
   }
@@ -83,7 +95,7 @@ export function createNdjsonSink(options) {
     emit(event) {
       if (stopped || pending.length >= queueSize) {
         dropped++;
-        report('queue overflow or closed; dropped=' + dropped + ' failed=' + failed);
+        reportFailure();
         return;
       }
       pending.push(event);
@@ -92,7 +104,7 @@ export function createNdjsonSink(options) {
     async flush() {
       stopped = true;
       if (!worker) {
-        if (dropped || failed) report('flush summary dropped=' + dropped + ' failed=' + failed);
+        reportSummary();
         return;
       }
       /** @type {ReturnType<typeof setTimeout> | undefined} */
@@ -103,8 +115,9 @@ export function createNdjsonSink(options) {
       if (!complete) {
         dropped += pending.length;
         pending.length = 0;
-        report('flush deadline exceeded; dropped=' + dropped + ' failed=' + failed);
-      } else if (dropped || failed) report('flush summary dropped=' + dropped + ' failed=' + failed);
+        reportFailure();
+        reportSummary();
+      } else reportSummary();
     },
     stats: () => ({ dropped, failed }),
   };

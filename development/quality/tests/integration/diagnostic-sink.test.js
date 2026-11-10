@@ -57,3 +57,30 @@ test('C11.2 unavailable path and failed disk writer are isolated', () =>
     assert.equal(invalid.stats().failed, 1);
     assert.ok(errors.some(x => x.includes('failed=')));
   }));
+
+test('C11 review P2-1: ten thousand disk failures produce bounded stderr and one final total', () =>
+  withOwnedRun('C11-mass-error', async directory => {
+    const lines = [];
+    const sink = createNdjsonSink({ directory, queueSize: 10_100,
+      stderr: { write: line => { lines.push(line); return true; } },
+      writeLine: async () => { throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' }); } });
+    for (let i = 0; i < 10_000; i++) sink.emit(event(i));
+    await sink.flush();
+    await sink.flush();
+    assert.deepEqual(sink.stats(), { dropped: 0, failed: 10_000 });
+    assert.ok(lines.length <= 2, 'stderr lines must not scale with the failure count');
+    assert.equal(lines.filter(line => line.includes('flush summary')).length, 1);
+    assert.match(lines.at(-1), /failed=10000/);
+  }));
+
+test('C11 review P2-1: backpressured stderr does not accumulate further warnings', () =>
+  withOwnedRun('C11-stderr-backpressure', async directory => {
+    let writes = 0;
+    const sink = createNdjsonSink({ directory, queueSize: 11,
+      stderr: { write: () => { writes++; return false; } },
+      writeLine: async () => { throw Error('disk full'); } });
+    for (let i = 0; i < 10; i++) sink.emit(event(i));
+    await sink.flush();
+    assert.equal(writes, 1);
+    assert.equal(sink.stats().failed, 10);
+  }));
