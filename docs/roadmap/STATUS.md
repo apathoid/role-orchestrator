@@ -1,80 +1,45 @@
 # Role Orchestrator — оперативный статус
 
-| Показатель | Состояние |
+**Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
+**Последний полностью выполненный инженерный этап:** C12.9 (Linux Nix и NixOS module evaluation).
+**Следующий шаг для закрытия C12:** получить реальные результаты C12.3/C12.4, выполнить native NixOS acceptance и повторить финальную регрессию. Это не запрос на повторную реализацию C12.0.
+
+| Слой готовности | Фактическое состояние |
 |---|---|
-| Ветка | `greenfield/model-first-core` |
-| Исходный HEAD для C12 | `cbd8e70baca3ab380a2ed3d43ae1fdd667616412` |
-| Последний выполненный этап | C12.9 — NixOS module eval and complete Linux CI; final current-HEAD CI pending |
-| Следующий этап | **Remaining:** C12.3 (two real LLM providers), C12.4 (Zed/ACP), real NixOS boot/native. Все независимые C12.0–.2/.5–.9 changes committed, проверка current HEAD PENDING |
-| Implementation complete | C00–C11R и независимые C12.0–.2/.5–.9 реализованы; C12.3/.4 **не приняты (native unavailable)**, весь C12 **INCOMPLETE** |
-| Regression verified | OBSERVED [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) — SUCCESS на `1341d75` после удаления `development`; следующий commit до CI PENDING |
-| Detailed suites baseline | 298/298 (4+25+52+217) на `949292a`, [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211); исторический результат |
-| Native integration verified | **UNVERIFIED**: реальный Codex CLI/ACP model, Zed, NixOS и adaptive reasoning |
-| Production ready | **NO / NATIVE ACCEPTANCE PENDING** |
+| Implementation | C00–C11R и инженерные C12.0–C12.2/C12.5–C12.9 реализованы. Нативные критерии C12.3/C12.4 **не выполнены** |
+| Automated regression | **OBSERVED PASS 302/302** на `70ababf6d990ce359cce6909e0e0a8febba95d19`: [GitHub Actions run 42878217644](https://github.com/apathoid/role-orchestrator/actions/runs/42878217644), Linux x86_64 / Node v24.21.0 |
+| Suite composition | foundation 4/4; core 25/25; contracts 52/52; integration 217/217; acceptance 4/4; root `npm test` тоже PASS |
+| Package / clean install | **OBSERVED**: checkJs/spec/boundaries, root locked npm install, `npm pack`, extracted tarball CLI diagnose + fixture E2E, Nix flake/check/build, `nix run`, `nix profile add`, non-Git workspace, lock consistency |
+| NixOS | **OBSERVED** `lib.nixosSystem` evaluation включает `environment.systemPackages` с продуктом. Реальный boot/запуск на NixOS **UNVERIFIED** |
+| Native providers / Zed | **UNVERIFIED**: два независимых реальных LLM, Codex CLI/ACP успешный prompt, Zed как ACP-клиент, реальные permissions/cancel/resume и native reasoning |
+| C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**; production readiness **NO** |
 
-## C12.9 — Nix / NixOS / CI
+## Реализованные изменения и происхождение
 
-- Добавлена `scripts/check-nixos-evaluation.sh`: действительно вызывает pinned nixpkgs `lib.nixosSystem` и проверяет включение пакета в `environment.systemPackages` на `x86_64-linux`. Это проверка вычисления конфигурации, **не boot/host native test**.
-- CI обязан запускать root/npm acceptance, `nix flake check`, `nix build/run/profile`, npm tarball E2E, checksum/двойной pack, NixOS evaluation и сохранять release artifact. Для текущего commit полный итог **PENDING**.
-- **Незакрытые требования:** реальный Codex/независимый ACP model session, реальные permissions/cancel/resume, Zed как внешний клиент, native effort и NixOS deployment. На имеющейся GitHub-сессии это нельзя достоверно выполнить. Общий C12 не объявляется завершённым; production readiness = NO.
+| Этап | Содержание | Commit |
+|---|---|---|
+| C12.0.1–.4 | Инвентаризация, предметные docs, roadmap/STATUS/matrix/CHANGELOG, инструкции `.agents/` | `d9645c5`, `87b79a1`, `1d9963d`, `ad9fdba` |
+| C12.0.5–.8 | 54 test files + 20 fixtures + 7 scripts, root npm/checkJs/CI/Nix, npm/Nix whitelist, удалён `development/` (129 tracked files) | `afc1ebd`, `18dc1bc`, `e9e9b9b`, `1341d75` |
+| C12.1 | R01–R33 ↔ A01–A54 ↔ тесты/ограниченные доказательства в [единственной матрице](../../tests/ACCEPTANCE_MATRIX.md) | `8c4a8e0` |
+| C12.2 | Три acceptance smoke, обязательные в `npm test` и CI | `0dcfab4` |
+| C12.3–.4 | [Протокол нативной приёмки](NATIVE_ACCEPTANCE.md), **без fake PASS**; исполнение требует настоящих агентов/Zed | `da8985d`, `b4936e8` |
+| C12.5 | Git branch/index изменяется при активном worker без Host forced reconcile; модель завершает operation | `f44371a` |
+| C12.6 | Продукт устанавливается из реального npm tarball в отдельный consumer, `diagnose` и fixture CLI run | `479f6ea` |
+| C12.7 | [Архитектурный аудит путей](ARCHITECTURE_AUDIT.md): model-first, provider-agnostic, no source CAS/isolation/Git gate | `834d2db` |
+| C12.8 | Дважды собран идентичный npm tarball, SHA-256 manifest, Nix path-info и загруженный CI artifact | `f51fb5e` |
+| C12.9 | Настоящее вычисление NixOS `systemPackages`, Linux Nix build/install/CI | `70ababf` |
 
-## C12.8 — поставка, журнал изменений и контроль целостности
+## Наблюдение CI/поставка
 
-- `scripts/prepare-release.mjs` выполняет два `npm pack` в отдельных директориях, сравнивает байты/checksum и обязательные/запрещённые пути, выпускает manifest с SHA-256, размером, Node и commit. `.github/workflows/ci.yml` сохраняет npm tarball, manifest и Nix path-info в GitHub artifact `release-evidence-<commit>` через pin SHA `actions/upload-artifact@v4.6.2`.
-- `README.md` и `CHANGELOG.md` актуализированы; diagnostics documented. Создание настоящего release tag, публикация npm registry и production claim **не производились**. Проверка нового archive/reproducibility/upload в CI **PENDING**.
+[GitHub Actions 42878217644](https://github.com/apathoid/role-orchestrator/actions/runs/42878217644), commit `70ababf`, concluded **SUCCESS**. В нём:
+- `npm ci`, `npm run check`, 302 tests, `check:package`, `check:removal`, Nix/flake/install smoke/NixOS eval — все обязательные jobs/steps PASS;
+- `scripts/prepare-release.mjs` дважды собрал идентичный `role-orchestrator-0.1.0-dev.0.tgz`, 74 файла, 166848 байт, SHA-256 `24677ca1cd64a27d761dea2078f4b1d8a93b5fc44d2d1179cee708b9c43e267d`;
+- Github artifact [release-evidence-70ababf6…](https://github.com/apathoid/role-orchestrator/actions/runs/42878217644) (artifact id `13792853313`) содержит npm tarball, manifest, Nix metadata. Ничего не опубликовано в registry; package `private: true`.
 
-## C12.7 — содержательная архитектурная проверка
+CI использует synthetic/fake providers и настоящие subprocess/storage tests — результаты **не** доказывают использование реального LLM, Zed или ОС NixOS. Исторические native probes: Codex CLI → HTTP 401 без `turn.completed`; ACP 2.5.0 → initialize v1, `session/new` timeout. Эти результаты оставлены как failed/unknown evidence, не повышены до PASS.
 
-- [Static audit с code paths](ARCHITECTURE_AUDIT.md): фиксированные workflow, provider-specific core, VCS/fingerprint gate, Host FS isolation, дубль scheduler/ledger, unknown replay и полномочия. SUPPORTED по исходникам, а не «доказано отсутствует во всей системе».
-- В просмотренных путях не выявлено воспроизведённого архитектурного дефекта; новых runtime gates не введено. Native provider semantics продолжают быть UNVERIFIED.
+## Открытые обязательства и приёмка
 
-## C12.6 — проверка установленной поставки вне checkout
+**C12.3:** два независимых настоящих provider/model sessions, transport/tool permissions, side-effects/unknown, cancel, recovery, model-selected effort. **C12.4:** реальный Zed ACP client, session/new/prompt/progress, permission deny/allow, disconnect/load/resume, real external state и per-attempt IDs. **NixOS native:** установка и запуск в действительном окружении, наблюдение native dependencies/linking/state, без требования Git. См. [детальный протокол](NATIVE_ACCEPTANCE.md) и [C12 acceptance criteria](C12_ACCEPTANCE_DELIVERY.md).
 
-- Укреплён `scripts/check-package.mjs --removal`: из **распакованного npm tarball** запускается CLI `diagnose` без побочных эффектов и контролируемый end-to-end с внешним fixture plugin; state находится только у consumer. Проверяется отсутствие тестов, скриптов, agents/roadmap, dev deps/Git в установленном пакете.
-- Nix install/profile/non-Git public runtime уже **OBSERVED** в [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595). Новый tarball E2E на этом commit **UNVERIFIED до CI**; реальная модель native UNVERIFIED.
-
-## C12.5 — изменяемое рабочее окружение
-
-- Добавлен исполняемый regression `tests/acceptance/mutable-workspace.test.js`: реальный Git fixture, внешний branch switch и staging во время запущенного worker, без Host reconcile/cancel, отдельный финальный ход Controller. Требование Git относится только к тестовому fixture.
-- Существующие `tests/integration/mutable-context.test.js` проверяют редактирование связанных/несвязанных файлов и модельный выбор targeted re-read; `external-tool-review.test.js` — tool error/late outcomes. **Новый Git-сценарий на текущем commit до CI UNVERIFIED.**
-
-## C12.4 — реальный Zed/ACP client (UNVERIFIED)
-
-- [Проверочный протокол](NATIVE_ACCEPTANCE.md#c124--настоящий-zed-как-внешний-acp-клиент) описывает registration, session/new, prompt, permissions, cancel, load/resume, non-Git, mapping IDs и native effort.
-- **BLOCKED / UNVERIFIED:** реальный Zed/внешний интерактивный ACP client недоступен через текущий GitHub tooling. Не было реального client session и нельзя выдавать synthetic ACP тест за native.
-
-## C12.3 — подготовка реальной provider-agnostic приёмки (UNVERIFIED)
-
-- [Точный native-протокол](NATIVE_ACCEPTANCE.md): два независимых исполнителя, permissions, error/cancel/disconnect/resume, native/worker/controller effort и provenance. Никаких ненаблюдённых native результатов не записано.
-- **BLOCKED / UNVERIFIED**: эта среда даёт GitHub API и GitHub Actions, но не authenticated model invocations и не внешний ACP client. Имеющиеся C07 CLI 401 и C08 ACP session/new timeout не подтверждают успешный реальный prompt. Продолжение независимых проверок C12.5–C12.9 допустимо; C12 целиком нельзя принять до native evidence.
-
-## C12.2 — root clean regression (2026-11-10)
-
-- Добавлены три acceptance smoke: CLI/ACP help из non-Git каталога, побочно-безопасный public API import, наличие AGENTS → roadmap, обязательных regression suites и отсутствие legacy. Корневые `npm test` и CI требуют acceptance suite; missing suite — FAIL.
-- Подтверждено на исходном `1341d75`: [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) SUCCESS: 4 foundation, 25 core, 52 contracts, 217 integration (298/298), `npm test`, `npm ci`, Nix flake/package/apps, clean install. Новая acceptance suite на текущем изменении **CI PENDING**.
-
-## C12.1 — requirements traceability (2026-11-10)
-
-- В единственной `tests/ACCEPTANCE_MATRIX.md` привязаны R01–R33 к A01–A54, текущим test/scripts и ограниченным CI evidence. Real native A38/A54 остаются UNVERIFIED; M01–M04 имеют собственную область.
-- Основание: [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595), committed `1341d75`, Node24/Linux, exit 0 всех обязательных CI steps, включая `npm test`, npm pack, Nix flake/install, boundaries/checkJs.
-
-## Выполненные шаги C12.0
-
-- **C12.0.1**, `d9645c5`: полный Git inventory 128 development files; реестр перехода, baseline, known gaps; старые файлы не удалялись.
-- **C12.0.2**, `87b79a1`: текущие ограничения ProviderPort, native Codex CLI HTTP 401, ACP 2.5.0 session/new deadline, C11R и доказательства различены в предметных docs.
-- **C12.0.8**: прежние 128 tracked development files удалены после переноса. CI на C12.0.7: [run 42873650467](https://github.com/apathoid/role-orchestrator/actions/runs/42873650467) — SUCCESS (root specification/checkJs/boundaries, foundation/core/contracts/integration и npm test, Nix install/check и clean product pack), на удалённом дереве CI [42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) SUCCESS. Следующий шаг C12.1; native UNKNOWN/UNVERIFIED без реальных исполнителей.
-- **C12.0.7**: npm files и Nix productSource являются явным whitelist предметных docs и runtime src; AGENTS/.agents/tests/scripts/roadmap/dev deps исключены из installed package. `check:removal` теперь устанавливает prod-only зависимости. Новый installed/Nix smoke обязателен в CI; результат пока pending.
-- **C12.0.6**: убраны conditional skips development, root suites обязательно исполняются в GitHub Actions, hash Nix npm-deps пересчитан по OBSERVED hash mismatch на CI run 42872888360 (`got: sha256-zVo+cwI0Sj/6Es/PhL7VOyTo/IeIWqPUTg+7yOX3a54=`). Полный новый CI ещё не проверен.
-- **C12.0.5**: 54 test files, 20 fixtures, 7 scripts перенесены с path changes; корневой npm+lock/JS config. Обязательные npm/CI прогоны на новом дереве ещё не подтверждены, SHA и результаты сверить на C12.0.6.
-- **C12.0.4**: перенесены instructions в `.agents/`, root AGENTS и CONTRIBUTING ведут к активному roadmap, правила консолидации не меняют runtime.
-- **C12.0.3**: единственная актуальная матрица [tests/ACCEPTANCE_MATRIX](../../tests/ACCEPTANCE_MATRIX.md), план и текущий статус здесь, [CHANGELOG](../../CHANGELOG.md). Legacy `development/STATUS.md` — архив перехода, не текущий STATUS.
-
-## Проверки и недоступность
-
-В доступной среде поддерживается прямое чтение/публикация файлов GitHub, но не исполнение Node 24/Nix тестов в checkout. Подтверждение новых commits требует GitHub Actions: checkJs, spec/links, boundaries, foundation, core, contracts, integration, pack/removal, Nix. Нельзя объявлять `npm test` выполненным локально без запуска. Параллельно должны быть сохранены имена и observable assertions каждой прежней проверки (M02).
-
-Native CLI native probe: HTTP 401 Unauthorized, `turn.completed` отсутствовал. Codex ACP 2.5.0: initialize ответил ACP v1; `session/new` истёк по deadline. Эти пробы не являются успешными model prompts. Zed live client/NixOS evaluation отсутствуют. Новые native проверки при наличии реального доступа; при недоступности обозначить UNVERIFIED, а не PASS.
-
-## Правило прогресса
-
-Каждый C12.n — отдельный commit; после публикации фиксировать sha и фактические exit/check results. Если требуемая проверка не выполнена, указать UNVERIFIED с причиной; не заменять code/test run документами. Для деталей criteria см. [план](C12_ACCEPTANCE_DELIVERY.md); исторические отчёты C00–C11R доступны через Git.
+Следующее подтверждение должно включить конкретные versions, commit, комманды/exits, редактированные observations, результаты PASS/FAIL и отдельные оставшиеся UNVERIFIED в [матрице](../../tests/ACCEPTANCE_MATRIX.md). Нельзя закрывать C12 только благодаря 302 синтетическим/CI тестам. Документация, история и новые тесты уже находятся в постоянной структуре, поэтому возвращать `development/` не нужно.

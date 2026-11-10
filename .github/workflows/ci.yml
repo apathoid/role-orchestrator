@@ -61,7 +61,7 @@ jobs:
       - name: Prepare reproducible release archive and checksum
         run: nix develop --no-update-lock-file --command node scripts/prepare-release.mjs release-artifacts
       - name: Capture Nix store archive metadata
-        run: nix path-info --json .#role-orchestrator > release-artifacts/nix-path-info.json
+        run: nix path-info --json --json-format 1 .#role-orchestrator > release-artifacts/nix-path-info.json
       - name: Upload inspected release evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

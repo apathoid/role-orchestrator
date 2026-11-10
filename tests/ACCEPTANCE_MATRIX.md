@@ -195,3 +195,7 @@ OBSERVED: [CI #42805542909](https://github.com/apathoid/role-orchestrator/action
 - M02: все 54 исходных test-файла перенесены, 4 обязательные suites и packaging checks исполнились, missing обязательных suites должен FAIL; semantic equivalence дополнительно рассматривается в C12.2.
 - M03: synthetic clean npm/Nix вне checkout **OBSERVED в CI**; для native providers — UNVERIFIED.
 - M04: docs/spec checker успешно прошёл на дереве без `development`; historical Git links остаются историческими, не runtime зависимостями.
+
+## C12 — завершённый Linux CI baseline, незакрытые native обязательства (2026-11-10)
+
+**OBSERVED:** [CI 42878217644](https://github.com/apathoid/role-orchestrator/actions/runs/42878217644), commit `70ababf`, Linux x86_64 / Node v24.21.0, SUCCESS: foundation 4/4, core 25/25, contracts 52/52, integration 217/217, acceptance 4/4, total 302/302, plus clean npm tarball, Nix flake/build/profile, actual NixOS module *evaluation* and checksum/reproducible archive. This is the latest complete automated acceptance evidence for C12.0–.2/.5–.9 and M01–M04 within the Linux/synthetic scope. It does **not** close native A38/A54 or all native portions of A17/A20/A40–A43/A49–A53; two real independent LLM sessions, real Zed client and NixOS live host remain **UNVERIFIED**. The single operational status is [roadmap STATUS](../docs/roadmap/STATUS.md), and the reproducible native verification protocol is [NATIVE_ACCEPTANCE](../docs/roadmap/NATIVE_ACCEPTANCE.md).
