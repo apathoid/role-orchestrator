@@ -9,6 +9,7 @@ import { createPermissionBroker } from '../application/configuration/permissions
 import { createOrchestrator } from '../application/orchestrator.js';
 import { createEventStream } from '../application/events.js';
 import { loadExtensions } from './extensions.js';
+import { createNdjsonSink } from '../adapters/state/ndjson-diagnostics.js';
 
 /** @import {DiagnosticPort} from '../core/diagnostics.js' */
 /** @import {AuthorityPort} from '../core/ports.js' */
@@ -27,7 +28,8 @@ import { RuntimeError } from './runtime-error.js';
 
 /** @param {RuntimeOptions} options @param {() => Promise<void>} [onStoreOpen] */
 export async function openRuntime(options, onStoreOpen) {
-  const diagnostics = createEventStream(options.diagnostics);
+  // The persisted operation journal is authoritative; diagnostic I/O is best effort.
+  // Create the sink only after resolving the state directory.
   const config = await decodeConfiguration(options.configuration);
   if (config.kind === 'rejected') {
     throw new RuntimeError(config.reason.code, config.reason.constraint, config.reason.path);
@@ -37,6 +39,11 @@ export async function openRuntime(options, onStoreOpen) {
     throw new RuntimeError('INVALID_CONFIGURATION', 'State directory requires an absolute path or a configuration directory', '/storage/directory');
   }
   const directory = resolve(options.configurationDirectory ?? '/', location);
+  const diagnostics = createEventStream(options.diagnostics ?? createNdjsonSink({
+    directory: resolve(directory, 'diagnostics'),
+    maxFileBytes: config.value.diagnostics?.maxFileBytes,
+    retainedFiles: config.value.diagnostics?.retainedFiles,
+  }));
   const store = createLocalStateStore(directory);
   const clock = { now: Date.now, monotonicNow: () => performance.now() };
   const ids = { newId: randomUUID };
