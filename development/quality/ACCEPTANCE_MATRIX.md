@@ -1,6 +1,6 @@
 # Матрица приёмки и регрессий
 
-**Бизнес-сценарии ещё NOT RUN: в ветке спецификация и стартовая инфраструктура.** Foundation checks сами по себе не закрывают полные A41–A43. Эта матрица — задание для реализации тестов, не отчёт об успешном выполнении. Каждый будущий результат связывается с test path/run id и фактическим exit. Одно тестовое семейство может закрывать несколько строк.
+**Статусы реализации — в разделе наблюдений и STATUS.md. Новые A44–A54 для C11R: NOT RUN / реализация запланирована.** Foundation checks сами по себе не закрывают полные A41–A43. Эта матрица — задание для реализации тестов, не отчёт об успешном выполнении. Каждый будущий результат связывается с test path/run id и фактическим exit. Одно тестовое семейство может закрывать несколько строк.
 
 Уровни: U — core/unit; C — adapter contract; I — subprocess/storage integration; E — end-to-end; N — native provider/client. Tests хранятся только под `development/quality/`.
 
@@ -49,6 +49,27 @@
 | A41 | R29 | Product написан на JS ESM; JSDoc checker обнаруживает нарушение контракта; runtime работает без TS/checker/transpilation | U/I C00,C12 |
 | A42 | R30,R25 | Locked Nix build/check, named/default apps, profile install, non-Git cwd, внешний state и работа без development подтверждены; NixOS отдельно проверен | I/E C10,C12 |
 | A43 | R31 | GitHub CI фактически исполняет применимые проверки; missing harness явно skipped; обязательные product checks не скрыты; secrets отсутствуют | I C00,C12 |
+
+
+## C11R — обязательные проверки расширения (NOT RUN)
+
+Нормативный контракт: [reasoning effort](../../docs/REASONING_EFFORT.md). Шаги: [C11R](../plan/clusters/C11R_REASONING_EFFORT.md). Существующие зелёные suites не закрывают эти строки без проверки нового поведения.
+
+| ID | Требования | Сценарий и обязательное наблюдение | Уровень / владелец |
+|---|---|---|---|
+| A44 | R17,R24,R32 | Config v1 без reasoningEffort и с native не отправляет override; один level допускает implicit default, несколько требуют явного; null/empty/duplicate/default вне списка дают точный JSON path; старые конфиги работают | U/I C11R.1–2 |
+| A45 | R08,R17,R32 | Один xhigh у двух профилей разрешается в разные native values; новый доверенный level не требует правки core; порядок массива не выбирает default; project/skill не расширяет mapping/authority | U/I C11R.2 |
+| A46 | R03,R05,R06,R32 | Параллельные workers одного профиля получают различные efforts, локальный отказ третьему не блокирует независимые actions; evidence может привести к следующему новому назначению; дубликат Decision не вызывает dispatch | U/C/I C11R.1,4 |
+| A47 | R02,R03,R16,R33 | Один Controller без workers/новых внешних данных явно продолжает и меняет effort; повторные переходы в обе стороны разрешены до общего бюджета; next selection одноразовый, один активный Controller, нет forced delegation/anti-loop gate | U/I/E C11R.1,5 |
+| A48 | R19,R24,R26,R33 | Неподдерживаемый стартовый/следующий собственный effort виден пользователю API/CLI/ACP; ни fallback, ни автоматического correction-вызова; независимые workers сохраняют результаты; explicit resume после допустимой настройки сохраняет operation/расход | I/E C11R.6 |
+| A49 | R18,R20,R24,R32 | CLI/ACP передают точный native value перед prompt; native не меняет default; проверен launch precedence, model-specific options и однозначный selector; plugin без selectable поддержки даёт адресный отказ, native работает | C/I/N C11R.7–8 |
+| A50 | R11,R13,R24,R32,R33 | Поддержанная передача без acknowledgment не блокирует результат; explicit rejection до prompt не запускает workload; mismatch после возможного dispatch сохраняет результат/эффект и не запускает replay; effort не доказательство качества | C/I C11R.7–8 |
+| A51 | R05,R15,R23,R32,R33 | Crash до/после Decision/reserve/dispatch: pending выбор привязан ровно к одному attempt, позднее событие старой generation не меняет новый; старый snapshot без effort читается как not recorded; cancel не возрождается | U/I C11R.3,9 |
+| A52 | R15,R17,R32 | Mapping изменён при прежнем level: прошлый route неизменен; idempotencyKey не переиспользуется для другого effective request; неизвестные исторические параметры не доказывают эквивалентность; unknown effect не превращается в none | U/I C11R.3,9 |
+| A53 | R08,R16,R21,R22,R29,R32,R33 | Inspect/trace/export показывают choice/default/native value и атрибутированные факты; acknowledgment unknown не waiting; смена effort не сбрасывает ledger/grant; sink failure, redaction и evidence identity сохраняются | C/I/E C11R.7,10 |
+| A54 | R18,R25,R30,R31,R32,R33 | Native probes на реально доступных CLI/ACP фиксируют versions, applied/submitted сведения, самостоятельный Controller и multi-model выбор; mocks не доказывают качество; Nix/package/removal и применимые CI suites проходят, недоступные native пути UNVERIFIED | I/E/N C11R.11–12,C12 |
+
+Для A47 тест фиксирует разрешённость последовательности, а не предписывает модели чередовать уровни. Конечный общий бюджет — прежний ресурсный инвариант, не новая anti-loop политика. Для A50 подтверждение относится к сообщению провайдера о настройке, не к внутренним вычислениям модели.
 
 ## Правила доказательства
 

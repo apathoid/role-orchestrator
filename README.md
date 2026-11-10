@@ -14,6 +14,7 @@ Role Orchestrator координирует работу одной или нес
 - [Архитектура и владение](docs/ARCHITECTURE.md).
 - [Типы и контракты](docs/CONTRACTS.md).
 - [Модельное исполнение и сценарии](docs/EXECUTION.md).
+- [Адаптивный reasoning effort — целевой контракт, реализация запланирована](docs/REASONING_EFFORT.md).
 - [Контекст, findings и recovery](docs/CONTEXT_AND_RECOVERY.md).
 - [Провайдеры, конфигурация и расширения](docs/PROVIDERS_AND_CONFIGURATION.md).
 - [Диагностика и эксплуатация](docs/DIAGNOSTICS.md).

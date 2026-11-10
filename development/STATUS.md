@@ -6,10 +6,18 @@
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
 | Последний локально проверенный шаг | C10.10 и исправления по ревью C10 |
 | Следующий шаг | C11.1, аудит событий |
-| Functional implementation complete | NO для всего продукта, C11–C12 остаются в плане |
+| Functional implementation complete | NO для всего продукта, C11 → C11R → C12 остаются в плане |
 | Local regression verified | OBSERVED через C10 на Linux. Unix socket проверяется в GitHub Actions |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
+
+## C11R — дополнение плана (2026-11-10)
+
+**PLANNED / NOT IMPLEMENTED / native UNVERIFIED.** Добавлен [кластер C11R](plan/clusters/C11R_REASONING_EFFORT.md) и [целевой продуктовый контракт](../docs/REASONING_EFFORT.md). Выполнять после C11 до финальной C12; ближайший шаг C11.1 не меняется.
+
+Приняты: config v1 без повышения версии, omission reasoningEffort = native для новых вызовов, пользовательский mapping унифицированных levels, динамический effort workers и Controller, самостоятельное продолжение без внешнего события. Специальный anti-loop механизм не вводится. Неподдерживаемый собственный effort показывается пользователю без fallback. Acknowledgment — контекст, не gate; исторические маршруты и неизвестные эффекты сохраняются.
+
+Эта запись фиксирует только план и спецификацию. Production-код, runtime schema, тесты, зависимости, CI и конфигурация исполнения в этом дополнении не менялись. A44–A54 ожидают реализации и проверки; результаты C00–C10 ниже не закрывают C11R.
 
 ## C00 — foundation
 
