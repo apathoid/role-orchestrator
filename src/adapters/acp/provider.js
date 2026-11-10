@@ -7,7 +7,7 @@ import { startCliProcess } from '../cli/owned-process.js';
 import { launchEnvironment } from '../launch-environment.js';
 import { bridgeName, retrievalDetail, startMcpBridge } from '../mcp-bridge.js';
 import { parseDecisionText, renderInvocationPrompt } from '../invocation-prompt.js';
-import { attachmentBlocks, configureSession, modelOption } from './input.js';
+import { attachmentBlocks, configureReasoning, configureSession, modelOption } from './input.js';
 
 /** @import {ClientConnection, ClientRequestParamsByMethod, ClientRequestResponsesByMethod, InitializeResponse, NewSessionResponse, SessionUpdate, ToolCallUpdate} from '@agentclientprotocol/sdk' */
 /** @import {Invocation, Profile, ProviderPort, ProviderResult, ProviderSession} from '../../core/ports.js' */
@@ -330,6 +330,12 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const model = invocation.profile.model;
         const configured = await configureSession(agent, a.session, session, model, typeof mode === 'string' ? mode : undefined, signal);
         if (!configured || modelOption(session.configOptions)?.currentValue !== model) {
+          return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
+        }
+        // Selection is session-local; the native agent must explicitly advertise
+        // and confirm its effective value before receiving any prompt.
+        const configuredEffort = await configureReasoning(agent, a.session, session, invocation.reasoning, signal);
+        if (!configuredEffort || modelOption(session.configOptions)?.currentValue !== model) {
           return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
         }
         const prompt = renderInvocationPrompt(invocation, retrievalDetail(Boolean(mcp && invocation.contextAccess)));

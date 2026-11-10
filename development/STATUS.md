@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11R.7; cluster CI ожидается |
-| Следующий шаг | C11R.8 |
+| Последний проверенный шаг | C11R.8; cluster CI ожидается |
+| Следующий шаг | C11R.9 |
 | Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
 | Regression verified | OBSERVED: [CI 42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), Node 24/Linux — foundation 4, core 19, contracts 46, integration 190, Nix/package PASS; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
@@ -20,7 +20,8 @@
 - **C11R.5 implemented / CI PENDING.** Controller использует trusted default на первом ходу и one-shot selection из journal для следующего; самостоятельно продолжает без workers и обязательного внешнего события. Параллельные additions запускаются без принудительного ожидания перед продолжением. Controller видит историю, текущий выбор и сведения о pending selection; prompt/инструкции обновлены. Общий ledger/cancel/deadline остаётся прежним.
 - **C11R.6 implemented / CI PENDING.** Недоступный Controller level/default не отправляет provider prompt и сохраняет technical waiting с operation/profile/level/availableLevels; отсутствует автоматический fallback. API/trace/CLI/ACP показывают причину и варианты; CLI выдаёт ошибочный exit code для этого случая. Явный resume после исправления доверенной конфигурации продолжает ту же operation с прежним ledger. Добавлен regression.
 - **C11R.7 implemented / CI PENDING.** Codex CLI получает только trusted выбранное nativeValue через отдельный `-c model_reasoning_effort=<quoted>` в argv для одной invocation; native/отсутствие выбора не задаёт флаг, секреты/промпт не добавлены в argv, shell=false. Разные selections не изменяют provider config; регрессионные тесты проверяют аргументы, quoting и NUL.
-- Следующий шаг: **C11R.8** — ACP per-session option selection и negotiation. Реальные CLI/ACP/Zed остаются UNVERIFIED.
+- **C11R.8 implemented / CI PENDING.** ACP v1 выбирает nativeValue лишь по единственному объявленному select-option категории thought_level через session/set_config_option. После выбора проверяются effective value и неизменность model; native/omission не меняют ACP option. Отсутствующий/неизвестный/игнорируемый/меняющий model выбор завершает attempt с CAPABILITY_UNAVAILABLE/not_sent до prompt. Добавлен настоящий ACP fixture integration с подтверждением.
+- Следующий шаг: **C11R.9** — recovery, replay, retry и idempotency metadata. Реальные CLI/ACP/Zed остаются UNVERIFIED.
 
 ## C11 — диагностика и устойчивость
 

@@ -14,6 +14,14 @@ const configOptions = (currentValue, id = 'model') => [{
   options: [{ value: 'fixture', name: 'Fixture' }, { value: 'other', name: 'Other' }],
 }];
 let mcpUrl;
+let effort = 'low-native';
+const reasoningScenario = scenario.startsWith('reasoning-');
+const configuredOptions = () => [...configOptions(model, modelSelector), ...(reasoningScenario ? [{
+  id:'native-reasoning', name:'Thinking', category: scenario === 'reasoning-no-option' ? 'model_config' : 'thought_level',
+  type:'select', currentValue:effort, options:[
+    {value:'low-native',name:'Low'}, {value:'high-native',name:'High'},
+  ],
+}] : [])];
 let model = 'fixture';
 let mode = 'default';
 let clientCapabilities;
@@ -37,14 +45,20 @@ agent()
       assert.equal(params.mcpServers[0]?.type, 'http');
       mcpUrl = params.mcpServers[0].url;
     }
-    return { sessionId, configOptions: configOptions(model), ...(modeScenario && {
+    return { sessionId, configOptions: reasoningScenario ? configuredOptions() : configOptions(model), ...(modeScenario && {
       modes: { currentModeId: mode, availableModes: [{ id: 'default', name: 'Default' }, { id: 'review', name: 'Review' }] },
     }) };
   })
   .onRequest(a.session.setConfigOption, ({ params }) => {
-    if (params.sessionId !== sessionId || params.configId !== modelSelector) throw Error('unexpected model selector');
+    if (params.sessionId !== sessionId) throw Error('unexpected session');
+    if (params.configId === 'native-reasoning' && reasoningScenario) {
+      if (scenario !== 'reasoning-ignored') effort = params.value;
+      if (scenario === 'reasoning-reroutes') model = 'other';
+      return {configOptions:configuredOptions()};
+    }
+    if (params.configId !== modelSelector) throw Error('unexpected model selector');
     if (!['ignore-model', 'mode-model-unavailable'].includes(scenario)) model = params.value;
-    return { configOptions: configOptions(model, modelSelector) };
+    return { configOptions: reasoningScenario ? configuredOptions() : configOptions(model, modelSelector) };
   })
   .onRequest(a.session.setMode, async ({ params, client }) => {
     if (params.sessionId !== sessionId || params.modeId !== 'review') throw Error('unexpected mode');
@@ -109,6 +123,13 @@ agent()
       return { stopReason: 'end_turn' };
     }
     if (scenario === 'mcp-unsupported') assert.match(prompt, /Context retrieval is unavailable/);
+    if (reasoningScenario) {
+      await writeFile('prompt-effort', effort);
+      await client.notify(c.session.update, {sessionId,update: {
+        sessionUpdate:'agent_message_chunk', messageId:'effort', content:{type:'text',text:effort},
+      }});
+      return {stopReason:'end_turn'};
+    }
     const anonymous = scenario === 'anonymous-controller';
     const modelId = anonymous ? undefined : 'result';
     await message(anonymous ? undefined : 'progress', 'progress ' + attemptId);

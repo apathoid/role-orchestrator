@@ -347,3 +347,36 @@ test('ACP requires negotiated HTTP for retrieval and reports unavailable when op
     await using ordinary = await invoke(endpoint, { contextAccess });
     assert.equal((await ordinary.completion).outcome.terminal, 'completed');
   }));
+
+test('C11R.8 ACP uses negotiated thought_level for an isolated session and confirms it', linux, () =>
+  withOwnedRun('C11R-acp-reasoning', async cwd => {
+    const endpoint=provider(cwd,'reasoning-supported');
+    await using selected=await invoke(endpoint,{reasoning:{
+      mode:'selectable',level:'high',nativeValue:'high-native',selectionSource:'model',
+    }});
+    const result=await selected.completion;
+    assert.equal(result.outcome.terminal,'completed');
+    assert.equal(result.output,'high-native');
+    assert.equal(await readFile(join(cwd,'prompt-effort'),'utf8'),'high-native');
+    await using native=await invoke(endpoint,{reasoning:{mode:'native'}});
+    assert.equal((await native.completion).output,'low-native');
+  }));
+
+for (const [scenario, reason] of [
+  ['reasoning-no-option','high-native'],
+  ['reasoning-supported','undisclosed-native'],
+  ['reasoning-ignored','high-native'],
+  ['reasoning-reroutes','high-native'],
+]) {
+  test('C11R.8 ACP refuses nonconfirmed effort for '+scenario, linux, () =>
+    withOwnedRun('C11R-acp-'+scenario, async cwd => {
+      await using call=await invoke(provider(cwd,scenario),{reasoning:{
+        mode:'selectable',level:'high',nativeValue:reason,selectionSource:'model',
+      }});
+      const result=await call.completion;
+      assert.equal(result.dispatchCertainty,'not_sent');
+      assert.equal(result.outcome.effect,'none');
+      assert.equal(result.outcome.diagnostics[0].code,'CAPABILITY_UNAVAILABLE');
+      await assert.rejects(access(join(cwd,'prompt-effort')),{code:'ENOENT'});
+    }));
+}
