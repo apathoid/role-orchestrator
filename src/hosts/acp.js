@@ -39,7 +39,14 @@ function stopReason(operation) {
 function operationMessage(operation) {
   if (operation.status === 'finished') return operation.assessment?.answer;
   if (operation.waiting?.kind === 'question') return operation.waiting.question;
-  if (operation.waiting?.kind === 'technical') return 'Waiting: ' + operation.waiting.reason.code;
+  if (operation.waiting?.kind === 'technical') {
+    const reason = operation.waiting.reason;
+    return reason.profileId
+      ? 'Error: ' + reason.code + ' operation=' + operation.operationId +
+        ' profile=' + reason.profileId + ' reasoningLevel=' + (reason.reasoningLevel ?? '(default)') +
+        ' available=' + (reason.availableLevels ?? []).join(',')
+      : 'Waiting: ' + reason.code;
+  }
 }
 
 /** @param {AcpApi} api @param {string} directory @param {Stream} stream */

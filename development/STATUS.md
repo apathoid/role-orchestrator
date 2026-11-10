@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11R.5; cluster CI ожидается |
-| Следующий шаг | C11R.6 |
+| Последний проверенный шаг | C11R.6; cluster CI ожидается |
+| Следующий шаг | C11R.7 |
 | Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
 | Regression verified | OBSERVED: [CI 42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), Node 24/Linux — foundation 4, core 19, contracts 46, integration 190, Nix/package PASS; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
@@ -18,7 +18,8 @@
 - **C11R.3 implemented / CI PENDING.** Route расширен optional reasoning с различием исторического «не записан» и будущего native, декодер snapshot проверяет mode/level/source. Accepted nextController привязывается к следующей reservation через reasoningDecisionId; pending/consumed выводятся из событий одной generation. Противоречия binding и route rejected; idempotency/effect certainty не менялись.
 - **C11R.4 implemented / CI PENDING.** Handoff разрешает trusted profile+level до reserve/open, неподдерживаемый worker level адресно отклоняется с actionId и доступными уровнями, остальные actions продолжаются. Selection immutable per invocation, записан в route и передаётся ProviderPort; retry с прежним idempotencyKey требует точного совпадения записанного reasoning. Добавлен mixed-batch regression.
 - **C11R.5 implemented / CI PENDING.** Controller использует trusted default на первом ходу и one-shot selection из journal для следующего; самостоятельно продолжает без workers и обязательного внешнего события. Параллельные additions запускаются без принудительного ожидания перед продолжением. Controller видит историю, текущий выбор и сведения о pending selection; prompt/инструкции обновлены. Общий ledger/cancel/deadline остаётся прежним.
-- Следующий шаг: **C11R.6** — user-visible ошибка собственного unsupported effort и явный resume. Реальные CLI/ACP/Zed остаются UNVERIFIED.
+- **C11R.6 implemented / CI PENDING.** Недоступный Controller level/default не отправляет provider prompt и сохраняет technical waiting с operation/profile/level/availableLevels; отсутствует автоматический fallback. API/trace/CLI/ACP показывают причину и варианты; CLI выдаёт ошибочный exit code для этого случая. Явный resume после исправления доверенной конфигурации продолжает ту же operation с прежним ledger. Добавлен regression.
+- Следующий шаг: **C11R.7** — ProviderPort/CLI per-invocation native effort. Реальные CLI/ACP/Zed остаются UNVERIFIED.
 
 ## C11 — диагностика и устойчивость
 

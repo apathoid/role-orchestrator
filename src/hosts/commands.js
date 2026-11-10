@@ -62,7 +62,9 @@ export function operationTrace(operation, redaction = {}) {
       attemptId: operation.waiting.reason.attemptId,
       actionId: operation.waiting.reason.actionId,
       dispatchCertainty: operation.waiting.reason.dispatchCertainty,
-      effect: operation.waiting.reason.effect }
+      effect: operation.waiting.reason.effect,
+      profileId: operation.waiting.reason.profileId, reasoningLevel: operation.waiting.reason.reasoningLevel,
+      availableLevels: operation.waiting.reason.availableLevels }
     : operation.waiting?.kind === 'question'
       ? { kind: 'question', questionId: operation.waiting.questionId } : undefined;
   const projection = {

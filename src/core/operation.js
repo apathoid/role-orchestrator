@@ -17,7 +17,8 @@
  * )} Attempt
  * @typedef {{maxInvocations: number, maxConcurrentInvocations: number}} Limits
  * @typedef {{code: ReasonCode, operationId: string, actionId?: string, attemptId?: string,
- *   dispatchCertainty?: DispatchCertainty, effect?: Outcome['effect']}} Reason
+ *   dispatchCertainty?: DispatchCertainty, effect?: Outcome['effect'],
+ *   profileId?: string, reasoningLevel?: string, availableLevels?: readonly string[]}} Reason
  * @typedef {{kind: 'question', questionId: string, question: string} | {kind: 'technical', reason: Reason}} Waiting
  * @typedef {{schemaVersion: 1, operationId: string, request: Request, generation: number, revision: number,
  *   authorityRef: string, acceptedAt?: number, transcriptRefs: readonly string[], limits: Limits, attempts: readonly Attempt[],

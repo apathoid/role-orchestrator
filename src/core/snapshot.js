@@ -36,6 +36,7 @@ const effect = oneOf('none', 'possible', 'confirmed', 'unknown');
 const reason = record({
   code: reasonCode, operationId: id, actionId: optional(id), attemptId: optional(id),
   dispatchCertainty: optional(certainty), effect: optional(effect),
+  profileId: optional(id), reasoningLevel: optional(id), availableLevels: optional(arrayOf(id)),
 });
 const waiting = tagged('kind', {
   question: record({ kind: oneOf('question'), questionId: id, question: id }),

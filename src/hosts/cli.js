@@ -145,10 +145,16 @@ export async function runCli(args, io, execute) {
       const view = operationView(/** @type {Operation} */ (result));
       if (invocation.format === 'text' && ['run', 'resume'].includes(invocation.command.action)) {
         io.stdout.write((view.assessment?.answer ?? (view.waiting?.kind === 'question' ? view.waiting.question
-          : view.waiting?.kind === 'technical' ? 'Waiting: ' + view.waiting.reason.code : view.status)) + '\n');
+          : view.waiting?.kind === 'technical'
+            ? (view.waiting.reason.profileId ? 'Error: ' : 'Waiting: ') + view.waiting.reason.code +
+              (view.waiting.reason.profileId ? ' profile=' + view.waiting.reason.profileId +
+                ' reasoningLevel=' + (view.waiting.reason.reasoningLevel ?? '(default)') +
+                ' available=' + (view.waiting.reason.availableLevels ?? []).join(',') : '')
+            : view.status)) + '\n');
       } else io.stdout.write(JSON.stringify(view, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     } else io.stdout.write(JSON.stringify(result, null, invocation.format === 'text' ? 2 : undefined) + '\n');
-    return 0;
+    return result && typeof result === 'object' && 'waiting' in result &&
+      result.waiting?.kind === 'technical' && result.waiting.reason.profileId ? 1 : 0;
   } catch (error) {
     const issue = hostError(error);
     io.stderr.write(issue.code + ': ' + issue.message + (issue.path ? ' (' + issue.path + ')' : '') + '\n');

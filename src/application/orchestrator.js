@@ -634,7 +634,9 @@ export function createOrchestrator(deps) {
         const failure = failedOutcome(attemptId, 'CAPABILITY_UNAVAILABLE', false);
         failure.diagnostics[0].ref = ref;
         return {outcome: failure, certainty: /** @type {const} */ ('not_sent'),
-          output, observations, contextCursor, recordLate};
+          output, observations, contextCursor, recordLate,
+          reasoningFailure: {profileId: choice.profileId, reasoningLevel: choice.requestedLevel,
+            availableLevels: [...choice.availableLevels]}};
       }
       const reasoning = choice.selection;
       function requireAuthority() {
@@ -1045,6 +1047,7 @@ export function createOrchestrator(deps) {
           state = await technicalWait(state, {
             code: response.outcome.diagnostics[0]?.code ?? 'PROTOCOL_ERROR',
             operationId, attemptId, actionId: attemptId, effect: response.outcome.effect, dispatchCertainty: response.certainty,
+            ...response.reasoningFailure,
           });
         }
         state = await response.recordLate(state);
