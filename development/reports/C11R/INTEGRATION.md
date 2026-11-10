@@ -48,3 +48,9 @@ GitHub Actions [#42820034765](https://github.com/apathoid/role-orchestrator/acti
 | P2 ACK | Trace aggregates all outcome observations for one attempt, so a later outcome cannot erase earlier authenticated ACP config-option ACK | `reasoning-diagnostics.test.js` |
 
 Native Codex/ACP/Zed integration remains **UNVERIFIED**; synthetic tests do not establish model behavior or native applied effort.
+
+## Final verified post-review CI
+
+- [GitHub Actions #42820783218](https://github.com/apathoid/role-orchestrator/actions/runs/42820783218) — **PASS** for source commit `d16c88e`, Node 24/Linux, foundation **4/4**, core **25/25**, contract **52/52**, integration **216/216** (total **297/297**); Nix/JS contract checks, package, removal and lockfile checks PASS.
+- The final worker context digest is recomputed at the durable dispatch boundary and the exact materialized context is sent to the provider; concurrent observations cannot silently change a reused key's payload.
+- Status/report-only closeout commit follows this verified source revision. Native model/agent/Zed evidence: **UNVERIFIED**.
