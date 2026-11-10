@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { resourceSnapshot } from '../core/operation.js';
+import { journalReasonCode, resourceSnapshot } from '../core/operation.js';
 import { redactDiagnostic } from '../application/redact-diagnostic.js';
 
 /** @import {Operation} from '../core/operation.js' */
@@ -56,6 +56,7 @@ export function operationTrace(operation, redaction = {}) {
     ...(start ? ['earlier journal events'] : []),
   ];
   const resources = resourceSnapshot(operation);
+  const actionByAttempt = new Map(operation.attempts.map(attempt => [attempt.attemptId, attempt.actionId]));
   const waiting = operation.waiting?.kind === 'technical'
     ? { kind: 'technical', code: operation.waiting.reason.code,
       attemptId: operation.waiting.reason.attemptId,
@@ -79,14 +80,18 @@ export function operationTrace(operation, redaction = {}) {
       reasonCode: attempt.outcome?.diagnostics[0]?.code,
     })),
     omitted: missing, omittedEvents: start,
-    events: events.slice(start).map((event, index) => ({
-      sequence: start + index + 1, receivedAt: event.receivedAt, eventName: event.kind,
-      attemptId: event.kind === 'attempt.outcome' ? event.outcome.attemptId : 'attemptId' in event ? event.attemptId : undefined,
-      actionId: 'actionId' in event ? event.actionId : undefined,
-      reasonCode: 'code' in event ? event.code : event.kind === 'operation.waiting' && event.waiting.kind === 'technical'
-        ? event.waiting.reason.code : event.kind === 'attempt.outcome' ? event.outcome.diagnostics[0]?.code : undefined,
-      source: event.kind === 'operation.cancelled' || event.kind === 'action.cancelled' ? event.source : undefined,
-    })),
+    events: events.slice(start).map((event, index) => {
+      const attemptId = event.kind === 'attempt.outcome' ? event.outcome.attemptId :
+        'attemptId' in event ? event.attemptId : undefined;
+      return {
+        sequence: start + index + 1, eventId: event.eventId, receivedAt: event.receivedAt,
+        eventName: event.kind, reasonCode: journalReasonCode(event), attemptId,
+        actionId: 'actionId' in event ? event.actionId : attemptId ? actionByAttempt.get(attemptId) : undefined,
+        decisionId: event.kind === 'controller.responded' ? event.decision.decisionId : undefined,
+        source: event.kind === 'operation.cancelled' || event.kind === 'action.cancelled' ||
+          event.kind === 'attempt.cancel_requested' ? event.source : undefined,
+      };
+    }),
   };
   // Every exported string (including model-chosen identifiers) passes through
   // the same known-secret projection as live events. Bodies stay excluded.

@@ -95,3 +95,44 @@ test('C11 review P2-2: all known-secret substrings are redacted in durable ident
   assert.equal(trace.attempts[0].actionId, trace.events[0].actionId);
   assert.equal(trace.events.at(-1).reasonCode, 'PERMISSION_DENIED');
 });
+
+test('C11 review P2-3: durable technical causes and IDs agree with reducer diagnostics', () => {
+  let operation = createOperation('op', input(), 'authority',
+    { maxInvocations: 5, maxConcurrentInvocations: 2 });
+  const events = [
+    { kind: 'attempt.reserved', attemptId: 'attempt-a', actionId: 'work-a' },
+    { kind: 'attempt.dispatched', attemptId: 'attempt-a' },
+    { kind: 'attempt.cancel_requested', attemptId: 'attempt-a', source: 'client' },
+    { kind: 'attempt.outcome', outcome: outcome('attempt-a', {
+      terminal: 'unknown', effect: 'unknown', diagnostics: [{ code: 'DEADLINE_EXCEEDED' }] }),
+      dispatchCertainty: 'unknown' },
+    { kind: 'operation.recovered', trusted: { authorityRef: 'authority', configurationRef: 'cfg',
+      limits: { maxInvocations: 5, maxConcurrentInvocations: 2 } } },
+    { kind: 'controller.responded', attemptId: 'attempt-a',
+      decision: /** @type {any} */ ({ schemaVersion: 1, operationId: 'op', decisionId: 'd-1',
+        contextCursor: 4, additions: [], cancellations: [] }) },
+    { kind: 'operation.finished', assessment: /** @type {any} */ ({ author: 'primary', answer: 'Done' }) },
+  ];
+  const coreReasons = [];
+  for (const [i, data] of events.entries()) {
+    const result = applyEvent(operation, { operationId: 'op', eventId: 'event-' + i, receivedAt: i + 1, ...data });
+    assert.equal(result.kind, 'applied', data.kind);
+    operation = result.state;
+    coreReasons.push(result.diagnostic.reasonCode);
+  }
+  const entries = operationTrace(operation).events;
+  assert.deepEqual(entries.map(event => event.reasonCode), coreReasons);
+  assert.deepEqual(entries.map(event => event.eventId), events.map((_, i) => 'event-' + i));
+  assert.equal(entries[1].actionId, 'work-a');
+  assert.equal(entries[2].actionId, 'work-a');
+  assert.equal(entries[2].source, 'client');
+  assert.equal(entries[4].reasonCode, 'RECOVERED');
+  assert.equal(entries[5].decisionId, 'd-1');
+  assert.equal(entries[6].reasonCode, 'ASSESSMENT_RECORDED');
+
+  const cancelled = state([
+    { kind: 'attempt.reserved', attemptId: 'b', actionId: 'work-b' },
+    { kind: 'operation.cancelled', source: 'client' },
+  ]);
+  assert.equal(operationTrace(cancelled).events[1].reasonCode, 'CANCELLED');
+});

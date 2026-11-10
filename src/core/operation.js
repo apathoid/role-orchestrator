@@ -168,6 +168,31 @@ function diagnosticContext(event) {
   }
 }
 
+/**
+ * Technical reason for a recorded journal transition. Both the reducer and
+ * durable export use this one mapping. Exceptional late/discrepancy
+ * diagnostics are transient classifications, not stored journal kinds.
+ * @param {Event} event
+ * @returns {string}
+ */
+export function journalReasonCode(event) {
+  switch (event.kind) {
+    case 'attempt.reserved': return 'RESERVED';
+    case 'attempt.dispatched': return 'DISPATCH_STARTED';
+    case 'attempt.cancel_requested':
+    case 'action.cancelled':
+    case 'operation.cancelled': return 'CANCELLED';
+    case 'attempt.outcome': return event.outcome.diagnostics[0]?.code ?? event.outcome.terminal.toUpperCase();
+    case 'controller.responded': return 'ACCEPTED';
+    case 'action.rejected':
+    case 'action.deferred': return event.code;
+    case 'operation.waiting': return event.waiting.kind === 'question' ? 'USER_INPUT' : event.waiting.reason.code;
+    case 'operation.continued': return 'USER_INPUT';
+    case 'operation.recovered': return 'RECOVERED';
+    case 'operation.finished': return 'ASSESSMENT_RECORDED';
+  }
+}
+
 /** @param {Operation} state @param {Event} event @returns {Transition} */
 export function applyEvent(state, event) {
   const attemptId = event.kind === 'attempt.outcome' ? event.outcome.attemptId
@@ -198,7 +223,8 @@ export function applyEvent(state, event) {
       diagnostic: {
         schemaVersion: 1, eventId: event.eventId, receivedAt: event.receivedAt, sequence: revision,
         level: eventName.endsWith('discrepancy') ? 'warn' : 'info', component: 'core', eventName,
-        reasonCode, operationId: state.operationId, attemptId, actionId, decisionId,
+        reasonCode: eventName === event.kind ? journalReasonCode(event) : reasonCode,
+        operationId: state.operationId, attemptId, actionId, decisionId,
         // Taxonomy is technical only; never persist questions, proposals or tool bodies.
         ...diagnosticContext(event),
       },
