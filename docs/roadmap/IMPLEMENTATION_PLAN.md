@@ -10,9 +10,9 @@
 |---|---|---|
 | C12.0.1 | Baseline и карта old path → new disposition | Завершён, commit d9645c5 |
 | C12.0.2 | Консолидация текущих продуктовых контрактов | Завершён, commit 87b79a1 |
-| C12.0.3 | Активный roadmap, status, матрица, changelog | Текущий шаг |
-| C12.0.4 | Инструкции .agents/ и AGENTS.md | Следующий |
-| C12.0.5 | Перенос tests/fixtures/scripts, npm/checkJs | После .4 |
+| C12.0.3 | Активный roadmap, status, матрица, changelog | Завершён, commit 1d9963d |
+| C12.0.4 | Инструкции .agents/ и AGENTS.md | Завершён |
+| C12.0.5 | Перенос tests/fixtures/scripts, npm/checkJs | **Следующий** |
 | C12.0.6 | Обязательный CI и locked Nix/npm | После .5 |
 | C12.0.7 | Установленная поставка без dev tools | После .6 |
 | C12.0.8 | Удаление legacy development/, полная регрессия/handoff | После .7 |
