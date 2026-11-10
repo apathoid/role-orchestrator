@@ -95,6 +95,7 @@ export function createCodexProvider({ providerId, configuration, environment = p
         const prompt = renderCodexPrompt(request, interactiveApprovalDetail, Boolean(mcp && request.contextAccess));
         const launch = prepareCodexLaunch(configuration, {
           model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt, mcpUrl: mcp?.url,
+          reasoning: request.reasoning,
         }, environment);
         const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal });
         state.process = process;

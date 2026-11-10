@@ -9,10 +9,11 @@ import { launchEnvironment } from '../launch-environment.js';
  * args and options with spawn, writes stdin as UTF-8 and closes the pipe.
  *
  * @param {ProviderConfig} provider
- * @param {{model: string, cwd?: string, prompt: string, mcpUrl?: string}} invocation
+ * @param {{model: string, cwd?: string, prompt: string, mcpUrl?: string,
+ *   reasoning?: import('../../core/ports.js').ReasoningSelection}} invocation
  * @param {NodeJS.ProcessEnv} environment Trusted parent environment for this launch.
  */
-export function prepareCodexLaunch(provider, { model, cwd, prompt, mcpUrl }, environment) {
+export function prepareCodexLaunch(provider, { model, cwd, prompt, mcpUrl, reasoning }, environment) {
   const { launch, nativeSettings = {} } = provider;
   if (!launch) throw new TypeError('launch is required for Codex CLI');
   checkArgument(launch.command, 'launch.command');
@@ -31,6 +32,16 @@ export function prepareCodexLaunch(provider, { model, cwd, prompt, mcpUrl }, env
     nativeArgs.push(`--profile=${value}`);
   }
 
+  // Trusted per-invocation mapping, never a persistent config mutation.
+  // JSON string quoting is valid TOML for Codex's -c key=value option.
+  const effortArgs = [];
+  if (reasoning?.mode === 'selectable') {
+    checkArgument(reasoning.nativeValue, 'reasoning.nativeValue');
+    effortArgs.push('-c', 'model_reasoning_effort=' + JSON.stringify(reasoning.nativeValue));
+  } else if (reasoning !== undefined && reasoning.mode !== 'native') {
+    throw new TypeError('Unsupported reasoning selection');
+  }
+
   const mcpArgs = mcpUrl === undefined ? [] : [
     '-c', `mcp_servers.${bridgeName}.url=${JSON.stringify(mcpUrl)}`,
     '-c', `mcp_servers.${bridgeName}.enabled=true`,
@@ -38,7 +49,7 @@ export function prepareCodexLaunch(provider, { model, cwd, prompt, mcpUrl }, env
   ];
   return {
     command: launch.command,
-    args: [...launcherArgs, 'exec', '--json', '--skip-git-repo-check', `--model=${model}`, ...nativeArgs, ...mcpArgs, '-'],
+    args: [...launcherArgs, 'exec', '--json', '--skip-git-repo-check', `--model=${model}`, ...nativeArgs, ...effortArgs, ...mcpArgs, '-'],
     options: {
       cwd,
       env: launchEnvironment(launch.env, environment),

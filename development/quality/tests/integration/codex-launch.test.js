@@ -76,3 +76,30 @@ test('Codex launch leaves unspecified native options to Codex and reports invali
   assert.throws(() => prepareCodexLaunch({ ...provider, launch: { ...provider.launch, env: secretRef } }, invocation, environment),
     /launch\.env\.CODEX_API_KEY/);
 });
+
+test('C11R.7 selectable effort is a process-local -c override; native has no forced flag', () => {
+  const provider={adapter:'codex-cli',launch:{command:'codex'},nativeSettings:{profile:'operator'}};
+  const base={model:'fixture',prompt:'one'};
+  const environment={};
+  const native=prepareCodexLaunch(provider,{...base,reasoning:{mode:'native'}},environment);
+  assert.deepEqual(native.args,['exec','--json','--skip-git-repo-check','--model=fixture','--profile=operator','-']);
+  const low=prepareCodexLaunch(provider,{...base,reasoning:{
+    mode:'selectable',level:'low',nativeValue:'minimal',selectionSource:'model',
+  }},environment);
+  const high=prepareCodexLaunch(provider,{...base,reasoning:{
+    mode:'selectable',level:'high',nativeValue:'xhigh',selectionSource:'model',
+  }},environment);
+  assert.deepEqual(low.args.slice(-3),['-c','model_reasoning_effort="minimal"','-']);
+  assert.deepEqual(high.args.slice(-3),['-c','model_reasoning_effort="xhigh"','-']);
+  assert.equal(low.options.shell,false);
+  assert.equal(high.options.shell,false);
+  assert.deepEqual(provider.nativeSettings,{profile:'operator'});
+  assert.deepEqual(prepareCodexLaunch(provider,base,environment).args,native.args);
+  const literal=prepareCodexLaunch(provider,{...base,reasoning:{
+    mode:'selectable',level:'custom',nativeValue:'raw"\\token',selectionSource:'default',
+  }},environment);
+  assert.equal(literal.args.at(-2), 'model_reasoning_effort=' + JSON.stringify('raw"\\token'));
+  assert.throws(()=>prepareCodexLaunch(provider,{...base,reasoning:{
+    mode:'selectable',level:'invalid',nativeValue:'x\\0broken',selectionSource:'model',
+  }},environment),/reasoning.nativeValue/);
+});
