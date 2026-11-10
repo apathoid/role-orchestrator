@@ -34,3 +34,17 @@ No additional credentials were added to CI, and no anti-loop gate, second schedu
 - Verified success for C11R.1–.10: [GitHub Actions run 42812645733](https://github.com/apathoid/role-orchestrator/actions/runs/42812645733). Node 24/Linux; `nix develop --no-update-lock-file --command npm --prefix development run check`, `test:foundation` (4/4), `test:core` (24/24), `test:contracts` (51/51), `test:integration` (203/203), `check:package`, `check:removal` all exit 0. Lockfile diff check exit 0.
 - C11R.11–12 final joint CI outcome: **PENDING** in this document until the next verified run. Do not infer PASS from the previous HEAD.
 - Native agent versions/model outputs/usage: **UNVERIFIED**. No live native probe was attempted from this interface; preserve this status for C12.
+
+## Post-review P1/P2 corrections — 2026-11-10
+
+GitHub Actions [#42820034765](https://github.com/apathoid/role-orchestrator/actions/runs/42820034765) confirmed PASS for Node 24/Linux: foundation 4/4, core 25/25, contracts 52/52, integration 216/216; total **297/297**. Specification, checkJs, package/removal and Nix checks passed. This run preceded a final additive snapshot consistency check; its own CI is tracked in STATUS.
+
+| Review | Fixed behavior | Regression |
+|---|---|---|
+| P1 recovery | Technical `operation.recovered` retains unused one-shot Controller selection across durable reopen and next reservation; user `continued` still supersedes | `reasoning-recovery.test.js` file-store crash/reopen/resume |
+| P1 ACP | Explicit session effort refusal carries a structured adapter cause through ProviderResult to technical waiting, CLI/ACP text and nonzero CLI exit; no fallback prompt | `acp-provider.test.js`, `reasoning-failure.test.js` |
+| P1 retry | New `route.requestHash` binds original and retry to the exact materialized worker-input snapshot (task, selected evidence, restrictions, skills, attachments); missing/changed hash denies idempotent retry, independent actions and other retry bases retained | `retry.test.js`, `worker-request-identity.test.js` |
+| P2 snapshot | Worker selectable level/source validated against admitted Action; omission of explicit reasoning invalid too; historical native mapping never reconstructed | `reasoning-snapshot.test.js` |
+| P2 ACK | Trace aggregates all outcome observations for one attempt, so a later outcome cannot erase earlier authenticated ACP config-option ACK | `reasoning-diagnostics.test.js` |
+
+Native Codex/ACP/Zed integration remains **UNVERIFIED**; synthetic tests do not establish model behavior or native applied effort.

@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11R.12 (код и документация); полный CI финального HEAD ожидается |
+| Последний проверенный шаг | C11R.12 + исправления ревью P1×3/P2×2, итоговая проверка CI текущего HEAD ожидается |
 | Следующий шаг | C12.1 |
 | Functional implementation complete | NO для всего продукта; C11R implementation complete, C12 не завершён |
-| Regression verified | OBSERVED: [CI 42812645733](https://github.com/apathoid/role-orchestrator/actions/runs/42812645733), Node 24/Linux — foundation 4, core 24, contracts 51, integration 203, Nix/package/removal PASS (C11R.1–.10); C11R.11–.12 full CI pending; native UNVERIFIED |
+| Regression verified | OBSERVED: [CI 42820034765](https://github.com/apathoid/role-orchestrator/actions/runs/42820034765), Node 24/Linux — foundation 4/4, core 25/25, contracts 52/52, integration 216/216, всего 297/297; Nix/package/removal PASS. Последняя допроверка snapshot ещё в CI; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -18,7 +18,7 @@
 - P1 retry: route содержит `requestHash` от полного материализованного worker-input (objective, expectedResult, context/evidence, instructions, skillInstructions, attachments, permissions-related constraints, выбранный профиль). Provider idempotency разрешён лишь при том же hash и прежнем route; legacy без hash отклоняется без предположения эквивалентности. `no_effect` и `user_approval` не изменены. CI ожидается.
 - P2 snapshot: при worker dispatch проверяется связь `route.reasoning.level/selectionSource` с принятым Action, включая подмену journal и summary. Исторический nativeValue не вычисляется из текущего конфига.
 - P2 diagnostics: ACK берётся из всех `attempt.outcome.observations` для attemptId, а не только последнего; добавлен тест позднего уточняющего outcome без повторного ACK.
-- Все пять замечаний исправлены в коде. Старый позитивный retry-test уточнён: identical route сам по себе не разрешает replay, если provider получил изменённые coordination facts. Добавлены позитивный случай полного совпадения materialized worker input и негативные случаи изменённых objective/contextRefs/expectedResult/capabilities. CI ожидается; C12 ещё не начат.
+- Все пять замечаний исправлены в коде и проверены [CI 42820034765](https://github.com/apathoid/role-orchestrator/actions/runs/42820034765): 297/297 PASS. Старый позитивный retry-test уточнён: одинаковый route не разрешает replay, если изменились факты контекста. Проверены совпадающий materialized input и несовпадающие objective/contextRefs/expectedResult/capabilities. Дополнительно закреплён отказ snapshot при полностью удалённом явном reasoning; CI этой последней допроверки ожидается. C12 ещё не начат.
 
 ## C11R — ход реализации (2026-11-10)
 

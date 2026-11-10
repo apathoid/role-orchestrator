@@ -241,6 +241,14 @@ function snapshot(input, path) {
       if (item.kind === 'attempt.dispatched') {
         if (prior.status !== 'reserved') invalid(at + '.kind', 'a dispatch of a reserved attempt');
         const routeReasoning = item.route?.reasoning;
+        if (!routeReasoning && prior.actionId !== attemptId &&
+            acceptedActions.get(prior.actionId)?.reasoningLevel) {
+          invalid(at + '.route.reasoning', 'recorded reasoning for an explicitly selected worker level');
+        }
+        if (!routeReasoning && prior.actionId === attemptId && prior.reasoningDecisionId &&
+            decisions.get(prior.reasoningDecisionId)?.nextController?.reasoningLevel) {
+          invalid(at + '.route.reasoning', 'recorded reasoning for an explicitly selected Controller level');
+        }
         if (routeReasoning) {
           if (prior.actionId === attemptId) {
             const selected = prior.reasoningDecisionId ? decisions.get(prior.reasoningDecisionId)?.nextController : undefined;

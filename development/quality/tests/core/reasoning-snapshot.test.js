@@ -68,6 +68,10 @@ test('C11R review P2: worker route is bound to the admitted Action, even if both
   wrongSource.events[2].route.reasoning.selectionSource='default';
   wrongSource.attempts[0].route.reasoning.selectionSource='default';
   assert.equal(decodeSnapshot(JSON.stringify(wrongSource)).reason.path,'$.events[2].route.reasoning.selectionSource');
+  const erased=JSON.parse(encodeSnapshot(state));
+  delete erased.events[2].route.reasoning;
+  delete erased.attempts[0].route.reasoning;
+  assert.equal(decodeSnapshot(JSON.stringify(erased)).reason.path,'$.events[2].route.reasoning');
   const missing=JSON.parse(encodeSnapshot(state));
   missing.events[2].route.reasoning.mode='native';
   delete missing.events[2].route.reasoning.level;
