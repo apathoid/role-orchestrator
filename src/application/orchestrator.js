@@ -750,17 +750,27 @@ export function createOrchestrator(deps) {
         const current = await inspect(state.operationId);
         signal.throwIfAborted();
         requireAuthority();
-        const idempotencyKey = retryKey(current, requestHash);
+        // Re-evaluate at the durable dispatch boundary: independent workers
+        // may have produced newer evidence while this provider was opening.
+        // Hash and send this SAME materialized context, never a stale hash
+        // paired with fresher provider input.
+        const currentWorkerContext = handoff && action
+          ? handoffContext(current, action.contextRefs, contextMaxBytes, lookups) : undefined;
+        const currentRequestHash = handoff && action && currentWorkerContext && workerInstructions
+          ? workerRequestHash({handoff, action, context:currentWorkerContext,
+            instructions:workerInstructions, skillInstructions, attachments,
+            requiredCapabilities:[...requiredCapabilities]}) : undefined;
+        const idempotencyKey = retryKey(current, currentRequestHash);
         const dispatched = await transition(current, {
           kind: 'attempt.dispatched', attemptId, route: {
             configurationRef, profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, model: selectedProfile.model,
-            idempotencyKey, requestHash, reasoning,
+            idempotencyKey, requestHash: currentRequestHash, reasoning,
           },
         });
         contextCursor = dispatched.revision;
         signal.throwIfAborted();
         requireAuthority();
-        retryKey(dispatched, requestHash);
+        retryKey(dispatched, currentRequestHash);
         boundPermissions = permissions?.bind({
           operationId: state.operationId, attemptId, profileId: selectedProfile.profileId, authorityRef: state.authorityRef, signal,
           report: (event, reason) => trace(dispatched, event, reason, attemptId),
@@ -772,7 +782,7 @@ export function createOrchestrator(deps) {
           ...handoff,
           ...(action?.skills?.length ? { instructions: workerInstructions } : {}),
           ...(skillInstructions.length ? { skillInstructions } : {}),
-          context: workerContext ?? [],
+          context: currentWorkerContext ?? [],
         } : {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
           objective: state.request.text, instructions: controllerInstructions, profile,
