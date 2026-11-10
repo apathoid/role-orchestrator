@@ -29,15 +29,20 @@ test('C11R.9 file-store crash barriers preserve pending/consumed selection, rout
   for(let step=0;step<=4;step++){
     const id='crash-at-'+step;
     let state=createOperation(id,request({requestId:'request-'+step}),'grant',{maxInvocations:8,maxConcurrentInvocations:2});
-    if(step>=1)state=apply(state,'controller.responded',1,{decision:decision({
+    assert.deepEqual(await store.commit(id,null,state),{kind:'committed'});
+    async function advance(kind,n,extra) {
+      const revision=state.revision;
+      state=apply(state,kind,n,extra);
+      assert.deepEqual(await store.commit(id,revision,state),{kind:'committed'});
+    }
+    if(step>=1)await advance('controller.responded',1,{decision:decision({
       decisionId:'select-'+step,operationId:id,finalAssessment:undefined,
       nextController:{continue:true,reasoningLevel:'high'}})});
-    if(step>=2)state=apply(state,'attempt.reserved',2,{attemptId:'attempt-'+step,
+    if(step>=2)await advance('attempt.reserved',2,{attemptId:'attempt-'+step,
       actionId:'attempt-'+step,reasoningDecisionId:'select-'+step});
-    if(step>=3)state=apply(state,'attempt.dispatched',3,{attemptId:'attempt-'+step,route});
-    if(step>=4)state=apply(state,'attempt.outcome',4,{outcome:outcome('attempt-'+step),dispatchCertainty:'sent'});
+    if(step>=3)await advance('attempt.dispatched',3,{attemptId:'attempt-'+step,route});
+    if(step>=4)await advance('attempt.outcome',4,{outcome:outcome('attempt-'+step),dispatchCertainty:'sent'});
     checkpoints.push(state);
-    assert.deepEqual(await store.commit(id,null,state),{kind:'committed'});
   }
   await store.close();
   const reopened=createLocalStateStore(directory);
