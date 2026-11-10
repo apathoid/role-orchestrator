@@ -1,10 +1,11 @@
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
+import { redactDiagnostic } from './redact-diagnostic.js';
 
 /** @import {DiagnosticEvent, DiagnosticPort} from '../core/diagnostics.js' */
 /** @typedef {(event: DiagnosticEvent) => void | Promise<void>} EventListener */
 
-/** @param {DiagnosticPort} sink */
-export function createEventStream(sink = noopDiagnostics) {
+/** @param {DiagnosticPort} sink @param {{secrets?: readonly string[], captureBodies?: boolean}} [redaction] */
+export function createEventStream(sink = noopDiagnostics, redaction = {}) {
   /** @type {Set<{listener: EventListener}>} */
   const subscribers = new Set();
   let closed = false;
@@ -12,7 +13,8 @@ export function createEventStream(sink = noopDiagnostics) {
     /** @param {DiagnosticEvent} event */
     emit(event) {
       if (closed) return;
-      const snapshot = Object.freeze({ ...event, details: event.details && Object.freeze({ ...event.details }) });
+      const safe = /** @type {DiagnosticEvent} */ (redactDiagnostic(event, redaction));
+      const snapshot = Object.freeze({ ...safe, details: safe.details && Object.freeze({ ...safe.details }) });
       emitDiagnostic(sink, snapshot);
       for (const subscriber of subscribers) {
         queueMicrotask(() => {

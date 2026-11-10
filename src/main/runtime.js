@@ -39,11 +39,16 @@ export async function openRuntime(options, onStoreOpen) {
     throw new RuntimeError('INVALID_CONFIGURATION', 'State directory requires an absolute path or a configuration directory', '/storage/directory');
   }
   const directory = resolve(options.configurationDirectory ?? '/', location);
+  const secretValues = Object.values(config.value.providers).flatMap(provider =>
+    Object.values(provider.launch?.env ?? {}).flatMap(ref => {
+      const value = process.env[ref.fromEnv];
+      return value && value.length >= 4 ? [value] : [];
+    }));
   const diagnostics = createEventStream(options.diagnostics ?? createNdjsonSink({
     directory: resolve(directory, 'diagnostics'),
     maxFileBytes: config.value.diagnostics?.maxFileBytes,
     retainedFiles: config.value.diagnostics?.retainedFiles,
-  }));
+  }), { secrets: secretValues, captureBodies: config.value.diagnostics?.captureBodies });
   const store = createLocalStateStore(directory);
   const clock = { now: Date.now, monotonicNow: () => performance.now() };
   const ids = { newId: randomUUID };

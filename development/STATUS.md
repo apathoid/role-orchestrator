@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C10.10 и исправления по ревью C10; C11.1–C11.2 implementation, CI pending |
-| Следующий шаг | C11.3, redaction и body capture (после проверки CI) |
+| Последний локально проверенный шаг | C10.10 и исправления по ревью C10; C11.1–C11.3 implementation, CI pending |
+| Следующий шаг | C11.4, inspect/trace/export |
 | Functional implementation complete | NO для всего продукта, C11 → C11R → C12 остаются в плане |
 | Local regression verified | OBSERVED через C10 на Linux. Unix socket проверяется в GitHub Actions |
 | Native integration verified | UNVERIFIED |
@@ -17,6 +17,8 @@
 - Baseline CI `42c92f1` обнаружил дефект checker: он не распознавал уже запланированные шаги C11R.1–C11R.12; регулярное выражение исправлено без изменения плана. GitHub Actions ожидается; native CLI/ACP/Zed не подтверждены. Следующий шаг C11.2.
 
 - C11.2 — В state directory добавлен независимый bounded NDJSON writer: очередь, ротация, предел размера и файлов, timeout flush, stderr summary, drop/failure accounting. Отказ записи не влияет на task ledger. Добавлены fault-инъекции и тест ротации; результаты CI ожидаются.
+
+- C11.3 — Перед sink и подписчиками производится рекурсивная проекция событий: известные secret refs из доверенной конфигурации, sensitive keys, bearer/basic headers и userinfo удаляются; body capture по умолчанию выключен. Добавлены тесты вложенных значений и подписчиков. Произвольный текст не гарантируется полностью очищенным; CI ожидается.
 
 ## C11R — дополнение плана (2026-11-10)
 
