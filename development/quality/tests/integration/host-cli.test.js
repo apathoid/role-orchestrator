@@ -44,3 +44,29 @@ test('CLI validates arguments, accepts Unicode stdin outside Git and isolates JS
     assert.doesNotMatch(standing.stderr, /Permission requested|Permission unavailable/);
 
   }));
+
+test('C11.5 diagnose reports unknown capabilities without opening providers or state', () =>
+  withOwnedRun('C11-diagnose', async (cwd, spawn) => {
+    const stateDirectory = join(cwd, 'uncreated-state');
+    const marker = join(cwd, 'provider-opened');
+    const module = join(cwd, 'must-not-load.mjs');
+    await writeFile(module, 'import { writeFile } from "node:fs/promises"; await writeFile(' +
+      JSON.stringify(marker) + ', "loaded");');
+    const config = join(cwd, 'config.json');
+    await writeFile(config, JSON.stringify({
+      schemaVersion: 1, controllerProfile: 'primary',
+      profiles: { primary: { provider: 'test', model: 'fixture' } },
+      providers: { test: { adapter: 'fixture', launch: { command: '/definitely/missing/executable' } } },
+      plugins: [{ id: 'fixture', module }],
+      storage: { directory: stateDirectory },
+    }));
+    const result = spawn(process.execPath, [entry, 'diagnose', '--config', config, '--format', 'json'], { cwd });
+    assert.equal(result.status, 0, result.stderr);
+    const data = JSON.parse(result.stdout);
+    assert.equal(data.state, 'not_created');
+    assert.equal(data.capabilities.status, 'unknown');
+    assert.equal(data.sideEffects, 'none');
+    assert.equal(data.providers[0].launch, 'unavailable');
+    await assert.rejects(readFile(marker, 'utf8'), { code: 'ENOENT' });
+    await assert.rejects(readFile(join(stateDirectory, 'diagnostics', 'diagnostics.ndjson'), 'utf8'), { code: 'ENOENT' });
+  }));

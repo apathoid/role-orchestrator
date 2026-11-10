@@ -36,7 +36,14 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
       })));
       const state = await access(stateDirectory, constants.R_OK | constants.W_OK).then(() => 'accessible', error =>
         error.code === 'ENOENT' ? 'not_created' : 'unavailable');
-      return { configuration: path, stateDirectory, state, providers };
+      // diagnose is a static inspection: neither provider sessions nor probes
+      // are started, and missing state directories remain untouched.
+      return {
+        configuration: path, stateDirectory, state,
+        runtime: { node: process.version, platform: process.platform, architecture: process.arch },
+        capabilities: { status: 'unknown', reason: 'not_negotiated_without_provider_session' },
+        providers, sideEffects: 'none',
+      };
     }
     const stop = new AbortController();
     const interrupt = () => stop.abort();
