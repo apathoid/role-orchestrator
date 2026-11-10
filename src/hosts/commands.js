@@ -46,9 +46,34 @@ export function operationTrace(operation) {
   const limit = 256;
   const { events, operationId, revision } = operation;
   const start = Math.max(0, events.length - limit);
+  const missing = [
+    'model content', 'tool bodies', 'transient diagnostics',
+    ...(start ? ['earlier journal events'] : []),
+  ];
+  const resources = resourceSnapshot(operation);
+  const waiting = operation.waiting?.kind === 'technical'
+    ? { kind: 'technical', code: operation.waiting.reason.code,
+      attemptId: operation.waiting.reason.attemptId,
+      actionId: operation.waiting.reason.actionId,
+      dispatchCertainty: operation.waiting.reason.dispatchCertainty,
+      effect: operation.waiting.reason.effect }
+    : operation.waiting?.kind === 'question'
+      ? { kind: 'question', questionId: operation.waiting.questionId } : undefined;
   return {
     schemaVersion: 1, operationId, revision, source: 'operation-journal', redacted: true,
-    omitted: ['model content', 'tool bodies', 'transient diagnostics'], omittedEvents: start,
+    manifest: { schemaVersion: 1, format: 'operation-journal-json-v1',
+      origin: 'durable-state', transientDiagnosticsIncluded: false,
+      missing, truncatedEvents: start, eventCount: events.length },
+    status: operation.status, waiting, resources,
+    attempts: operation.attempts.map(attempt => ({
+      attemptId: attempt.attemptId, actionId: attempt.actionId, status: attempt.status,
+      profileId: attempt.route?.profileId, providerId: attempt.route?.providerId,
+      dispatchCertainty: attempt.dispatchCertainty,
+      effect: attempt.outcome?.effect ?? (attempt.status === 'dispatched' ? 'unknown' : undefined),
+      terminal: attempt.outcome?.terminal,
+      reasonCode: attempt.outcome?.diagnostics[0]?.code,
+    })),
+    omitted: missing, omittedEvents: start,
     events: events.slice(start).map((event, index) => ({
       sequence: start + index + 1, receivedAt: event.receivedAt, eventName: event.kind,
       attemptId: event.kind === 'attempt.outcome' ? event.outcome.attemptId : 'attemptId' in event ? event.attemptId : undefined,
