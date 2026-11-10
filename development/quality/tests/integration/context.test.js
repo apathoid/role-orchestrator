@@ -84,7 +84,11 @@ test('a tiny budget reports missing and omitted refs separately and keeps litera
   assert.equal(invocations[1].context[0].value, input);
   assert.ok(invocations[1].context[1].value.historyBudget.omitted > 0);
   assert.equal(invocations[1].context.find(item => item.ref === 'reply').value, followup);
-  assert.deepEqual(invocations[2].context.map(item => [item.ref, item.unavailableReason, item.value]), [
-    [optionalRef, 'budget', undefined], ['unknown-ref', 'missing', undefined], ['reply', undefined, followup],
-  ]);
+  // With a one-byte optional budget even a missing-reference marker cannot
+  // fit. The literal user reply remains, and the lost refs are counted.
+  assert.equal(invocations[2].context.find(item => item.ref === 'reply').value, followup);
+  const summary = invocations[2].context.find(item => item.ref === 'host:context-budget');
+  assert.equal(summary.value.selected, 3);
+  assert.equal(summary.value.omitted, 2);
+  assert.ok(!invocations[2].context.some(item => item.ref === optionalRef || item.ref === 'unknown-ref'));
 });

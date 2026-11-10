@@ -42,36 +42,47 @@ export function unavailableContext(ref, unavailableReason) {
 
 /**
  * Items are supplied in priority order. The byte limit applies to the optional
- * JSON records, including metadata and separators. Literal user messages and
- * explicit missing references have to remain visible even at a tiny limit.
+ * JSON records, including metadata, references and separators. Literal user
+ * messages are mandatory; unavailable/missing references are optional and
+ * may be represented only by a bounded aggregate when they do not fit.
  * @param {readonly ContextItem[]} items @param {number} maxBytes @param {boolean} keepRefs
  */
 export function compactContext(items, maxBytes, keepRefs) {
   /** @type {ContextItem[]} */
   const context = [];
   let remaining = Math.max(0, maxBytes - 2);
-  let omitted = 0;
-  let excerpted = 0;
+  let omitted = 0, excerpted = 0, unrepresented = 0, optionalIncluded = 0;
   for (const item of items) {
-    // Literal user instructions are never dropped. Optional history and
-    // unavailable markers cannot grow without bound when refs are numerous.
-    if (!isUserMessage(item) && context.length >= maxOptionalRecords) {
-      omitted++;
+    // Literal user instructions are not optional, even under a tiny budget.
+    if (isUserMessage(item)) {
+      context.push(item);
       continue;
     }
-    if (isUserMessage(item) || (keepRefs && item.completeness === 'unavailable')) {
-      context.push(item);
+    if (optionalIncluded >= maxOptionalRecords) {
+      omitted++;
+      unrepresented++;
       continue;
     }
     const bounded = boundContextItem(item, remaining - 1);
     if (bounded) {
       context.push(bounded);
       remaining -= jsonBytes(bounded) + 1;
+      optionalIncluded++;
       if (bounded !== item) excerpted++;
+      continue;
+    }
+    omitted++;
+    // A marker is optional too. Never copy an unbounded model-supplied ref
+    // merely because its original item was too large.
+    const marker = keepRefs ? unavailableContext(item.ref, 'budget') : undefined;
+    const markerBytes = marker ? jsonBytes(marker) + 1 : Infinity;
+    if (marker && markerBytes <= remaining) {
+      context.push(marker);
+      remaining -= markerBytes;
+      optionalIncluded++;
     } else {
-      omitted++;
-      if (keepRefs) context.push(unavailableContext(item.ref, 'budget'));
+      unrepresented++;
     }
   }
-  return { context, omitted, excerpted };
+  return { context, omitted, excerpted, unrepresented };
 }

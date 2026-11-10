@@ -71,13 +71,17 @@ export function handoffContext(operation, refs, maxBytes, lookups) {
   const attachments = new Set(operation.request.attachments.map(item => item.ref));
   const records = [...selected].filter(ref => found.has(ref) || !attachments.has(ref))
     .map(ref => found.get(ref) ?? unavailableContext(ref, 'missing'));
-  const { context, omitted } = compactContext(records, maxBytes, true);
-  // Byte-budget omissions already have per-reference markers. A summary is
-  // needed only when the record-count limit suppresses entire references.
-  if (records.length > 128 && omitted > 0) {
-    context.push({ ref: 'host:context-budget', source: 'host_observed',
-      completeness: 'complete', value: { omitted, selected: records.length, limit: 128 } });
+  let bounded = compactContext(records, maxBytes, true);
+  if (bounded.unrepresented > 0) {
+    // Reserve room for a single constant-size technical summary and compact
+    // again. Use the maximal possible count to reserve enough decimal digits.
+    const summary = (count) => ({ ref: 'host:context-budget', source: 'host_observed',
+      completeness: 'complete', value: { omitted: count, selected: records.length, limit: 128 } });
+    const summaryBytes = Buffer.byteLength(JSON.stringify(summary(records.length))) + 1;
+    bounded = compactContext(records, Math.max(0, maxBytes - summaryBytes), true);
+    bounded.context.push(summary(bounded.unrepresented));
   }
+  const { context } = bounded;
   if (includeFacts) {
     context.push({ ref: factsRef, source: 'host_observed', completeness: 'complete', value: facts });
   }
