@@ -650,6 +650,7 @@ export function createOrchestrator(deps) {
           reasoningFailure: {profileId: choice.profileId, reasoningLevel: choice.requestedLevel,
             availableLevels: [...choice.availableLevels]}};
       }
+      if (choice.kind !== 'selected') throw new OrchestrationError('CAPABILITY_UNAVAILABLE', 'Reasoning selection not admitted');
       const reasoning = choice.selection;
       function requireAuthority() {
         const decision = authority.authorize(state.authorityRef, selectedProfile.profileId);
