@@ -53,7 +53,7 @@ test('handoff preserves permanent knowledge and all four executable regression s
   assert.match(entry, /docs\/roadmap\/STATUS\.md/);
   assert.match(entry, /\.agents\/REASONING\.md/);
   const state = await readFile(join(root, 'docs/roadmap/STATUS.md'), 'utf8');
-  assert.match(state, /Следующий этап/);
+  assert.match(state, /\*\*Следующий (?:этап|шаг)[^*\n]*:\*\*\s*\S/);
   for (const name of ['foundation', 'core', 'contracts', 'integration']) {
     assert.ok((await readdir(join(root, 'tests', name))).some(path => path.endsWith('.test.js')), name);
   }
