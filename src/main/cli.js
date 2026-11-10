@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { access } from 'node:fs/promises';
+import { access, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, isAbsolute, resolve } from 'node:path';
 import { cliPermissions } from '../hosts/cli-permissions.js';
@@ -13,15 +13,38 @@ import { openRuntime } from './runtime.js';
 
 const cwd = process.cwd();
 
-/** @param {string} command @param {string} workdir */
-async function executable(command, workdir) {
-  const candidates = isAbsolute(command) || command.includes('/')
-    ? [resolve(workdir, command)] : (process.env.PATH ?? '').split(delimiter).map(dir => resolve(workdir, dir, command));
+/**
+ * A static launch-path hint, not a promise that spawn will succeed.
+ * Relative commands (including relative PATH entries) may resolve in a
+ * different workspace when an actual provider attempt is started.
+ * @param {string} command
+ * @returns {Promise<'executable' | 'unavailable' | 'cwd_dependent'>}
+ */
+async function executable(command) {
+  if (!isAbsolute(command) && command.includes('/')) return 'cwd_dependent';
+  const entries = isAbsolute(command) ? [] : (process.env.PATH ?? '').split(delimiter);
+  const candidates = isAbsolute(command) ? [command]
+    : entries.filter(dir => isAbsolute(dir)).map(dir => resolve(dir, command));
   for (const candidate of candidates) {
-    try { await access(candidate, constants.X_OK); return true; }
-    catch { /* Try the next PATH entry. */ }
+    try {
+      if (!(await stat(candidate)).isFile()) continue;
+      await access(candidate, constants.X_OK);
+      return 'executable';
+    } catch { /* Not a currently executable regular file at this location. */ }
   }
-  return false;
+  return entries.some(dir => !isAbsolute(dir)) ? 'cwd_dependent' : 'unavailable';
+}
+
+/** @param {string} directory */
+async function diagnoseState(directory) {
+  try {
+    if (!(await stat(directory)).isDirectory()) return 'not_directory';
+    await access(directory, constants.R_OK | constants.W_OK | constants.X_OK);
+    return 'accessible';
+  } catch (error) {
+    return error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT'
+      ? 'not_created' : 'unavailable';
+  }
 }
 
 process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).runAcpStdio(process.argv.slice(3))
@@ -32,10 +55,9 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
     if (invocation.command.action === 'diagnose') {
       const providers = await Promise.all(Object.entries(configuredProviders).map(async ([providerId, provider]) => ({
         providerId, adapter: provider.adapter, launch: provider.launch
-          ? (await executable(provider.launch.command, cwd) ? 'executable' : 'unavailable') : 'adapter_default',
+          ? await executable(provider.launch.command) : 'adapter_default',
       })));
-      const state = await access(stateDirectory, constants.R_OK | constants.W_OK).then(() => 'accessible', error =>
-        error.code === 'ENOENT' ? 'not_created' : 'unavailable');
+      const state = await diagnoseState(stateDirectory);
       // diagnose is a static inspection: neither provider sessions nor probes
       // are started, and missing state directories remain untouched.
       return {
@@ -43,6 +65,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
         runtime: { node: process.version, platform: process.platform, architecture: process.arch },
         capabilities: { status: 'unknown', reason: 'not_negotiated_without_provider_session' },
         providers, sideEffects: 'none',
+        launchProbe: 'static_file_type_and_permissions_only',
       };
     }
     const stop = new AbortController();

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -69,4 +69,38 @@ test('C11.5 diagnose reports unknown capabilities without opening providers or s
     assert.equal(data.providers[0].launch, 'unavailable');
     await assert.rejects(readFile(marker, 'utf8'), { code: 'ENOENT' });
     await assert.rejects(readFile(join(stateDirectory, 'diagnostics', 'diagnostics.ndjson'), 'utf8'), { code: 'ENOENT' });
+  }));
+
+test('C11 review P3: diagnose distinguishes directories from files and cwd-dependent commands', () =>
+  withOwnedRun('C11-diagnose-types', async (cwd, spawn) => {
+    const stateFile = join(cwd, 'state-is-file');
+    const directoryCommand = join(cwd, 'command-is-dir');
+    const commandFile = join(cwd, 'command-is-file');
+    const config = join(cwd, 'config.json');
+    await writeFile(stateFile, 'not a directory');
+    await mkdir(directoryCommand);
+    await chmod(directoryCommand, 0o755);
+    await writeFile(commandFile, '#!/bin/sh\\nexit 0\\n');
+    await chmod(commandFile, 0o755);
+    /** @param {string} command @param {string} storage */
+    function diagnose(command, storage = stateFile) {
+      const definition = {
+        schemaVersion: 1, controllerProfile: 'primary',
+        profiles: { primary: { provider: 'test', model: 'fixture' } },
+        providers: { test: { adapter: 'host-fixture', launch: { command } } },
+        storage: { directory: storage },
+      };
+      // Tests are subprocess based: no provider is loaded or run by diagnose.
+      return writeFile(config, JSON.stringify(definition)).then(() => {
+        const reply = spawn(process.execPath, [entry, 'diagnose', '--config', config, '--format', 'json'], { cwd });
+        assert.equal(reply.status, 0, reply.stderr);
+        return JSON.parse(reply.stdout);
+      });
+    }
+    const bad = await diagnose(directoryCommand);
+    assert.equal(bad.state, 'not_directory');
+    assert.equal(bad.providers[0].launch, 'unavailable');
+    assert.equal((await diagnose(commandFile)).providers[0].launch, 'executable');
+    assert.equal((await diagnose('./command-is-file')).providers[0].launch, 'cwd_dependent');
+    assert.equal((await diagnose(commandFile, cwd)).state, 'accessible');
   }));
