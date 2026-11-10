@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11R.12 + ревью P1×3/P2×2, CI PASS на d16c88e |
+| Последний проверенный шаг | C11R.12 + исправления ревью P1×3/P2×2, CI PASS на 949292a |
 | Следующий шаг | C12.1 |
 | Functional implementation complete | NO для всего продукта; C11R implementation complete, C12 не завершён |
-| Regression verified | OBSERVED: [CI 42820783218](https://github.com/apathoid/role-orchestrator/actions/runs/42820783218) на d16c88e, Node 24/Linux — foundation 4/4, core 25/25, contracts 52/52, integration 216/216, 297/297 PASS; Nix/package/removal/lockfiles PASS. Native UNVERIFIED |
+| Regression verified | OBSERVED: [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211) на 949292a, Node 24/Linux — foundation 4/4, core 25/25, contracts 52/52, integration 217/217, всего 298/298 PASS; Nix/checkJs/package/removal/lockfiles PASS. Native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -18,7 +18,7 @@
 - P1 retry: route содержит `requestHash` от полного материализованного worker-input (objective, expectedResult, context/evidence, instructions, skillInstructions, attachments, permissions-related constraints, выбранный профиль). Provider idempotency разрешён лишь при том же hash и прежнем route; legacy без hash отклоняется без предположения эквивалентности. `no_effect` и `user_approval` не изменены. CI ожидается.
 - P2 snapshot: при worker dispatch проверяется связь `route.reasoning.level/selectionSource` с принятым Action, включая подмену journal и summary. Исторический nativeValue не вычисляется из текущего конфига.
 - P2 diagnostics: ACK берётся из всех `attempt.outcome.observations` для attemptId, а не только последнего; добавлен тест позднего уточняющего outcome без повторного ACK.
-- **Все 5/5 замечаний закрыты: CI PASS на d16c88e.** [Run 42820783218](https://github.com/apathoid/role-orchestrator/actions/runs/42820783218) проверил код d16c88e: 297/297 тестов PASS, checkJs, Nix, package/removal, lockfiles PASS. Добавлен дополнительный консервативный запрет повторного ключа при непроверенных байтах внешних attachment; итоговый HEAD CI ожидается. Provider idempotency требует полного совпадения materialized input, включая контекст с актуального commit-boundary; одинаковая route без requestHash недостаточна. Проверены положительный и отрицательные варианты. Snapshot не принимает удалённый явный reasoning. При старых неопределённых effects нет автоматического replay. C12 не начинался; реальные Codex/ACP/Zed остаются UNVERIFIED.
+- **Все 5/5 замечаний закрыты, включая внешний attachment без подтверждения байтов. CI PASS.** [Run 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211) проверил код 949292a: 298/298 тестов PASS, checkJs, Nix, package/removal, lockfiles PASS. Оставшиеся реальные нативные проверки Zed/Codex/ACP UNVERIFIED. Provider idempotency требует полного совпадения materialized input, включая контекст с актуального commit-boundary; одинаковая route без requestHash недостаточна. Проверены положительный и отрицательные варианты. Snapshot не принимает удалённый явный reasoning. При старых неопределённых effects нет автоматического replay. C12 не начинался; реальные Codex/ACP/Zed остаются UNVERIFIED.
 
 ## C11R — ход реализации (2026-11-10)
 
