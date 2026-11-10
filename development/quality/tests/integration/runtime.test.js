@@ -101,3 +101,37 @@ test('closing a running API instance persists shutdown and refuses new submissio
       assert.ok(saved.attempts.every(attempt => attempt.status === 'terminal'));
     } finally { await reopened.close(); }
   }));
+
+test('C11 review P2-2: runtime trace uses trusted launch env secrets for direct and Host dispatch', () =>
+  withOwnedRun('C11-trace-secret', async directory => {
+    const { dispatchCommand } = await import('../../../../src/hosts/commands.js');
+    const { request } = await import('../../fixtures/core.js');
+    const secret = 'C11-SECRET-VALUE-' + Date.now();
+    const old = process.env.C11_REVIEW_TRACE;
+    process.env.C11_REVIEW_TRACE = secret;
+    const profileId = 'primary-' + secret;
+    const configuration = JSON.stringify({
+      schemaVersion: 1, controllerProfile: profileId,
+      profiles: { [profileId]: { provider: 'test', model: 'fixture' } },
+      providers: { test: { adapter: 'host-fixture',
+        launch: { command: '/unused/executable', env: { TOKEN: { fromEnv: 'C11_REVIEW_TRACE' } } } } },
+      plugins: [{ id: 'host-fixture', module: fileURLToPath(new URL('../../fixtures/host-plugin.js', import.meta.url)) }],
+    });
+    try {
+      const runtime = await openRuntime({ configuration, stateDirectory: join(directory, 'state') });
+      try {
+        const input = request({ configurationRef: runtime.api.configurationRef });
+        const state = await (await runtime.api.submit(input)).completion;
+        const trace = await runtime.api.trace(state.operationId);
+        assert.ok(!JSON.stringify(trace).includes(secret));
+        assert.equal(trace.attempts[0].profileId, 'primary-[REDACTED]');
+        const exported = await dispatchCommand(runtime.api, {
+          action: 'export-diagnostics', requestId: 'export', operationId: state.operationId,
+        });
+        assert.deepEqual(exported, trace);
+      } finally { await runtime.close(); }
+    } finally {
+      if (old === undefined) delete process.env.C11_REVIEW_TRACE;
+      else process.env.C11_REVIEW_TRACE = old;
+    }
+  }));

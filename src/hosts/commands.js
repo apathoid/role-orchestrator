@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { resourceSnapshot } from '../core/operation.js';
+import { redactDiagnostic } from '../application/redact-diagnostic.js';
 
 /** @import {Operation} from '../core/operation.js' */
 /** @typedef {ReturnType<typeof import('../application/orchestrator.js').createOrchestrator>} Coordinator */
-/** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string}} HostApi */
+/** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string, trace?: (operationId: string) => Promise<ReturnType<typeof operationTrace>>}} HostApi */
 /** @typedef {{
  *   action: 'run' | 'resume' | 'inspect' | 'cancel' | 'trace' | 'export-diagnostics' | 'diagnose',
  *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client'
@@ -37,12 +38,16 @@ export async function dispatchCommand(api, command, accepted) {
     return submission.completion;
   }
   if (action === 'cancel') return api.cancel(operationId, cancellationSource);
-  const operation = await api.inspect(operationId);
-  return action === 'trace' || action === 'export-diagnostics' ? operationTrace(operation) : operation;
+  if (action === 'trace' || action === 'export-diagnostics') {
+    // The runtime owns the trusted secret values. A synthetic HostApi may
+    // still use the conservatively redacted, secret-unaware projection.
+    return api.trace ? api.trace(operationId) : operationTrace(await api.inspect(operationId));
+  }
+  return api.inspect(operationId);
 }
 
-/** @param {Operation} operation */
-export function operationTrace(operation) {
+/** @param {Operation} operation @param {{secrets?: readonly string[]}} [redaction] */
+export function operationTrace(operation, redaction = {}) {
   const limit = 256;
   const { events, operationId, revision } = operation;
   const start = Math.max(0, events.length - limit);
@@ -59,7 +64,7 @@ export function operationTrace(operation) {
       effect: operation.waiting.reason.effect }
     : operation.waiting?.kind === 'question'
       ? { kind: 'question', questionId: operation.waiting.questionId } : undefined;
-  return {
+  const projection = {
     schemaVersion: 1, operationId, revision, source: 'operation-journal', redacted: true,
     manifest: { schemaVersion: 1, format: 'operation-journal-json-v1',
       origin: 'durable-state', transientDiagnosticsIncluded: false,
@@ -83,6 +88,9 @@ export function operationTrace(operation) {
       source: event.kind === 'operation.cancelled' || event.kind === 'action.cancelled' ? event.source : undefined,
     })),
   };
+  // Every exported string (including model-chosen identifiers) passes through
+  // the same known-secret projection as live events. Bodies stay excluded.
+  return /** @type {typeof projection} */ (redactDiagnostic(projection, { secrets: redaction.secrets }));
 }
 
 /** @param {Operation} operation */

@@ -76,3 +76,22 @@ test('C11.4 export never overwrites an existing path and publishes complete JSON
     await writeDiagnosticExport(other, { manifest: { source: 'durable' } });
     assert.deepEqual(JSON.parse(await readFile(other, 'utf8')).manifest, { source: 'durable' });
   }));
+
+test('C11 review P2-2: all known-secret substrings are redacted in durable identifiers', () => {
+  const secret = 'known-secret-xyz';
+  const operation = state([
+    { kind: 'attempt.reserved', attemptId: 'attempt-' + secret, actionId: 'action-' + secret },
+    { kind: 'attempt.dispatched', attemptId: 'attempt-' + secret, route: {
+      providerId: 'provider-' + secret, profileId: 'profile-' + secret, model: 'model', configurationRef: 'cfg' } },
+    { kind: 'attempt.outcome', outcome: outcome('attempt-' + secret), dispatchCertainty: 'sent' },
+    { kind: 'action.rejected', actionId: 'other-' + secret, code: 'PERMISSION_DENIED' },
+  ]);
+  const trace = operationTrace(operation, { secrets: [secret] });
+  assert.equal(trace.redacted, true);
+  const serialized = JSON.stringify(trace);
+  assert.ok(!serialized.includes(secret));
+  assert.ok(serialized.includes('action-[REDACTED]'));
+  assert.equal(trace.attempts[0].attemptId, trace.events[0].attemptId);
+  assert.equal(trace.attempts[0].actionId, trace.events[0].actionId);
+  assert.equal(trace.events.at(-1).reasonCode, 'PERMISSION_DENIED');
+});

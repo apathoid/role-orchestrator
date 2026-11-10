@@ -8,6 +8,7 @@ import { decodeConfiguration } from '../application/configuration/decode-config.
 import { createPermissionBroker } from '../application/configuration/permissions.js';
 import { createOrchestrator } from '../application/orchestrator.js';
 import { createEventStream } from '../application/events.js';
+import { operationTrace } from '../hosts/commands.js';
 import { loadExtensions } from './extensions.js';
 import { createNdjsonSink } from '../adapters/state/ndjson-diagnostics.js';
 
@@ -119,6 +120,7 @@ export async function openRuntime(options, onStoreOpen) {
     }
     const { submit, resume, inspect, inspectFinding, findRequest, cancel } = coordinator;
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel,
+      trace: async (operationId) => operationTrace(await inspect(operationId), { secrets: secretValues }),
       subscribe: diagnostics.subscribe, configurationRef, close });
     return { api, coordinator, permissions, configurationRef, directory, catalog, close };
   } catch (error) {
