@@ -681,7 +681,11 @@ export function createOrchestrator(deps) {
             actionId: action.actionId, profileId: selectedProfile.profileId,
           }) === true) return executor.supportsIdempotency ? attemptId : undefined;
           const route = prior.route;
-          if (action.retryBasis === 'provider_idempotency' && executor.supportsIdempotency && route?.idempotencyKey &&
+          // Attachment refs do not prove byte identity: their resolver can
+          // return different content across attempts. Do not replay an
+          // unknown effect under the same key without content provenance.
+          if (action.retryBasis === 'provider_idempotency' && !attachments.length &&
+              executor.supportsIdempotency && route?.idempotencyKey &&
               route.configurationRef === configurationRef && route.profileId === selectedProfile.profileId &&
               route.providerId === selectedProfile.providerId && route.model === selectedProfile.model &&
               requestHash !== undefined && route.requestHash === requestHash &&

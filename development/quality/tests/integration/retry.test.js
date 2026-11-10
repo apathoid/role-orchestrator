@@ -16,10 +16,12 @@ function propose(invocation, ...actions) {
   });
 }
 
-async function scenario({ supportsIdempotency, approveRetry, basis, originalEffect = 'unknown', retryChanges = {} }) {
+async function scenario({ supportsIdempotency, approveRetry, basis, originalEffect = 'unknown', retryChanges = {}, withAttachment = false }) {
   const effects = [];
   const knownKeys = new Map();
   const objective = 'Apply one effect';
+  const contextRefs = withAttachment ? ['request-1','external-attachment'] : ['request-1'];
+  const task = (id, text, opts = {}) => delegate(id, text, {contextRefs, ...opts});
   const env = setup({
     supportsIdempotency, approveRetry, maxInvocations: 8, maxConcurrentInvocations: 2,
     // A configured flag is insufficient to authorize use of a provider key.
@@ -41,18 +43,20 @@ async function scenario({ supportsIdempotency, approveRetry, basis, originalEffe
 
       const context = invocation.context[1].value;
       const prior = context.outcomes.find(item => item.actionId === 'original');
-      if (!prior) return propose(invocation, delegate('original', objective));
+      if (!prior) return propose(invocation, task('original', objective));
       if (!invocation.context.some(item => item.ref === 'continue')) {
         return final(invocation, { finalAssessment: undefined, clarification: { question: 'Continue?' } });
       }
       if (!context.outcomes.some(item => item.actionId === 'read')) {
-        return propose(invocation, delegate('replacement', objective, { ...retryChanges, retryOf: prior.attemptId, retryBasis: basis }),
+        return propose(invocation, task('replacement', objective, { ...retryChanges, retryOf: prior.attemptId, retryBasis: basis }),
           delegate('read', 'Read independent facts'));
       }
       return final(invocation);
     },
   });
-  const waiting = await (await env.api.submit(request())).completion;
+  const waiting = await (await env.api.submit(request({
+    attachments: withAttachment ? [{ref:'external-attachment',mediaType:'text/plain'}] : [],
+  }))).completion;
   const finished = await (await env.api.resume(waiting.operationId, {
     requestId: 'continue', questionId: waiting.waiting.questionId, text: 'Continue',
   })).completion;
@@ -130,4 +134,17 @@ test('a known no-effect outcome allows an explicit retry on the same operation',
   const { effects, finished } = await scenario({ basis: 'no_effect', originalEffect: 'none' });
   assert.deepEqual(effects, ['replacement']);
   assert.equal(finished.attempts.find(item => item.actionId === 'original').outcome.effect, 'none');
+});
+
+test('C11R review P1: identical attachment refs do not establish byte-equivalent provider input',async()=>{
+  const {finished,invocations,effects} = await scenario({
+    basis:'provider_idempotency',supportsIdempotency:true,
+    originalEffect:'confirmed',withAttachment:true,
+  });
+  assert.equal(finished.status,'finished');
+  assert.deepEqual(effects,['original']);
+  const retry=finished.attempts.find(a=>a.actionId==='replacement');
+  assert.equal(retry.outcome.diagnostics[0].code,'RETRY_NOT_AUTHORIZED');
+  assert.equal(retry.dispatchCertainty,'not_sent');
+  assert.equal(invocations.filter(i=>i.kind==='delegate'&&i.actionId==='replacement').length,0);
 });
