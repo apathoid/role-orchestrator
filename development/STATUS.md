@@ -20,7 +20,7 @@
 
 - C11.3 — Перед sink и подписчиками производится рекурсивная проекция событий: известные secret refs из доверенной конфигурации, sensitive keys, bearer/basic headers и userinfo удаляются; body capture по умолчанию выключен. Добавлены тесты вложенных значений и подписчиков. Произвольный текст не гарантируется полностью очищенным; CI ожидается.
 
-- C11.4 — Trace/export дополняются manifest происхождения, отсутствующих portions и truncation, техническим статусом, ограничениями и попытками с unknown. Источник — durable operation journal, а не transient log. Тесты проверяют 300 событий и отсутствие prompt; CI ожидается.
+- C11.4 — Trace/export дополняются manifest происхождения, отсутствующих portions и truncation, техническим статусом, ограничениями и попытками с unknown. Источник — durable operation journal, а не transient log. Экспорт публикует лишь полный файл через exclusive hard link из временного файла с mode 0600. Тесты проверяют 300 событий, отсутствие prompt, EEXIST и ошибку частичной записи; CI ожидается.
 
 - C11.5 — Diagnose выдаёт версии runtime и честный unknown для возможностей без negotiated provider session. Missing launch path и несуществующий state directory наблюдаемы без их изменения. Сквозной тест подтверждает отсутствие исполнения plugin module и создания state; CI ожидается.
 

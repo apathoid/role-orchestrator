@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { withOwnedRun } from '../../scripts/owned-run.mjs';
+import { writeDiagnosticExport } from '../../../../src/hosts/cli.js';
 import { createOperation, applyEvent, decodeRequest } from '../../../../src/main/index.js';
 import { operationTrace } from '../../../../src/hosts/commands.js';
 import { request, outcome } from '../../fixtures/core.js';
@@ -48,3 +52,27 @@ test('C11.4 large journal is bounded with explicit omitted count and stable sequ
   assert.equal(result.events[0].sequence, 45);
   assert.equal(result.events.at(-1).sequence, 300);
 });
+
+test('C11.4 failed partial write never publishes output and removes its temporary file', () =>
+  withOwnedRun('C11-export-partial', async directory => {
+    const output = join(directory, 'trace.json');
+    await assert.rejects(writeDiagnosticExport(output, { status: 'test' },
+      async handle => {
+        await handle.writeFile('partial');
+        throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+      }), { code: 'ENOSPC' });
+    await assert.rejects(readFile(output, 'utf8'), { code: 'ENOENT' });
+    assert.deepEqual(await readdir(directory), []);
+  }));
+
+test('C11.4 export never overwrites an existing path and publishes complete JSON', () =>
+  withOwnedRun('C11-export-exclusive', async directory => {
+    const output = join(directory, 'trace.json');
+    await writeFile(output, 'original');
+    await assert.rejects(writeDiagnosticExport(output, { replace: true }), { code: 'EEXIST' });
+    assert.equal(await readFile(output, 'utf8'), 'original');
+    assert.deepEqual(await readdir(directory), ['trace.json']);
+    const other = join(directory, 'new.json');
+    await writeDiagnosticExport(other, { manifest: { source: 'durable' } });
+    assert.deepEqual(JSON.parse(await readFile(other, 'utf8')).manifest, { source: 'durable' });
+  }));

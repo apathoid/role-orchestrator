@@ -1,5 +1,6 @@
-import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { open, link, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { HostError, hostError, newRequestId, operationView } from './commands.js';
 
@@ -74,6 +75,35 @@ export function parseCli(argv, cwd) {
   };
 }
 
+/**
+ * Publish a complete diagnostic export at a previously unused path.
+ * A failed write never exposes a partial final file, and hard linking is
+ * exclusive rather than overwriting an existing destination.
+ * @param {string} output
+ * @param {unknown} value
+ * @param {(handle: import('node:fs/promises').FileHandle, content: string) => Promise<void>} [write]
+ */
+export async function writeDiagnosticExport(output, value, write = (handle, content) => handle.writeFile(content)) {
+  const temporary = join(dirname(output), '.' + basename(output) + '.partial-' + randomUUID());
+  /** @type {import('node:fs/promises').FileHandle | undefined} */
+  let handle;
+  try {
+    handle = await open(temporary, 'wx', 0o600);
+    await write(handle, JSON.stringify(value, null, 2) + '\n');
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await link(temporary, output);
+  } finally {
+    try { await handle?.close(); }
+    finally {
+      await unlink(temporary).catch(error => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+    }
+  }
+}
+
 /** @typedef {Extract<ReturnType<typeof parseCli>, {kind: 'command'}>} CliInvocation */
 
 /** @param {NodeJS.ReadableStream} input */
@@ -107,7 +137,7 @@ export async function runCli(args, io, execute) {
     }
     const result = await execute(invocation);
     if (invocation.output) {
-      await writeFile(invocation.output, JSON.stringify(result, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+      await writeDiagnosticExport(invocation.output, result);
       io.stdout.write(invocation.format === 'json' ? JSON.stringify({ output: invocation.output }) + '\n' : invocation.output + '\n');
       return 0;
     }
