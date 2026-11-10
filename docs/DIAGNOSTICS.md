@@ -133,3 +133,9 @@ budget; summary имеет фиксированную небольшую фор�
 permission, reconnect и cancel. Для сбоев диагностики сначала
 сопоставьте `operationId`, `attemptId`, `actionId` и `reasonCode`;
 не повторяйте вызов с неизвестным эффектом автоматически.
+
+## Диагностика reasoning effort
+
+В `operationTrace` и экспорте к каждому attempt добавлены `reasoning.requestedLevel`, `source` (`model`/`default`), `effective` (из зафиксированного dispatch route), `configurationRef`, `submission` (достоверность факта отправки) и `nativeConfigAcknowledgment` (`adapter_confirmed` только при проверенном ACP config option; иначе `not_recorded`). Pending/consumed Controller selection связываются с `decisionId` и `attemptId`. Экспорт не выводит сырые model responses и ограничивает последние 256 attempts и 256 events; известные secrets маскируются, а не включаются в контекст модели.
+
+Configured mapping не означает, что provider получил настройку. Запись dispatch intention не является ACK. ACP config-option acknowledgment не доказывает внутреннюю глубину рассуждения и не создаёт blocking gate. Если provider не сообщает статус, следует писать `not_recorded` и сохранять исходную uncertainty, а не интерпретировать её как отказ или запуск с default. Ошибка `CAPABILITY_UNAVAILABLE` своего Controller остаётся видимой в API/CLI/ACP и inspect без нового model invocation.

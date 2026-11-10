@@ -28,3 +28,9 @@ Test paths relative to `development/quality/tests/{core,integration,contracts}/`
 | Internal thinking depth, task quality, cost efficiency and real usage | **UNVERIFIED** | No live model observation; configuration and ACK do not prove internal reasoning |
 
 No additional credentials were added to CI, and no anti-loop gate, second scheduler, workspace sandbox, or effort ranking was introduced.
+
+## Baseline CI and release probes (before final joint rerun)
+
+- Verified success for C11R.1–.10: [GitHub Actions run 42812645733](https://github.com/apathoid/role-orchestrator/actions/runs/42812645733). Node 24/Linux; `nix develop --no-update-lock-file --command npm --prefix development run check`, `test:foundation` (4/4), `test:core` (24/24), `test:contracts` (51/51), `test:integration` (203/203), `check:package`, `check:removal` all exit 0. Lockfile diff check exit 0.
+- C11R.11–12 final joint CI outcome: **PENDING** in this document until the next verified run. Do not infer PASS from the previous HEAD.
+- Native agent versions/model outputs/usage: **UNVERIFIED**. No live native probe was attempted from this interface; preserve this status for C12.

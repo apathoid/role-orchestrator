@@ -4,10 +4,10 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний проверенный шаг | C11R.11; full CI pending |
-| Следующий шаг | C11R.12 |
-| Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
-| Regression verified | OBSERVED: [CI 42805542909](https://github.com/apathoid/role-orchestrator/actions/runs/42805542909), Node 24/Linux — foundation 4, core 19, contracts 46, integration 190, Nix/package PASS; native UNVERIFIED |
+| Последний проверенный шаг | C11R.12 (код и документация); полный CI финального HEAD ожидается |
+| Следующий шаг | C12.1 |
+| Functional implementation complete | NO для всего продукта; C11R implementation complete, C12 не завершён |
+| Regression verified | OBSERVED: [CI 42812645733](https://github.com/apathoid/role-orchestrator/actions/runs/42812645733), Node 24/Linux — foundation 4, core 24, contracts 51, integration 203, Nix/package/removal PASS (C11R.1–.10); C11R.11–.12 full CI pending; native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
@@ -24,7 +24,9 @@
 - **C11R.9 implemented / CI PENDING.** Существующие CAS/unknown outcomes и retryKey с C11R.4 сравнивают всю route.reasoning + configurationRef; изменение native mapping запрещает provider_idempotency retry, а независимый worker продолжает работу. Добавлены file-backed checkpoints до/после Decision/reserve/dispatch/outcome, reopen и проверка сохранения pending/consumed/native route. Historical not-recorded не доказывает эквивалентность.
 - **C11R.10 implemented / CI PENDING.** Trace/export содержит per-attempt requested/source/effective native mapping/configurationRef/submission и ACP session config acknowledgment, с явным `not_recorded` без нативного подтверждения; Controller selection pending/consumed связана с decision и attempt. Export bounded (256 events и последние 256 attempts), known-secret redaction; inspect даёт pending. Убрана утечка nativeValue в Controller context: модель видит только levels и source, не провайдерский mapping. ACP-адаптер записывает подтверждение своего config option как локальное observation, не как доказательство внутреннего reasoning. Регрессии: отключенный diagnostics sink, redaction, history.
 - **C11R.11 implemented / FULL CI PENDING.** Добавлен end-to-end сценарий: native Controller, две параллельные делегации на high/low, unknown worker и модельный replan на low, сохранение outcome. ProviderPort extension допускает selectable только при явном `supportsReasoningSelection: true`: встроенные CLI/ACP подтверждают контракт, legacy plugins продолжают native, selectable без поддержки отклоняется до open. В `development/reports/C11R/INTEGRATION.md` — A44–A54, обозначены synthetic и неизмеренные native версии/ACK/usage.
-- Следующий шаг: **C11R.12** — постоянные документы, итоговые CI и передача C12. Реальные CLI/ACP/Zed остаются UNVERIFIED.
+- **C11R.12 implemented / FULL CI PENDING.** Согласованы README, документы reasoning/configuration/contracts/execution/diagnostics, план C11R и матрица A44–A54. Сохранены отличия automated fixture PASS и native UNVERIFIED. В отчёте `development/reports/C11R/INTEGRATION.md` связываются тесты/команды/CI, доступные native-пробы обозначены отдельно. Контракт config остаётся v1, host не вводит scorer, дополнительную quota или второй scheduler.
+- **Следующий кластер: C12.1.** Нужна интеграционная приёмка и реальный native Zed/CLI/ACP evidence до production readiness.
+- Проверки baseline: [CI 42812645733](https://github.com/apathoid/role-orchestrator/actions/runs/42812645733), `nix develop --no-update-lock-file --command npm --prefix development run check`, `test:foundation` 4/4, `test:core` 24/24, `test:contracts` 51/51, `test:integration` 203/203, `check:package`, `check:removal` PASS. Последний совместный CI C11R.11–12 ещё проверяется. Реальные CLI/ACP/Zed остаются UNVERIFIED.
 
 ## C11 — диагностика и устойчивость
 

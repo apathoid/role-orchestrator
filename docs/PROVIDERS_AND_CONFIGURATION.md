@@ -93,10 +93,36 @@ Permission prompt провайдера связывается с attempt/provide
 
 Неизвестная major config/plugin/schema version отвергается с понятной причиной. Добавление необязательного поля — совместимое изменение только если старое поведение сохраняется. Secrets и live permission tokens не сериализуются. В этой greenfield-реализации нет обязательной совместимости со схемами другого продукта или его историей.
 
-## Reasoning effort в profiles (целевое расширение v1)
+## Reasoning effort в profiles
 
-[Полная спецификация](REASONING_EFFORT.md) задаёт необязательное reasoningEffort: строка "native" либо непустой массив {level, effort}, и defaultReasoningLevel для selectable-профиля. Отсутствие поля эквивалентно native; schemaVersion остаётся 1. Расширение ещё не реализовано в runtime schema: новые поля станут допустимы после реализации, существующие примеры работают без них.
+[Действующий контракт](REASONING_EFFORT.md) расширяет **config schemaVersion 1** без обязательной миграции. Отсутствие `reasoningEffort` эквивалентно `"native"`: adapter не получает override. В selectable-профиле задаётся непустой массив `{level, effort}`. Для нескольких уровней обязателен `defaultReasoningLevel`, для единственного можно его опустить.
 
-Пользователь сопоставляет унифицированные имена (например xhigh) нативным значениям моделей (например xhigh или ultra). Application разрешает mapping; adapter проверяет и сериализует нативный параметр. Core не угадывает соответствия. Native означает отсутствие override и сохраняет launch profile defaults.
+Пример **только секции profiles** (заменить провайдеры/модели и native values на значения своих исполнителей):
 
-Selectable CLI настройка задаётся на конкретный вызов; для ACP нужен поддерживаемый model/session selector и setter. Возможность передать настройку и наличие acknowledgment различаются. Не вводить требование подтверждения effort по аналогии с отдельным существующим контрактом выбора модели ACP. Новая возможность расширений должна сохранять работу native-профилей и явно сообщать неподдерживаемый selectable выбор.
+```json
+{
+  "primary": {
+    "provider": "codex", "model": "configured-model",
+    "reasoningEffort": [
+      {"level": "low", "effort": "low"},
+      {"level": "high", "effort": "high"}
+    ],
+    "defaultReasoningLevel": "low"
+  },
+  "reviewer": {
+    "provider": "acp-agent", "model": "agent-published-model",
+    "reasoningEffort": [
+      {"level": "high", "effort": "high-native"},
+      {"level": "xhigh", "effort": "ultra-native"}
+    ],
+    "defaultReasoningLevel": "high"
+  },
+  "legacy": {"provider": "codex", "model": "configured-model", "reasoningEffort": "native"}
+}
+```
+
+Controller или специалист выбирают **логический идентификатор**, не непосредственное значение провайдера. Controller может завершить сразу, самостоятельно продолжить с `nextController: {continue:true, reasoningLevel:"high"}`, делегировать со своим `Action.reasoningLevel` либо сменить план после observations; Host не сортирует уровни и не требует внешнего события между самостоятельными ходами. Mapping внутри catalog/route доверенный; project preferences не могут его расширить.
+
+Codex CLI передаёт per-invocation значение аргументом `-c model_reasoning_effort=<JSON-quoted value>`, не изменяя `--profile`. ACP использует только опубликованный конкретной сессией однозначный `select` option категории `thought_level`, выполняет `session/set_config_option` и проверяет возвращённую текущую настройку. Если агент не публикует такой option, этот ACP-адаптер отказывает selectable до prompt. Native сохраняет прежние правила выбора/сессии. Для plugin providers `supportsReasoningSelection: true` — обязательная декларация поддержки selectable (прежний native путь не требует её).
+
+Факт выбранного уровня, adapter submission и доступный configuration acknowledgment различаются; отсутствие ACK не запрещает работу. Неподдерживаемый Controller уровень даёт видимую technical error `CAPABILITY_UNAVAILABLE`, без silent fallback. Изменение mapping не переписывает прошлые attempts и не открывает слепой retry. Встроенные автоматические тесты пройдены; версия фактического Codex/ACP агента и native applied-value остаются **UNVERIFIED** до live probe.

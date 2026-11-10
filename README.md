@@ -2,7 +2,7 @@
 
 Role Orchestrator координирует работу одной или нескольких AI-моделей над задачей пользователя. Модель выбирает способ решения; Host обеспечивает передачу задач, доступный контекст, согласованные полномочия, ресурсы, отмену и восстановление исполнения.
 
-**Состояние проекта: реализованы Controller, делегирование, локальное восстановление, адаптеры Codex CLI и Generic ACP и Plugin API v1. Доступны программный API, CLI и внешний ACP v1. Нативная приёмка Zed и модельных сценариев ведётся отдельно.** Описанные ниже возможности — целевые требования, а не заявление об их готовности.
+**Состояние проекта: реализованы Controller, делегирование, локальное восстановление, адаптеры Codex CLI и Generic ACP, Plugin API v1 и C11R — адаптивный reasoning effort. Доступны программный API, CLI и внешний ACP v1. Нативные проверки моделей/адаптеров и приёмка Zed остаются UNVERIFIED; C12 (сквозная приёмка продукта) ещё не завершён.** Не следует приравнивать прохождение synthetic/CI регрессий к эксплуатационной готовности.
 
 Язык — **JavaScript (ESM), Node.js 24**. JSDoc и `checkJs` используются для проверки контрактов без транспиляции приложения. Репозиторий является **Nix flake**; flake предоставляет devShell, CLI package/apps и smoke checks.
 
@@ -14,7 +14,7 @@ Role Orchestrator координирует работу одной или нес
 - [Архитектура и владение](docs/ARCHITECTURE.md).
 - [Типы и контракты](docs/CONTRACTS.md).
 - [Модельное исполнение и сценарии](docs/EXECUTION.md).
-- [Адаптивный reasoning effort — целевой контракт, реализация запланирована](docs/REASONING_EFFORT.md).
+- [Адаптивный reasoning effort — реализованные контракты и границы native-проверки](docs/REASONING_EFFORT.md).
 - [Контекст, findings и recovery](docs/CONTEXT_AND_RECOVERY.md).
 - [Провайдеры, конфигурация и расширения](docs/PROVIDERS_AND_CONFIGURATION.md).
 - [Диагностика и эксплуатация](docs/DIAGNOSTICS.md).
@@ -35,6 +35,8 @@ role-orchestrator run --config /path/to/config.json 'Опиши содержим
 ```
 
 Конфигурация по умолчанию находится в `$XDG_CONFIG_HOME/role-orchestrator/config.json` или `~/.config/role-orchestrator/config.json`. CLI использует отдельный state directory из конфигурации, XDG или `~/.local/state/role-orchestrator`. Для ACP клиента укажите команду `role-orchestrator acp --config /path/to/config.json`.
+
+Для управляемого reasoning effort в `profiles.<id>` задаются `reasoningEffort` (массив `{level,effort}`) и `defaultReasoningLevel`; отсутствие поля или `"native"` сохраняет нативные настройки. Controller может передать `nextController: {continue: true, reasoningLevel: "high"}`, а delegate — `reasoningLevel`. Это необязательные поля прежней config/schema v1. [Пример и ограничения](docs/PROVIDERS_AND_CONFIGURATION.md#reasoning-effort-в-profiles).
 
 Программный клиент вызывает `openOrchestrator({ configuration, stateDirectory })`, где `configuration` содержит доверенный JSON, и передаёт выданный `configurationRef` в `submit`. Операция возвращается после принятия, итог доступен через `completion`. Для остановки экземпляра вызовите `close`.
 
