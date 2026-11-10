@@ -2,6 +2,7 @@
 
 export const defaultContextMaxBytes = 64 * 1024;
 const maxExcerptBytes = 512;
+const maxOptionalRecords = 128;
 
 /** @param {unknown} value */
 const jsonBytes = value => Buffer.byteLength(JSON.stringify(value), 'utf8');
@@ -52,6 +53,12 @@ export function compactContext(items, maxBytes, keepRefs) {
   let omitted = 0;
   let excerpted = 0;
   for (const item of items) {
+    // Literal user instructions are never dropped. Optional history and
+    // unavailable markers cannot grow without bound when refs are numerous.
+    if (!isUserMessage(item) && context.length >= maxOptionalRecords) {
+      omitted++;
+      continue;
+    }
     if (isUserMessage(item) || (keepRefs && item.completeness === 'unavailable')) {
       context.push(item);
       continue;

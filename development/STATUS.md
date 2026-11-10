@@ -4,8 +4,8 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C10.10 и исправления по ревью C10; C11.1–C11.6 implementation, CI pending |
-| Следующий шаг | C11.7, resource/context bounds |
+| Последний локально проверенный шаг | C10.10 и исправления по ревью C10; C11.1–C11.7 implementation, CI pending |
+| Следующий шаг | C11.8, эксплуатационная документация |
 | Functional implementation complete | NO для всего продукта, C11 → C11R → C12 остаются в плане |
 | Local regression verified | OBSERVED через C10 на Linux. Unix socket проверяется в GitHub Actions |
 | Native integration verified | UNVERIFIED |
@@ -25,6 +25,8 @@
 - C11.5 — Diagnose выдаёт версии runtime и честный unknown для возможностей без negotiated provider session. Missing launch path и несуществующий state directory наблюдаемы без их изменения. Сквозной тест подтверждает отсутствие исполнения plugin module и создания state; CI ожидается.
 
 - C11.6 — Добавлены повторяемые barrier-сценарии cancel/invoke и pending permission. Проверяются терминальность, отсутствие нового dispatch и позднего разрешения; наблюдаемое поведение подтверждается CI, ожидается.
+
+- C11.7 — Лимит 128 optional context records предотвращает неограниченное размножение missing markers. Handoff сообщает число опущенных выбранных ссылок технической сводкой, не объявляя их доступными. Добавлены тесты 1500 ссылок и 4 МБ output. CI ожидается.
 
 ## C11R — дополнение плана (2026-11-10)
 
