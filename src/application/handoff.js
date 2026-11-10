@@ -72,7 +72,9 @@ export function handoffContext(operation, refs, maxBytes, lookups) {
   const records = [...selected].filter(ref => found.has(ref) || !attachments.has(ref))
     .map(ref => found.get(ref) ?? unavailableContext(ref, 'missing'));
   const { context, omitted } = compactContext(records, maxBytes, true);
-  if (omitted > 0) {
+  // Byte-budget omissions already have per-reference markers. A summary is
+  // needed only when the record-count limit suppresses entire references.
+  if (records.length > 128 && omitted > 0) {
     context.push({ ref: 'host:context-budget', source: 'host_observed',
       completeness: 'complete', value: { omitted, selected: records.length, limit: 128 } });
   }
