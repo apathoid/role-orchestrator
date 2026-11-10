@@ -26,6 +26,7 @@ export function createNdjsonSink(options) {
   /** @type {Promise<void> | undefined} */
   let worker;
   let lastReport = '';
+  /** @param {string} message */
   function report(message) {
     if (lastReport === message) return;
     lastReport = message;
