@@ -65,7 +65,12 @@ export async function decodeConfiguration(input) {
   catch { return reject('', 'json'); }
   const validate = await (validator ??= makeValidator());
   if (!validate(config)) {
-    return validate.errors?.[0] ? report(validate.errors[0]) : reject('', 'schema');
+    // For union fields, prefer the specific array element failure to the
+    // generic "not native" branch. Keep values (including secrets) out of errors.
+    const failures = validate.errors ?? [];
+    const specific = failures.filter(error => error.instancePath.includes('/reasoningEffort/'))
+      .sort((left, right) => right.instancePath.length - left.instancePath.length)[0];
+    return specific ? report(specific) : failures[0] ? report(failures[0]) : reject('', 'schema');
   }
 
   if (!Object.hasOwn(config.profiles, config.controllerProfile)) {

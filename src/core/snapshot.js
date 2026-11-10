@@ -234,7 +234,7 @@ function snapshot(input, path) {
         if (prior.status !== 'reserved') invalid(at + '.kind', 'a dispatch of a reserved attempt');
         const routeReasoning = item.route?.reasoning;
         if (routeReasoning && prior.actionId === attemptId) {
-          const selected = prior.reasoningDecisionId && decisions.get(prior.reasoningDecisionId)?.nextController;
+          const selected = prior.reasoningDecisionId ? decisions.get(prior.reasoningDecisionId)?.nextController : undefined;
           if (routeReasoning.mode === 'selectable' &&
               (routeReasoning.selectionSource === 'model') !== Boolean(selected?.reasoningLevel)) {
             invalid(at + '.route.reasoning.selectionSource', 'the recorded Controller preference or default');
