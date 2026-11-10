@@ -4,25 +4,25 @@
 |---|---|
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
-| Последний локально проверенный шаг | C10.10 и исправления по ревью C10; C11.1–C11.8 implementation, CI pending |
-| Следующий шаг | Проверка CI C11, исправление регрессий; затем C11R.1 |
-| Functional implementation complete | NO для всего продукта, C11 → C11R → C12 остаются в плане |
-| Local regression verified | OBSERVED через C10 на Linux. Unix socket проверяется в GitHub Actions |
+| Последний проверенный шаг | C11.8; все C11.1–C11.8 реализованы, Linux GitHub CI PASS |
+| Следующий шаг | C11R.1 (вне текущего поручения) |
+| Functional implementation complete | NO для всего продукта; C11 завершён, C11R → C12 остаются в плане |
+| Regression verified | OBSERVED: C11 Linux GitHub Actions — 4 foundation, 19 core, 46 contract, 181 integration, Node 24, Nix и package. Локально в этой сессии Node 24 не запускался |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
 
 ## C11 — диагностика и устойчивость
 
 - C11.1 — Диагностические переходы ожидания, отмены, отказа и восстановления имеют технический subject и возможный next path. Trace из application дополняет actionId по attempt ledger; содержимое запроса/инструмента не добавляется. Добавлены четыре semantic golden-сценария: direct answer, параллельные attempts, deny/defer, recovery/unknown/cancel.
-- Baseline CI `42c92f1` обнаружил дефект checker: он не распознавал уже запланированные шаги C11R.1–C11R.12; регулярное выражение исправлено без изменения плана. GitHub Actions ожидается; native CLI/ACP/Zed не подтверждены. Следующий шаг C11.2.
+- Baseline CI `42c92f1` обнаружил дефект checker: он не распознавал уже запланированные шаги C11R.1–C11R.12; регулярное выражение исправлено без изменения плана. Изменение проверено в итоговом CI; native CLI/ACP/Zed не подтверждены.
 
-- C11.2 — В state directory добавлен независимый bounded NDJSON writer: очередь, ротация, предел размера и файлов, timeout flush, stderr summary, drop/failure accounting. Отказ записи не влияет на task ledger. Добавлены fault-инъекции и тест ротации; результаты CI ожидаются.
+- C11.2 — В state directory добавлен независимый bounded NDJSON writer: очередь, ротация, предел размера и файлов, timeout flush, stderr summary, drop/failure accounting. Отказ записи не влияет на task ledger. Добавлены fault-инъекции и тест ротации; проверено в итоговом CI.
 
-- C11.3 — Перед sink и подписчиками производится рекурсивная проекция событий: известные secret refs из доверенной конфигурации, sensitive keys, bearer/basic headers и userinfo удаляются; body capture по умолчанию выключен. Добавлены тесты вложенных значений и подписчиков. Произвольный текст не гарантируется полностью очищенным; CI ожидается.
+- C11.3 — Перед sink и подписчиками производится рекурсивная проекция событий: известные secret refs из доверенной конфигурации, sensitive keys, bearer/basic headers и userinfo удаляются; body capture по умолчанию выключен. Добавлены тесты вложенных значений и подписчиков. Произвольный текст не гарантируется полностью очищенным; проверено в итоговом CI.
 
-- C11.4 — Trace/export дополняются manifest происхождения, отсутствующих portions и truncation, техническим статусом, ограничениями и попытками с unknown. Источник — durable operation journal, а не transient log. Экспорт публикует лишь полный файл через exclusive hard link из временного файла с mode 0600. Тесты проверяют 300 событий, отсутствие prompt, EEXIST и ошибку частичной записи; CI ожидается.
+- C11.4 — Trace/export дополняются manifest происхождения, отсутствующих portions и truncation, техническим статусом, ограничениями и попытками с unknown. Источник — durable operation journal, а не transient log. Экспорт публикует лишь полный файл через exclusive hard link из временного файла с mode 0600. Тесты проверяют 300 событий, отсутствие prompt, EEXIST и ошибку частичной записи; проверено в итоговом CI.
 
-- C11.5 — Diagnose выдаёт версии runtime и честный unknown для возможностей без negotiated provider session. Missing launch path и несуществующий state directory наблюдаемы без их изменения. Сквозной тест подтверждает отсутствие исполнения plugin module и создания state; CI ожидается.
+- C11.5 — Diagnose выдаёт версии runtime и честный unknown для возможностей без negotiated provider session. Missing launch path и несуществующий state directory наблюдаемы без их изменения. Сквозной тест подтверждает отсутствие исполнения plugin module и создания state; проверено в итоговом CI.
 
 - C11.6 — Добавлены повторяемые barrier-сценарии cancel/invoke и pending permission. Проверяются терминальность, отсутствие нового dispatch и позднего разрешения; наблюдаемое поведение подтверждается CI, ожидается.
 
@@ -30,9 +30,16 @@
 
 - C11.8 — Обновлена продуктовая эксплуатационная документация с фактическими командами, форматами, пределами NDJSON, redaction и native-ограничениями. Строки A21/A22/A27–A29/A34/A36/A40 проверяются по CI, а не считаются закрытыми одним описанием.
 
+### Итог C11 и эксплуатационные границы
+
+- **OBSERVED / REGRESSION VERIFIED:** [GitHub Actions run 42799512219](https://github.com/apathoid/role-orchestrator/actions/runs/42799512219), commit `e980a0525c6d7a0b07d39f1dbe3594b38436578b`, Linux x86_64/Node 24: `nix flake check`, проверка запуска установленных CLI apps вне checkout, locked npm installs, `check` (specification, JSDoc/checkJs, boundaries), `check:package`, `test:foundation` (4/4), `test:core` (19/19), `test:contracts` (46/46), `test:integration` (181/181), проверки lock; exit 0.
+- **Приняты C11.1–C11.8:** аудит diagnostic events, bounded NDJSON/rotation/flush/drop summary, redaction и безопасный body capture, inspect/trace/export manifest с атомарной публикацией, side-effect-free diagnose, проверенные гонки cancel/permissions, bounded context, операционная документация. Отдельные коммиты каждого шага сохранены; последующие корректирующие коммиты закрыли CI regressions.
+- **UNVERIFIED:** реальные модельные CLI/ACP сессии, внешний Zed, пользовательский NixOS, недоступные native capabilities. Синтетические тесты не доказывают native readiness. Нет оснований объявлять весь продукт production ready.
+- Следующий кластер — **C11R.1**; C11R не реализован данным поручением.
+
 ## C11R — дополнение плана (2026-11-10)
 
-**PLANNED / NOT IMPLEMENTED / native UNVERIFIED.** Добавлен [кластер C11R](plan/clusters/C11R_REASONING_EFFORT.md) и [целевой продуктовый контракт](../docs/REASONING_EFFORT.md). Выполнять после C11 до финальной C12; ближайший шаг C11.1 не меняется.
+**PLANNED / NOT IMPLEMENTED / native UNVERIFIED.** Добавлен [кластер C11R](plan/clusters/C11R_REASONING_EFFORT.md) и [целевой продуктовый контракт](../docs/REASONING_EFFORT.md). Выполнять после C11 до финальной C12; после завершённого C11 следующий шаг — C11R.1.
 
 Приняты: config v1 без повышения версии, omission reasoningEffort = native для новых вызовов, пользовательский mapping унифицированных levels, динамический effort workers и Controller, самостоятельное продолжение без внешнего события. Специальный anti-loop механизм не вводится. Неподдерживаемый собственный effort показывается пользователю без fallback. Acknowledgment — контекст, не gate; исторические маршруты и неизвестные эффекты сохраняются.
 
