@@ -22,6 +22,24 @@
 | Реальные два независимых исполнителя | UNVERIFIED | Доступ к authenticated native sessions не подтверждён |
 | Эффективный native reasoning level/usage | UNVERIFIED | Нет внешнего подтверждения и model output |
 
+## C12.4 — настоящий Zed как внешний ACP-клиент
+
+Внешняя ACP поверхность `role-orchestrator acp --config /путь/к/config.json` должна быть зарегистрирована в **реальном Zed** (не локальном SDK mock). Использовать настоящий пользовательский профиль/доступный agent provider и временную задачу без Git; не менять полномочия ради прохождения теста. Зафиксировать версию Zed, внешнего ACP SDK/Host, исполняемого агента, выбранной модели, Node, ОС, binary path, config schema и точный commit.
+
+| Сценарий | Доказательство результата |
+|---|---|
+| Register → initialize → session/new | Сообщения реального клиента, IDs клиентской сессии/внутренней provider-сессии и связь с operation |
+| Prompt/stream/progress/final | Фактический ответ модели, attributed event/attempt, не только exit process |
+| Permission allow/deny | Native request identity, предъявленный ресурс/варианты, ответ пользователя и недопуск после deny |
+| Cancel при активном prompt | Состояние provider cancel, отсутствие нового dispatch, позднее terminal без возрождения |
+| Disconnect / restart / load / resume | Возобновление той же operation, сохранённый ledger/result, без дублирующего effect |
+| Non-Git / изменившаяся рабочая директория | Отсутствие host Git gate, сохранение пользовательского cwd, изменение среды не требует forced reconcile |
+| Reasoning Controller/worker | Если выбранные реальный agent/модель декларируют capability, подтвердить effective native selection и фактический model result; иначе UNVERIFIED с точной причиной |
+
+Реальные trace/inspect/export следует сохранять с удалением secrets, путей пользователя и содержимого закрытых документов. Использовать различающиеся requestId, ACP client session ids, provider attempt/session ids; совпадение имён не является доказательством корректной корреляции. API/CLI/ACP fixture и successful initialize не заменяют эти проверки.
+
+**Фактический результат C12.4 в данной сессии: UNVERIFIED.** В GitHub API/CI нет подключенного интерактивного Zed-клиента. Нельзя подтвердить его версию, доступный model account, permissions или успешный session/load. После появления реальной среды заполняется таблица с command, commit, versions, observations, exits и ссылкой на безопасное evidence; только тогда менять статус A38 и R19.
+
 ## Разграничение результата
 
 Ни одна из этих незавершённых проверок не должна блокировать независимую C12.5–C12.9 инженерную работу, но финальный статус всего C12/production readiness остаётся **NATIVE ACCEPTANCE PENDING**. Источник требований: [матрица A18/A20/A38/A49/A50/A54](../../tests/ACCEPTANCE_MATRIX.md), [полный C12](C12_ACCEPTANCE_DELIVERY.md).

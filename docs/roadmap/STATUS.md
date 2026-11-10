@@ -4,13 +4,18 @@
 |---|---|
 | Ветка | `greenfield/model-first-core` |
 | Исходный HEAD для C12 | `cbd8e70baca3ab380a2ed3d43ae1fdd667616412` |
-| Последний выполненный этап | C12.3 — native provider-agnostic acceptance protocol; real-model evidence blocked/unverified |
-| Следующий этап | **C12.4** — Zed/ACP native acceptance; если недоступен, независимо C12.5–C12.9. C12.3 остаётся UNVERIFIED |
+| Последний выполненный этап | C12.4 — Zed/ACP native test matrix documented; external client inaccessible/unverified |
+| Следующий этап | **C12.5** — mutable workspace acceptance (independent); C12.3/C12.4 native remain UNVERIFIED |
 | Implementation complete | C00–C11R и C12.0 реализованы; весь C12 пока **NO** |
 | Regression verified | OBSERVED [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) — SUCCESS на `1341d75` после удаления `development`; следующий commit до CI PENDING |
 | Detailed suites baseline | 298/298 (4+25+52+217) на `949292a`, [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211); исторический результат |
 | Native integration verified | **UNVERIFIED**: реальный Codex CLI/ACP model, Zed, NixOS и adaptive reasoning |
 | Production ready | **NO / NATIVE ACCEPTANCE PENDING** |
+
+## C12.4 — реальный Zed/ACP client (UNVERIFIED)
+
+- [Проверочный протокол](NATIVE_ACCEPTANCE.md#c124--настоящий-zed-как-внешний-acp-клиент) описывает registration, session/new, prompt, permissions, cancel, load/resume, non-Git, mapping IDs и native effort.
+- **BLOCKED / UNVERIFIED:** реальный Zed/внешний интерактивный ACP client недоступен через текущий GitHub tooling. Не было реального client session и нельзя выдавать synthetic ACP тест за native.
 
 ## C12.3 — подготовка реальной provider-agnostic приёмки (UNVERIFIED)
 
