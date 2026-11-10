@@ -20,11 +20,15 @@ Role Orchestrator координирует работу одной или нес
 - [Диагностика и эксплуатация](docs/DIAGNOSTICS.md).
 - [Архитектурные решения](docs/DECISIONS.md).
 - [Nix, установка и CI](docs/NIX_AND_CI.md).
-- [Текущий план и статус C12](https://github.com/apathoid/role-orchestrator/tree/greenfield%2Fmodel-first-core/docs/roadmap) (C12.0 — поэтапный переход).
+- [Текущий план и статус C12](https://github.com/apathoid/role-orchestrator/tree/greenfield%2Fmodel-first-core/docs/roadmap) (C12.0 завершён, C12.3/4 native pending).
 
 В этих документах слово MUST означает обязательное свойство. SHOULD допускает обоснованное отклонение, записанное в архитектурном решении. Примеры wire-форматов задают семантику; номера версий внешних SDK не фиксируются без проверки реальной доступности.
 
 Продукт не создаёт sandbox, контейнеры, виртуальные рабочие копии, файловые блокировки исходников или систему глобальной актуальности evidence. Его собственное долговременное состояние не является снимком рабочего проекта.
+
+## Проверка поставки
+
+Сборка и проверка воспроизводимого npm-архива: `node scripts/prepare-release.mjs release-artifacts`. В успешном [GitHub Actions](https://github.com/apathoid/role-orchestrator/actions) выпускается отдельный артефакт `release-evidence-<commit>`, содержащий архив, `manifest.json` (SHA-256/размер/commit/Node) и Nix store `narHash`/path-info. Это evidence для dev package 0.1.0-dev.0, **не** подписанный production release и не подтверждение нативной модели.
 
 ## Использование
 
