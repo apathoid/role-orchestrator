@@ -10,7 +10,7 @@ import { findingHistory } from './finding-history.js';
 import { bindContextAccess } from './context-access.js';
 import { defaultContextMaxBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
-import { unavailableCapabilities } from './configuration/catalog.js';
+import { resolveRequestedReasoning, unavailableCapabilities } from './configuration/catalog.js';
 import { runActionRound } from './action-round.js';
 import { bindAssessmentEvidence, bindFindingEvidence, bindOutcomeEvidence, evidenceAliases, providerEvidenceRef,
   reservedEvidenceRef, scopedEvidenceAliases } from './evidence-identity.js';
@@ -616,6 +616,7 @@ export function createOrchestrator(deps) {
       signal.throwIfAborted();
       const entries = handoff ? [] : await withinDeadline(catalog.list());
       const selectedProfile = handoff?.profile ?? profile;
+      const reasoning = handoff?.reasoning ?? Object.freeze({mode: /** @type {const} */ ('native')});
       function requireAuthority() {
         const decision = authority.authorize(state.authorityRef, selectedProfile.profileId);
         if (decision !== 'ALLOWED') {
@@ -637,7 +638,8 @@ export function createOrchestrator(deps) {
           const route = prior.route;
           if (action.retryBasis === 'provider_idempotency' && executor.supportsIdempotency && route?.idempotencyKey &&
               route.configurationRef === configurationRef && route.profileId === selectedProfile.profileId &&
-              route.providerId === selectedProfile.providerId && route.model === selectedProfile.model) {
+              route.providerId === selectedProfile.providerId && route.model === selectedProfile.model &&
+               sameRecord(route.reasoning, reasoning)) {
             return route.idempotencyKey;
           }
         }
@@ -692,7 +694,7 @@ export function createOrchestrator(deps) {
         const dispatched = await transition(current, {
           kind: 'attempt.dispatched', attemptId, route: {
             configurationRef, profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, model: selectedProfile.model,
-            idempotencyKey,
+            idempotencyKey, reasoning,
           },
         });
         contextCursor = dispatched.revision;
@@ -743,7 +745,7 @@ export function createOrchestrator(deps) {
         /** @type {Set<string> | undefined} */
         let rawRefs;
         return { response: withinDeadline(executor.invoke(owned, {
-          ...context, isActive, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, reasoning, isActive, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
         }, item => {
           if (!acceptingObservations) return;
@@ -883,6 +885,14 @@ export function createOrchestrator(deps) {
     if (stop.aborted || current.status !== 'active') return false;
     const entries = await execution.catalog.list();
     const handoff = prepareHandoff(current, action, entries);
+    const choice = handoff.kind === 'accepted'
+      ? resolveRequestedReasoning(execution.catalog, handoff.handoff.profile, action.reasoningLevel) : undefined;
+    if (choice?.kind === 'rejected') {
+      await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
+        'reasoning:' + choice.profileId + ':' + (choice.requestedLevel ?? '(default)') +
+        ' available=' + choice.availableLevels.join(','));
+      return false;
+    }
     const executor = handoff.kind === 'accepted' ? providerFor(handoff.handoff.profile) : undefined;
     if (handoff.kind === 'rejected' || !executor) {
       await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
@@ -898,7 +908,8 @@ export function createOrchestrator(deps) {
     }
     const attemptId = reserved.attemptId;
     try {
-      const invocation = { ...handoff.handoff, workspaceContext: workspaceContextFor(state) };
+      const invocation = { ...handoff.handoff, reasoning: choice?.kind === 'selected' ? choice.selection : undefined,
+        workspaceContext: workspaceContextFor(state) };
       const response = await invoke(reserved.state, attemptId, stop, execution, undefined, invocation, executor, lookups, action);
       await serialize(async () => {
         const current = await inspect(state.operationId);

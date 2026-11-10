@@ -92,3 +92,19 @@ export function unavailableCapabilities(capabilities, required) {
     return [{ key, support: entry?.support ?? 'unknown', detail: entry?.detail }];
   });
 }
+
+/**
+ * Optional legacy Catalog implementations remain native-only. A missing
+ * selectable resolver never authorizes a model-supplied override.
+ * @param {Catalog} catalog @param {import('../../core/ports.js').Profile} profile @param {string} [level]
+ * @returns {import('../../core/ports.js').ReasoningResolution}
+ */
+export function resolveRequestedReasoning(catalog, profile, level) {
+  const resolved = catalog.selectReasoning?.(profile.profileId, level);
+  if (resolved) return resolved;
+  if (level !== undefined || profile.reasoning?.mode === 'selectable') {
+    return {kind: 'rejected', profileId: profile.profileId, requestedLevel: level,
+      availableLevels: profile.reasoning?.mode === 'selectable' ? profile.reasoning.levels : []};
+  }
+  return {kind: 'selected', selection: Object.freeze({mode: 'native'})};
+}
