@@ -53,7 +53,7 @@ const reasoning = tagged('mode', {
     selectionSource: oneOf('model','default')}),
 });
 const route = record({ configurationRef: id, profileId: id, providerId: id, model: id,
-  idempotencyKey: optional(id), reasoning: optional(reasoning) });
+  idempotencyKey: optional(id), requestHash: optional(id), reasoning: optional(reasoning) });
 const attemptFields = {
   attemptId: id, actionId: id, generation: count, reservedAt: measurement, reasoningDecisionId: optional(id),
   dispatchedAt: optional(measurement), route: optional(route), dispatchCertainty: certainty, cancellation: optional(cancellation),

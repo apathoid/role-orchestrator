@@ -6,7 +6,7 @@
 
 /**
  * @typedef {'not_sent' | 'sent' | 'unknown'} DispatchCertainty
- * @typedef {{configurationRef: string, profileId: string, providerId: string, model: string, idempotencyKey?: string,
+ * @typedef {{configurationRef: string, profileId: string, providerId: string, model: string, idempotencyKey?: string, requestHash?: string,
  *   reasoning?: import('./ports.js').ReasoningSelection}} DispatchRoute
  * @typedef {{authorityRef: string, configurationRef: string, limits: Limits}} ResumeAuthority
  * @typedef {{attemptId: string, actionId: string, generation: number, reservedAt: number, reasoningDecisionId?: string,

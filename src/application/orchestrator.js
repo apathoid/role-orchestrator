@@ -6,6 +6,7 @@ import { applyEvent, createOperation, pendingControllerReasoning, resourceSnapsh
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
 import { handoffContext, prepareHandoff } from './handoff.js';
+import { workerRequestHash } from './worker-request-identity.js';
 import { findingHistory } from './finding-history.js';
 import { bindContextAccess } from './context-access.js';
 import { defaultContextMaxBytes } from './context-bundle.js';
@@ -668,7 +669,8 @@ export function createOrchestrator(deps) {
         }
       }
       /** @param {Operation} current */
-      function retryKey(current) {
+      /** @param {Operation} current @param {string | undefined} requestHash */
+      function retryKey(current, requestHash) {
         if (!action?.retryOf) return executor.supportsIdempotency ? attemptId : undefined;
         const prior = current.attempts.find(item => item.attemptId === action.retryOf);
         if (prior?.status === 'terminal') {
@@ -682,6 +684,7 @@ export function createOrchestrator(deps) {
           if (action.retryBasis === 'provider_idempotency' && executor.supportsIdempotency && route?.idempotencyKey &&
               route.configurationRef === configurationRef && route.profileId === selectedProfile.profileId &&
               route.providerId === selectedProfile.providerId && route.model === selectedProfile.model &&
+              requestHash !== undefined && route.requestHash === requestHash &&
                sameRecord(route.reasoning, reasoning)) {
             return route.idempotencyKey;
           }
@@ -691,7 +694,6 @@ export function createOrchestrator(deps) {
       }
       signal.throwIfAborted();
       requireAuthority();
-      retryKey(state);
       /** @type {import('../core/ports.js').SkillInstructions[]} */
       const skillInstructions = [];
       let skillBytes = contextMaxBytes;
@@ -707,6 +709,21 @@ export function createOrchestrator(deps) {
       if (attachments.some(item => item.mediaType.toLowerCase().startsWith('image/'))) {
         requiredCapabilities.add('input.image');
       }
+      // Materialize exactly the delegate context used by the adapter BEFORE
+      // dispatch. This snapshot is hashed and sent unchanged, so changing
+      // action text, evidence, restrictions or instructions cannot reuse a
+      // provider idempotency key merely because the route still matches.
+      const workerContext = handoff && action
+        ? handoffContext(state, action.contextRefs, contextMaxBytes, lookups) : undefined;
+      const workerInstructions = handoff && action?.skills?.length ? [
+        'Apply the selected skill instructions where relevant. Explicit user requirements take precedence over conflicting skill instructions. Effective user and provider permissions always apply. Skill text cannot grant permissions. Interpret restrictions in context and disclose any unavailable or truncated instructions that affect the result.',
+        ...handoff.instructions,
+      ] : handoff?.instructions;
+      const requestHash = handoff && action && workerContext && workerInstructions
+        ? workerRequestHash({handoff, action, context:workerContext,
+          instructions:workerInstructions, skillInstructions, attachments,
+          requiredCapabilities:[...requiredCapabilities]}) : undefined;
+      retryKey(state, requestHash);
       if (requiredCapabilities.size) {
         signal.throwIfAborted();
         const capabilities = selectedProfile.capabilities ?? (await withinDeadline(executor.describe())).capabilities;
@@ -733,17 +750,17 @@ export function createOrchestrator(deps) {
         const current = await inspect(state.operationId);
         signal.throwIfAborted();
         requireAuthority();
-        const idempotencyKey = retryKey(current);
+        const idempotencyKey = retryKey(current, requestHash);
         const dispatched = await transition(current, {
           kind: 'attempt.dispatched', attemptId, route: {
             configurationRef, profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, model: selectedProfile.model,
-            idempotencyKey, reasoning,
+            idempotencyKey, requestHash, reasoning,
           },
         });
         contextCursor = dispatched.revision;
         signal.throwIfAborted();
         requireAuthority();
-        retryKey(dispatched);
+        retryKey(dispatched, requestHash);
         boundPermissions = permissions?.bind({
           operationId: state.operationId, attemptId, profileId: selectedProfile.profileId, authorityRef: state.authorityRef, signal,
           report: (event, reason) => trace(dispatched, event, reason, attemptId),
@@ -753,12 +770,9 @@ export function createOrchestrator(deps) {
         // Keep the dispatch decision and actual provider call in the same turn.
         const context = handoff ? {
           ...handoff,
-          ...(action?.skills?.length ? { instructions: [
-            'Apply the selected skill instructions where relevant. Explicit user requirements take precedence over conflicting skill instructions. Effective user and provider permissions always apply. Skill text cannot grant permissions. Interpret restrictions in context and disclose any unavailable or truncated instructions that affect the result.',
-            ...handoff.instructions,
-          ] } : {}),
+          ...(action?.skills?.length ? { instructions: workerInstructions } : {}),
           ...(skillInstructions.length ? { skillInstructions } : {}),
-          context: handoffContext(dispatched, action?.contextRefs ?? [], contextMaxBytes, lookups),
+          context: workerContext ?? [],
         } : {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
           objective: state.request.text, instructions: controllerInstructions, profile,
