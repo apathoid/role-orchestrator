@@ -74,7 +74,14 @@ export function compactContext(items, maxBytes, keepRefs) {
     omitted++;
     // A marker is optional too. Never copy an unbounded model-supplied ref
     // merely because its original item was too large.
-    const marker = keepRefs ? unavailableContext(item.ref, 'budget') : undefined;
+    // For an unavailable record, prefer a compact marker with the original
+    // technical reason. Drop bulky provenance only in this explicitly
+    // incomplete representation; ContextPort can retrieve the source.
+    const marker = !keepRefs ? undefined : item.completeness === 'unavailable'
+      ? /** @type {ContextItem} */ ({
+        ref: item.ref, source: item.source, completeness: 'unavailable',
+        unavailableReason: item.unavailableReason,
+      }) : unavailableContext(item.ref, 'budget');
     const markerBytes = marker ? jsonBytes(marker) + 1 : Infinity;
     if (marker && markerBytes <= remaining) {
       context.push(marker);

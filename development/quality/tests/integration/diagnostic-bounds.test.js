@@ -67,16 +67,20 @@ test('C11 review P2-4: long stored refs remain discoverable by ContextPort posit
   const longRef = 'ref-' + 'y'.repeat(60_000);
   const operation = createOperation('op', decodeRequest(request({ requestId: longRef })).value,
     'authority', { maxInvocations: 1, maxConcurrentInvocations: 1 });
-  const context = bindContextAccess({
+  /** @param {number} maxBytes */
+  const bind = maxBytes => bindContextAccess({
     state: operation, store: /** @type {any} */ ({}),
-    maxBytes: 70_000, profileId: 'primary', attemptId: 'test',
+    maxBytes, profileId: 'primary', attemptId: 'test',
     isActive: () => true, newId: () => 'id', now: Date.now, receive() {},
   });
-  const page = context.list();
+  const insufficient = bind(70_000);
+  const page = insufficient.list();
   assert.equal(page.kind, 'available');
   assert.deepEqual(page.items[0].ref, { revision: 0, index: 0 });
   assert.ok(Buffer.byteLength(JSON.stringify(page)) < 8192);
-  const detail = await context.fetch(page.items[0].ref);
+  assert.deepEqual(await insufficient.fetch(page.items[0].ref),
+    { kind: 'unavailable', reason: 'budget' });
+  const detail = await bind(150_000).fetch(page.items[0].ref);
   assert.equal(detail.kind, 'available');
   assert.equal(detail.item.ref, longRef);
 });
