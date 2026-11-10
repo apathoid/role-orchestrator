@@ -44,6 +44,8 @@ jobs:
         run: nix develop --no-update-lock-file --command npm run test:contracts
       - name: Integration regression
         run: nix develop --no-update-lock-file --command npm run test:integration
+      - name: Acceptance regression
+        run: nix develop --no-update-lock-file --command npm run test:acceptance
       - name: Full applicable suite from root
         run: nix develop --no-update-lock-file --command npm test
       - name: Nix flake and locked package

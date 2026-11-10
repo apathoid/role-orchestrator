@@ -17,8 +17,8 @@
 | C12.0.7 | Установленная поставка без dev tools | Реализован, CI pending |
 | C12.0.8 | Удаление legacy development/, полная регрессия/handoff | Реализован, финальный CI pending |
 | C12.1 | Трассировка R01–R33 ↔ A01–A54 ↔ tests/evidence | Выполнено, CI source 1341d75 |
-| C12.2 | Clean full regression | **Следующий** |
-| C12.3 | Два реальных независимых исполнителя, CLI/ACP | После C12.2; недоступные native честно UNVERIFIED |
+| C12.2 | Clean full regression | Реализован, acceptance CI pending |
+| C12.3 | Два реальных независимых исполнителя, CLI/ACP | **Следующий; native UNVERIFIED** |
 | C12.4 | Настоящий Zed/ACP, session/load/permissions | После C12.3; без клиента UNVERIFIED |
 | C12.5 | Mutable workspace acceptance | После C12.4 |
 | C12.6 | Clean installation outside checkout | После C12.5 |

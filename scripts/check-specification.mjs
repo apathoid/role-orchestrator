@@ -63,7 +63,7 @@ assert.equal(scenarios.length, 54, 'A01-A54 must be present');
 assert.equal(scenarios.length, new Set(scenarios).size, 'Duplicate acceptance identifiers');
 const migration = [...matrix.matchAll(/^\| (M\d+) \|/gm)].map(m => m[1]);
 assert.deepEqual(migration, ['M01','M02','M03','M04']);
-for (const suite of ['foundation','core','contracts','integration']) {
+for (const suite of ['foundation','core','contracts','integration','acceptance']) {
   const tests = (await readdir(resolve(root,'tests',suite))).filter(x=>/\.test\.(?:js|mjs)$/.test(x));
   assert.ok(tests.length > 0, 'Missing mandatory suite ' + suite);
 }

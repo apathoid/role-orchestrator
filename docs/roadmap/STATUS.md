@@ -4,13 +4,18 @@
 |---|---|
 | Ветка | `greenfield/model-first-core` |
 | Исходный HEAD для C12 | `cbd8e70baca3ab380a2ed3d43ae1fdd667616412` |
-| Последний выполненный этап | C12.1 — traceability matrix R01–R33 ↔ A01–A54, remaining native gaps |
-| Следующий этап | **C12.2** — clean full regression/acceptance, затем C12.3–C12.9 |
+| Последний выполненный этап | C12.2 — clean regression and executable acceptance smoke (new CI pending) |
+| Следующий этап | **C12.3** — native independent CLI/ACP evidence, затем C12.4–C12.9 |
 | Implementation complete | C00–C11R и C12.0 реализованы; весь C12 пока **NO** |
 | Regression verified | OBSERVED [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) — SUCCESS на `1341d75` после удаления `development`; следующий commit до CI PENDING |
 | Detailed suites baseline | 298/298 (4+25+52+217) на `949292a`, [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211); исторический результат |
 | Native integration verified | **UNVERIFIED**: реальный Codex CLI/ACP model, Zed, NixOS и adaptive reasoning |
 | Production ready | **NO / NATIVE ACCEPTANCE PENDING** |
+
+## C12.2 — root clean regression (2026-11-10)
+
+- Добавлены три acceptance smoke: CLI/ACP help из non-Git каталога, побочно-безопасный public API import, наличие AGENTS → roadmap, обязательных regression suites и отсутствие legacy. Корневые `npm test` и CI требуют acceptance suite; missing suite — FAIL.
+- Подтверждено на исходном `1341d75`: [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) SUCCESS: 4 foundation, 25 core, 52 contracts, 217 integration (298/298), `npm test`, `npm ci`, Nix flake/package/apps, clean install. Новая acceptance suite на текущем изменении **CI PENDING**.
 
 ## C12.1 — requirements traceability (2026-11-10)
 
