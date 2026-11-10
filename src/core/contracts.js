@@ -47,6 +47,7 @@ export const assessment = record({
 
 export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext });
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
+/** @param {unknown} input @param {string} path */
 const nextController = (input, path) => {
   const value = record({ reasoningLevel: optional(id), continue: optional((value, at) =>
     value === true ? true : invalid(at, 'true')) })(input, path);
