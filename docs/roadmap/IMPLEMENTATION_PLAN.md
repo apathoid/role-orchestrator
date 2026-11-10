@@ -13,8 +13,8 @@
 | C12.0.3 | Активный roadmap, status, матрица, changelog | Завершён, commit 1d9963d |
 | C12.0.4 | Инструкции .agents/ и AGENTS.md | Завершён |
 | C12.0.5 | Перенос tests/fixtures/scripts, npm/checkJs | Реализован, CI pending |
-| C12.0.6 | Обязательный CI и locked Nix/npm | **Следующий** |
-| C12.0.7 | Установленная поставка без dev tools | После .6 |
+| C12.0.6 | Обязательный CI и locked Nix/npm | Реализован, CI pending |
+| C12.0.7 | Установленная поставка без dev tools | **Следующий** |
 | C12.0.8 | Удаление legacy development/, полная регрессия/handoff | После .7 |
 | C12.1 | Трассировка R01–R33 ↔ A01–A54 ↔ tests/evidence | После C12.0 |
 | C12.2 | Clean full regression | После C12.1 |

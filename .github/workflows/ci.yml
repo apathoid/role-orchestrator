@@ -15,7 +15,7 @@ concurrency:
 jobs:
   specification-and-nix:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -27,42 +27,34 @@ jobs:
           determinate: false
           kvm: false
           diagnostic-endpoint: ""
-      - name: Check flake metadata
-        run: nix flake check --no-update-lock-file --print-build-logs
-      - name: Install and exercise the CLI outside the checkout
-        if: ${{ hashFiles('development/quality/scripts/check-nix-install.sh') != '' }}
-        run: nix develop --no-update-lock-file --command bash development/quality/scripts/check-nix-install.sh
-      - name: Check Node in development shell
+      - name: Node 24 version
         run: nix develop --no-update-lock-file --command node --version
-      - name: Install locked npm dependencies in Node 24 without lifecycle scripts
+      - name: Root locked npm installation
         run: nix develop --no-update-lock-file --command npm ci --ignore-scripts --no-audit --no-fund
-      - name: Check package contents
-        run: nix develop --no-update-lock-file --command npm pack --dry-run --ignore-scripts --json
-      - name: Smoke public JavaScript import
-        run: nix develop --no-update-lock-file --command node --input-type=module -e "import('role-orchestrator')"
-      - name: Install locked development harness
-        if: ${{ hashFiles('development/package-lock.json') != '' }}
-        run: nix develop --no-update-lock-file --command npm --prefix development ci --ignore-scripts --no-audit --no-fund
-      - name: Check specification, JavaScript contracts and boundaries
-        if: ${{ hashFiles('development/package-lock.json') != '' }}
-        run: nix develop --no-update-lock-file --command npm --prefix development run check
-      - name: Test foundation and packaging
-        if: ${{ hashFiles('development/package-lock.json') != '' }}
+      - name: Specification links, checkJs and import boundaries
+        run: nix develop --no-update-lock-file --command npm run check
+      - name: Foundation and package tests
         run: |
-          nix develop --no-update-lock-file --command npm --prefix development run test:foundation
-          nix develop --no-update-lock-file --command npm --prefix development run check:package
-          nix develop --no-update-lock-file --command npm --prefix development run check:removal
-      - name: Run core behavior tests
-        if: ${{ hashFiles('development/package-lock.json') != '' }}
-        run: nix develop --no-update-lock-file --command npm --prefix development run test:core
-      - name: Run provider port contract tests
-        if: ${{ hashFiles('development/package-lock.json') != '' }}
-        run: nix develop --no-update-lock-file --command npm --prefix development run test:contracts
-      - name: Run application integration tests
-        if: ${{ hashFiles('development/package-lock.json') != '' }}
-        run: nix develop --no-update-lock-file --command npm --prefix development run test:integration
-      - name: Report unavailable development checks
-        if: ${{ hashFiles('development/package-lock.json') == '' }}
-        run: echo 'Development harness absent. Development checks skipped.'
-      - name: Verify lock files were not changed
-        run: git diff --exit-code -- flake.lock package-lock.json development/package-lock.json
+          nix develop --no-update-lock-file --command npm run test:foundation
+          nix develop --no-update-lock-file --command npm run check:package
+          nix develop --no-update-lock-file --command npm run check:removal
+      - name: Core behavior regression
+        run: nix develop --no-update-lock-file --command npm run test:core
+      - name: Provider contract regression
+        run: nix develop --no-update-lock-file --command npm run test:contracts
+      - name: Integration regression
+        run: nix develop --no-update-lock-file --command npm run test:integration
+      - name: Full applicable suite from root
+        run: nix develop --no-update-lock-file --command npm test
+      - name: Nix flake and locked package
+        run: nix flake check --no-update-lock-file --print-build-logs
+      - name: Install and exercise Nix package outside checkout
+        run: nix develop --no-update-lock-file --command bash scripts/check-nix-install.sh
+      - name: Check package contents and public import
+        run: |
+          nix develop --no-update-lock-file --command npm pack --dry-run --ignore-scripts --json
+          nix develop --no-update-lock-file --command node --input-type=module -e "import('role-orchestrator')"
+      - name: Native readiness (UNVERIFIED without real agents/client)
+        run: echo "Real model provider, independent ACP agent, Zed and NixOS native acceptance are UNVERIFIED in this workflow."
+      - name: Verify committed lock files unchanged
+        run: git diff --exit-code -- flake.lock package-lock.json

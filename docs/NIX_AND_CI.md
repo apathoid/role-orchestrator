@@ -1,6 +1,6 @@
 # JavaScript, Nix и CI
 
-**Текущее состояние до C12.0:** отдельный harness и conditional CI checks всё ещё существуют. В C12.0 запланирован перенос тестов, devDependencies, checkJs и npm scripts в корень, обязательные CI suites и проверка установленного npm/Nix-пакета без инструментов разработки. Ниже описано действующее окружение, а не утверждение, что реорганизация выполнена.
+**Текущее состояние: C12.0.6 — обязательные проверки запускаются из корня; npm/Nix lock, JS checker и CI перенесены. Итог новой CI регрессии подтверждается отдельно по SHA в roadmap STATUS. Native acceptance не подтверждена.**
 
 ## Язык и manifest
 
@@ -37,7 +37,7 @@ Flake публикует следующие outputs.
 
 Пакет собирается через `buildNpmPackage` с Node 24, реальным `package-lock.json` и вычисленным `npmDepsHash`. Для прямого JS использовать `dontNpmBuild = true`, если настоящая сборка ресурсов не требуется. Manifest указывает `bin`, derivation задаёт `meta.mainProgram`. CLI smoke проверяет запуск wrapper.
 
-Source closure продукта MUST исключать тесты, инженерные scripts, coding instructions, node_modules рабочего checkout, runs и CI evidence (до C12.0 они расположены преимущественно в development). Runtime dependencies не заимствуются из development harness. Проверить platform-specific transitive binaries, install scripts и dynamic linking на NixOS. Если конкретный провайдер требует отдельного бинарника, оформлять это через adapter/явную конфигурацию; не скачивать его скрыто при запуске и не требовать Codex для обычного core.
+Source closure продукта MUST исключать тесты, инженерные scripts, coding instructions, node_modules рабочего checkout, runs и CI evidence (в исходном дереве они находятся в tests/scripts/.agents). Runtime dependencies не заимствуются из development harness. Проверить platform-specific transitive binaries, install scripts и dynamic linking на NixOS. Если конкретный провайдер требует отдельного бинарника, оформлять это через adapter/явную конфигурацию; не скачивать его скрыто при запуске и не требовать Codex для обычного core.
 
 State, логи, secrets и конфигурация пользователя MUST располагаться вне read-only Nix store. Рабочий каталог остаётся выбранным пользователем, не каталогом установки. Wrapper не сбрасывает cwd и не уничтожает доступ к инструментам окружения. Никакого требования `.git` в каталоге пользователя.
 
@@ -57,9 +57,7 @@ Nix-сборка и immutable store не меняют архитектурный
 
 ## GitHub CI
 
-Постоянный entrypoint — `.github/workflows/ci.yml`; permissions `contents: read`, Actions закреплены полными commit SHA. Начальные checks: Markdown/specification при наличии development, npm package listing, Nix flake metadata, Node devShell, установка npm из lock без lifecycle scripts и неизменность lock-файлов. Это **foundation checks**, не бизнес-regression и не native integration.
-
-Выполненные кластеры C00–C11R уже включили syntax/JSDoc checkJs, locked npm install, core/contracts/integration regression и package/removal smoke. До C12.0 CI по-прежнему использует условное наличие `development/package-lock.json` и отдельный harness: это **текущее поведение, не целевая гарантия**. В C12.0 проверки переводятся в корень, отсутствие обязательного набора становится FAIL, проверяются lock и `npmDepsHash`; native credentials/клиент остаются отдельной явно UNVERIFIED категорией. Не использовать пустые успешные suites или `continue-on-error` для обязательных проверок.
+Постоянный entrypoint — `.github/workflows/ci.yml`; permissions `contents: read`, Actions закреплены полными commit SHA. Проверки CI запускаются из корня без conditional skip: обязательные `npm ci`, `npm run check` (спецификация/ссылки, checkJs и границы импортов), foundation/core/contracts/integration, `npm test`, package/clean install, `nix flake check`, Nix install вне checkout и lock verification. При отсутствии обязательного test suite checker/runner завершает шаг ошибкой. Acceptance/native suite без реализованных тестов не объявляется PASS и остаётся отдельным обязательством. Последний фактически подтверждённый run и границы применимости — в roadmap STATUS.
 
 Native model/Zed tests отдельно opt-in с явным доступом и бюджетом; отсутствие credentials не должно выдавать PASS и не должно раскрывать secrets в PR из внешнего источника. CI не делает auto-merge, auto-publish или изменения пользовательского проекта.
 
