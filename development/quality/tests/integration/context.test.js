@@ -18,7 +18,7 @@ test('a configured byte budget compacts history and preserves selected refs and 
   const large = '🧪"\n'.repeat(2000);
   let controller = 0;
   const refs = new Map();
-  const { api, invocations } = setup({ maxInvocations: 5, context: { maxBytes }, respond(invocation, count, observe) {
+  const { api, invocations } = setup({ maxInvocations: 5, context: { maxBytes }, async respond(invocation, count, observe) {
     if (invocation.actionId === 'source') {
       for (const [ref, value] of [['private-unselected', 'unselected'], ['large', large], ['recent', 'small report']]) {
         refs.set(ref, observe({ ref, kind: 'provider_tool', sourceId: 'source-event', completeness: 'complete', value }));
@@ -28,7 +28,20 @@ test('a configured byte budget compacts history and preserves selected refs and 
         outputRefs: [{ ref: 'recorded-payload', kind: 'output', source: 'provider_reported' }],
       }) };
     }
-    if (invocation.kind === 'delegate') return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
+    if (invocation.kind === 'delegate') {
+      if (invocation.actionId === 'target') {
+        // The byte-limited prompt need not contain every selected ref. The
+        // ContextPort still locates the original historical reference and
+        // reports why its payload is unavailable.
+        const ref = refs.get('recorded-payload');
+        const page = invocation.contextAccess.list();
+        assert.equal(page.kind, 'available');
+        assert.ok(page.items.some(item => item.ref === ref));
+        assert.deepEqual(await invocation.contextAccess.fetch(ref),
+          { kind: 'unavailable', reason: 'payload' });
+      }
+      return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId) };
+    }
     if (++controller === 1) return propose(invocation, action('source'));
     if (controller === 2) {
       refs.set('recorded-payload', invocation.contextAccess.list().items.find(item => item.providerRef === 'recorded-payload').ref);
@@ -49,8 +62,8 @@ test('a configured byte budget compacts history and preserves selected refs and 
 
   const target = invocations.find(item => item.actionId === 'target');
   assert.deepEqual(target.userConstraints, [constraint]);
-  assert.deepEqual(target.context.map(item => item.ref), [refs.get('large'), refs.get('recent'), 'missing', refs.get('recorded-payload'), 'host:operation-state']);
-  const [excerpt, recent, missing, recorded, facts] = target.context;
+  assert.deepEqual(target.context.map(item => item.ref), [refs.get('large'), refs.get('recent'), 'missing', 'host:context-budget', 'host:operation-state']);
+  const [excerpt, recent, missing, summary, facts] = target.context;
   assert.equal(excerpt.completeness, 'truncated');
   assert.equal(excerpt.value, undefined);
   assert.ok(excerpt.excerpt.length > 0 && large.startsWith(excerpt.excerpt) && excerpt.excerpt.isWellFormed());
@@ -59,7 +72,8 @@ test('a configured byte budget compacts history and preserves selected refs and 
   assert.equal(recent.value, 'small report');
   assert.ok(Buffer.byteLength(JSON.stringify([excerpt, recent])) <= maxBytes);
   assert.equal(missing.unavailableReason, 'missing');
-  assert.equal(recorded.unavailableReason, 'payload');
+  assert.equal(summary.value.omitted, 1);
+  assert.equal(summary.value.selected, 4);
   assert.deepEqual(facts.value.unresolvedAttempts.map(item => [item.attemptId, item.effect]), [[sourceAttempt.attemptId, 'unknown']]);
   assert.deepEqual(facts.value.cancellations, [{ actionId: 'source', source: 'superseded' }]);
   assert.equal(finished.events.flatMap(event => event.observations ?? []).find(item => item.ref === refs.get('large')).value, large);
