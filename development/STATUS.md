@@ -5,11 +5,17 @@
 | Specification prepared | YES |
 | Production implementation started | YES, переносимое ядро и прямой Controller path |
 | Последний проверенный шаг | C11R.12 + исправления ревью P1×3/P2×2, CI PASS на 949292a |
-| Следующий шаг | C12.1 |
+| Следующий шаг | **C12.0** — реорганизация репозитория (ПЛАН, НЕ РЕАЛИЗОВАНА), затем C12.1 |
 | Functional implementation complete | NO для всего продукта; C11R implementation complete, C12 не завершён |
 | Regression verified | OBSERVED: [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211) на 949292a, Node 24/Linux — foundation 4/4, core 25/25, contracts 52/52, integration 217/217, всего 298/298 PASS; Nix/checkJs/package/removal/lockfiles PASS. Native UNVERIFIED |
 | Native integration verified | UNVERIFIED |
 | Production ready | NO |
+
+## Следующий этап: C12.0 (согласованный план, не реализация)
+
+- Новый принцип: исходные tests/fixtures/scripts/.agents/ в постоянных местах; `docs/roadmap/` — единственный оперативный план и STATUS **после миграции**. Старые пути действуют до завершения C12.0.
+- C12.0 проверяет карту старых/новых знаний, миграцию checker и npm/Nix/CI, сохранение regression, независимость установленного пакета, правила обновления документации и инженерные критерии M01–M04. Подробности — `plan/clusters/C12_ACCEPTANCE_DELIVERY.md`.
+- Baseline 298/298 PASS для `949292a` остаётся историческим подтверждённым результатом, а не проверкой новой структуры. Native ACP/CLI/Zed UNVERIFIED. Следующий исполнитель должен начать с C12.0.1, а не C12.1.
 
 ## Исправления ревью C11R (10 ноября 2026)
 
