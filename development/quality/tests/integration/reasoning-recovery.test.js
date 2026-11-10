@@ -30,7 +30,7 @@ test('C11R.9 file-store crash barriers preserve pending/consumed selection, rout
     const id='crash-at-'+step;
     let state=createOperation(id,request({requestId:'request-'+step}),'grant',{maxInvocations:8,maxConcurrentInvocations:2});
     if(step>=1)state=apply(state,'controller.responded',1,{decision:decision({
-      decisionId:'select-'+step,finalAssessment:undefined,
+      decisionId:'select-'+step,operationId:id,finalAssessment:undefined,
       nextController:{continue:true,reasoningLevel:'high'}})});
     if(step>=2)state=apply(state,'attempt.reserved',2,{attemptId:'attempt-'+step,
       actionId:'attempt-'+step,reasoningDecisionId:'select-'+step});
