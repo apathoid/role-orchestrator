@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, readdir, mkdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createNdjsonSink } from '../../../../src/adapters/state/ndjson-diagnostics.js';
@@ -50,8 +50,10 @@ test('C11.2 unavailable path and failed disk writer are isolated', () =>
     assert.deepEqual(sink.stats(), { dropped: 0, failed: 1 });
     assert.ok(errors.length);
     const file = join(directory, 'unusable');
-    await mkdir(file);
-    const invalid = createNdjsonSink({ directory: file + '/child', stderr: { write: x => errors.push(x) } });
+    await writeFile(file, 'regular file, not a directory');
+    const invalid = createNdjsonSink({ directory: join(file, 'child'), stderr: { write: x => errors.push(x) } });
     invalid.emit(event(2));
     await invalid.flush();
+    assert.equal(invalid.stats().failed, 1);
+    assert.ok(errors.some(x => x.includes('failed=')));
   }));
