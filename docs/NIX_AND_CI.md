@@ -1,5 +1,7 @@
 # JavaScript, Nix и CI
 
+**Текущее состояние до C12.0:** отдельный harness и conditional CI checks всё ещё существуют. В C12.0 запланирован перенос тестов, devDependencies, checkJs и npm scripts в корень, обязательные CI suites и проверка установленного npm/Nix-пакета без инструментов разработки. Ниже описано действующее окружение, а не утверждение, что реорганизация выполнена.
+
 ## Язык и manifest
 
 Production-код пишется на JavaScript `.js` с ESM (`type: module`), Node.js 24. Для типов портов использовать JSDoc `@typedef`, `@template`, `import(...)` и `checkJs`, `strict`, `noEmit`. TypeScript compiler здесь — только инструмент статической проверки; runtime не требует TypeScript/tsx или генерации `dist/`. Внешние JSON/протоколы по-прежнему требуют runtime validation: JSDoc не валидирует поступившие данные.
@@ -31,11 +33,11 @@ Flake публикует следующие outputs.
 | `packages.<system>.default` | Тот же derivation |
 | `apps.<system>.role-orchestrator` и `.default` | Настоящий CLI из package, не wrapper-заглушка |
 | `devShells.<system>.default` | Инструменты разработки |
-| `checks.<system>` | Metadata и затем package/CLI smoke; dev suites только при наличии harness |
+| `checks.<system>` | Metadata и package/CLI smoke; корневые regression suites и CI checks обновляются в C12.0 |
 
 Пакет собирается через `buildNpmPackage` с Node 24, реальным `package-lock.json` и вычисленным `npmDepsHash`. Для прямого JS использовать `dontNpmBuild = true`, если настоящая сборка ресурсов не требуется. Manifest указывает `bin`, derivation задаёт `meta.mainProgram`. CLI smoke проверяет запуск wrapper.
 
-Source closure продукта MUST исключать development, node_modules рабочего checkout, runs и CI evidence. Runtime dependencies не заимствуются из development harness. Проверить platform-specific transitive binaries, install scripts и dynamic linking на NixOS. Если конкретный провайдер требует отдельного бинарника, оформлять это через adapter/явную конфигурацию; не скачивать его скрыто при запуске и не требовать Codex для обычного core.
+Source closure продукта MUST исключать тесты, инженерные scripts, coding instructions, node_modules рабочего checkout, runs и CI evidence (до C12.0 они расположены преимущественно в development). Runtime dependencies не заимствуются из development harness. Проверить platform-specific transitive binaries, install scripts и dynamic linking на NixOS. Если конкретный провайдер требует отдельного бинарника, оформлять это через adapter/явную конфигурацию; не скачивать его скрыто при запуске и не требовать Codex для обычного core.
 
 State, логи, secrets и конфигурация пользователя MUST располагаться вне read-only Nix store. Рабочий каталог остаётся выбранным пользователем, не каталогом установки. Wrapper не сбрасывает cwd и не уничтожает доступ к инструментам окружения. Никакого требования `.git` в каталоге пользователя.
 
@@ -57,7 +59,7 @@ Nix-сборка и immutable store не меняют архитектурный
 
 Постоянный entrypoint — `.github/workflows/ci.yml`; permissions `contents: read`, Actions закреплены полными commit SHA. Начальные checks: Markdown/specification при наличии development, npm package listing, Nix flake metadata, Node devShell, установка npm из lock без lifecycle scripts и неизменность lock-файлов. Это **foundation checks**, не бизнес-regression и не native integration.
 
-При C00 подключить синтаксические и JSDoc type checks, install из lock и harness. По появлению функций подключать соответствующие core/contract/integration suites; C10 добавляет `nix build`, CLI smoke и установку во временный profile. При C12 обязательны package/removal/regression checks. Не использовать пустые успешные suites или `continue-on-error` для обязательных проверок. Отсутствующий development означает явный skip только dev suites; сборка и установка продукта продолжают проверяться.
+Выполненные кластеры C00–C11R уже включили syntax/JSDoc checkJs, locked npm install, core/contracts/integration regression и package/removal smoke. До C12.0 CI по-прежнему использует условное наличие `development/package-lock.json` и отдельный harness: это **текущее поведение, не целевая гарантия**. В C12.0 проверки переводятся в корень, отсутствие обязательного набора становится FAIL, проверяются lock и `npmDepsHash`; native credentials/клиент остаются отдельной явно UNVERIFIED категорией. Не использовать пустые успешные suites или `continue-on-error` для обязательных проверок.
 
 Native model/Zed tests отдельно opt-in с явным доступом и бюджетом; отсутствие credentials не должно выдавать PASS и не должно раскрывать secrets в PR из внешнего источника. CI не делает auto-merge, auto-publish или изменения пользовательского проекта.
 
