@@ -22,8 +22,8 @@
 | C12.4 | Настоящий Zed/ACP, session/load/permissions | Протокол готов; **Zed native UNVERIFIED** |
 | C12.5 | Mutable workspace acceptance | Добавлен тест, CI pending |
 | C12.6 | Clean installation outside checkout | Усилен tarball E2E, CI pending |
-| C12.7 | Архитектурный audit | **Следующий** |
-| C12.8 | Release комплект/changelog/diagnostics | После C12.7 |
+| C12.7 | Архитектурный audit | Static paths reviewed; no reproduced defect |
+| C12.8 | Release комплект/changelog/diagnostics | **Следующий** |
 | C12.9 | Nix/NixOS/CI acceptance | После C12.8 |
 
 Полные критерии C12.0.1–C12.9: [C12 acceptance and delivery](C12_ACCEPTANCE_DELIVERY.md). Не отмечать недоступные native пробы как PASS; implementation, regression, native readiness различаются. Каждый шаг отдельным коммитом и фактическим обновлением STATUS.

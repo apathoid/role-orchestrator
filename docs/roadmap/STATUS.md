@@ -4,13 +4,18 @@
 |---|---|
 | Ветка | `greenfield/model-first-core` |
 | Исходный HEAD для C12 | `cbd8e70baca3ab380a2ed3d43ae1fdd667616412` |
-| Последний выполненный этап | C12.6 — clean install tarball CLI diagnose and controlled E2E outside checkout; CI pending |
-| Следующий этап | **C12.7** — structural architecture audit; C12.3/C12.4 native remain UNVERIFIED |
+| Последний выполненный этап | C12.7 — structural architecture audit completed; CI pending for new package checks |
+| Следующий этап | **C12.8** — final package evidence, changelog/roadmap, release manifest; C12.3/C12.4 native UNVERIFIED |
 | Implementation complete | C00–C11R и C12.0 реализованы; весь C12 пока **NO** |
 | Regression verified | OBSERVED [CI 42874365595](https://github.com/apathoid/role-orchestrator/actions/runs/42874365595) — SUCCESS на `1341d75` после удаления `development`; следующий commit до CI PENDING |
 | Detailed suites baseline | 298/298 (4+25+52+217) на `949292a`, [CI 42821614211](https://github.com/apathoid/role-orchestrator/actions/runs/42821614211); исторический результат |
 | Native integration verified | **UNVERIFIED**: реальный Codex CLI/ACP model, Zed, NixOS и adaptive reasoning |
 | Production ready | **NO / NATIVE ACCEPTANCE PENDING** |
+
+## C12.7 — содержательная архитектурная проверка
+
+- [Static audit с code paths](ARCHITECTURE_AUDIT.md): фиксированные workflow, provider-specific core, VCS/fingerprint gate, Host FS isolation, дубль scheduler/ledger, unknown replay и полномочия. SUPPORTED по исходникам, а не «доказано отсутствует во всей системе».
+- В просмотренных путях не выявлено воспроизведённого архитектурного дефекта; новых runtime gates не введено. Native provider semantics продолжают быть UNVERIFIED.
 
 ## C12.6 — проверка установленной поставки вне checkout
 
