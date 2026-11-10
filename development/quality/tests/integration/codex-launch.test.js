@@ -100,6 +100,6 @@ test('C11R.7 selectable effort is a process-local -c override; native has no for
   }},environment);
   assert.equal(literal.args.at(-2), 'model_reasoning_effort=' + JSON.stringify('raw"\\token'));
   assert.throws(()=>prepareCodexLaunch(provider,{...base,reasoning:{
-    mode:'selectable',level:'invalid',nativeValue:'x\\0broken',selectionSource:'model',
+    mode:'selectable',level:'invalid',nativeValue:'x' + String.fromCharCode(0) + 'broken',selectionSource:'model',
   }},environment),/reasoning.nativeValue/);
 });

@@ -40,8 +40,8 @@ export async function configureSession(agent, methods, session, model, mode, sig
  * @param {NewSessionResponse['configOptions']} options
  */
 export function thoughtOption(options) {
-  const levels = options?.filter(item => item.category === 'thought_level' && item.type === 'select') ?? [];
-  return levels.length === 1 ? levels[0] : undefined;
+  const levels = options?.filter(item => item.category === 'thought_level') ?? [];
+  return levels.length === 1 && levels[0].type === 'select' ? levels[0] : undefined;
 }
 
 /**

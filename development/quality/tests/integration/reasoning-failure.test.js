@@ -33,7 +33,8 @@ test('C11R.6 unsupported own effort surfaces durable failure, no fallback, expli
   assert.equal(operationView(waiting).waiting.reason.reasoningLevel,'ultra');
   assert.equal(operationTrace(waiting).waiting.reasoningLevel,'ultra');
   repaired=true;
-  const resumed=await (await api.resume(waiting.operationId)).completion;
+  const resumed=await (await api.resume(waiting.operationId,{requestId:'followup-1',
+    text:'Continue with corrected trusted provider settings'})).completion;
   assert.equal(resumed.status,'finished');
   assert.equal(invocations.length,2);
   assert.equal(invocations[1].reasoning.level,'low');
