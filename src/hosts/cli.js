@@ -153,8 +153,10 @@ export async function runCli(args, io, execute) {
             : view.status)) + '\n');
       } else io.stdout.write(JSON.stringify(view, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     } else io.stdout.write(JSON.stringify(result, null, invocation.format === 'text' ? 2 : undefined) + '\n');
-    return result && typeof result === 'object' && 'waiting' in result &&
-      result.waiting?.kind === 'technical' && result.waiting.reason.profileId ? 1 : 0;
+    const failure = result && typeof result === 'object' && 'request' in result &&
+      'limits' in result && 'attempts' in result
+      ? operationView(/** @type {Operation} */ (result)).waiting : undefined;
+    return failure?.kind === 'technical' && failure.reason.profileId ? 1 : 0;
   } catch (error) {
     const issue = hostError(error);
     io.stderr.write(issue.code + ': ' + issue.message + (issue.path ? ' (' + issue.path + ')' : '') + '\n');
