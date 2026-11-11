@@ -10,6 +10,8 @@ const maxRequestBytes = 32 * 1024;
 const maxResponseBytes = 256 * 1024;
 const maxToolCalls = 64;
 const maxConcurrentCalls = 4;
+const toolStatuses = new Set(['completed', 'failed', 'truncated', 'invalid_input', 'denied', 'unavailable', 'closed', 'unknown', 'budget']);
+const toolEffects = new Set(['none', 'possible', 'unknown']);
 const versions = new Set(['2025-03-26', '2025-06-18', '2025-11-25']);
 
 const position = record({ revision: count, index: count });
@@ -163,8 +165,22 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
         const value = call ? await call.response : { kind: 'unavailable', reason: 'budget' };
         const text = JSON.stringify(value);
         const encoded = JSON.stringify([{ type: 'text', text }]);
-        const withinBudget = Buffer.byteLength(encoded) <= maxResponseBytes;
-        result = { content: [{ type: 'text', text: withinBudget ? text : '{"kind":"unavailable","reason":"budget"}' }] };
+        if (Buffer.byteLength(encoded) <= maxResponseBytes) {
+          result = { content: [{ type: 'text', text }] };
+        } else {
+          // The tool has already run. Limit the MCP representation, not its
+          // receipt or execution status. A missing output is a delivery error,
+          // not evidence of a no-effect pre-dispatch refusal.
+          const tool = object(value);
+          const limited = tool && typeof tool.status === 'string' && toolStatuses.has(tool.status) &&
+              typeof tool.effect === 'string' && toolEffects.has(tool.effect)
+            ? { status: tool.status, effect: tool.effect,
+                ...(typeof tool.callId === 'string' ? { callId: tool.callId } : {}),
+                ...(typeof tool.ref === 'string' ? { ref: tool.ref } : {}),
+                outputUnavailableReason: 'budget' }
+            : { kind: 'unavailable', reason: 'budget' };
+          result = { content: [{ type: 'text', text: JSON.stringify(limited) }], isError: true };
+        }
         break;
       }
       default: error = { code: -32601, message: 'Method not found' };

@@ -14,6 +14,12 @@
 | Native providers / Zed | **UNVERIFIED**: два независимых реальных LLM, Codex CLI/ACP успешный prompt, Zed как ACP-клиент, реальные permissions/cancel/resume и native reasoning |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**; production readiness **NO** |
 
+## C12R.8R — корректирующее ревью (2026-11-11)
+
+**C12R.8R.0 — SUPPORTED, diagnostic:** исходный HEAD `be72f76c001cdf13617a706e068078c6d79c3d32`. В `createExternalToolPort` реальные результаты ограничены `min(maxBytes, 64 KiB)`, вызов `receive` записывает исходный `ToolReceipt` до возврата `ToolResult`. Обычный путь возвращает компактные `status/effect/callId/ref`; прежний oversized fixture с произвольным `{payload}` не воспроизводит production defect. Однако `Invocation.externalTools` — публичный `AttemptTools` port: крупный *валидный* `ToolResult` от иной реализации порта может попасть в MCP fallback, теряя known effect/provenance. Owner — `src/adapters/mcp-bridge.js`, не model strategy или core.
+
+**C12R.8R.1 — IMPLEMENTED, regression pending:** узкий MCP projection при response overflow сохраняет признанные `status/effect/callId/ref`, отдельно помечает `outputUnavailableReason: budget` и `isError: true`, не переписывает `ToolReceipt` и не исполняет tool второй раз. Для штатного `ToolPort` отдельная регрессия доказывает ограниченный read/write result (`none/possible`) и failed unknown с исходными receipts; для альтернативного контрактного `AttemptTools` проверяется oversize post-execution projection. Существующие resource limits/permissions не менялись. Проверка данного commit через CI ещё не выполнена.
+
 ## C12R.8 — C12R.8.0 диагностика, условные исправления и C12R.8.7
 
 **Инженерное завершение (2026-11-11):** код подтверждённых изменений проверен на `8506ec0aeda9996d4fa8cfdca9042b131efe196f`. Следующий документационный commit не меняет runtime-контракты; его собственные результаты CI фиксируются отдельно. Original native run artifacts, полные prompt/transport traces, версии внешних исполнителей и доступ к настоящим Zed/ACP/двум независимым LLM отсутствовали: соответствующие гипотезы остаются **UNVERIFIED**, не считаются доказанными дефектами.
