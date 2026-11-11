@@ -212,7 +212,8 @@ export async function materializeControllerHistory(port, request, maxBytes) {
       // journal, and chunk metadata preserves original source/provenance.
       item = {
         ref: 'host:history-chunk:' + represented, source: result.item.source,
-        completeness: result.nextOffset === undefined ? result.item.completeness : 'truncated',
+        completeness: result.offset === 0 && result.nextOffset === undefined
+          ? result.item.completeness : 'truncated',
         provenance: result.item.provenance, attemptId: result.item.attemptId,
         receivedSequence: result.item.receivedSequence,
         value: { requestedRef: result.item.ref, format: result.format,

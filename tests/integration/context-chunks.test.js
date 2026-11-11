@@ -201,6 +201,10 @@ test('C12R.9 P2: optional Controller continuation reads successive chunks withou
       assert.equal(chunk.provenance.sourceId,'fixture');
       const value=chunk.value;
       chunks.push(Buffer.from(value.base64,'base64'));
+      if (value.offset>0 || value.nextOffset!==undefined) {
+        assert.equal(chunk.completeness,'truncated',
+          'a later chunk is not a whole result even when source capture is complete');
+      }
       if(value.nextOffset!==undefined) {
         assert.ok(value.nextOffset>nextOffset);
         nextOffset=value.nextOffset;
