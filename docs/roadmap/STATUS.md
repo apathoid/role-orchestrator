@@ -1,6 +1,8 @@
 # Role Orchestrator — оперативный статус
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
+**C12R.9.0 baseline (synthetic, 2026-11-11):** на предыдущем HEAD подтверждены hard cap 128, несвязанный byte budget dynamic facts и несоответствие terminal/effect. Добавлена красная регрессия для этих границ и optional no-MCP retrieval; это ещё не native acceptance и не PASS новой функциональности.
+
 **Последний полностью выполненный инженерный этап:** C12R.8R (implementation complete / automated regression verified для подтверждённого technical scope).
 **Следующий шаг:** **C12R.9.0** — baseline/воспроизведение потери видимости завершённых результатов Controller и проверка существующих ограничений/дублирования по [C12R.9](C12R9_CONTEXT_CONTINUITY.md). Реальная native acceptance C12.3/C12.4/C12R.7–.9, Zed/NixOS и сравнительная оценка остаются UNVERIFIED и выполняются при доступе к настоящим средам по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). Не вводить новый Host механизм только ради непроверенной гипотезы о качестве.
 

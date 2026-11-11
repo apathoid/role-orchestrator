@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { compactContext } from '../../src/application/context-bundle.js';
+import { coordinationFacts, controllerContext, operationHistory } from '../../src/application/controller-context.js';
+import { decodeDecision } from '../../src/core/contracts.js';
+import { createOperation } from '../../src/core/operation.js';
+import { request, outcome } from '../fixtures/core.js';
+
+// C12R.9.0: desired behaviour is intentionally established before the fix.
+// These fixtures are synthetic; they do not assert real-model quality.
+test('C12R.9: a 256 KiB budget admits more than 128 small historical records', () => {
+  const history = Array.from({ length: 160 }, (_, i) => ({
+    ref: 'synthetic:' + i, source: 'provider_reported', completeness: 'complete', value: 'record-' + i,
+  }));
+  const packed = compactContext(history, 262144, false);
+  assert.equal(packed.context.length, 160);
+  assert.equal(packed.omitted, 0);
+});
+
+test('C12R.9: completed uncertain effects are not unresolved attempts', () => {
+  const state = createOperation('op', request(), 'grant', { maxInvocations: 10, maxConcurrentInvocations: 2 });
+  state.attempts.push({ attemptId: 'one', actionId: 'report-one', generation: 0, reservedAt: 1,
+    dispatchCertainty: 'sent', status: 'terminal', endedAt: 2, outcome: outcome('one', { effect: 'unknown' }) });
+  assert.deepEqual(coordinationFacts(state).unresolvedAttempts, []);
+});
+
+test('C12R.9: no-MCP history request is a valid optional controller continuation', () => {
+  const value = {
+    schemaVersion: 1, decisionId: 'request-old', operationId: 'op', contextCursor: 1,
+    additions: [], cancellations: [], nextController: { continue: true, contextRequest: { refs: ['old-report'] } },
+  };
+  assert.equal(decodeDecision(value).kind, 'accepted');
+  assert.equal(decodeDecision({ ...value, nextController: { contextRequest: { refs: ['old-report'] } } }).kind, 'rejected');
+});
+
+test('C12R.9: oversized dynamic facts cannot bypass optional controller budget', () => {
+  const state = createOperation('op', request(), 'grant', { maxInvocations: 1000, maxConcurrentInvocations: 2 });
+  for (let i = 0; i < 250; i++) {
+    state.attempts.push({ attemptId: 'attempt-' + i, actionId: 'action-' + i,
+      generation: 0, reservedAt: i, dispatchCertainty: 'sent', status: 'terminal', endedAt: i + 1,
+      outcome: outcome('attempt-' + i, { effect: 'unknown' }) });
+    state.events.push({ eventId: 'event-' + i, receivedAt: i, operationId: 'op',
+      kind: 'attempt.outcome', outcome: outcome('attempt-' + i, { effect: 'unknown' }),
+      dispatchCertainty: 'sent',
+      observations: [{ ref: 'observation-' + i, source: 'provider_reported',
+        completeness: 'complete', value: 'x'.repeat(40) }] });
+  }
+  const payload = controllerContext(state, [], undefined, undefined, 8192);
+  const optional = payload.filter(item => item.provenance?.kind !== 'user');
+  assert.ok(Buffer.byteLength(JSON.stringify(optional)) <= 8192,
+    'the host technical projection must share the optional budget');
+  assert.ok(payload.some(item => item.ref === 'host:invocation-context'));
+  assert.equal(operationHistory(state).filter(item => item.ref.startsWith('observation-')).length, 250);
+});
