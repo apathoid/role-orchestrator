@@ -98,48 +98,55 @@ export function bindContextAccess(scope) {
           return unavailable(item.unavailableReason === 'duplicate_inline' ? 'payload' :
             item.unavailableReason ?? 'payload');
         }
-        /** @type {Buffer} */
-        let stored;
         /** @type {'utf8' | 'json' | 'binary'} */
-        let format;
+        const format = item.artifact ? 'binary' :
+          typeof item.value === 'string' && item.value.isWellFormed() ? 'utf8' : 'json';
+        /** @type {Buffer | undefined} */
+        const inline = item.artifact || item.value === undefined ? undefined :
+          Buffer.from(format === 'utf8' ? /** @type {string} */ (item.value) :
+            JSON.stringify(item.value), 'utf8');
+        if (!item.artifact && !inline) return unavailable('payload');
+        const totalBytes = item.artifact?.size ?? inline?.length ?? 0;
+        if (range.offset > totalBytes) return unavailable('invalid_offset');
+        const responseLimit = Math.min(maxBytes, range.maxBytes ?? maxBytes);
+        const itemMetadata = { ...directoryEntry(item), provenance: item.provenance, artifact: item.artifact };
+        const envelope = { kind: /** @type {const} */ ('chunk'), item: itemMetadata, format,
+          offset: range.offset, totalBytes, base64: '', nextOffset: totalBytes };
+        // Base64 survives arbitrary UTF-8 boundaries. Account for the entire
+        // technical response, not merely its raw byte payload.
+        const overhead = Buffer.byteLength(JSON.stringify(envelope)) + 8;
+        const allowance = 3 * Math.floor(Math.max(0, responseLimit - overhead) / 4);
+        if (!allowance && range.offset < totalBytes) return unavailable('budget');
+        const wanted = Math.min(totalBytes - range.offset, allowance);
+        /** @type {Uint8Array} */
+        let chunk;
         if (item.artifact) {
           try {
-            const read = await store.readArtifact?.(item.artifact, item.artifact.size);
+            const read = store.readArtifactSlice
+              ? await store.readArtifactSlice(item.artifact, range.offset, wanted)
+              : await store.readArtifact?.(item.artifact, item.artifact.size);
             if (!isActive()) return unavailable('closed');
             if (!allowed()) return unavailable('denied');
             if (read?.kind !== 'available') {
               return unavailable(read?.kind === 'integrity_error' ? 'integrity_error' :
                 read?.reason ?? 'payload');
             }
-            if (read.bytes.byteLength !== item.artifact.size) return unavailable('integrity_error');
-            stored = Buffer.from(read.bytes);
+            if (store.readArtifactSlice) {
+              if (read.bytes.byteLength !== wanted) return unavailable('integrity_error');
+              chunk = read.bytes;
+            } else {
+              if (read.bytes.byteLength !== item.artifact.size) return unavailable('integrity_error');
+              chunk = read.bytes.subarray(range.offset, range.offset + wanted);
+            }
           } catch {
             return unavailable(isActive() ? 'payload' : 'closed');
           }
-          format = 'binary';
-        } else if (item.value !== undefined) {
-          // A persisted JSON string can contain an unpaired UTF-16 surrogate.
-          // Converting it directly to UTF-8 would silently replace data.
-          // Encode that case as JSON and label it so a reader can reconstruct
-          // the exact saved JS string by JSON.parse after joining chunks.
-          format = typeof item.value === 'string' && item.value.isWellFormed() ? 'utf8' : 'json';
-          stored = Buffer.from(format === 'utf8' ? /** @type {string} */ (item.value) : JSON.stringify(item.value), 'utf8');
         } else {
-          return unavailable('payload');
+          chunk = /** @type {Buffer} */ (inline).subarray(range.offset, range.offset + wanted);
         }
-        if (range.offset > stored.length) return unavailable('invalid_offset');
-        const itemMetadata = { ...directoryEntry(item), provenance: item.provenance, artifact: item.artifact };
-        const envelope = { kind: /** @type {const} */ ('chunk'), item: itemMetadata, format,
-          offset: range.offset, totalBytes: stored.length, base64: '', nextOffset: stored.length };
-        // Base64 is transport-safe even when an offset bisects a Unicode scalar.
-        // Its encoded envelope, not raw bytes alone, fits fetchMaxBytes.
-        const responseLimit = Math.min(maxBytes, range.maxBytes ?? maxBytes);
-        const overhead = Buffer.byteLength(JSON.stringify(envelope)) + 8;
-        const allowance = 3 * Math.floor(Math.max(0, responseLimit - overhead) / 4);
-        if (!allowance && range.offset < stored.length) return unavailable('budget');
-        const end = Math.min(stored.length, range.offset + allowance);
-        const result = { ...envelope, base64: stored.subarray(range.offset, end).toString('base64'),
-          ...(end < stored.length ? { nextOffset: end } : { nextOffset: undefined }) };
+        const end = range.offset + chunk.byteLength;
+        const result = { ...envelope, base64: Buffer.from(chunk).toString('base64'),
+          nextOffset: end < totalBytes ? end : undefined };
         if (Buffer.byteLength(JSON.stringify(result)) > responseLimit) return unavailable('budget');
         return result;
       }
