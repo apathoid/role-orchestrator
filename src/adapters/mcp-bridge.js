@@ -48,6 +48,30 @@ function object(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? /** @type {Record<string, unknown>} */ (value) : undefined;
 }
 
+/**
+ * Cache only the bounded, model-visible MCP reply for deduplication. Retaining
+ * an arbitrary ToolPort payload in the invocation call map would also retain
+ * omitted bytes until the bridge closed.
+ * @param {unknown} value
+ */
+function toolReply(value) {
+  const text = JSON.stringify(value);
+  const encoded = JSON.stringify([{ type: 'text', text }]);
+  if (Buffer.byteLength(encoded) <= maxResponseBytes) return { content: [{ type: 'text', text }] };
+  // The tool has already run. Limit the MCP representation, not its
+  // receipt or execution status. A missing output is a delivery error,
+  // not evidence of a no-effect pre-dispatch refusal.
+  const tool = object(value);
+  const limited = tool && typeof tool.status === 'string' && toolStatuses.has(tool.status) &&
+      typeof tool.effect === 'string' && toolEffects.has(tool.effect)
+    ? { status: tool.status, effect: tool.effect,
+        ...(typeof tool.callId === 'string' ? { callId: tool.callId } : {}),
+        ...(typeof tool.ref === 'string' ? { ref: tool.ref } : {}),
+        outputUnavailableReason: 'budget' }
+    : { kind: 'unavailable', reason: 'budget' };
+  return { content: [{ type: 'text', text: JSON.stringify(limited) }], isError: true };
+}
+
 /** @param {IncomingMessage} request */
 async function readRequest(request) {
   let total = 0;
@@ -159,28 +183,10 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
         let call = calls.get(message.id);
         if (call && call.key !== key) { error = { code: -32602, message: 'Request id already used' }; break; }
         if (!call && calls.size < maxToolCalls && active < maxConcurrentCalls) {
-          call = { key, response: callTool(params.name, args) };
+          call = { key, response: callTool(params.name, args).then(toolReply) };
           calls.set(message.id, call);
         }
-        const value = call ? await call.response : { kind: 'unavailable', reason: 'budget' };
-        const text = JSON.stringify(value);
-        const encoded = JSON.stringify([{ type: 'text', text }]);
-        if (Buffer.byteLength(encoded) <= maxResponseBytes) {
-          result = { content: [{ type: 'text', text }] };
-        } else {
-          // The tool has already run. Limit the MCP representation, not its
-          // receipt or execution status. A missing output is a delivery error,
-          // not evidence of a no-effect pre-dispatch refusal.
-          const tool = object(value);
-          const limited = tool && typeof tool.status === 'string' && toolStatuses.has(tool.status) &&
-              typeof tool.effect === 'string' && toolEffects.has(tool.effect)
-            ? { status: tool.status, effect: tool.effect,
-                ...(typeof tool.callId === 'string' ? { callId: tool.callId } : {}),
-                ...(typeof tool.ref === 'string' ? { ref: tool.ref } : {}),
-                outputUnavailableReason: 'budget' }
-            : { kind: 'unavailable', reason: 'budget' };
-          result = { content: [{ type: 'text', text: JSON.stringify(limited) }], isError: true };
-        }
+        result = call ? await call.response : toolReply({ kind: 'unavailable', reason: 'budget' });
         break;
       }
       default: error = { code: -32601, message: 'Method not found' };
@@ -217,6 +223,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
       closed = true;
       server.close();
       server.closeAllConnections();
+      calls.clear();
     },
   };
 }

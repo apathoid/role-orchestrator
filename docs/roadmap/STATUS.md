@@ -20,6 +20,8 @@
 
 **C12R.8R.1 — IMPLEMENTED, regression pending:** узкий MCP projection при response overflow сохраняет признанные `status/effect/callId/ref`, отдельно помечает `outputUnavailableReason: budget` и `isError: true`, не переписывает `ToolReceipt` и не исполняет tool второй раз. Для штатного `ToolPort` отдельная регрессия доказывает ограниченный read/write result (`none/possible`) и failed unknown с исходными receipts; для альтернативного контрактного `AttemptTools` проверяется oversize post-execution projection. Существующие resource limits/permissions не менялись. Проверка данного commit через CI ещё не выполнена.
 
+**C12R.8R.2 — IMPLEMENTED, regression pending:** добавлены границы общего MCP call budget (в обоих порядках 32 history + 32 external, id replay/conflict, invalid ID), cancellation active write (unknown + late receipt), закрытие live bridge и независимый второй transport. Dedup cache теперь хранит только ограниченный MCP result, а не полный недоставленный output; при `close()` map освобождается. Внешние tools остаются во владении Invocation/ToolPort; bridge не запускает и не отменяет их по semantic policy, существующие лимиты 64/4/32KiB/256KiB не изменены. CI этого commit ожидается.
+
 ## C12R.8 — C12R.8.0 диагностика, условные исправления и C12R.8.7
 
 **Инженерное завершение (2026-11-11):** код подтверждённых изменений проверен на `8506ec0aeda9996d4fa8cfdca9042b131efe196f`. Следующий документационный commit не меняет runtime-контракты; его собственные результаты CI фиксируются отдельно. Original native run artifacts, полные prompt/transport traces, версии внешних исполнителей и доступ к настоящим Zed/ACP/двум независимым LLM отсутствовали: соответствующие гипотезы остаются **UNVERIFIED**, не считаются доказанными дефектами.

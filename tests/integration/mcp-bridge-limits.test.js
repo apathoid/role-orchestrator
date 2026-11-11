@@ -204,3 +204,154 @@ test('C12R.8R.1 oversized valid AttemptTools results keep effect/status/ref with
     bridge.close();
   }
 });
+
+for (const first of ['history', 'external']) {
+  test('C12R.8R.2 shared MCP budget across context_list/context_fetch and external tools (' + first + ' first)', async () => {
+    const stop = new AbortController();
+    let listed = 0, fetched = 0, tools = 0;
+    const bridge = await startMcpBridge({
+      signal: stop.signal,
+      contextAccess: {
+        list() { listed++; return { kind: 'available', items: [] }; },
+        async fetch() { fetched++; return { kind: 'available',
+          item: { ref: 'record', source: 'host_observed', completeness: 'complete', value: 'history' } }; },
+        async captureArtifact() { return undefined; },
+      },
+      externalTools: {
+        list: () => [{ id: 'echo', description: 'fixture', effect: 'read', inputSchema: { type: 'object' } }],
+        async call() { tools++; return { status: 'completed', effect: 'none', callId: 'tool-' + tools }; },
+      },
+    });
+    try {
+      const steps = Array.from({ length: 64 }, (_, i) => {
+        const fromHistory = first === 'history' ? i < 32 : i >= 32;
+        return fromHistory
+          ? (i % 2 === 0 ? { name: 'context_list', args: {} }
+            : { name: 'context_fetch', args: { ref: 'record' } })
+          : { name: 'echo', args: { index: i } };
+      });
+      for (const [i, { name, args }] of steps.entries()) {
+        const response = await invoke(bridge.url, i + 1, name, args);
+        assert.equal(response.status, 200);
+        assert.notEqual(value(response).reason, 'budget');
+      }
+      assert.deepEqual([listed, fetched, tools], [16, 16, 32]);
+      for (const name of ['echo', 'context_fetch', 'context_list']) {
+        const blocked = await invoke(bridge.url, 65 + ['echo', 'context_fetch', 'context_list'].indexOf(name),
+          name, name === 'context_fetch' ? { ref: 'record' } : {});
+        assert.deepEqual(value(blocked), { kind: 'unavailable', reason: 'budget' });
+      }
+      assert.deepEqual([listed, fetched, tools], [16, 16, 32]);
+      const previously = steps[63];
+      const repeated = await invoke(bridge.url, 64, previously.name, previously.args);
+      assert.equal(repeated.status, 200);
+      assert.notEqual(value(repeated).reason, 'budget');
+      const conflicting = await invoke(bridge.url, 64, 'echo', { conflicting: true });
+      assert.equal(conflicting.body.error.code, -32602);
+      const invalid = await fetch(bridge.url, { method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: { wrong: true }, method: 'tools/call',
+          params: { name: 'echo', arguments: {} } }),
+      });
+      assert.equal(invalid.status, 400);
+      assert.deepEqual([listed, fetched, tools], [16, 16, 32]);
+    } finally {
+      stop.abort();
+      bridge.close();
+    }
+  });
+}
+
+test('C12R.8R.2 cancellation returns unknown effect and preserves a late ToolReceipt without replay', async () => {
+  const { compileExternalTool, createExternalToolPort } = await import('../../src/application/configuration/external-tools.js');
+  const stop = new AbortController();
+  const started = Promise.withResolvers();
+  const settle = Promise.withResolvers();
+  const receipts = [];
+  let executed = 0, cancelled = 0;
+  const registered = await compileExternalTool({
+    id: 'write', description: 'Write fixture', resource: 'fixture:write', effect: 'write',
+    inputSchema: { type: 'object' },
+    async invoke() { executed++; started.resolve(undefined); return settle.promise; },
+    cancel() { cancelled++; },
+  });
+  assert.ok(registered);
+  const externalTools = createExternalToolPort(new Map([['write', registered]])).bind({
+    attemptId: 'attempt', operationId: 'op', signal: stop.signal, isActive: () => !stop.signal.aborted,
+    permissions: { async request() { return { kind: 'selected', option: 'allow' }; } },
+    newId: () => 'call-1', maxBytes: 64 * 1024,
+    receive(_id, receipt) { receipts.push(receipt); return 'receipt:' + receipts.length; },
+  });
+  const bridge = await startMcpBridge({ signal: stop.signal, externalTools });
+  try {
+    const pending = invoke(bridge.url, 1, 'write', {});
+    await started.promise;
+    stop.abort('cancel');
+    const response = await pending;
+    assert.deepEqual(value(response), { status: 'unknown', effect: 'unknown',
+      callId: 'call-1', ref: 'receipt:1' });
+    assert.equal(cancelled, 1);
+    assert.equal(executed, 1);
+    const rejected = await fetch(bridge.url, { method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call',
+        params: { name: 'write', arguments: {} } }),
+    });
+    assert.equal(rejected.status, 410);
+    settle.resolve('completed after cancellation');
+    await new Promise(setImmediate);
+    assert.equal(receipts.length, 2);
+    assert.deepEqual(receipts.map(item => [item.status, item.effect, item.ref]), [
+      ['unknown', 'unknown', undefined], ['completed', 'unknown', undefined],
+    ]);
+    assert.equal(receipts[1].late, true);
+    assert.equal(executed, 1);
+  } finally {
+    settle.resolve(undefined);
+    stop.abort();
+    bridge.close();
+  }
+});
+
+test('C12R.8R.2 closing an in-flight MCP bridge releases the transport without killing an independent bridge', { timeout: 5000 }, async () => {
+  const firstStop = new AbortController();
+  const secondStop = new AbortController();
+  const started = Promise.withResolvers();
+  const finish = Promise.withResolvers();
+  let firstCalls = 0, secondCalls = 0;
+  const first = await startMcpBridge({
+    signal: firstStop.signal,
+    externalTools: { list: () => [], async call() {
+      firstCalls++;
+      started.resolve(undefined);
+      return finish.promise;
+    } },
+  });
+  const second = await startMcpBridge({
+    signal: secondStop.signal,
+    externalTools: { list: () => [], async call() {
+      secondCalls++;
+      return { status: 'completed', effect: 'none' };
+    } },
+  });
+  try {
+    const pending = invoke(first.url, 1, 'hold', {});
+    await started.promise;
+    first.close();
+    await assert.rejects(pending);
+    const independent = await invoke(second.url, 1, 'other', {});
+    assert.equal(independent.status, 200);
+    assert.deepEqual(value(independent), { status: 'completed', effect: 'none' });
+    assert.deepEqual([firstCalls, secondCalls], [1, 1]);
+    firstStop.abort();
+    finish.resolve({ status: 'unknown', effect: 'unknown' });
+    await new Promise(setImmediate);
+    assert.deepEqual([firstCalls, secondCalls], [1, 1]);
+  } finally {
+    first.close();
+    second.close();
+    firstStop.abort();
+    secondStop.abort();
+    finish.resolve({ status: 'unknown', effect: 'unknown' });
+  }
+});
