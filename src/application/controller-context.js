@@ -31,14 +31,22 @@ export const controllerInstructions = [
 export function coordinationFacts(state, lookups) {
   return {
     unresolvedAttempts: state.attempts.filter(attempt =>
-      attempt.outcome?.terminal === 'unknown' || attempt.outcome?.effect === 'possible' || attempt.outcome?.effect === 'unknown' ||
-      (attempt.status === 'dispatched' && attempt.cancellation)
+      attempt.outcome?.terminal === 'unknown' ||
+      (attempt.status !== 'terminal' && attempt.dispatchCertainty !== 'not_sent')
     ).map(attempt => ({
       attemptId: attempt.attemptId, actionId: attempt.actionId,
       profileId: attempt.route?.profileId, providerId: attempt.route?.providerId,
       idempotencyKeyAvailable: Boolean(attempt.route?.idempotencyKey),
       dispatchCertainty: attempt.dispatchCertainty, effect: attempt.outcome?.effect ?? 'unknown',
       statusLookup: lookups?.get(attempt.attemptId) ?? 'not_checked',
+    })),
+    effectUncertainties: state.attempts.filter(attempt =>
+      attempt.status === 'terminal' && attempt.outcome?.terminal !== 'unknown' &&
+      (attempt.outcome?.effect === 'unknown' || attempt.outcome?.effect === 'possible')
+    ).map(attempt => ({
+      attemptId: attempt.attemptId, actionId: attempt.actionId,
+      terminal: attempt.outcome?.terminal, effect: attempt.outcome?.effect,
+      dispatchCertainty: attempt.dispatchCertainty,
     })),
     cancellations: [
       ...state.events.flatMap(event => event.kind === 'action.cancelled'
@@ -150,6 +158,71 @@ export function deduplicateInlineResults(items) {
 }
 
 /**
+ * Derived, stable newest-first work ledger. Action objectives are addressed via
+ * their original model Decision, never paraphrased by the Host. Provider bytes
+ * and stored evidence remain only in the operation journal.
+ * @param {Operation} state @param {readonly ContextItem[]} history
+ */
+export function operationWorkMap(state, history) {
+  /** @type {Map<string, {decisionRef: string, action: import('../core/contracts.js').Action, order: number}>} */
+  const accepted = new Map();
+  /** @type {Map<string, number>} */
+  const attemptOrder = new Map();
+  /** @type {Map<string, string[]>} */
+  const observations = new Map();
+  /** @type {Map<string, ContextItem>} */
+  const byRef = new Map(history.map(item => [item.ref, item]));
+  for (const item of history) {
+    if (!item.attemptId) continue;
+    const existing = observations.get(item.attemptId) ?? [];
+    existing.push(item.ref);
+    observations.set(item.attemptId, existing);
+  }
+  state.events.forEach((event, index) => {
+    if (event.kind === 'controller.responded') {
+      for (const admission of event.admissions ?? []) {
+        if (admission.kind === 'accepted') accepted.set(admission.action.actionId, {
+          action: admission.action, decisionRef: 'decision:' + event.decision.decisionId, order: index,
+        });
+      }
+    }
+    if (event.kind === 'attempt.reserved' || event.kind === 'attempt.outcome') {
+      const id = event.kind === 'attempt.reserved' ? event.attemptId : event.outcome.attemptId;
+      attemptOrder.set(id, index);
+    }
+  });
+  const existingActions = new Set(state.attempts.map(attempt => attempt.actionId));
+  const attempts = state.attempts.map(attempt => {
+    const source = accepted.get(attempt.actionId);
+    const allRefs = observations.get(attempt.attemptId) ?? [];
+    const outputs = (attempt.outcome?.outputRefs ?? []).map(item => {
+      const captured = byRef.get(item.ref);
+      return { ref: item.ref, kind: item.kind, source: item.source,
+        completeness: captured?.completeness ?? 'unavailable',
+        availability: captured?.artifact ? 'artifact_presence_unknown' :
+          captured?.value !== undefined ? 'inline_captured' : 'payload_not_captured' };
+    });
+    const outputNames = new Set(outputs.map(item => item.ref));
+    return {
+      order: attemptOrder.get(attempt.attemptId) ?? -1,
+      row: {
+        actionId: attempt.actionId, attemptId: attempt.attemptId,
+        ...(source ? { objectiveRef: source.decisionRef } : { kind: 'controller' }),
+        status: attempt.status, dispatchCertainty: attempt.dispatchCertainty,
+        ...(attempt.outcome ? { terminal: attempt.outcome.terminal, effect: attempt.outcome.effect } : {}),
+        outputRefs: outputs, observationRefs: allRefs.filter(ref => !outputNames.has(ref)),
+      },
+    };
+  });
+  const unstarted = [...accepted].flatMap(([actionId, item]) => existingActions.has(actionId) ? [] : [{
+    order: item.order, row: { actionId, objectiveRef: item.decisionRef, status: 'accepted',
+      outputRefs: [], observationRefs: [] },
+  }]);
+  return [...attempts, ...unstarted].sort((left, right) => right.order - left.order)
+    .map(item => item.row);
+}
+
+/**
  * @param {Operation} state @param {readonly CatalogEntry[]} catalog
  * @param {FieldError | undefined} correction
  * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {number} [maxBytes]
@@ -158,24 +231,31 @@ export function deduplicateInlineResults(items) {
  */
 export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences) {
   const [request, ...history] = operationHistory(state);
-  const { context, omitted, excerpted } = compactContext(deduplicateInlineResults(history.reverse()), maxBytes, false);
   const previous = state.events.findLast(item => item.kind === 'operation.finished');
   const unresolved = previous?.assessment.requirements.flatMap(({ requirementId, status }) =>
     status === 'fulfilled' ? [] : [{ requirementId, status }]);
-  /** @type {ContextItem[]} */
-  const items = [
-    request,
-    { ref: 'host:invocation-context', source: 'host_observed', completeness: 'complete', value: {
-      operationId: state.operationId, contextCursor: state.revision, catalog: catalog.map(item => {
+  if (previous && unresolved?.length) {
+    history.push(observation({
+      ref: 'assessment-progress:' + previous.eventId, completeness: 'complete',
+      value: { assessmentRef: 'assessment:' + previous.eventId, requirements: unresolved },
+    }, { kind: 'model', sourceId: previous.assessment.author, receivedAt: previous.receivedAt }));
+  }
+  const workRows = operationWorkMap(state, history);
+  const facts = coordinationFacts(state, lookups);
+  const host = {
+    ref: 'host:invocation-context', source: /** @type {const} */ ('host_observed'),
+    completeness: /** @type {const} */ ('complete'),
+    value: {
+      operationId: state.operationId, contextCursor: state.revision,
+      catalog: catalog.map(item => {
         if (item.kind !== 'skill') return item;
         const { instructions: _instructions, ...metadata } = item.value;
         return { kind: item.kind, value: metadata };
       }),
       ...(preferences && { preferences }),
-      limits: state.limits, resources: resourceSnapshot(state), ...coordinationFacts(state, lookups),
+      limits: state.limits, resources: resourceSnapshot(state),
       attachments: state.request.attachments,
       controllerReasoning: {
-        // Native adapter values are trusted Host configuration, not model catalog data.
         current: (() => {
           const current = state.attempts.findLast(attempt => attempt.attemptId === attempt.actionId)?.route?.reasoning;
           return !current ? 'not_recorded' : current.mode === 'native' ? {mode: 'native'} : {
@@ -184,34 +264,71 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         })(),
         pending: pendingControllerReasoning(state) ?? null,
       },
-      outcomes: state.attempts.flatMap(attempt => {
-        if (!attempt.outcome) return [];
-        const { attemptId, terminal, effect, usage, diagnostics } = attempt.outcome;
-        return [{ actionId: attempt.actionId, attemptId, terminal, effect, usage, code: diagnostics[0]?.code }];
-      }),
-      pendingAttempts: state.attempts.filter(attempt => attempt.status !== 'terminal').map(attempt => ({
-        attemptId: attempt.attemptId, actionId: attempt.actionId, status: attempt.status,
-      })),
-      actions: state.events.flatMap(/** @returns {readonly unknown[]} */ event => {
-        if (event.kind === 'controller.responded') return (event.admissions ?? []).map(item =>
-          item.kind === 'accepted' ? { kind: item.kind, action: { actionId: item.action.actionId,
-            profileId: item.action.profileId, dependsOn: item.action.dependsOn } } : item);
-        if (event.kind === 'action.rejected' || event.kind === 'action.deferred') {
-          return [{ kind: event.kind, actionId: event.actionId, code: event.code, resource: event.resource, category: event.category }];
-        }
-        if (event.kind === 'action.cancelled') return [{ kind: event.kind, actionId: event.actionId, source: event.source }];
-        return [];
-      }),
-      ...(omitted || excerpted ? { historyBudget: { maxBytes, omitted, excerpted } } : {}),
-    } },
-    ...(previous && unresolved?.length ? [observation({
-      ref: 'assessment-progress:' + previous.eventId, completeness: 'complete',
-      value: { assessmentRef: 'assessment:' + previous.eventId, requirements: unresolved },
-    }, { kind: 'model', sourceId: previous.assessment.author, receivedAt: previous.receivedAt })] : []),
-    ...context.reverse(),
-  ];
-  if (correction) {
-    items.push({ ref: 'host:decision-error', source: 'host_observed', completeness: 'complete', value: correction });
+      workMap: { total: workRows.length, represented: workRows.length, omitted: workRows.length,
+        historyCursor: 0, entries: /** @type {typeof workRows} */ ([]) },
+      unresolvedAttempts: /** @type {typeof facts.unresolvedAttempts} */ ([]),
+      effectUncertainties: /** @type {typeof facts.effectUncertainties} */ ([]),
+      cancellations: /** @type {typeof facts.cancellations} */ ([]),
+      outcomes: /** @type {{actionId: string, attemptId: string, terminal: string, effect: string, code?: string}[]} */ ([]),
+      pendingAttempts: /** @type {{attemptId: string, actionId: string, status: string}[]} */ ([]),
+      historyBudget: { maxBytes, omitted: history.length, excerpted: history.length,
+        unrepresented: history.length },
+    },
+  };
+  const byteLength = value => Buffer.byteLength(JSON.stringify(value), 'utf8');
+  // Base technical metadata (operation identity, trusted catalog and limits)
+  // is required for a valid Decision. Optional rows and history share one
+  // measured byte budget. A tiny limit can exclude all optional records.
+  let used = byteLength([host]);
+  /** @param {unknown[]} target @param {unknown} value */
+  function tryAdd(target, value) {
+    const size = byteLength(value) + (target.length ? 1 : 0);
+    if (used + size > maxBytes) return false;
+    target.push(value);
+    used += size;
+    return true;
   }
+  let represented = 0;
+  for (const row of workRows) {
+    if (!tryAdd(host.value.workMap.entries, row)) {
+      // A very long original ref must not prevent even the compact lifecycle
+      // identity from being shown when that identity can still fit.
+      const { outputRefs, observationRefs, ...identity } = row;
+      const minimal = { ...identity, outputRefsTotal: outputRefs.length,
+        observationRefsTotal: observationRefs.length, refsOmitted: true };
+      if (!tryAdd(host.value.workMap.entries, minimal)) break;
+    }
+    represented++;
+  }
+  host.value.workMap.represented = represented;
+  host.value.workMap.omitted = workRows.length - represented;
+  // Existing legacy technical fields remain short, budgeted previews.
+  for (const value of facts.unresolvedAttempts) if (!tryAdd(host.value.unresolvedAttempts, value)) break;
+  for (const value of facts.effectUncertainties) if (!tryAdd(host.value.effectUncertainties, value)) break;
+  for (const value of facts.cancellations) if (!tryAdd(host.value.cancellations, value)) break;
+  for (const attempt of state.attempts) {
+    if (attempt.outcome) {
+      const { attemptId, terminal, effect, diagnostics } = attempt.outcome;
+      if (!tryAdd(host.value.outcomes, {actionId: attempt.actionId, attemptId, terminal, effect,
+        code: diagnostics[0]?.code})) break;
+    }
+  }
+  for (const attempt of state.attempts) {
+    if (attempt.status !== 'terminal' && !tryAdd(host.value.pendingAttempts, {
+      attemptId: attempt.attemptId, actionId: attempt.actionId, status: attempt.status,
+    })) break;
+  }
+  // A real consumed byte count includes the serialized host record. Legacy
+  // clients can still find the mandatory identity and the omission counters.
+  used = byteLength([host]);
+  const bounded = compactContext(deduplicateInlineResults(history.reverse()),
+    Math.max(0, maxBytes - used + 1), false);
+  host.value.historyBudget.omitted = bounded.omitted;
+  host.value.historyBudget.excerpted = bounded.excerpted;
+  host.value.historyBudget.unrepresented = bounded.unrepresented;
+  /** @type {ContextItem[]} */
+  const items = [request, host, ...bounded.context.reverse()];
+  if (correction) items.push({ref:'host:decision-error',source:'host_observed',
+    completeness:'complete',value:correction});
   return items;
 }

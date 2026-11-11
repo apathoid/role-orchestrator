@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { compactContext } from '../../src/application/context-bundle.js';
-import { coordinationFacts, controllerContext, operationHistory, deduplicateInlineResults } from '../../src/application/controller-context.js';
+import { coordinationFacts, controllerContext, operationHistory, operationWorkMap, deduplicateInlineResults } from '../../src/application/controller-context.js';
 import { decodeDecision } from '../../src/core/contracts.js';
 import { createOperation } from '../../src/core/operation.js';
 import { request, outcome } from '../fixtures/core.js';
@@ -81,4 +81,27 @@ test('C12R.9.2: direct API budgets reject conflicting aliases and unsafe limits'
   assert.throws(() => source({ context: { controllerMaxBytes: 16777217 } }), /context.controllerMaxBytes/);
   const a = source({ context: { controllerMaxBytes: 512 * 1024 } });
   assert.equal((await (await a.api.submit(request())).completion).status, 'finished');
+});
+
+test('C12R.9.3: work ledger is a derived map and records completed effect uncertainty separately', () => {
+  const state = createOperation('op', request(), 'grant', { maxInvocations: 12, maxConcurrentInvocations: 2 });
+  state.attempts.push({ attemptId: 'a1', actionId: 'task-one', generation: 0, reservedAt: 1,
+    dispatchCertainty: 'sent', status: 'terminal', endedAt: 2,
+    outcome: outcome('a1', { effect: 'possible',
+      outputRefs: [{ref:'report',source:'model_claim',kind:'output'}] }) });
+  state.events.push({ kind:'attempt.outcome', eventId:'e1',receivedAt:2,operationId:'op',
+    outcome: outcome('a1', { effect:'possible',
+      outputRefs: [{ref:'report',source:'model_claim',kind:'output'}] }),
+    dispatchCertainty:'sent',
+    observations:[{ref:'report',source:'model_claim',completeness:'complete',value:'saved original'}] });
+  const raw=operationHistory(state);
+  const map=operationWorkMap(state,raw);
+  assert.equal(map[0].outputRefs[0].ref,'report');
+  assert.equal(map[0].outputRefs[0].availability,'inline_captured');
+  const ctx=controllerContext(state,[],undefined,undefined,8192);
+  assert.equal(ctx[1].value.workMap.total,1);
+  assert.equal(ctx[1].value.workMap.entries[0].actionId,'task-one');
+  assert.deepEqual(ctx[1].value.unresolvedAttempts,[]);
+  assert.equal(ctx[1].value.effectUncertainties[0].effect,'possible');
+  assert.equal(raw.find(item=>item.ref==='report').value,'saved original');
 });
