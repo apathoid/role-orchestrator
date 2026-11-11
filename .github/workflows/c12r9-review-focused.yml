@@ -1,0 +1,41 @@
+name: C12R.9 review focused checks
+
+on:
+  push:
+    branches: [greenfield/model-first-core]
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          determinate: false
+          kvm: false
+          diagnostic-endpoint: ""
+      - name: Install dependencies
+        run: nix develop --no-update-lock-file --command npm ci --ignore-scripts --no-audit --no-fund
+      - name: CheckJs and contracts
+        run: nix develop --no-update-lock-file --command npm run check
+      - name: C12R.9 targeted context and provider regressions
+        run: |
+          set +e
+          nix develop --no-update-lock-file --command node --test tests/integration/context-continuity.test.js tests/integration/context-chunks.test.js tests/integration/codex-provider.test.js tests/contracts/acp-provider.test.js > "$RUNNER_TEMP/c12r9-focused.log" 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            grep -E '✖|not ok|test at tests/|AssertionError|TypeError|SyntaxError|error TS|at (file:|TestContext)' "$RUNNER_TEMP/c12r9-focused.log" | head -n 140 | cut -c 1-500 || true
+            echo "End of failure diagnostics:"
+            tail -n 70 "$RUNNER_TEMP/c12r9-focused.log" | cut -c 1-450
+            exit "$status"
+          fi
+          tail -n 30 "$RUNNER_TEMP/c12r9-focused.log"
