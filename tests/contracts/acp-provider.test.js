@@ -454,7 +454,13 @@ test('C12R.9 review P1: ACP Worker final message reaches Controller once without
     const result=await (await api.submit(request())).completion;
     assert.equal(result.status,'finished');
     assert.equal(turns,2);
-    assert.equal(delivered.length,1);
+    const workerAttempt=result.attempts.find(attempt=>attempt.actionId==='worker');
+    assert.ok(workerAttempt,JSON.stringify(result.events.filter(event=>event.kind==='action.rejected'||event.kind==='action.deferred')));
+    assert.equal(workerAttempt.outcome?.terminal,'completed',JSON.stringify(workerAttempt));
+    assert.equal(delivered.length,1,JSON.stringify({workerAttempt,modelObservations:result.events.flatMap(event=>
+      event.kind==='attempt.outcome'&&event.outcome.attemptId===workerAttempt.attemptId
+        ? (event.observations??[]).map(item=>({ref:item.ref,source:item.source,completeness:item.completeness,
+          value:typeof item.value==='string'?item.value.slice(0,100):undefined})):[])}));
     const receipts=result.events.filter(event=>event.kind==='attempt.outcome' &&
       result.attempts.find(a=>a.attemptId===event.outcome.attemptId)?.actionId==='worker');
     assert.equal(receipts.length,1);
