@@ -7,7 +7,7 @@ assert.ok(process.argv.includes('mcp_servers.role_orchestrator.required=true'));
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
 const prompt = Buffer.concat(chunks).toString('utf8');
-assert.match(prompt, /Use MCP tools context_list and context_fetch/);
+assert.match(prompt, /MCP context_list and context_fetch optionally provide/);
 const separator = '\n\nInvocation (JSON):\n';
 const invocation = JSON.parse(prompt.slice(prompt.indexOf(separator) + separator.length));
 const decision = await retrieveContext(url, invocation);
