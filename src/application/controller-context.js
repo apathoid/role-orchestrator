@@ -266,7 +266,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // only a lifecycle boundary, not historical work to tell itself about.
   const currentControllerId = state.attempts.findLast(attempt =>
     attempt.actionId === attempt.attemptId && attempt.status !== 'terminal')?.attemptId;
-  const workRows = operationWorkMap(state, history).filter(item => item.attemptId !== currentControllerId);
+  const workRows = operationWorkMap(state, history).filter(item => !('attemptId' in item) || item.attemptId !== currentControllerId);
   const rawFacts = coordinationFacts(state, lookups);
   const facts = {
     ...rawFacts,
