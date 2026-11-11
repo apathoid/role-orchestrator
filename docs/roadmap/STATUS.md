@@ -56,6 +56,10 @@
 
 ## Наблюдение CI/поставка
 
+- Baseline `6ce64e9`: [42970897216](https://github.com/apathoid/role-orchestrator/actions/runs/42970897216) SUCCESS.
+- C12R.6.0 `2f733a7` / C12R.1 `3cdf273`: [42971840155](https://github.com/apathoid/role-orchestrator/actions/runs/42971840155) / [42972153922](https://github.com/apathoid/role-orchestrator/actions/runs/42972153922) FAIL at checkJs (TS2322, inferred skill material status widened to string). Corrected explicit `SkillInstructions[]` type; regression pending. Earlier runs did not reach tests.
+
+
 [GitHub Actions 42878217644](https://github.com/apathoid/role-orchestrator/actions/runs/42878217644), commit `70ababf`, concluded **SUCCESS**. В нём:
 - `npm ci`, `npm run check`, 302 tests, `check:package`, `check:removal`, Nix/flake/install smoke/NixOS eval — все обязательные jobs/steps PASS;
 - `scripts/prepare-release.mjs` дважды собрал идентичный `role-orchestrator-0.1.0-dev.0.tgz`, 74 файла, 166848 байт, SHA-256 `24677ca1cd64a27d761dea2078f4b1d8a93b5fc44d2d1179cee708b9c43e267d`;

@@ -71,6 +71,7 @@ export function prepareHandoff(operation, action, catalog) {
  * @returns {Promise<SkillInstructions[]>}
  */
 export async function materializeSkillInstructions(selected, catalog, maxBytes, signal) {
+  /** @type {SkillInstructions[]} */
   const result = [];
   let remaining = maxBytes;
   for (const entry of selected) {
