@@ -2,7 +2,7 @@
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 **Последний полностью выполненный инженерный этап:** C12.9 (Linux Nix и NixOS module evaluation).
-**Следующий шаг:** C12R.0 — baseline и воспроизведение дефектов по [плану C12R](C12R_STABILIZATION.md). C12R ещё не реализован; начать с актуального HEAD, затем выполнять самостоятельные шаги с тестами и отдельными коммитами. C12.3/C12.4 и native NixOS acceptance остаются открытыми, не повторять C12.0.
+**Следующий шаг:** C12R.6.0 — доставка и scope skills; затем C12R.1. C12R.0 зафиксировал baseline и доступное evidence, воспроизведения lifecycle/snapshot продолжаются в адресных regression tests. C12.3/C12.4 и native NixOS acceptance остаются открытыми, не повторять C12.0.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
@@ -16,12 +16,12 @@
 
 ## C12R — активный корректирующий этап
 
-**Baseline:** `4ebaf262b98d541120745e04f697ebbb3404fc88`. План подготовлен, инженерные исправления C12R **NOT STARTED**. Источник задач — [C12R_STABILIZATION](C12R_STABILIZATION.md); текущие требования и единая матрица сохраняются.
+**Baseline:** `4ebaf262b98d541120745e04f697ebbb3404fc88`. Начало инженерной работы: `6ce64e994a189f0c9e1bc255a8e97184f75a90ca`. C12R.0 выполнен в доступной части; исходные материалы всех трёх native runs неполны. Источник задач — [C12R_STABILIZATION](C12R_STABILIZATION.md); текущие требования и единая матрица сохраняются.
 
 | Шаг | Состояние |
 |---|---|
-| C12R.0 | NEXT — baseline, доступные native evidence, адресные воспроизведения |
-| C12R.6.0 | PLANNED — skills scope/delivery/identity |
+| C12R.0 | Baseline recorded; renderer omission OBSERVED; lifecycle/snapshot SUPPORTED, отдельные regression tests pending |
+| C12R.6.0 | NEXT — skills scope/delivery/identity |
 | C12R.1 | PLANNED — независимые Actions, fairness, recovery |
 | C12R.2 | PLANNED — reasoning provenance |
 | C12R.3 | PLANNED — диагностика |
@@ -30,7 +30,14 @@
 | C12R.6.1–6.4 | PLANNED — проверка поведения, обоснованные точечные prompt changes |
 | C12R.7 | PLANNED — regression/native/comparative evaluation |
 
-Исходниками baseline поддержаны дефекты lifecycle, пропуска skillInstructions в renderer и проверки explicit Controller reasoning mode. Воспроизведение тестами и результаты трёх обсуждавшихся native runs предстоит зафиксировать в C12R.0; причины PROTOCOL_ERROR, влияние native skill discovery и количественный эффект исправлений не подтверждены. Не превращать обсуждение или historical CI в native PASS. При отсутствии оригинальных материалов отметить UNVERIFIED и продолжить доступные инженерные проверки.
+### C12R.0 — исходные доказательства и ограничения
+
+- OBSERVED: из исходника `src/adapters/invocation-prompt.js` на рабочем HEAD выполнен изолированный JS-вызов `renderInvocationPrompt` с выбранным skill (complete, уникальный marker); marker отсутствует в итоговой JSON-строке. Это воспроизведение renderer, не native/CLI/ACP E2E.
+- SUPPORTED: `drive()` переводит operation в technical waiting после неуспешного Controller outcome; `reserve()` и `dispatchWorker()` требуют active. Принимаемые additions с continue могут оставаться неотправленными. Проверить один слот, cancellation, зависимости и recovery в C12R.1.
+- SUPPORTED: `snapshot.js` проверяет explicit Controller level только внутри selectable ветки; native mode при explicit выборе не отклоняется. Проверить согласованно повреждённые journal/materialized route в C12R.2.
+- OBSERVED (доступный редактированный journal/inspect из обсуждения): одна operation, revision 8, finished, два terminal completed Controller attempts, профиль controller, codex-acp / gpt-6.1-sol, selectable medium/default, sent, effect unknown, adapter_confirmed; worker attempts нет. Экспорт не содержит model content, tool bodies и transient diagnostics. Нельзя установить причину выбора одиночной стратегии или доказать отсутствие нативного делегирования. Raw IDs/тексты не публикуются.
+- UNVERIFIED: оригиналы остальных двух native runs, точный build commit/client/adapter versions и session IDs, CAPABILITY_UNAVAILABLE/PROTOCOL_ERROR/context.unavailable: MISSING correlation, причины и сравнительные показатели. Не приписывать ошибки effort или skill без доказательств.
+- Исторический CI 302/302 не проверяет HEAD. Локальный checkout через Git недоступен в рабочем окружении (DNS GitHub); source reads и публикация доступны через GitHub API. Полную npm/Nix регрессию проверить через CI; до результата она UNVERIFIED. Native environment отсутствует.
 
 ## Реализованные изменения и происхождение
 
