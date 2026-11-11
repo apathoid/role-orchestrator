@@ -347,3 +347,94 @@ test('C12R.9 P1: oversized requested history retains materialization and present
   assert.ok(coverage.presentedRecords<=coverage.materializedRecords);
   assert.ok(Buffer.byteLength(JSON.stringify(context.slice(1)))<=4096);
 });
+
+test('C12R.9 review P2: independent 8 KiB Controller and 64 KiB fetch budgets allow all optional chunks', async()=>{
+  const body=('🧪 UTF-8 boundary: '+'◊'.repeat(20)+'\n').repeat(450);
+  assert.ok(Buffer.byteLength(body)>8192);
+  let turns=0,at=0;
+  const pieces=[];
+  const {api,respondErrors}=setup({maxInvocations:48,
+    context:{controllerMaxBytes:8192,fetchMaxBytes:65536},
+    respond(invocation,_,observe){
+      turns++;
+      if(turns===1){
+        observe({ref:'mismatched-budgets',kind:'provider_report',sourceId:'native-fixture',
+          completeness:'complete',value:body});
+        return final(invocation,{finalAssessment:undefined,nextController:{continue:true}});
+      }
+      if(turns===2) return final(invocation,{finalAssessment:undefined,
+        nextController:{continue:true,contextRequest:{refs:[{ref:'evidence:'+
+          // Preserve the actual durable evidence identity, never guess its hash.
+          invocation.contextAccess.list().items.find(item=>item.providerRef==='mismatched-budgets')?.ref?.split('evidence:')[1],
+          offset:0}]}}});
+      const chunk=invocation.context.find(item=>item.ref==='host:history-chunk:0');
+      assert.ok(chunk,'the requested byte chunk must fit actual Controller context budget');
+      assert.equal(chunk.value.offset,at);
+      const raw=Buffer.from(chunk.value.base64,'base64');
+      assert.ok(raw.length>0,'the offset must advance on every continuation');
+      pieces.push(raw);
+      at+=raw.length;
+      if(chunk.value.nextOffset!==undefined){
+        assert.equal(chunk.value.nextOffset,at);
+        const record=invocation.contextAccess.list().items.find(item=>item.providerRef==='mismatched-budgets');
+        return final(invocation,{finalAssessment:undefined,
+          nextController:{continue:true,contextRequest:{refs:[{ref:record.ref,offset:at}]}}});
+      }
+      assert.equal(Buffer.concat(pieces).toString('utf8'),body);
+      return final(invocation);
+    }});
+  const done=await(await api.submit(request())).completion;
+  assert.equal(done.status,'finished',respondErrors.map(e=>e?.stack??String(e)).join('\n'));
+  assert.ok(turns>3 && turns<48);
+});
+
+test('C12R.9 review P2: range maxBytes independently caps ContextPort reply',async()=>{
+  const body='🌎'.repeat(40000);
+  const port=portFor(historyState('ranged',body),128*1024);
+  let cursor=0;
+  const parts=[];
+  for(let i=0;i<100;i++){
+    const result=await port.fetch('ranged',undefined,{offset:cursor,maxBytes:4096});
+    assert.equal(result.kind,'chunk');
+    assert.ok(Buffer.byteLength(JSON.stringify(result))<=4096);
+    const bytes=Buffer.from(result.base64,'base64');
+    assert.ok(bytes.length>0);
+    parts.push(bytes);
+    cursor+=bytes.length;
+    if(result.nextOffset===undefined) break;
+    assert.equal(result.nextOffset,cursor);
+  }
+  assert.equal(Buffer.concat(parts).toString('utf8'),body);
+  assert.equal((await port.fetch('ranged',undefined,{offset:0,maxBytes:-1})).reason,'invalid_offset');
+  assert.equal((await port.fetch('ranged',undefined,{offset:0,maxBytes:1.1})).reason,'invalid_offset');
+});
+
+test('C12R.9 review P2: MCP transport receives readable chunks with fetchMaxBytes 512 KiB',async()=>{
+  const original='MCP byte result '.repeat(19000);
+  const state=historyState('mcp-large-fetch',original);
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,contextAccess:portFor(state,512*1024)});
+  try{
+    const bytes=[];
+    let offset=0;
+    for(let id=1;id<15;id++){
+      const res=await fetch(bridge.url,{method:'POST',
+        headers:{'content-type':'application/json','mcp-protocol-version':'2025-06-18'},
+        body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',
+          params:{name:'context_fetch',arguments:{ref:'mcp-large-fetch',offset}}})});
+      assert.equal(res.status,200);
+      const text=await res.text();
+      assert.ok(Buffer.byteLength(text)<=256*1024,'MCP full JSON-RPC envelope must stay bounded');
+      const outer=JSON.parse(text);
+      const part=JSON.parse(outer.result.content[0].text);
+      assert.equal(part.kind,'chunk',JSON.stringify(part).slice(0,100));
+      assert.equal(part.offset,offset);
+      const data=Buffer.from(part.base64,'base64');
+      assert.ok(data.length>0);
+      bytes.push(data);
+      if(part.nextOffset===undefined) break;
+      offset=part.nextOffset;
+    }
+    assert.equal(Buffer.concat(bytes).toString('utf8'),original);
+  }finally{stop.abort();bridge.close();}
+});
