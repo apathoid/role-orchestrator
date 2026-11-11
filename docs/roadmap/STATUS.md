@@ -3,17 +3,17 @@
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 **C12R.9.0 baseline (synthetic, 2026-11-11):** на предыдущем HEAD подтверждены hard cap 128, несвязанный byte budget dynamic facts и несоответствие terminal/effect. Добавлена красная регрессия для этих границ и optional no-MCP retrieval; это ещё не native acceptance и не PASS новой функциональности.
 
-**C12R.9.1:** presentation-only conservative byte + attempt/providerRef/provenance dedup added; original observations and refs remain in journal. CI of this incremental commit is pending; synthetic regression covers independent equal-text reports.
+**C12R.9.1:** presentation-only conservative byte + attempt/providerRef/provenance dedup added; original observations and refs remain in journal. Исходная полная регрессия C12R.9 прошла на `1633a30`; review исправления проверены полным CI на `1ea0a2f`.
 
-**C12R.9.2:** independent trusted context byte budgets wired through config/direct API, skills, handoff, fetch, capture and tools. Legacy maxBytes is a controller-only alias with exclusivity validation. 128-record ceiling removed. Dynamic Controller map bounding is completed by C12R.9.3; stage-level checks await CI.
+**C12R.9.2:** independent trusted context byte budgets wired through config/direct API, skills, handoff, fetch, capture and tools. Legacy maxBytes is a controller-only alias with exclusivity validation. 128-record ceiling removed. Dynamic Controller map bounding is completed by C12R.9.3; итоговый доступный инженерный CI SUCCESS на `1ea0a2f`.
 
-**C12R.9.3:** derived bounded Action/Attempt/Outcome/ref map projected from existing operation journal, with separate terminal effect uncertainties and totals/omission counters. Optional technical/history share measured budget; no index or persisted projection. CI remains pending.
+**C12R.9.3:** derived bounded Action/Attempt/Outcome/ref map projected from existing operation journal, with separate terminal effect uncertainties and totals/omission counters. Optional technical/history share measured budget; no index or persisted projection. Итоговый доступный инженерный CI SUCCESS на `1ea0a2f`.
 
-**C12R.9.4:** optional model-authored nextController.contextRequest (refs/cursor) decoded and journaled with the Decision. Read-only existing ContextPort materialization runs asynchronously before the next provider invocation, outside serialized state mutations; MCP remains optional. Synthetic no-MCP regression added; CI pending.
+**C12R.9.4:** optional model-authored nextController.contextRequest (refs/cursor) decoded and journaled with the Decision. Read-only existing ContextPort materialization runs asynchronously before the next provider invocation, outside serialized state mutations; MCP remains optional. Synthetic no-MCP regression added; итоговый доступный инженерный CI SUCCESS на `1ea0a2f`.
 
 **C12R.9.5:** clarified Host-only semantics of explicit Action.skills; tested native tools need no Host Catalog entry and invalid explicitly selected catalog ID still rejects without changing permissions. Native provider smoke UNVERIFIED.
 
-**C12R.9.6:** bounded body-free diagnostics now distinguish measured host-context serialization, model-requested retrieval and observed provider reply/usage (unknown remains null); adapter-internal token window is not inferred. Added regression for redaction and correlation. CI pending.
+**C12R.9.6:** bounded body-free diagnostics now distinguish measured host-context serialization, model-requested retrieval and observed provider reply/usage (unknown remains null); adapter-internal token window is not inferred. Added regression for redaction and correlation; итоговый инженерный CI SUCCESS на `1ea0a2f`.
 
 **C12R.9.7:** нормативные контракты, CHANGELOG и единственная tests/ACCEPTANCE_MATRIX актуализированы; синтетические регрессии выполняются в CI. Реальная native C12R.9 A/B/C сравнительная приёмка **UNVERIFIED**: в GitHub Actions нет доступной authenticated model/Zed с доказанными tools. Итоговые регрессии и Nix проверки можно считать verified только после SUCCESS привязанного к конечному HEAD, не по промежуточным коммитам.
 
