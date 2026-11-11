@@ -256,8 +256,8 @@ function snapshot(input, path) {
                 (routeReasoning.selectionSource === 'model') !== Boolean(selected?.reasoningLevel)) {
               invalid(at + '.route.reasoning.selectionSource', 'the recorded Controller preference or default');
             }
-            if (routeReasoning.mode === 'selectable' && selected?.reasoningLevel &&
-                selected.reasoningLevel !== routeReasoning.level) {
+            if (selected?.reasoningLevel &&
+                (routeReasoning.mode !== 'selectable' || selected.reasoningLevel !== routeReasoning.level)) {
               invalid(at + '.route.reasoning.level', 'the Controller decision requested level');
             }
           } else {

@@ -27,6 +27,17 @@ test('C11R.3 one-shot selection comes only from accepted durable decision', () =
   const damaged=JSON.parse(encodeSnapshot(state));
   damaged.events[2].route.reasoning.level='low';
   assert.equal(decodeSnapshot(JSON.stringify(damaged)).kind,'corrupt');
+  for (const reasoning of [
+    {mode:'native'},
+    {mode:'selectable',level:'low',nativeValue:'ultra',selectionSource:'model'},
+    {mode:'selectable',level:'high',nativeValue:'ultra',selectionSource:'default'},
+    undefined,
+  ]) {
+    const copy=JSON.parse(encodeSnapshot(state));
+    copy.events[2].route.reasoning=reasoning;
+    copy.attempts[0].route.reasoning=reasoning;
+    assert.equal(decodeSnapshot(JSON.stringify(copy)).kind,'corrupt',JSON.stringify(reasoning));
+  }
   const different=JSON.parse(encodeSnapshot(state));
   different.events[1].reasoningDecisionId='unknown';
   assert.equal(decodeSnapshot(JSON.stringify(different)).reason.path,'$.events[1].reasoningDecisionId');
