@@ -449,6 +449,8 @@ test('C12R.9 review P1: ACP Worker final message reaches Controller once without
     const controller = {profileId:'primary',providerId:'synthetic-controller',model:'fixture'};
     const worker = {profileId:'acp-worker',providerId:'acp',model:'fixture'};
     const {api} = setup({profile:controller,provider:fakeController,
+      authority:createAuthorityGrant({reference:'fixture-authority',origin:'user',
+        profileIds:['primary','acp-worker']}),
       extraCatalog:[{kind:'profile',value:worker}],maxInvocations:4,
       providerFor: profile => profile.profileId === 'acp-worker' ? endpoint : fakeController});
     const result=await (await api.submit(request())).completion;
