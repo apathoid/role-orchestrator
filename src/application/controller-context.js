@@ -124,6 +124,32 @@ export function operationHistory(state) {
 }
 
 /**
+ * Only a provider ref in the same attempt and provenance identifies the same
+ * reported source. Byte identity is checked independently; similar claims from
+ * different sources are never collapsed. Raw history remains unchanged.
+ * @param {readonly ContextItem[]} items
+ * @returns {ContextItem[]}
+ */
+export function deduplicateInlineResults(items) {
+  /** @type {Map<string, ContextItem>} */
+  const seen = new Map();
+  return items.map(item => {
+    if (!item.attemptId || !item.providerRef || item.value === undefined || !item.provenance) return item;
+    const key = JSON.stringify([item.attemptId, item.providerRef, item.source,
+      item.provenance.kind, item.provenance.sourceId]);
+    const earlier = seen.get(key);
+    if (!earlier) {
+      seen.set(key, item);
+      return item;
+    }
+    if (JSON.stringify(earlier.value) !== JSON.stringify(item.value)) return item;
+    const { value: _discardedInlineCopy, excerpt: _excerpt, ...metadata } = item;
+    return { ...metadata, completeness: 'unavailable', unavailableReason: 'duplicate_inline',
+      duplicateOf: earlier.ref };
+  });
+}
+
+/**
  * @param {Operation} state @param {readonly CatalogEntry[]} catalog
  * @param {FieldError | undefined} correction
  * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {number} [maxBytes]
@@ -132,7 +158,7 @@ export function operationHistory(state) {
  */
 export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences) {
   const [request, ...history] = operationHistory(state);
-  const { context, omitted, excerpted } = compactContext(history.reverse(), maxBytes, false);
+  const { context, omitted, excerpted } = compactContext(deduplicateInlineResults(history.reverse()), maxBytes, false);
   const previous = state.events.findLast(item => item.kind === 'operation.finished');
   const unresolved = previous?.assessment.requirements.flatMap(({ requirementId, status }) =>
     status === 'fulfilled' ? [] : [{ requirementId, status }]);

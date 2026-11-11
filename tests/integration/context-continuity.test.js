@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { compactContext } from '../../src/application/context-bundle.js';
-import { coordinationFacts, controllerContext, operationHistory } from '../../src/application/controller-context.js';
+import { coordinationFacts, controllerContext, operationHistory, deduplicateInlineResults } from '../../src/application/controller-context.js';
 import { decodeDecision } from '../../src/core/contracts.js';
 import { createOperation } from '../../src/core/operation.js';
 import { request, outcome } from '../fixtures/core.js';
@@ -51,4 +51,24 @@ test('C12R.9: oversized dynamic facts cannot bypass optional controller budget',
     'the host technical projection must share the optional budget');
   assert.ok(payload.some(item => item.ref === 'host:invocation-context'));
   assert.equal(operationHistory(state).filter(item => item.ref.startsWith('observation-')).length, 250);
+});
+
+test('C12R.9.1: dedup requires provider identity, attempt, provenance and identical bytes', () => {
+  const item = (ref, providerRef, attemptId, value) => ({
+    ref, providerRef, attemptId, value, source: 'model_claim', completeness: 'complete',
+    provenance: { kind: 'model', sourceId: 'agent' },
+  });
+  const history = [
+    item('one', 'source-result', 'attempt-a', 'full report'),
+    item('duplicate', 'source-result', 'attempt-a', 'full report'),
+    item('independent', 'other-source', 'attempt-a', 'full report'),
+    item('other-attempt', 'source-result', 'attempt-b', 'full report'),
+    item('changed', 'source-result', 'attempt-a', 'different report'),
+  ];
+  const derived = deduplicateInlineResults(history);
+  assert.equal(derived.filter(x => x.value === 'full report').length, 3);
+  assert.equal(derived[1].duplicateOf, 'one');
+  assert.equal(derived[1].unavailableReason, 'duplicate_inline');
+  assert.equal(history[1].value, 'full report');
+  assert.equal(derived[4].value, 'different report');
 });
