@@ -36,7 +36,7 @@ test('a configured byte budget compacts history and preserves selected refs and 
         const ref = refs.get('recorded-payload');
         const page = invocation.contextAccess.list();
         assert.equal(page.kind, 'available');
-        assert.ok(page.items.some(item => item.ref === ref));
+        assert.equal(page.items.find(item => item.ref === ref)?.unavailableReason, 'payload');
         assert.deepEqual(await invocation.contextAccess.fetch(ref),
           { kind: 'unavailable', reason: 'payload' });
         const recent = await invocation.contextAccess.fetch(refs.get('recent'));
@@ -112,4 +112,50 @@ test('a tiny budget reports missing and omitted refs separately and keeps litera
   assert.equal(summary.value.selected, 3);
   assert.equal(summary.value.omitted, 2);
   assert.ok(!invocations[2].context.some(item => item.ref === optionalRef || item.ref === 'unknown-ref'));
+});
+
+test('C12R.4 ambiguous legacy refs never expose one of the conflicting payloads', async () => {
+  const {bindContextAccess}=await import('../../src/application/context-access.js');
+  const {createOperation,applyEvent}=await import('../../src/core/operation.js');
+  let state=createOperation('op',request(),'grant',{maxInvocations:4,maxConcurrentInvocations:1});
+  let n=0;
+  for(const attemptId of ['a','b']){
+    for(const event of [
+      {kind:'attempt.reserved',attemptId,actionId:attemptId},
+      {kind:'attempt.dispatched',attemptId},
+      {kind:'attempt.outcome',outcome:outcome(attemptId),dispatchCertainty:'sent',
+        observations:[{ref:'same',source:'provider_reported',completeness:'complete',value:attemptId}]},
+    ]){
+      const next=applyEvent(state,{...event,operationId:'op',eventId:'e'+(++n),receivedAt:n});
+      assert.equal(next.kind,'applied'); state=next.state;
+    }
+  }
+  const port=bindContextAccess({state,store:{},maxBytes:4096,profileId:'primary',attemptId:'next',
+    isActive:()=>true,newId:()=> 'id',now:()=>1,receive:()=>{}});
+  const entries=port.list().items.filter(item=>item.ref==='same');
+  assert.equal(entries.length,1);
+  assert.equal(entries[0].unavailableReason,'ambiguous');
+  assert.deepEqual(await port.fetch('same'),{kind:'unavailable',reason:'ambiguous'});
+  assert.deepEqual(await port.fetch(entries[0].receivedSequence),{kind:'unavailable',reason:'ambiguous'});
+});
+test('C12R.4 a known oversized artifact with missing bytes is not reported as merely budget-limited', async () => {
+  const {bindContextAccess}=await import('../../src/application/context-access.js');
+  const {createOperation,applyEvent}=await import('../../src/core/operation.js');
+  let state=createOperation('op',request(),'grant',{maxInvocations:4,maxConcurrentInvocations:1});
+  let n=0;
+  for(const event of [
+    {kind:'attempt.reserved',attemptId:'a',actionId:'a'},
+    {kind:'attempt.dispatched',attemptId:'a'},
+    {kind:'attempt.outcome',outcome:outcome('a'),dispatchCertainty:'sent',
+      observations:[{ref:'artifact:one',source:'provider_reported',completeness:'complete',
+        artifact:{ref:'sha256:'+'a'.repeat(64),size:1024,originalSize:1024,truncated:false}}]},
+  ]){
+    const next=applyEvent(state,{...event,operationId:'op',eventId:'e'+(++n),receivedAt:n});
+    assert.equal(next.kind,'applied'); state=next.state;
+  }
+  for (const [presence, reason] of [['missing','payload'],['retention','retention'],['present','budget']]){
+    const port=bindContextAccess({state,store:{artifactPresence:async()=>presence},maxBytes:16,
+      profileId:'primary',attemptId:'next',isActive:()=>true,newId:()=> 'id',now:()=>1,receive:()=>{}});
+    assert.deepEqual(await port.fetch('artifact:one'),{kind:'unavailable',reason});
+  }
 });

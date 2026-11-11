@@ -206,3 +206,5 @@ OBSERVED: [CI #42805542909](https://github.com/apathoid/role-orchestrator/action
 |---|---|
 | A08, A32, A38 | `tests/integration/handoff.test.js`, `extensions.test.js`, `codex-provider.test.js`, `tests/contracts/acp-provider.test.js`: selected skill material/metadata, scope, unavailable/truncated and actual subprocess/ACP prompt. New HEAD execution pending; native behavior UNVERIFIED. |
 | A09–A12, A19–A26, A28, A40, A44–A54 | `reasoning-failure.test.js`, `reasoning-controller.test.js`, `resume.test.js`: local Controller failure, ready reservation fairness, mixed durable worker recovery; execution pending. |
+
+C12R.4 regression additions: `tests/integration/context.test.js` (ambiguous legacy references, directory/fetch cause, oversized missing/retained/present artifact); existing `evidence-addressing.test.js`, `context-quality.test.js`, `mcp-context.test.js` and finding/summary tests cover scoped historical retrieval and attribution. Verification remains pending on the implementation HEAD.

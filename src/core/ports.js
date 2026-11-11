@@ -94,7 +94,7 @@
  *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'ambiguous' | 'retention' | 'budget' | 'integrity_error' | 'closed'}} ContextFetch
  * @typedef {NonNullable<ContextItem['receivedSequence']>} ContextPosition
  * @typedef {Pick<ContextItem, 'source' | 'completeness' | 'attemptId' | 'receivedSequence' |
- *   'providerRef' | 'kind' | 'outputKind'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem
+ *   'providerRef' | 'kind' | 'outputKind' | 'unavailableReason'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem
  * @typedef {{kind: 'available', items: ContextDirectoryItem[], nextCursor?: number} |
  *   {kind: 'unavailable', reason: 'closed' | 'invalid_cursor'}} ContextList
  * @typedef {(share: {sourceOperationId: string, targetOperationId: string, ref: string, profileId: string}) => boolean} ContextShare

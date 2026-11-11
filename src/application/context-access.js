@@ -13,10 +13,11 @@ const pageBytes = 8192;
 function directoryEntry(item) {
   const { ref, source, completeness, attemptId, receivedSequence, kind, outputKind } = item;
   const entry = { ref, source, completeness, attemptId, receivedSequence, kind, outputKind,
+    unavailableReason: item.unavailableReason,
     providerRef: item.providerRef?.slice(0, 96).toWellFormed(),
     reportedLocation: item.reportedContext?.location?.slice(0, 96).toWellFormed() };
   if (Buffer.byteLength(JSON.stringify(entry)) <= 1024 || !receivedSequence) return structuredClone(entry);
-  return { ref: { ...receivedSequence }, source, completeness, receivedSequence: { ...receivedSequence } };
+  return { ref: { ...receivedSequence }, source, completeness, unavailableReason: item.unavailableReason, receivedSequence: { ...receivedSequence } };
 }
 
 /**
@@ -91,7 +92,7 @@ export function bindContextAccess(scope) {
             const presence = await store.artifactPresence?.(item.artifact);
             if (!isActive()) return unavailable('closed');
             if (!allowed()) return unavailable('denied');
-            return unavailable(presence === 'retention' ? 'retention' : 'budget');
+            return unavailable(presence === 'retention' ? 'retention' : presence === 'missing' ? 'payload' : 'budget');
           }
           const result = await store.readArtifact?.(item.artifact, item.artifact.size);
           if (!isActive()) return unavailable('closed');
@@ -106,7 +107,7 @@ export function bindContextAccess(scope) {
           return unavailable(isActive() ? 'payload' : 'closed');
         }
       }
-      if (item.completeness === 'unavailable') return unavailable(item.unavailableReason === 'ambiguous' ? 'ambiguous' : 'payload');
+      if (item.completeness === 'unavailable') return unavailable(item.unavailableReason ?? 'payload');
       const bounded = boundContextItem(item, maxBytes, maxBytes);
       return bounded ? { kind: 'available', item: structuredClone(bounded) } : unavailable('budget');
     },

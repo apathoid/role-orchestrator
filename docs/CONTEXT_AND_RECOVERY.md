@@ -100,3 +100,5 @@ List возвращает исправные snapshots и отдельные з�
 ### Восстановление принятых Actions
 
 Journal admissions, cancellation, reservations и outcomes определяют восстановление. Принятый, ещё не отправленный Worker может продолжиться после restart, включая локальную техническую остановку Controller; reserved/not_sent сохраняет attempt id и charge. Dispatched orphan остаётся unknown/lookup, terminal не воспроизводится. Не запускаются отменённые/отклонённые actions или действия без выполненной model-acceptance зависимости. Локальный Controller failure сохраняется; recovery не вызывает автоматический повтор Controller. Для явного продолжения Controller используется существующий user follow-up.
+
+C12R.4: ContextPort directory metadata includes the technical unavailable reason when known. A known reference whose payload has disappeared is distinct from an oversized but present artifact; retention, missing payload, ambiguity and budget remain distinct. A legacy ambiguous reference exposes neither competing record, including positional fetch. This does not introduce a semantic retrieval or freshness gate.
