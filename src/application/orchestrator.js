@@ -1305,27 +1305,7 @@ export function createOrchestrator(deps) {
             }
           }
         }
-        if (!correction) correction = {code:'INVALID_PROPOSAL',path:'
-      }).finally(() => releaseAttempt(attemptId));
-      if (next.status !== 'active') {
-        if (controllerFailureWaiting(next)) {
-          await runRecoveredWorkers(next, pending, execution, lookups);
-          return inspect(operationId);
-        }
-        return next;
-      }
-      if (settleCancellation.length) await Promise.all(settleCancellation);
-      if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
-        (action, signal) => dispatchWorker(next, action, signal, execution, lookups),
-        (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
-        pending, selection.policy, selection.newResult);
-    }
-    return inspect(operationId);
-  }
-
-  return { submit, resume, inspect, inspectFinding, findRequest, cancel, close };
-}
-,expected:'a valid Decision'};
+        if (!correction) correction = {code:'INVALID_PROPOSAL',path:'$',expected:'a valid Decision'};
         // The decoder's path can contain an arbitrary unknown key. Keep the
         // technical correction bounded; never persist the rejected body here.
         correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
