@@ -396,3 +396,15 @@ test('C11R review P1: ACP refusal carries specific pre-prompt reasoning cause', 
     assert.equal(result.outcome.effect,'none');
     await assert.rejects(access(join(cwd,'prompt-effort')),{code:'ENOENT'});
   }));
+
+test('C12R.6.0 selected structured skill material crosses the actual ACP prompt boundary', linux, () =>
+  withOwnedRun('C12R-acp-skills', async cwd => {
+    await using call = await invoke(provider(cwd,'skill-delivery'), {
+      skillInstructions:[{id:'checks',version:'v1',status:'complete',instructions:'Selected ACP skill'},
+        {id:'partial',version:'v2',status:'truncated',instructions:'Partial'},
+        {id:'missing',status:'unavailable',reason:'loader_unavailable'}],
+    });
+    const result = await call.completion;
+    assert.equal(result.outcome.terminal,'completed');
+    assert.equal(result.output,'skills delivered');
+  }));

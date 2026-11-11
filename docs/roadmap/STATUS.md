@@ -2,7 +2,7 @@
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 **Последний полностью выполненный инженерный этап:** C12.9 (Linux Nix и NixOS module evaluation).
-**Следующий шаг:** C12R.6.0 — доставка и scope skills; затем C12R.1. C12R.0 зафиксировал baseline и доступное evidence, воспроизведения lifecycle/snapshot продолжаются в адресных regression tests. C12.3/C12.4 и native NixOS acceptance остаются открытыми, не повторять C12.0.
+**Следующий шаг:** C12R.1 — независимость Controller/Workers, fairness и recovery. C12R.0 зафиксировал baseline и доступное evidence, воспроизведения lifecycle/snapshot продолжаются в адресных regression tests. C12.3/C12.4 и native NixOS acceptance остаются открытыми, не повторять C12.0.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
@@ -21,8 +21,8 @@
 | Шаг | Состояние |
 |---|---|
 | C12R.0 | Baseline recorded; renderer omission OBSERVED; lifecycle/snapshot SUPPORTED, отдельные regression tests pending |
-| C12R.6.0 | NEXT — skills scope/delivery/identity |
-| C12R.1 | PLANNED — независимые Actions, fairness, recovery |
+| C12R.6.0 | Implemented — selected structured skill delivery, scope and identity; new CI pending |
+| C12R.1 | NEXT — независимые Actions, fairness, recovery |
 | C12R.2 | PLANNED — reasoning provenance |
 | C12R.3 | PLANNED — диагностика |
 | C12R.4 | PLANNED — context/evidence |

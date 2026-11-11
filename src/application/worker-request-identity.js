@@ -19,6 +19,9 @@ import {createHash} from 'node:crypto';
 export function workerRequestHash({handoff, action, context, instructions, skillInstructions, attachments, requiredCapabilities}) {
   const {actionId, retryOf, retryBasis, ...semanticAction} = action;
   const payload = {
+    // Earlier hashes covered loaded skill text that the built-in renderer did
+    // not send. Do not reuse that historical idempotency key for corrected input.
+    ...(skillInstructions.length ? {skillDelivery: 'structured-v1'} : {}),
     semanticAction, objective: handoff.objective, expectedResult: handoff.expectedResult,
     continuationReference: handoff.continuationReference, instructions, skillInstructions,
     context, userConstraints: handoff.userConstraints, workspaceContext: handoff.workspaceContext,

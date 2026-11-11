@@ -86,10 +86,17 @@ agent()
   .onRequest(a.session.prompt, async ({ params, client }) => {
     const prompt = params.prompt[0].text;
     const marker = '\n\nInvocation (JSON):\n';
-    const { objective, attemptId, kind, profileId, operationId, context } = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length));
+    const { objective, attemptId, kind, profileId, operationId, context, skillInstructions } = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length));
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
+    if (scenario === 'skill-delivery') {
+      assert.deepEqual(skillInstructions,[{id:'checks',version:'v1',status:'complete',instructions:'Selected ACP skill'},
+        {id:'partial',version:'v2',status:'truncated',instructions:'Partial'},
+        {id:'missing',status:'unavailable',reason:'loader_unavailable'}]);
+      await message('result','skills delivered');
+      return {stopReason:'end_turn'};
+    }
     if (scenario === 'host-relay') {
       if (objective === 'slow-relay') {
         await writeFile('relay-ready', '');

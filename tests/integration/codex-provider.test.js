@@ -44,16 +44,20 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
     assert.deepEqual(invocation.userConstraints, ['Keep the original task']);
     if (invocation.kind === 'delegate') {
       assert.equal(invocation.expectedResult, 'Report command outcome');
+      assert.deepEqual(invocation.skillInstructions, [{id:'checks',version:'v1',status:'complete',instructions:'Selected CLI skill'}]);
+      assert.ok(!invocation.instructions.includes('Selected CLI skill'));
       emit('item.completed', {item: {type: 'command_execution', id: 'command-1',
         command: 'npm test', aggregated_output: 'fixture failed', status: 'failed', exit_code: 9}});
       message('Build failed');
     } else if (host.outcomes.length === 0) {
       assert.equal(invocation.objective, ${JSON.stringify(task)});
       assert.ok(prompt.startsWith('Return exactly one JSON object'));
+      assert.ok(!Object.hasOwn(invocation,'skillInstructions'));
+      assert.ok(!Object.hasOwn(host.catalog.find(item => item.kind === 'skill').value,'instructions'));
       message('I will delegate.', 'progress');
       message(JSON.stringify(decision({
         additions: [{actionId: 'worker', kind: 'delegate', objective: 'Run check', profileId: 'primary',
-          contextRefs: [], dependsOn: [], expectedResult: 'Report command outcome'}],
+          contextRefs: [], dependsOn: [], skills:['checks'], expectedResult: 'Report command outcome'}],
         waitPolicy: {kind: 'all_requested', targets: [{kind: 'action', id: 'worker'}]},
       })));
     } else {
@@ -63,7 +67,7 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
       message(JSON.stringify(decision({finalAssessment: assessment({answer: 'The check failed', observationRefs: [tool.ref]})})));
     }
     complete();
-  `);
+  `, {extraCatalog:[{kind:'skill',value:{id:'checks',version:'v1',instructions:'Selected CLI skill'}}]});
   const state = await (await api.submit(request({ text: task, userConstraints: ['Keep the original task'] }))).completion;
   assert.equal(state.status, 'finished');
   assert.equal(state.assessment.overall, 'partial');

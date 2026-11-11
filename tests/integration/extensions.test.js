@@ -175,6 +175,7 @@ test('skill restrictions travel verbatim while a skill cannot grant a restricted
     const result = await (await api.submit(request({ userConstraints: ['Preserve the explicit user constraint.'] }))).completion;
     assert.equal(result.status, 'finished');
     assert.deepEqual(launched, ['primary']);
+    assert.equal(result.attempts.find(attempt => attempt.actionId === 'primary').outcome.terminal, 'completed');
     assert.ok(result.attempts.some(attempt => attempt.actionId === 'secondary' &&
       attempt.outcome.diagnostics.some(item => item.code === 'PERMISSION_DENIED')));
     assert.equal(invocations.length, 2);

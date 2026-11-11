@@ -5,7 +5,7 @@ import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { applyEvent, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
-import { handoffContext, prepareHandoff } from './handoff.js';
+import { handoffContext, materializeSkillInstructions, prepareHandoff } from './handoff.js';
 import { workerRequestHash } from './worker-request-identity.js';
 import { findingHistory } from './finding-history.js';
 import { bindContextAccess } from './context-access.js';
@@ -698,16 +698,8 @@ export function createOrchestrator(deps) {
       }
       signal.throwIfAborted();
       requireAuthority();
-      /** @type {import('../core/ports.js').SkillInstructions[]} */
-      const skillInstructions = [];
-      let skillBytes = contextMaxBytes;
-      for (const id of new Set(action?.skills)) {
-        if (!catalog.loadSkill) break;
-        signal.throwIfAborted();
-        const skill = await withinDeadline(catalog.loadSkill(id, skillBytes, signal));
-        skillInstructions.push(skill);
-        if (skill.instructions !== undefined) skillBytes -= Buffer.byteLength(JSON.stringify(skill.instructions)) - 2;
-      }
+      const skillInstructions = handoff?.skillInstructions?.length
+        ? await withinDeadline(materializeSkillInstructions(handoff.skillInstructions, catalog, contextMaxBytes, signal)) : [];
       const attachments = handoff ? handoff.attachments ?? [] : state.request.attachments;
       const requiredCapabilities = new Set(handoff?.requiredCapabilities);
       if (attachments.some(item => item.mediaType.toLowerCase().startsWith('image/'))) {

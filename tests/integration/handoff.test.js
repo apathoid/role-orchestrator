@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handoffContext, prepareHandoff } from '../../src/application/handoff.js';
+import { handoffContext, materializeSkillInstructions, prepareHandoff } from '../../src/application/handoff.js';
 import { createOperation, decodeRequest } from '../../src/main/index.js';
 import { request } from '../fixtures/core.js';
 
@@ -31,7 +31,8 @@ test('delegate handoff retains the chosen profile, trusted authority and only se
   ]);
   assert.equal(result.handoff.objective, action.objective);
   assert.equal(result.handoff.expectedResult, action.expectedResult);
-  assert.deepEqual(result.handoff.instructions, ['Review the result.', 'Assess recorded checks.']);
+  assert.deepEqual(result.handoff.instructions, ['Review the result.']);
+  assert.deepEqual(result.handoff.skillInstructions, [{id:'checks',status:'complete',instructions:'Assess recorded checks.'}]);
   assert.deepEqual(result.handoff.userConstraints, ['Read only']);
   assert.equal(result.handoff.profile, profile);
   assert.equal(result.handoff.authorityRef, 'trusted');
@@ -45,4 +46,27 @@ test('missing catalog entries produce a scoped refusal before invocation', () =>
     code: 'CAPABILITY_UNAVAILABLE', operationId: 'op', actionId: 'review-id',
     dispatchCertainty: 'not_sent', effect: 'none',
   });
+});
+
+test('selected inline and loaded skills are attributed, bounded, and never duplicated or substituted', async () => {
+  const selected = [{id:'inline',version:'v1',status:'complete',instructions:'abc'},
+    {id:'loaded',version:'v2',status:'unavailable',reason:'not_loaded'},
+    {id:'changed',version:'v1',status:'unavailable',reason:'not_loaded'},
+    {id:'missing',status:'unavailable',reason:'not_loaded'}];
+  const calls = [];
+  const catalog = {async loadSkill(id) {
+    calls.push(id);
+    if (id === 'loaded') return {id,version:'v2',status:'complete',instructions:'😀😀'};
+    if (id === 'changed') return {id,version:'v2',status:'complete',instructions:'wrong version'};
+    return {id,status:'unavailable',reason:'resource_unavailable'};
+  }};
+  const signal = new AbortController().signal;
+  const material = await materializeSkillInstructions(selected,catalog,8,signal);
+  assert.deepEqual(calls,['loaded','changed','missing']);
+  assert.deepEqual(material,[{id:'inline',version:'v1',status:'complete',instructions:'abc'},
+    {id:'loaded',version:'v2',status:'truncated',instructions:'😀'},
+    {id:'changed',version:'v1',status:'unavailable',reason:'version_changed'},
+    {id:'missing',status:'unavailable',reason:'resource_unavailable'}]);
+  assert.deepEqual(await materializeSkillInstructions([selected[1]],{},32,signal),
+    [{id:'loaded',version:'v2',status:'unavailable',reason:'loader_unavailable'}]);
 });

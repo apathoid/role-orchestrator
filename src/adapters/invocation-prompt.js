@@ -30,7 +30,7 @@ export function renderInvocationPrompt(request, transportDetail) {
   const output = kind === 'controller' ? decisionFormat :
     'Return the requested result in your final message. Plain text or the structured text specified by the task is accepted.';
   return output + '\n' + transportDetail + '\n\nInvocation (JSON):\n' + JSON.stringify({
-    kind, operationId, attemptId, actionId, profileId, objective, instructions,
+    kind, operationId, attemptId, actionId, profileId, objective, instructions, skillInstructions,
     userConstraints, context, expectedResult, continuationReference,
   });
 }
