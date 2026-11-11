@@ -100,7 +100,8 @@ test('C12R.8.3 oversized MCP request and response remain bounded without losing 
     assert.equal(executed, 0);
     const response = await invoke(bridge.url, 2, 'large', {});
     assert.equal(response.status, 200);
-    assert.deepEqual(value(response), { kind: 'unavailable', reason: 'budget' });
+    assert.equal(response.body.result.isError, true);
+    assert.deepEqual(value(response), { kind: 'unavailable', reason: 'budget', effect: 'unknown' });
     assert.equal(executed, 1);
   } finally {
     stop.abort();

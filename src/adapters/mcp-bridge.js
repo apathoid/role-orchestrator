@@ -68,7 +68,10 @@ function toolReply(value) {
         ...(typeof tool.callId === 'string' ? { callId: tool.callId } : {}),
         ...(typeof tool.ref === 'string' ? { ref: tool.ref } : {}),
         outputUnavailableReason: 'budget' }
-    : { kind: 'unavailable', reason: 'budget' };
+    : { kind: 'unavailable', reason: 'budget',
+        effect: tool && typeof tool.effect === 'string' && toolEffects.has(tool.effect) ? tool.effect : 'unknown',
+        ...(typeof tool?.callId === 'string' ? { callId: tool.callId } : {}),
+        ...(typeof tool?.ref === 'string' ? { ref: tool.ref } : {}) };
   return { content: [{ type: 'text', text: JSON.stringify(limited) }], isError: true };
 }
 
