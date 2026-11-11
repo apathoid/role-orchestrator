@@ -235,3 +235,18 @@ C12R.6.1–6.4: `tests/integration/c12r-coordination.test.js` combines chosen sk
 | A04, A08, A13, A34, A38, A54 | `tests/integration/retrieval-guidance.test.js`: direct Controller без обязательного retrieval при опубликованных MCP tools; `mcp-context.test.js`: explicit history fetch/Assessment; `context-quality.test.js`, `c12r-coordination.test.js`: divergent findings, truncation, replan | Synthetic paths PASS. Содержательное решение настоящей модели и native A/B quality/performance comparison UNVERIFIED |
 
 **OBSERVED:** [GitHub Actions 43030150864](https://github.com/apathoid/role-orchestrator/actions/runs/43030150864) и [43030159396](https://github.com/apathoid/role-orchestrator/actions/runs/43030159396) на `4c3f324e11b8d7ab851f893bafcbd492fd03f26d` — SUCCESS, 324/324, 0 failures/skipped; repeated root `npm test`, npm check, package/removal, Nix flake/build/install и NixOS **evaluation**. Синтетика не заменяет native C12.3/C12.4/A38/A54 или сравнительный real-model benchmark. Детали и ограничения — в [STATUS](../docs/roadmap/STATUS.md), будущий протокол — в [NATIVE_ACCEPTANCE](../docs/roadmap/NATIVE_ACCEPTANCE.md).
+
+
+## C12R.9 — непрерывность Controller / проверка качества
+
+| Контракт | Automated regression | Native quality / performance |
+| --- | --- | --- |
+| Отсутствие 128-record cap, 64+ КиБ, несколько Controller turns | `context-continuity.test.js`, `evidence-addressing.test.js`, `context.test.js` (CI outcome привязан к commit) | UNVERIFIED |
+| Inline technical duplication без потери raw refs и провайдерского provenance | `context-continuity.test.js` и существующие evidence tests | UNVERIFIED |
+| Шесть раздельных byte budgets, legacy alias и MCP fetch | `configuration.test.js`, `context.test.js`, `mcp-context.test.js` | UNVERIFIED |
+| Derived operation map, completed uncertainty, bounded history | `context-continuity.test.js`, `resume.test.js` | UNVERIFIED |
+| No-MCP optional request refs/cursor + прямое завершение + native tools | `context-continuity.test.js`, `retrieval-guidance.test.js`, `handoff.test.js` | UNVERIFIED |
+| Provider ACK, memory/tokens, comparative A/B/C, Zed, NixOS runtime | **NOT ESTABLISHED** синтетикой; точные значения только при наблюдении | UNVERIFIED |
+
+Сравнение baseline 64 КиБ / исходный код 256–512 КиБ / исправленная архитектура с одинаковыми real model, provider/adapter/skills, task, workspace и permissions остаётся обязательной частью native acceptance; число Workers или synthetic PASS само по себе не доказывает качество. Отдельная матрица C12R.9 не создаётся.
+

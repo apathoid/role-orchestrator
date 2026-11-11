@@ -105,3 +105,11 @@ nextController.continue разрешает самостоятельный ход
 ## Граница автоматизированных и native-подтверждений
 
 Синтетический ProviderPort fixture и реальные subprocess/protocol fixtures подтверждают только наблюдавшиеся события адаптера, но не результат внешней модели. `dispatchCertainty: not_sent` после невозможности открыть сессию отличается от `unknown` после потенциального dispatch; Host не повышает неизвестный эффект до `none` и не повторяет его автоматически. Принятый per-attempt reasoning selection фиксируется в immutable route вместе с configurationRef и идентичностью полного материализованного запроса. Корректность применения параметра конкретным LLM не следует из валидности JSON или локального ACP ACK.
+
+
+## C12R.9 — расширение Decision без отдельного цикла
+
+Существующий version 1 `Decision.nextController` поддерживает optional `contextRequest:{refs?:string[],cursor?:number}` вместе с `continue:true`. Достаточно непустого массива уникальных refs и/или неотрицательного safe-integer cursor. `contextRequest` без `continue:true`, пустой и неизвестные поля отклоняются адресно. Контракт не предписывает запрос истории; Controller может закончить напрямую. Принятая запись уже находится в неизменном journal и потребляется ровно следующим Controller invocation; Worker scope не расширяется. Неизвестный или неразрешённый ref не превращается в новое разрешение, повтор Worker или blind retry.
+
+`host:invocation-context.value.workMap` — derived technical projection с `total/represented/omitted`, lifecycle, attributed refs и original objective Decision ref. Недоступность body, отсутствие сохранённого artifact, бюджет и retention не выдаются за семантический результат. Terminal effect uncertainty отделена от in-flight uncertainty. Отклонения Action сохраняются техническим bounded preview; semantic relevance и окончательный Assessment принадлежат модели.
+

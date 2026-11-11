@@ -50,3 +50,9 @@ Host способен гарантировать собственный поря
 Выбранный skill материализуется в один структурированный источник (доверенный inline либо loader) и включается в фактически отправленный Invocation и его request identity. Controller получает metadata, Worker — только выбранный skill. Локальный запрет native subagents не превращается в Host keyword gate. Альтернатива — объединить весь текст skills или всегда предпочитать loader — смешивает scope/версии и ухудшает identity. Неполнота отмечается явно; модель выбирает продолжение. Не меняется native discovery самого Controller.
 
 Не вводить prompt compaction, дополнительный semantic workflow или обязательный quality score. Доказанные дефекты исправлены технически; дальнейшее изменение Controller instructions, effort или координационной стратегии оправдано только реальным comparative evidence, а не числом тестов/Workers. См. [execution](EXECUTION.md), [context and recovery](CONTEXT_AND_RECOVERY.md), [extensions](EXTENSIONS.md), [roadmap STATUS](roadmap/STATUS.md).
+
+
+## D18 — C12R.9: доставка исходной истории вместо Host-компактизации
+
+Решение: сохранить единственный Operation journal/ContextPort как source of truth, удалить доказанные duplicate **inline copies** по совпадающей технической идентичности и bytes, разделить бюджеты Controller/handoff/fetch/capture/skills/tools, отказаться от 128-record cap, дать модели компактную derived карту и добровольный `nextController.contextRequest` без MCP. Это позволяет не повторять expensive Workers при потере старой информации и не вводит parallel state/index, host importance ranking, mandatory reasoning turns, model-authored knowledge store или запрет provider-native tools. Отказ от более тяжёлого Host compaction обусловлен отсутствием доказанного native выигрыша; его нельзя незаметно включить позднее. Влияние на нативную качественную работу и стоимость должно оцениваться на настоящих моделях отдельно от PASS синтетических контрактных тестов.
+

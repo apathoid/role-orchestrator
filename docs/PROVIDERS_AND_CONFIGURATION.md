@@ -132,3 +132,11 @@ Codex CLI передаёт per-invocation значение аргументом 
 ## Подтверждённые границы нативной совместимости (10 ноября 2026)
 
 Реализация generic ACP v1 использует `@agentclientprotocol/sdk@2.4.0`, а CLI-путь — установленный `@agentclientprotocol/codex-acp@2.5.0` в качестве зависимости упаковки. Протокольные fixtures и Node 24/Linux CI проверяют разбивку messages без `messageId`, model/session option negotiation, permissions, поздние tool outcomes и shutdown; ни один из этих результатов не доказывает работу реальной модели. Codex CLI native probe завершилась HTTP 401 без `turn.completed`; для Codex ACP 2.5.0 `initialize` вернул ACP v1, но `session/new` завершился по deadline. Эти пробы не подтверждают успешный prompt, tool permission, cancel или resume в реальном Zed. Возможность выбора `thought_level` является session-specific и не обобщается на ACP в целом. Для production необходима отдельная проверка конкретных версий, настроек и credentials; чувствительные значения не фиксируются.
+
+
+## C12R.9 — независимые границы контекста
+
+В доверенном `context` schema v1 доступны положительные числовые параметры в байтах: `controllerMaxBytes` (262144 по умолчанию), `handoffMaxBytes` (65536), `fetchMaxBytes` (65536), `captureMaxBytes` (65536), `skillInstructionsMaxBytes` (65536), `toolOutputMaxBytes` (65536). Для прямого программного API действуют те же поля; каждое ограничено 16 МиБ как техническая защита от неограниченных allocations. Legacy `context.maxBytes` действует **только** как alias `controllerMaxBytes` и не может использоваться вместе с ним. Изменение Controller бюджета не поднимает лимиты fetch, capture, skills, Worker или внешних tools; если тест или потребитель требует старого совместного поведения, необходимые границы задаются отдельно и явно. Эти параметры не определяют собственное context window/число токенов провайдера.
+
+`Action.skills` ссылается только на явно зарегистрированные Host-managed Catalog ids. Отсутствие id в каталоге не ограничивает provider-native tools, skill discovery, `AGENTS.md`, проектные файлы, terminal или scripts; ошибочный *явно выбранный* Catalog id отклоняется только как Host capability. ACP и CLI сохраняют свои native механизмы без host filesystem runtime и без обязательного MCP.
+

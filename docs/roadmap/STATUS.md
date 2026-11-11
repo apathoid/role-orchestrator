@@ -15,6 +15,8 @@
 
 **C12R.9.6:** bounded body-free diagnostics now distinguish measured host-context serialization, model-requested retrieval and observed provider reply/usage (unknown remains null); adapter-internal token window is not inferred. Added regression for redaction and correlation. CI pending.
 
+**C12R.9.7:** нормативные контракты, CHANGELOG и единственная tests/ACCEPTANCE_MATRIX актуализированы; синтетические регрессии выполняются в CI. Реальная native C12R.9 A/B/C сравнительная приёмка **UNVERIFIED**: в GitHub Actions нет доступной authenticated model/Zed с доказанными tools. Итоговые регрессии и Nix проверки можно считать verified только после SUCCESS привязанного к конечному HEAD, не по промежуточным коммитам.
+
 **Последний полностью выполненный инженерный этап:** C12R.8R (implementation complete / automated regression verified для подтверждённого technical scope).
 **Следующий шаг:** **C12R.9.0** — baseline/воспроизведение потери видимости завершённых результатов Controller и проверка существующих ограничений/дублирования по [C12R.9](C12R9_CONTEXT_CONTINUITY.md). Реальная native acceptance C12.3/C12.4/C12R.7–.9, Zed/NixOS и сравнительная оценка остаются UNVERIFIED и выполняются при доступе к настоящим средам по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). Не вводить новый Host механизм только ради непроверенной гипотезы о качестве.
 
