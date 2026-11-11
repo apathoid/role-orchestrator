@@ -124,7 +124,7 @@ agent()
       return { stopReason: 'end_turn' };
     }
     if (scenario === 'mcp') {
-      assert.match(prompt, /MCP context_list and context_fetch optionally provide/);
+      assert.match(prompt, /Optional MCP context_list and context_fetch/);
       const decision = await retrieveContext(mcpUrl, { attemptId, profileId, operationId, context });
       await message('result', JSON.stringify(decision));
       return { stopReason: 'end_turn' };

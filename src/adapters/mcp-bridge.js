@@ -37,7 +37,7 @@ const fetchTool = {
 /** @param {boolean} enabled */
 export function retrievalDetail(enabled) {
   return enabled
-    ? 'MCP context_list and context_fetch optionally provide visible historical records omitted from the prompt. Decide whether retrieval helps this task; do not enumerate history by default. Report material unavailable evidence explicitly.'
+    ? 'Optional MCP context_list and context_fetch retrieve omitted history when useful. Report material unavailable evidence explicitly.'
     : 'Context retrieval is unavailable in this transport. Use the supplied context and report material missing evidence when relevant.';
 }
 
