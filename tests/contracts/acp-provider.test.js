@@ -432,8 +432,7 @@ test('C12R.9 review P1: ACP Worker final message reaches Controller once without
             contextCursor:invocation.context[1].value.contextCursor,additions:[{
               actionId:'worker',kind:'delegate',profileId:'acp-worker',objective:'produce native output',
               expectedResult:'report',dependsOn:[],contextRefs:[],
-            }],cancellations:[],waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'worker'}]}};
-        }
+            }],cancellations:[],waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'worker'}]}}};
         delivered=invocation.context.filter(item => typeof item.value === 'string' &&
           item.value.startsWith('result '));
         return {
