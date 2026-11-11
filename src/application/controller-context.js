@@ -15,12 +15,12 @@ export const controllerInstructions = [
   'Select relevant skill ids for a delegate. Selected instructions apply to that Worker task; restrictions on its native subagents do not by themselves prohibit orchestration. When doing a task yourself, honor applicable task-specific instructions. Interpret scope in context, subject to user requirements and actual permissions.',
   'Delegate when useful by selecting a profile, optional reasoningLevel, objective, expected result and context references. Use all_requested or next_completion when waiting for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'Profiles expose logical reasoning levels, not their private native mapping. Different models at the same level are not guaranteed equal. Omit reasoningLevel to use the trusted profile default or native mode.',
-  'Use nextController:{continue:true,reasoningLevel?:string} to continue thinking by yourself, including without new external events. A reasoningLevel without continue needs an independent reason to revisit. The selection is for the next Controller invocation only. No forced delegation is needed.',
+  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:string[],cursor?:number}} for an optional next Controller turn. A contextRequest selects original historical refs or a history-directory page; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Workspace files and branches may change during the operation. Use observations to decide whether earlier findings still apply and whether to read a target again. Reported locations, versions and times describe individual observations.',
   'Use optional findings for model claims that should remain available in history. Each finding has a new findingId, author (your profileId), claim, subject, supports, and uncertainties. Use an earlier finding reference in supersedes to revise it. Cite findings by their finding:<id> context reference.',
-  'When available, choose whether to use historical list/fetch; do not enumerate history by default. Model summaries are separate claims citing covered observation references.',
+  'When available, choose whether to use native historical list/fetch or nextController.contextRequest; neither is mandatory. Keep model summaries as separately attributed claims citing source references.',
   'Context excerpts are partial. Missing references and omissions from the byte budget are marked explicitly.',
   'Assess each material user requirement, including explicit checks, using fulfilled, partial, unverified or unavailable. Set the assessment author to your profileId. Cite the available observations or findings and explain any gaps.',
   'If a requested check must run after a change, distinguish evidence from before the change from evidence that covers the new state. Use unverified when a required check lacks matching confirmation and explain what remains open.',
@@ -223,13 +223,34 @@ export function operationWorkMap(state, history) {
 }
 
 /**
+ * The accepted Decision is durable. Its one-shot historical request is
+ * consumed by the next Controller reservation only, never by a Worker or by
+ * a later user continuation.
+ * @param {Operation} state @param {string} attemptId
+ */
+export function pendingControllerHistoryRequest(state, attemptId) {
+  const at = state.events.findIndex(event => event.kind === 'attempt.reserved' &&
+    event.attemptId === attemptId && event.actionId === attemptId);
+  if (at < 0) return undefined;
+  const before = state.events.slice(0, at);
+  const index = before.findLastIndex(event => event.kind === 'controller.responded');
+  if (index < 0 || before.slice(index + 1).some(event =>
+    event.kind === 'operation.continued' ||
+    (event.kind === 'attempt.reserved' && event.actionId === event.attemptId))) return undefined;
+  const choice = before[index];
+  return choice.kind === 'controller.responded' && choice.decision.nextController?.continue
+    ? choice.decision.nextController.contextRequest : undefined;
+}
+
+/**
  * @param {Operation} state @param {readonly CatalogEntry[]} catalog
  * @param {FieldError | undefined} correction
  * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {number} [maxBytes]
  * @param {Catalog['preferences']} [preferences]
+ * @param {readonly ContextItem[]} [requested]
  * @returns {ContextItem[]}
  */
-export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences) {
+export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = []) {
   const [request, ...history] = operationHistory(state);
   const previous = state.events.findLast(item => item.kind === 'operation.finished');
   const unresolved = previous?.assessment.requirements.flatMap(({ requirementId, status }) =>
@@ -321,7 +342,11 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // A real consumed byte count includes the serialized host record. Legacy
   // clients can still find the mandatory identity and the omission counters.
   used = byteLength([host]);
-  const bounded = compactContext(deduplicateInlineResults(history.reverse()),
+  // Explicitly requested records take precedence without duplicating their
+  // original inline bodies from the ordinary newest-first history.
+  const requestedRefs = new Set(requested.map(item => item.ref));
+  const candidates = [...requested, ...history.reverse().filter(item => !requestedRefs.has(item.ref))];
+  const bounded = compactContext(deduplicateInlineResults(candidates),
     Math.max(0, maxBytes - used + 1), false);
   host.value.historyBudget.omitted = bounded.omitted;
   host.value.historyBudget.excerpted = bounded.excerpted;

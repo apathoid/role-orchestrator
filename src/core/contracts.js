@@ -48,9 +48,20 @@ export const assessment = record({
 export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext });
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 /** @param {unknown} input @param {string} path */
+const contextRequest = (input, path) => {
+  const value = record({ refs: optional(ids), cursor: optional(count) })(input, path);
+  if ((!value.refs || value.refs.length === 0) && value.cursor === undefined) {
+    invalid(path, 'nonempty refs and/or cursor');
+  }
+  if (value.refs && new Set(value.refs).size !== value.refs.length) {
+    invalid(path + '.refs', 'unique references');
+  }
+  return value;
+};
 const nextController = (input, path) => {
   const value = record({ reasoningLevel: optional(id), continue: optional((value, at) =>
-    value === true ? true : invalid(at, 'true')) })(input, path);
+    value === true ? true : invalid(at, 'true')), contextRequest: optional(contextRequest) })(input, path);
+  if (!value.continue && value.contextRequest) invalid(path + '.continue', 'true for a context request');
   if (!value.continue && !value.reasoningLevel) invalid(path, 'a reasoningLevel or continue: true');
   return value;
 };

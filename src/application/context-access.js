@@ -127,3 +127,58 @@ export function bindContextAccess(scope) {
     },
   };
 }
+
+/**
+ * Optional model-requested next-turn retrieval. Reads only the existing
+ * operation's ContextPort under its active authority; no MCP requirement,
+ * extra store, automatic Worker dispatch, or semantic selection.
+ * @param {ContextPort} port
+ * @param {{refs?: readonly string[], cursor?: number}} request
+ * @param {number} maxBytes
+ * @returns {Promise<ContextItem[]>}
+ */
+export async function materializeControllerHistory(port, request, maxBytes) {
+  /** @type {ContextItem[]} */
+  const delivered = [];
+  let bytes = 0;
+  if (request.cursor !== undefined) {
+    const page = port.list(request.cursor);
+    const item = { ref: 'host:history-page:' + request.cursor, source: /** @type {const} */ ('host_observed'),
+      completeness: /** @type {const} */ ('complete'), value: page };
+    delivered.push(item);
+    bytes += Buffer.byteLength(JSON.stringify(item));
+  }
+  const refs = request.refs ?? [];
+  let represented = 0;
+  for (const ref of refs) {
+    if (bytes >= maxBytes) break;
+    const result = await port.fetch(ref);
+    /** @type {ContextItem} */
+    let item;
+    if (result.kind === 'available') {
+      item = result.bytes ? { ...result.item, artifact: undefined,
+        value: { encoding: 'base64', bytes: Buffer.from(result.bytes).toString('base64'),
+          originalArtifact: result.item.artifact },
+      } : result.item;
+    } else {
+      item = { ref, source: 'host_observed', completeness: 'unavailable',
+        unavailableReason: result.reason };
+    }
+    const size = Buffer.byteLength(JSON.stringify(item));
+    if (bytes + size > maxBytes) {
+      item = { ref, source: 'host_observed', completeness: 'unavailable',
+        unavailableReason: 'budget' };
+    }
+    const sizeAfter = Buffer.byteLength(JSON.stringify(item));
+    if (bytes + sizeAfter > maxBytes) break;
+    bytes += sizeAfter;
+    delivered.push(item);
+    represented++;
+  }
+  if (represented < refs.length) {
+    delivered.push({ ref: 'host:history-request-budget', source: 'host_observed',
+      completeness: 'complete', value: { requested: refs.length, represented,
+        omitted: refs.length - represented, maxBytes } });
+  }
+  return delivered;
+}

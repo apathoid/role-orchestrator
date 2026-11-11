@@ -105,3 +105,42 @@ test('C12R.9.3: work ledger is a derived map and records completed effect uncert
   assert.equal(ctx[1].value.effectUncertainties[0].effect,'possible');
   assert.equal(raw.find(item=>item.ref==='report').value,'saved original');
 });
+
+test('C12R.9.4: optional history request arrives next turn without MCP or reexecuting Worker', async () => {
+  const { setup, final } = await import('../fixtures/application.js');
+  const task = { actionId:'worker', kind:'delegate', profileId:'primary',
+    objective:'Create synthetic observations', expectedResult:'report',
+    dependsOn:[], contextRefs:[] };
+  let controllers = 0;
+  let workers = 0;
+  let selectedRef;
+  const { api, invocations } = setup({ context:{controllerMaxBytes:8192,fetchMaxBytes:65536},
+    maxInvocations:6, respond(invocation,count,observe) {
+      if (invocation.kind === 'delegate') {
+        workers++;
+        observe({ref:'old-report',kind:'provider_report',sourceId:'fixture',completeness:'complete',
+          value:'OLD '.repeat(900)});
+        for(let i=0;i<30;i++) observe({ref:'noise-'+i,kind:'provider_report',sourceId:'fixture',
+          completeness:'complete',value:'n'.repeat(400)});
+        return {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId)};
+      }
+      controllers++;
+      if (controllers===1) return final(invocation,{finalAssessment:undefined,additions:[task],
+        waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'worker'}]}});
+      if (controllers===2) {
+        selectedRef=invocation.contextAccess.list().items.find(item=>item.providerRef==='old-report')?.ref;
+        assert.ok(selectedRef);
+        assert.ok(!invocation.context.some(item=>item.ref===selectedRef && item.value?.startsWith?.('OLD')));
+        return final(invocation,{finalAssessment:undefined,nextController:{
+          continue:true,contextRequest:{refs:[selectedRef],cursor:0}}});
+      }
+      assert.equal(invocation.context.find(item=>item.ref===selectedRef)?.value,'OLD '.repeat(900));
+      assert.equal(invocation.context.some(item=>item.ref==='host:history-page:0'),true);
+      return final(invocation);
+    } });
+  const done=await (await api.submit(request())).completion;
+  assert.equal(done.status,'finished');
+  assert.equal(controllers,3);
+  assert.equal(workers,1);
+  assert.equal(invocations.filter(item=>item.kind==='delegate').length,1);
+});

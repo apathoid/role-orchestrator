@@ -4,11 +4,11 @@ import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
-import { controllerContext, controllerInstructions } from './controller-context.js';
+import { controllerContext, controllerInstructions, pendingControllerHistoryRequest } from './controller-context.js';
 import { handoffContext, materializeSkillInstructions, prepareHandoff } from './handoff.js';
 import { workerRequestHash } from './worker-request-identity.js';
 import { findingHistory } from './finding-history.js';
-import { bindContextAccess } from './context-access.js';
+import { bindContextAccess, materializeControllerHistory } from './context-access.js';
 import { defaultContextBudgets, maximumContextBudgetBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
 import { resolveRequestedReasoning, unavailableCapabilities } from './configuration/catalog.js';
@@ -861,8 +861,6 @@ export function createOrchestrator(deps) {
           operationId: state.operationId, attemptId, profileId: selectedProfile.profileId, authorityRef: state.authorityRef, signal,
           report: (event, reason) => trace(dispatched, event, reason, attemptId),
         });
-        mayHaveSent = true;
-        if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
         // Keep the dispatch decision and actual provider call in the same turn.
         const context = handoff ? {
           ...handoff,
@@ -897,7 +895,20 @@ export function createOrchestrator(deps) {
         });
         /** @type {Set<string> | undefined} */
         let rawRefs;
-        return { response: withinDeadline(executor.invoke(owned, {
+        return { response: withinDeadline((async () => {
+          const requested = !handoff ? pendingControllerHistoryRequest(dispatched, attemptId) : undefined;
+          if (requested) {
+            const records = await materializeControllerHistory(contextAccess, requested, controllerMaxBytes);
+            signal.throwIfAborted();
+            requireAuthority();
+            context.context = controllerContext(dispatched, entries, correction, lookups,
+              controllerMaxBytes, catalog.preferences, records);
+          }
+          signal.throwIfAborted();
+          requireAuthority();
+          mayHaveSent = true;
+          if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
+          return executor.invoke(owned, {
           ...context, reasoning, isActive, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
         }, item => {
@@ -937,7 +948,8 @@ export function createOrchestrator(deps) {
             }
           }
           trace(dispatched, 'attempt.observation_invalid', 'PROTOCOL_ERROR', attemptId);
-        }).then(acceptReply)) };
+        });
+        })().then(acceptReply)) };
       });
       const reply = await invocation.response;
       signal.throwIfAborted();
