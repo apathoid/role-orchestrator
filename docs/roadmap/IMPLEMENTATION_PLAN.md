@@ -32,6 +32,16 @@
 
 На актуальном implementation HEAD `4c3f324e11b8d7ab851f893bafcbd492fd03f26d` завершена доступная инженерная часть [C12R.8R](STATUS.md): восстановлена post-execution MCP provenance при response overflow, исправлен byte check полного JSON-RPC envelope и non-finite id, проверены общий tool/history budget, bounded cache, cancellation/late receipts, durable reopen и optional direct Controller без retrieval. **CI 324/324 PASS**; реальный Zed/ACP, независимые модели, native NixOS и качество сравнительных retrieval A/B прогонов остаются UNVERIFIED. C12R.8R не меняет обязательные runtime workflow, Host semantics, permissions или лимиты.
 
+## C12R.9 — непрерывность контекста Controller без искусственного Host knowledge
+
+**Новый следующий инженерный шаг — C12R.9.0**, согласно [детальному плану C12R.9](C12R9_CONTEXT_CONTINUITY.md). Цель — устранить причины потери Controller сведений о уже выполненной работе и обеспечить использование сохранённых результатов без ненужного повторного исполнения. Основание: native-анализ пользователя (оригинальные traces пока не повторно верифицированы) и подтверждённая исходниками политика 64 КиБ / 128 optional context records, reverse-recency и совместное применение `context.maxBytes` к разным техническим ресурсам.
+
+**Порядок:** C12R.9.0 — воспроизведение/причинная карта; C12R.9.1 — доказанные дубликаты; C12R.9.2 — корректность технических границ контекста; C12R.9.3 — минимальная связь Action/Attempt/Outcome/result, согласованность effect/terminal; C12R.9.4 — проверка ContextPort/adapter retrieval, условное минимальное расширение лишь при воспроизведённой необходимости; C12R.9.5 — адресное уточнение Host/native skills без Host project discovery; C12R.9.6 — наблюдаемость по реально контролируемым границам; C12R.9.7 — регрессия, native сравнение, документация и handoff.
+
+План **не предписывает** новый индекс, глобальное увеличение лимита, обязательный MCP, Host compaction, второй файловый runtime, новую стратегию модели либо обязательные дополнительные Controller turns. Сначала проверять существующие `outcomes`, `operationHistory`, `ContextPort`, дублирование и корректность доставки; расширять контракты только при доказанном пробеле. Инженерный порядок не является runtime workflow; модель сохраняет право на прямой ответ, собственные инструменты, делегирование и осознанную повторную проверку.
+
+Это **plan only / implementation NOT STARTED**; прежние CI результаты не подтверждают C12R.9. Нативные C12.3/C12.4/Zed/NixOS и сравнительная оценка качества остаются открытыми по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md) и [STATUS](STATUS.md).
+
 ## C12 — реализованные инженерные шаги и открытая приёмка
 
 | Шаг | Содержание | Завершение |
