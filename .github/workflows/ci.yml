@@ -42,8 +42,23 @@ jobs:
         run: nix develop --no-update-lock-file --command npm run test:core
       - name: Provider contract regression
         run: nix develop --no-update-lock-file --command npm run test:contracts
+      - name: C12R.9 review targeted integration
+        run: |
+          nix develop --no-update-lock-file --command node --test tests/integration/context-continuity.test.js tests/integration/context-chunks.test.js tests/integration/codex-provider.test.js
       - name: Integration regression
-        run: nix develop --no-update-lock-file --command npm run test:integration
+        run: |
+          set +e
+          nix develop --no-update-lock-file --command npm run test:integration > "$RUNNER_TEMP/orchestrator-integration.log" 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "Integration regressions failed with exit code $status; exact test failures follow:"
+            grep -E '✖|test at tests/|AssertionError|TypeError|SyntaxError|error TS|assert\.|at (file:|TestContext)' "$RUNNER_TEMP/orchestrator-integration.log" | head -n 160 | cut -c 1-500 || true
+            echo "Final integration summary:"
+            tail -n 55 "$RUNNER_TEMP/orchestrator-integration.log" | cut -c 1-500
+            exit "$status"
+          fi
+          tail -n 20 "$RUNNER_TEMP/orchestrator-integration.log"
       - name: Acceptance regression
         run: nix develop --no-update-lock-file --command npm run test:acceptance
       - name: Full applicable suite from root
