@@ -55,6 +55,7 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
   let terminal;
   /** @type {string | undefined} */
   let message;
+  let messageRef;
   /** @type {Outcome['usage']} */
   const usage = { inputTokens: null, outputTokens: null, cost: null };
   let invalidSequence = false;
@@ -95,7 +96,7 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
         continue;
       }
       message = item.text;
-      publish({ ref, kind: 'model', sourceId: item.id, completeness: 'complete', value: message });
+      messageRef = publish({ ref, kind: 'model', sourceId: item.id, completeness: 'complete', value: message });
     } else if (item.type === 'error' && typeof item.message === 'string') {
       publish({ ref, kind: 'provider_report', sourceId: item.id, completeness: 'complete',
         value: { type: item.type, message: item.message } });
@@ -157,5 +158,6 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
       outputRefs, usage,
     },
     output: code || message === undefined ? undefined : kind === 'controller' ? parseDecisionText(message) : message,
+    ...(!code && messageRef ? { outputObservationRef: messageRef } : {}),
   };
 }

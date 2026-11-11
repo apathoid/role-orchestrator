@@ -160,6 +160,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let active = false;
     let output = '';
     let pendingText = '';
+    let finalMessageRef;
     /** @type {string | null | undefined} */
     let messageId;
     let outputBytes = 0;
@@ -186,8 +187,10 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     }
     function flushMessage(complete = true) {
       if (!pendingText) return;
-      publish({ ref: 'acp-message-' + ++line, sourceId: messageId ?? sessionId ?? invocation.attemptId, kind: 'model',
+      const completedMessage = pendingText === output && complete;
+      const ref = publish({ ref: 'acp-message-' + ++line, sourceId: messageId ?? sessionId ?? invocation.attemptId, kind: 'model',
         completeness: complete ? 'complete' : 'truncated', value: pendingText });
+      finalMessageRef = completedMessage ? ref : undefined;
       pendingText = '';
     }
     /** @param {SessionUpdate} update */
@@ -394,6 +397,9 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
           if (truncated) result.outcome.diagnostics[0].ref=limitRef;
         }
         flushMessage(!truncated && result.outcome.terminal === 'completed');
+        if (result.outcome.terminal === 'completed' && finalMessageRef) {
+          result.outputObservationRef = finalMessageRef;
+        }
         const stopRef=publish({ ref: 'acp-stop', sourceId: sessionId, kind: 'provider_report', completeness: 'complete',
           value: { stopReason: stopReason ?? null, truncated, cancelRequested: signal.aborted } });
         for(const diagnostic of result.outcome.diagnostics) diagnostic.ref ??= stopRef;

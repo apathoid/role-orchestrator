@@ -413,3 +413,53 @@ test('C12R.6.0 selected structured skill material crosses the actual ACP prompt 
     assert.equal(result.outcome.terminal,'completed');
     assert.equal(result.output,'skills delivered');
   }));
+
+test('C12R.9 review P1: ACP Worker final message reaches Controller once without losing original refs', linux, () =>
+  withOwnedRun('C12R9-acp-result', async cwd => {
+    const endpoint = provider(cwd, 'basic');
+    let turns = 0;
+    let delivered;
+    const fakeController = {
+      async open() { return { sessionId: 'synthetic-controller' }; },
+      async close() {},
+      async invoke(session, invocation) {
+        turns++;
+        if (turns === 1) return {
+          dispatchCertainty: 'sent',
+          outcome: { schemaVersion: 1, attemptId: invocation.attemptId, terminal: 'completed', effect: 'none',
+            diagnostics: [], outputRefs: [], usage: {inputTokens:null,outputTokens:null,cost:null} },
+          output: {schemaVersion:1,decisionId:'start',operationId:invocation.operationId,
+            contextCursor:invocation.context[1].value.contextCursor,additions:[{
+              actionId:'worker',kind:'delegate',profileId:'acp-worker',objective:'produce native output',
+              expectedResult:'report',dependsOn:[],contextRefs:[],
+            }],cancellations:[],waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'worker'}]}} };
+        }
+        delivered=invocation.context.filter(item => typeof item.value === 'string' &&
+          item.value.startsWith('result '));
+        return {
+          dispatchCertainty:'sent',
+          outcome:{schemaVersion:1,attemptId:invocation.attemptId,terminal:'completed',effect:'none',
+            diagnostics:[],outputRefs:[],usage:{inputTokens:null,outputTokens:null,cost:null}},
+          output:{schemaVersion:1,decisionId:'complete',operationId:invocation.operationId,
+            contextCursor:invocation.context[1].value.contextCursor,additions:[],cancellations:[],
+            finalAssessment:{author:invocation.profile.profileId,overall:'complete',requirements:[],
+              observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer:'Completed'}},
+        };
+      },
+    };
+    const controller = {profileId:'primary',providerId:'synthetic-controller',model:'fixture'};
+    const worker = {profileId:'acp-worker',providerId:'acp',model:'fixture'};
+    const {api} = setup({profile:controller,provider:fakeController,
+      extraCatalog:[{kind:'profile',value:worker}],maxInvocations:4,
+      providerFor: profile => profile.profileId === 'acp-worker' ? endpoint : fakeController});
+    const result=await (await api.submit(request())).completion;
+    assert.equal(result.status,'finished');
+    assert.equal(turns,2);
+    assert.equal(delivered.length,1);
+    const receipts=result.events.filter(event=>event.kind==='attempt.outcome' &&
+      result.attempts.find(a=>a.attemptId===event.outcome.attemptId)?.actionId==='worker');
+    assert.equal(receipts.length,1);
+    assert.equal(receipts[0].observations.filter(item => item.value?.startsWith?.('result ')).length,1);
+    assert.ok(!receipts[0].observations.some(item=>item.ref.startsWith('attempt-output:')));
+    assert.ok(receipts[0].outcome.outputRefs.some(ref=>ref.ref===delivered[0].ref));
+  }));

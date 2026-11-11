@@ -20,7 +20,7 @@
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
  *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
- * @typedef {{outcome: Outcome, output?: unknown, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
+ * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
  *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected'}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,

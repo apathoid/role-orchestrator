@@ -63,7 +63,8 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
     } else {
       const tool = invocation.context.find(item => item.provenance?.exit?.kind === 'tool_exit');
       assert.equal(tool.provenance.exit.code, 9);
-      assert.ok(invocation.context.some(item => item.value === 'Build failed' && item.source === 'model_claim'));
+      assert.equal(invocation.context.filter(item => item.value === 'Build failed' && item.source === 'model_claim').length, 1);
+      assert.ok(!invocation.context.some(item => item.ref.startsWith('attempt-output:')));
       message(JSON.stringify(decision({finalAssessment: assessment({answer: 'The check failed', observationRefs: [tool.ref]})})));
     }
     complete();
@@ -84,6 +85,8 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
     ['provider_reported', 'tool_exit', 9], ['host_observed', 'agent_exit', 0],
   ]);
   assert.deepEqual(state.assessment.observationRefs, [worker.observations.find(item => item.provenance?.exit?.kind === 'tool_exit').ref]);
+  assert.equal(worker.observations.filter(item => item.value === 'Build failed').length, 1);
+  assert.equal(worker.observations.filter(item => item.ref.startsWith('attempt-output:')).length, 0);
 });
 
 test('Worker can return structured text without implicit Decision parsing', linux, async () => {

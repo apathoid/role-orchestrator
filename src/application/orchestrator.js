@@ -672,7 +672,19 @@ export function createOrchestrator(deps) {
         receivedReply = result;
         if (result.output !== undefined) {
           const output = decode(jsonValue, result.output);
-          receive(observation({
+          // Adapter-proven final message identity: a published observation
+          // from this attempt with the same original bytes is already durable.
+          // A parallel model claim or equal-text independent report is NOT an
+          // identity proof. Keep the legacy synthetic output when unmatched.
+          const original = reply.outputObservationRef && observations.find(item =>
+            item.ref === reply.outputObservationRef &&
+            item.source === 'model_claim' && item.provenance?.kind === 'model' &&
+            item.completeness === 'complete' &&
+            parsed.value.outputRefs.some(pointer => pointer.ref === item.ref || pointer.ref === item.providerRef));
+          const alreadyRecorded = output.kind === 'accepted' && original &&
+            typeof original.value === 'string' && typeof output.value === 'string' &&
+            Buffer.from(original.value, 'utf8').equals(Buffer.from(output.value, 'utf8'));
+          if (!alreadyRecorded) receive(observation({
             ref: (handoff ? 'attempt-output:' : 'controller-output:') + attemptId,
             completeness: output.kind === 'accepted' ? 'complete' : 'unavailable',
             value: output.kind === 'accepted' ? output.value : undefined,
