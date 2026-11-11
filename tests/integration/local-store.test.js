@@ -14,9 +14,8 @@ import { assessment, outcome, request } from '../fixtures/core.js';
 
 async function setupStore(t, overrides) {
   const directory = await fs.mkdtemp(join(tmpdir(), 'role-orchestrator-state-'));
-  t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const store = createLocalStateStore(directory, { ...fs, ...overrides });
-  t.after(() => store.close());
+  t.after(async () => { await store.close(); await fs.rm(directory, { recursive: true, force: true }); });
   await store.open();
   return { directory, store };
 }

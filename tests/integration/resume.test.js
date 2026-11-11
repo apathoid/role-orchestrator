@@ -178,10 +178,12 @@ test('C12R.1 restart retains local Controller failure, resumes accepted unsent a
   await store.open();
   const limits={maxInvocations:15,maxConcurrentInvocations:4};
   let state=createOperation('mixed-op',request(),'fixture-authority',limits);
+  assert.deepEqual(await store.commit(state.operationId,null,state),{kind:'committed'});
   let n=0;
-  const apply=event=>{
+  const apply=async event=>{
     const result=applyEvent(state,{eventId:'seed-'+(++n),operationId:state.operationId,receivedAt:n,...event});
     assert.equal(result.kind,'applied',JSON.stringify(result.reason));
+    assert.deepEqual(await store.commit(state.operationId,state.revision,result.state),{kind:'committed'});
     state=result.state;
   };
   const worker=(id,dependsOn=[])=>({kind:'delegate',actionId:id,profileId:'primary',objective:id,
@@ -189,22 +191,21 @@ test('C12R.1 restart retains local Controller failure, resumes accepted unsent a
   const additions=[worker('reserved'),worker('new'),worker('unknown'),worker('done'),worker('cancelled'),
     worker('dependent',[{actionId:'unknown',kind:'after_terminal'}]),
     worker('blocked',[{actionId:'done',kind:'after_model_acceptance'}])];
-  apply({kind:'controller.responded',decision:decision({operationId:state.operationId,finalAssessment:undefined,
+  await apply({kind:'controller.responded',decision:decision({operationId:state.operationId,finalAssessment:undefined,
     additions,nextController:{continue:true,reasoningLevel:'unsupported'}}),
     admissions:additions.map(action=>({kind:'accepted',action}))});
-  apply({kind:'attempt.reserved',attemptId:'reserved-id',actionId:'reserved'});
-  apply({kind:'attempt.reserved',attemptId:'unknown-id',actionId:'unknown'});
-  apply({kind:'attempt.dispatched',attemptId:'unknown-id'});
-  apply({kind:'attempt.reserved',attemptId:'done-id',actionId:'done'});
-  apply({kind:'attempt.dispatched',attemptId:'done-id'});
-  apply({kind:'attempt.outcome',outcome:outcome('done-id'),dispatchCertainty:'sent'});
-  apply({kind:'action.cancelled',actionId:'cancelled',source:'superseded'});
-  apply({kind:'attempt.reserved',attemptId:'controller-failed',actionId:'controller-failed',reasoningDecisionId:'decision-1'});
-  apply({kind:'attempt.outcome',outcome:outcome('controller-failed',{terminal:'failed',diagnostics:[{code:'CAPABILITY_UNAVAILABLE'}]}),
+  await apply({kind:'attempt.reserved',attemptId:'reserved-id',actionId:'reserved'});
+  await apply({kind:'attempt.reserved',attemptId:'unknown-id',actionId:'unknown'});
+  await apply({kind:'attempt.dispatched',attemptId:'unknown-id'});
+  await apply({kind:'attempt.reserved',attemptId:'done-id',actionId:'done'});
+  await apply({kind:'attempt.dispatched',attemptId:'done-id'});
+  await apply({kind:'attempt.outcome',outcome:outcome('done-id'),dispatchCertainty:'sent'});
+  await apply({kind:'action.cancelled',actionId:'cancelled',source:'superseded'});
+  await apply({kind:'attempt.reserved',attemptId:'controller-failed',actionId:'controller-failed',reasoningDecisionId:'decision-1'});
+  await apply({kind:'attempt.outcome',outcome:outcome('controller-failed',{terminal:'failed',diagnostics:[{code:'CAPABILITY_UNAVAILABLE'}]}),
     dispatchCertainty:'not_sent'});
-  apply({kind:'operation.waiting',waiting:{kind:'technical',reason:{code:'CAPABILITY_UNAVAILABLE',
+  await apply({kind:'operation.waiting',waiting:{kind:'technical',reason:{code:'CAPABILITY_UNAVAILABLE',
     operationId:state.operationId,attemptId:'controller-failed',actionId:'controller-failed',reasoningLevel:'unsupported'}}});
-  assert.deepEqual(await store.commit(state.operationId,null,state),{kind:'committed'});
   const {api,invocations}=setup({store,idPrefix:'recovered-',...limits,respond(i){
     assert.equal(i.kind,'delegate');
     return {dispatchCertainty:'sent',outcome:outcome(i.attemptId),output:i.actionId};
