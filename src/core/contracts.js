@@ -59,6 +59,7 @@ const contextSelection = (input, path) => input && typeof input === 'object' &&
   ? record({ref:contextReference,offset:count})(input,path)
   : contextReference(input,path);
 const contextReferences = arrayOf(contextSelection);
+/** @param {unknown} input @param {string} path */
 const contextRequest = (input, path) => {
   const value = record({ refs: optional(contextReferences), cursor: optional(count), workCursor: optional(count) })(input, path);
   if ((!value.refs || value.refs.length === 0) && value.cursor === undefined && value.workCursor === undefined) {
