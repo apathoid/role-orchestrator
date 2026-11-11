@@ -205,3 +205,61 @@ test('C12R.9 P2: optional Controller continuation reads successive chunks withou
   assert.equal(done.events.flatMap(event=>event.observations??[])
     .filter(item=>item.providerRef==='original-large').length,1);
 });
+
+test('C12R.9 P2: accepted positional offset request survives snapshot reopen and operation recovery',()=> 
+  withOwnedRun('C12R9-history-restart',async cwd=>{
+    let store=createLocalStateStore(cwd);
+    await store.open();
+    const {createOperation,applyEvent}=await import('../../src/core/operation.js');
+    const {decision}=await import('../fixtures/core.js');
+    let state=createOperation('recovered-context',request(),'fixture-authority',
+      {maxInvocations:5,maxConcurrentInvocations:1});
+    assert.deepEqual(await store.commit(state.operationId,null,state),{kind:'committed'});
+    let n=0;
+    const append=async event=>{
+      const next=applyEvent(state,{eventId:'pre-'+(++n),operationId:state.operationId,receivedAt:n,...event});
+      assert.equal(next.kind,'applied',JSON.stringify(next.reason));
+      assert.deepEqual(await store.commit(state.operationId,state.revision,next.state),{kind:'committed'});
+      state=next.state;
+    };
+    await append({kind:'attempt.reserved',attemptId:'prior-controller',actionId:'prior-controller'});
+    await append({kind:'attempt.dispatched',attemptId:'prior-controller'});
+    const body=('₽✨'.repeat(20)+'\n').repeat(2000);
+    assert.ok(Buffer.byteLength(body)>64*1024);
+    await append({kind:'attempt.outcome',outcome:outcome('prior-controller'),
+      dispatchCertainty:'sent',observations:[{ref:'restored-data',source:'provider_reported',
+        completeness:'complete',value:body,
+        provenance:{kind:'provider_report',sourceId:'historic-provider',receivedAt:n}}]});
+    await append({kind:'controller.responded',attemptId:'prior-controller',decision:decision({
+      operationId:state.operationId,decisionId:'restored-next',finalAssessment:undefined,
+      additions:[],cancellations:[],nextController:{continue:true,
+        contextRequest:{refs:[{ref:{revision:3,index:0},offset:0}]}}})});
+    const originalRevision=state.revision;
+    await store.close();
+    store=createLocalStateStore(cwd);
+    await store.open();
+    try {
+      let read=false;
+      const {api,respondErrors,invocations}=setup({store,maxInvocations:5,idPrefix:'after-restart-',
+        context:{controllerMaxBytes:128*1024,fetchMaxBytes:64*1024},
+        respond(invocation) {
+          read=true;
+          const chunk=invocation.context.find(item=>item.ref==='host:history-chunk:0');
+          assert.ok(chunk,'accepted Decision request must survive restart');
+          assert.equal(chunk.provenance.sourceId,'historic-provider');
+          assert.equal(chunk.value.offset,0);
+          const bytes=Buffer.from(chunk.value.base64,'base64');
+          assert.deepEqual(bytes,Buffer.from(body).subarray(0,bytes.length));
+          assert.equal(chunk.value.sourceCompleteness,'complete');
+          return final(invocation);
+        }});
+      const restored=await(await api.resume(state.operationId)).completion;
+      assert.equal(restored.status,'finished',respondErrors.map(err=>String(err.stack??err)).join('\n'));
+      assert.equal(read,true);
+      assert.equal(invocations.length,1);
+      assert.ok(restored.revision>originalRevision);
+      assert.equal(restored.events.filter(event=>event.kind==='controller.responded' &&
+        event.decision.decisionId==='restored-next').length,1);
+      await api.close();
+    } finally {await store.close();}
+  }));

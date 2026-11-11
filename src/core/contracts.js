@@ -59,13 +59,20 @@ const contextSelection = (input, path) => input && typeof input === 'object' &&
   ? record({ref:contextReference,offset:count})(input,path)
   : contextReference(input,path);
 const contextReferences = arrayOf(contextSelection);
+/** @param {ReturnType<typeof contextSelection>} ref */
+function contextSelectionKey(ref) {
+  const source = typeof ref === 'object' && 'ref' in ref ? ref.ref : ref;
+  const parts = typeof source === 'string' ? ['name', source] :
+    ['position', source.revision, source.index];
+  return JSON.stringify(typeof ref === 'object' && 'ref' in ref ? [...parts, ref.offset] : parts);
+}
 /** @param {unknown} input @param {string} path */
 const contextRequest = (input, path) => {
   const value = record({ refs: optional(contextReferences), cursor: optional(count), workCursor: optional(count) })(input, path);
   if ((!value.refs || value.refs.length === 0) && value.cursor === undefined && value.workCursor === undefined) {
     invalid(path, 'nonempty refs and/or cursor');
   }
-  if (value.refs && new Set(value.refs.map(ref => JSON.stringify(ref))).size !== value.refs.length) {
+  if (value.refs && new Set(value.refs.map(contextSelectionKey)).size !== value.refs.length) {
     invalid(path + '.refs', 'unique references');
   }
   return value;

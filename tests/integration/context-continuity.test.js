@@ -264,3 +264,16 @@ test('C12R.9 review P2: malformed and duplicate positions reject in v1 Decision'
   assert.equal(decodeDecision({...base,nextController:{continue:true,
     contextRequest:{refs:[{revision:2,index:0},{revision:2,index:0}]}}}).kind,'rejected');
 });
+
+test('C12R.9 P2: duplicate positional refs ignore JSON key order while distinct offsets remain valid',()=>{
+  const base={schemaVersion:1,decisionId:'dup-pos',operationId:'op',contextCursor:0,
+    additions:[],cancellations:[],nextController:{continue:true,
+      contextRequest:{refs:[{revision:3,index:5},{index:5,revision:3}]}}};
+  assert.equal(decodeDecision(base).kind,'rejected');
+  assert.equal(decodeDecision({...base,nextController:{continue:true,
+    contextRequest:{refs:[{ref:{revision:3,index:5},offset:0},
+      {ref:{index:5,revision:3},offset:0}]}}}).kind,'rejected');
+  assert.equal(decodeDecision({...base,nextController:{continue:true,
+    contextRequest:{refs:[{ref:{revision:3,index:5},offset:0},
+      {ref:{revision:3,index:5},offset:65536}]}}}).kind,'accepted');
+});
