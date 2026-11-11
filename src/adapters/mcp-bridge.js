@@ -157,6 +157,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
     }
     if (message.id === undefined) { response.writeHead(202).end(); return; }
     if (typeof message.id !== 'string' && typeof message.id !== 'number') { response.writeHead(400).end(); return; }
+    const requestId = message.id;
     const params = object(message.params);
     /** @type {unknown} */
     let result;
@@ -186,18 +187,18 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
         if (typeof params?.name !== 'string') { error = { code: -32602, message: 'Invalid tool name' }; break; }
         const args = params.arguments ?? {};
         const key = JSON.stringify([params.name, args]);
-        let call = calls.get(message.id);
+        let call = calls.get(requestId);
         if (call && call.key !== key) { error = { code: -32602, message: 'Request id already used' }; break; }
         if (!call && calls.size < maxToolCalls && active < maxConcurrentCalls) {
-          call = { key, response: callTool(params.name, args).then(value => toolReply(value, message.id)) };
-          calls.set(message.id, call);
+          call = { key, response: callTool(params.name, args).then(value => toolReply(value, requestId)) };
+          calls.set(requestId, call);
         }
-        result = call ? await call.response : toolReply({ kind: 'unavailable', reason: 'budget' }, message.id);
+        result = call ? await call.response : toolReply({ kind: 'unavailable', reason: 'budget' }, requestId);
         break;
       }
       default: error = { code: -32601, message: 'Method not found' };
     }
-    const body = JSON.stringify({ jsonrpc: '2.0', id: message.id, ...(error ? { error } : { result }) });
+    const body = JSON.stringify({ jsonrpc: '2.0', id: requestId, ...(error ? { error } : { result }) });
     if (Buffer.byteLength(body) > maxResponseBytes) { response.writeHead(413).end(); return; }
     response.writeHead(200, { 'Content-Type': 'application/json' }).end(body);
   }
