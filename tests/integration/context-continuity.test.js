@@ -310,3 +310,24 @@ test('C12R.9 P1: stale workCursor never silently resets to page zero',()=>{
   assert.equal(map.entries.length,0);
   assert.equal(map.nextCursor,undefined);
 });
+
+test('C12R.9 P1: serialized technical byte count is exact, including its own digits',()=>{
+  const state=createOperation('byte-exact',request(),'grant',
+    {maxInvocations:20,maxConcurrentInvocations:1});
+  for(let i=0;i<8;i++){
+    state.attempts.push({attemptId:'t'+i,actionId:'a'+i,generation:0,
+      reservedAt:i,status:'terminal',endedAt:i,dispatchCertainty:'sent',
+      outcome:outcome('t'+i,{effect:'possible'})});
+  }
+  for(const maxBytes of [1,2500,4096,8192,65536]){
+    const context=controllerContext(state,[],undefined,undefined,maxBytes);
+    const host=context[1];
+    const observed=Buffer.byteLength(JSON.stringify([host]));
+    assert.equal(host.value.technicalBudget.mandatoryBytes,observed);
+    assert.equal(host.value.technicalBudget.mandatoryOverflow,observed>maxBytes);
+    if(!host.value.technicalBudget.mandatoryOverflow){
+      assert.ok(Buffer.byteLength(JSON.stringify(context.slice(1)))<=maxBytes,
+        'the optional technical and historical records must fit their shared budget');
+    }
+  }
+});

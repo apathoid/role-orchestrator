@@ -362,7 +362,10 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   /** @param {unknown[]} target @param {unknown} value */
   function tryAdd(target, value) {
     const size = byteLength(value) + (target.length ? 1 : 0);
-    if (used + size > maxBytes) return false;
+    // The mandatory serialized-byte counter itself grows from 0 to the
+    // current byte count. Reserve only its maximal decimal digit growth;
+    // no model-generated data is discarded based on semantic content.
+    if (used + size + String(maxBytes).length > maxBytes) return false;
     target.push(value);
     used += size;
     return true;
@@ -420,10 +423,20 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   }
   // A real consumed byte count includes the serialized host record. Legacy
   // clients can still find the mandatory identity and the omission counters.
-  used = byteLength([host]);
-  host.value.technicalBudget.mandatoryBytes = used;
-  host.value.technicalBudget.mandatoryOverflow = used > maxBytes;
-  used = byteLength([host]);
+  // Stabilize the recorded byte measurement against the JSON size of its
+  // own decimal digits, rather than reporting the pre-update JSON length.
+  function measureHost() {
+    for (let i = 0; i < 4; i++) {
+      const actual = byteLength([host]);
+      const overflow = actual > maxBytes;
+      if (host.value.technicalBudget.mandatoryBytes === actual &&
+          host.value.technicalBudget.mandatoryOverflow === overflow) break;
+      host.value.technicalBudget.mandatoryBytes = actual;
+      host.value.technicalBudget.mandatoryOverflow = overflow;
+    }
+    return byteLength([host]);
+  }
+  used = measureHost();
   // Explicitly requested records take precedence without duplicating their
   // original inline bodies from the ordinary newest-first history.
   const requestedRefs = new Set(requested.map(item => item.ref));
@@ -436,6 +449,9 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   host.value.historyBudget.omitted = bounded.omitted;
   host.value.historyBudget.excerpted = bounded.excerpted;
   host.value.historyBudget.unrepresented = bounded.unrepresented;
+  // History budget counters can shrink after optional packing; final
+  // measured technical bytes must describe the actual delivered host record.
+  measureHost();
   /** @type {ContextItem[]} */
   const items = [request, host, ...bounded.context.reverse()];
   if (correction) items.push({ref:'host:decision-error',source:'host_observed',
