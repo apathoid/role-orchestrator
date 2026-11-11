@@ -298,3 +298,15 @@ test('C12R.9 review: workCursor order is based on immutable reservations, not ra
   assert.deepEqual(order(),['work-right','work-left']);
   assert.equal(controllerContext(state,[],undefined,undefined,4096)[1].value.workMap.entries[0].actionId,'work-right');
 });
+
+test('C12R.9 P1: stale workCursor never silently resets to page zero',()=>{
+  const state=createOperation('stale-work-cursor',request(),'grant',
+    {maxInvocations:3,maxConcurrentInvocations:1});
+  const payload=controllerContext(state,[],undefined,undefined,4096,undefined,[],99);
+  const map=payload[1].value.workMap;
+  assert.equal(map.cursor,99);
+  assert.equal(map.total,0);
+  assert.equal(map.unavailableReason,'invalid_cursor');
+  assert.equal(map.entries.length,0);
+  assert.equal(map.nextCursor,undefined);
+});

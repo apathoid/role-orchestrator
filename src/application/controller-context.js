@@ -270,8 +270,9 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   const workRows = operationWorkMap(state, history).filter(item => !('attemptId' in item) || item.attemptId !== currentControllerId);
   // A workCursor is a read-only offset in this deterministically derived
   // newest-first map; it is not stored or interpreted as a workflow stage.
-  const from = Number.isSafeInteger(workCursor) && workCursor >= 0 && workCursor <= workRows.length
-    ? workCursor : 0;
+  const cursorAvailable = Number.isSafeInteger(workCursor) && workCursor >= 0 &&
+    workCursor <= workRows.length;
+  const from = cursorAvailable ? workCursor : workRows.length;
   const rawFacts = coordinationFacts(state, lookups);
   const facts = {
     ...rawFacts,
@@ -327,7 +328,9 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         })(),
         pending: pendingControllerReasoning(state) ?? null,
       },
-      workMap: { total: workRows.length, cursor: from, nextCursor: workRows.length,
+      workMap: { total: workRows.length, cursor: workCursor,
+        nextCursor: cursorAvailable ? workRows.length : undefined,
+        ...(!cursorAvailable ? { unavailableReason: 'invalid_cursor' } : {}),
         represented: workRows.length, omitted: workRows.length,
         historyCursor: 0, entries: /** @type {typeof workRows} */ ([]) },
       technicalCoverage,
@@ -381,7 +384,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   }
   host.value.workMap.represented = represented;
   host.value.workMap.omitted = workRows.length - represented;
-  host.value.workMap.nextCursor = from + represented;
+  host.value.workMap.nextCursor = cursorAvailable ? from + represented : undefined;
   // Existing legacy technical fields remain short, budgeted previews.
   for (const value of facts.unresolvedAttempts) if (!tryAdd(host.value.unresolvedAttempts, value)) break;
   for (const value of facts.effectUncertainties) if (!tryAdd(host.value.effectUncertainties, value)) break;
