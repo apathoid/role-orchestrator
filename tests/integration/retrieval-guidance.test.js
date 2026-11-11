@@ -22,3 +22,46 @@ test('C12R.8 MCP advice advertises optional retrieval without disabling the tool
   assert.match(disabled, /unavailable in this transport/);
   assert.match(disabled, /material missing evidence when relevant/);
 });
+
+test('C12R.8R.3 a direct Controller completion does not require historical MCP retrieval when tools are available', async () => {
+  const { startMcpBridge } = await import('../../src/adapters/mcp-bridge.js');
+  const { setup, final } = await import('../fixtures/application.js');
+  const { request } = await import('../fixtures/core.js');
+  let listCalls = 0, fetchCalls = 0;
+  const { api, invocations } = setup({
+    async respond(invocation) {
+      assert.equal(invocation.kind, 'controller');
+      assert.ok(invocation.contextAccess);
+      const original = invocation.contextAccess;
+      const bridge = await startMcpBridge({
+        signal: invocation.signal,
+        contextAccess: {
+          list(cursor) { listCalls++; return original.list(cursor); },
+          async fetch(ref, sourceOperationId) { fetchCalls++; return original.fetch(ref, sourceOperationId); },
+          captureArtifact: original.captureArtifact,
+        },
+      });
+      try {
+        const response = await fetch(bridge.url, { method: 'POST',
+          headers: { 'content-type': 'application/json', 'mcp-protocol-version': '2025-06-18' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+        });
+        assert.equal(response.status, 200);
+        const data = await response.json();
+        assert.deepEqual(data.result.tools.map(tool => tool.name), ['context_list', 'context_fetch']);
+        return final(invocation);
+      } finally {
+        bridge.close();
+      }
+    },
+  });
+  try {
+    const result = await (await api.submit(request())).completion;
+    assert.equal(result.status, 'finished');
+    assert.equal(result.assessment.answer, 'Direct answer');
+    assert.equal(invocations.length, 1);
+    assert.deepEqual([listCalls, fetchCalls], [0, 0]);
+  } finally {
+    await api.close();
+  }
+});

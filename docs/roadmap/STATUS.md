@@ -26,6 +26,8 @@
 
 **C12R.8R.1 — durable receipt regression (alternative AttemptTools):** добавлен тест с фактическим `LocalStateStore`: выполненный tool публикует receipt в orchestrator, MCP ограничивает только внешний response, replay request ID не вызывает нового исполнения, journal сохраняет исходный output/effect и остаётся идентичным после закрытия и открытия store. Это специально инъецируемый контрактный порт с большим output, не доказательство, что штатный 64 KiB ToolPort возвращает 300 KiB. CI pending.
 
+**C12R.8R.3 — synthetic capability (native comparison pending):** `retrieval-guidance.test.js` расширен сценарием, где Controller напрямую завершает запрос при опубликованных MCP `context_list/context_fetch`, без вызовов истории. Вместе с существующими `mcp-context.test.js`, `context-quality.test.js`, `c12r-coordination.test.js` сохраняются сценарии явно выбранного retrieval, неполного/противоречивого evidence и model-selected replan. Это scripted fixture, не измерение самостоятельного выбора настоящей LLM, качества или выигранного времени. Actual native A/B **UNVERIFIED**. CI нового теста ожидается.
+
 **C12R.8R.2 — IMPLEMENTED, regression pending:** добавлены границы общего MCP call budget (в обоих порядках 32 history + 32 external, id replay/conflict, invalid ID), cancellation active write (unknown + late receipt), закрытие live bridge и независимый второй transport. Dedup cache теперь хранит только ограниченный MCP result, а не полный недоставленный output; при `close()` map освобождается. Внешние tools остаются во владении Invocation/ToolPort; bridge не запускает и не отменяет их по semantic policy, существующие лимиты 64/4/32KiB/256KiB не изменены. CI этого commit ожидается.
 
 ## C12R.8 — C12R.8.0 диагностика, условные исправления и C12R.8.7
