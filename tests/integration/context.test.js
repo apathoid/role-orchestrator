@@ -18,7 +18,7 @@ test('a configured byte budget compacts history and preserves selected refs and 
   const large = '🧪"\n'.repeat(2000);
   let controller = 0;
   const refs = new Map();
-  const { api, invocations } = setup({ maxInvocations: 5, context: { maxBytes }, async respond(invocation, count, observe) {
+  const { api, invocations } = setup({ maxInvocations: 5, context: { maxBytes, handoffMaxBytes: maxBytes, fetchMaxBytes: maxBytes }, async respond(invocation, count, observe) {
     if (invocation.actionId === 'source') {
       for (const [ref, value] of [['private-unselected', 'unselected'], ['large', large], ['recent', 'small report']]) {
         refs.set(ref, observe({ ref, kind: 'provider_tool', sourceId: 'source-event', completeness: 'complete', value }));
@@ -90,7 +90,7 @@ test('a tiny budget reports missing and omitted refs separately and keeps litera
   const input = 'Exact user text '.repeat(50);
   const followup = 'Exact follow-up '.repeat(50);
   let optionalRef;
-  const { api, invocations } = setup({ maxInvocations: 4, context: { maxBytes: 1 }, respond(invocation, count, observe) {
+  const { api, invocations } = setup({ maxInvocations: 4, context: { maxBytes: 1, handoffMaxBytes: 1 }, respond(invocation, count, observe) {
     if (count === 1) {
       optionalRef = observe({ ref: 'optional', kind: 'provider_report', sourceId: 'report', completeness: 'complete', value: 'available' });
       return final(invocation, { finalAssessment: undefined, clarification: { question: 'Continue?' } });

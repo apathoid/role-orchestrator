@@ -20,7 +20,7 @@ export const controllerInstructions = [
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Workspace files and branches may change during the operation. Use observations to decide whether earlier findings still apply and whether to read a target again. Reported locations, versions and times describe individual observations.',
   'Use optional findings for model claims that should remain available in history. Each finding has a new findingId, author (your profileId), claim, subject, supports, and uncertainties. Use an earlier finding reference in supersedes to revise it. Cite findings by their finding:<id> context reference.',
-  'When available, choose whether to use native historical list/fetch or nextController.contextRequest; neither is mandatory. Keep model summaries as separately attributed claims citing source references.',
+  'When available, choose whether to use historical list/fetch (native MCP) or optional nextController.contextRequest; do not enumerate history by default. Neither is mandatory; model summaries are separate claims citing covered observation references.',
   'Context excerpts are partial. Missing references and omissions from the byte budget are marked explicitly.',
   'Assess each material user requirement, including explicit checks, using fulfilled, partial, unverified or unavailable. Set the assessment author to your profileId. Cite the available observations or findings and explain any gaps.',
   'If a requested check must run after a change, distinguish evidence from before the change from evidence that covers the new state. Use unverified when a required check lacks matching confirmation and explain what remains open.',
@@ -290,6 +290,8 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       unresolvedAttempts: /** @type {typeof facts.unresolvedAttempts} */ ([]),
       effectUncertainties: /** @type {typeof facts.effectUncertainties} */ ([]),
       cancellations: /** @type {typeof facts.cancellations} */ ([]),
+      actions: /** @type {unknown[]} */ ([]),
+      actionEvents: { total: 0, represented: 0, omitted: 0 },
       outcomes: /** @type {{actionId: string, attemptId: string, terminal: string, effect: string, code?: string}[]} */ ([]),
       pendingAttempts: /** @type {{attemptId: string, actionId: string, status: string}[]} */ ([]),
       historyBudget: { maxBytes, omitted: history.length, excerpted: history.length,
@@ -301,7 +303,14 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // Base technical metadata (operation identity, trusted catalog and limits)
   // is required for a valid Decision. Optional rows and history share one
   // measured byte budget. A tiny limit can exclude all optional records.
-  let used = byteLength([host]);
+  // A requested historical source must not be crowded out by derived map
+  // rows. Reserve only the bytes its actual bounded materialization would
+  // consume, not a fixed percentage or a per-role allocation.
+  const baseBytes = byteLength([host]);
+  const requestedBudget = compactContext(requested, Math.max(0, maxBytes - baseBytes + 1), false);
+  const requestedBytes = byteLength(requestedBudget.context) - 2 +
+    (requestedBudget.context.length ? 1 : 0);
+  let used = baseBytes + requestedBytes;
   /** @param {unknown[]} target @param {unknown} value */
   function tryAdd(target, value) {
     const size = byteLength(value) + (target.length ? 1 : 0);
@@ -310,6 +319,24 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     used += size;
     return true;
   }
+  // Preserve the earlier admitted/rejected/deferred action feedback while
+  // keeping it a budgeted technical preview, not a second state machine.
+  const actionEvents = state.events.flatMap(/** @returns {unknown[]} */ event => {
+    if (event.kind === 'controller.responded') return (event.admissions ?? []).map(item =>
+      item.kind === 'accepted' ? {kind:item.kind,action:{actionId:item.action.actionId,
+        profileId:item.action.profileId,dependsOn:item.action.dependsOn}} : item);
+    if (event.kind === 'action.rejected' || event.kind === 'action.deferred') return [{
+      kind:event.kind,actionId:event.actionId,code:event.code,resource:event.resource,category:event.category,
+    }];
+    if (event.kind === 'action.cancelled') return [{
+      kind:event.kind,actionId:event.actionId,source:event.source,
+    }];
+    return [];
+  });
+  host.value.actionEvents.total = actionEvents.length;
+  for (const event of actionEvents) if (!tryAdd(host.value.actions, event)) break;
+  host.value.actionEvents.represented = host.value.actions.length;
+  host.value.actionEvents.omitted = actionEvents.length - host.value.actions.length;
   let represented = 0;
   for (const row of workRows) {
     if (!tryAdd(host.value.workMap.entries, row)) {

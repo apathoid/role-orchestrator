@@ -95,7 +95,7 @@ test('reopened context supports a targeted check and partial assessment without 
       await writeFile(target, 'after');
       const selected = ['finding:left', 'finding:right', originalArtifact, missingRef, beforeRef, largeRef];
       const resumed = setup({
-        store, authority, extraCatalog, idPrefix: 'quality-resume-', maxInvocations: 8, context: { maxBytes: 4096 },
+        store, authority, extraCatalog, idPrefix: 'quality-resume-', maxInvocations: 8, context: { maxBytes: 4096, handoffMaxBytes: 4096, fetchMaxBytes: 4096 },
         emit(event) {
           if (event.eventName.startsWith('context.')) throw new Error('synthetic sink failure');
         },

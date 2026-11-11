@@ -81,7 +81,7 @@ test('the model discovers omitted evidence under the default budget and delegate
   let calls = 0;
   let selectedRef;
   let access;
-  const { api, invocations } = setup({ maxInvocations: 5, async respond(invocation, count, observe) {
+  const { api, invocations } = setup({ maxInvocations: 5, context: { controllerMaxBytes: 65536 }, async respond(invocation, count, observe) {
     if (invocation.actionId === 'collect') {
       observe({ ref: randomUUID(), kind: 'provider_tool', sourceId: 'fixture', completeness: 'complete',
         value: 'required evidence', reportedContext: { location } });

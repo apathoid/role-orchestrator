@@ -52,7 +52,7 @@ for (const adapter of ['codex-cli', 'acp']) {
         });
         const { api } = setup({
           store, idPrefix: 'mcp-', profile, provider: extensions.providerFor(profile), catalog: extensions.catalog,
-          context: { maxBytes: 512 }, maxInvocations: 4, authority, permissions, tools: extensions.tools,
+          context: { maxBytes: 512, fetchMaxBytes: 512, handoffMaxBytes: 512 }, maxInvocations: 4, authority, permissions, tools: extensions.tools,
         });
         const resumed = await (await api.resume(first.operationId, { requestId: 'follow-up', text: 'Retrieve evidence' })).completion;
         assert.equal(resumed.status, 'finished',

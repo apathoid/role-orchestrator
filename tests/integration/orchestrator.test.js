@@ -24,8 +24,8 @@ test('a literal request without cwd takes one Controller and correlates the time
   assert.deepEqual(invocations[0].userConstraints, input.userConstraints);
   assert.equal(closed.length, 1);
   assert.deepEqual(events.map(item => item.eventName), [
-    'operation.accepted', 'attempt.reserved', 'attempt.dispatched', 'controller.requested',
-    'attempt.outcome', 'controller.responded', 'operation.finished',
+    'operation.accepted', 'attempt.reserved', 'attempt.dispatched', 'context.host_prepared',
+    'controller.requested', 'provider.reply_observed', 'attempt.outcome', 'controller.responded', 'operation.finished',
   ]);
   assert.ok(events.every(item => item.operationId === state.operationId));
   assert.ok(!JSON.stringify(events).includes(input.text));
