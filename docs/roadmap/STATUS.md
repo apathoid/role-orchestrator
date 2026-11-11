@@ -2,7 +2,7 @@
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 **Последний полностью выполненный инженерный этап:** C12R.8R (implementation complete / automated regression verified для подтверждённого technical scope).
-**Следующий шаг:** реальная native acceptance C12.3/C12.4/C12R.7/C12R.8/C12R.8R, эксплуатационная проверка NixOS и сопоставимые real-model retrieval A/B runs по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). Не вводить новый Host механизм только ради непроверенной гипотезы о качестве.
+**Следующий шаг:** **C12R.9.0** — baseline/воспроизведение потери видимости завершённых результатов Controller и проверка существующих ограничений/дублирования по [C12R.9](C12R9_CONTEXT_CONTINUITY.md). Реальная native acceptance C12.3/C12.4/C12R.7–.9, Zed/NixOS и сравнительная оценка остаются UNVERIFIED и выполняются при доступе к настоящим средам по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). Не вводить новый Host механизм только ради непроверенной гипотезы о качестве.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
@@ -13,6 +13,16 @@
 | NixOS | **OBSERVED** `lib.nixosSystem` evaluation включает `environment.systemPackages` с продуктом. Реальный boot/запуск на NixOS **UNVERIFIED** |
 | Native providers / Zed | **UNVERIFIED**: два независимых реальных LLM, Codex CLI/ACP успешный prompt, Zed как ACP-клиент, реальные permissions/cancel/resume и native reasoning |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**; production readiness **NO** |
+
+## C12R.9 — план готов к реализации (2026-11-11)
+
+**Текущий статус: PLAN APPROVED / IMPLEMENTATION NOT STARTED / REGRESSION UNVERIFIED / NATIVE UNVERIFIED / COMPARATIVE UNVERIFIED.** Подготовлен [детальный план непрерывности контекста](C12R9_CONTEXT_CONTINUITY.md); активный [IMPLEMENTATION_PLAN](IMPLEMENTATION_PLAN.md) и [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md) связаны с ним. Планирование выполнено на baseline `b497b28c145fdbc3b17703e543fece6994ae82a6`; инженерный исполнитель обязан повторно проверить актуальный HEAD.
+
+**Проблема и статус доказательств.** По представленному пользователем разбору нативных Codex-сессий Controller терял содержательные старые Worker reports при `context.maxBytes=65536` и отключённом MCP и мог повторять проверку. Оригинальные сессии не перепроверены в репозитории: native causality остаётся UNVERIFIED. По исходникам SUPPORTED: 64 КиБ default для optional history, ограничение 128 записей, recency-first selection, отдельный `host:invocation-context` с уже существующими `outcomes/pendingAttempts/actions`, общая настройка `context.maxBytes` для history/handoff/fetch/capture/skill/tool, новый native session/process per invocation в действующих ACP/CLI adapters. Возможное дублирование полных результатов из исходных trace требует минимального воспроизведения с доказанной identity.
+
+**Принятое направление:** сначала C12R.9.0 диагностика/регрессии, C12R.9.1 устранение технических дубликатов, C12R.9.2 пересмотр независимых ресурсных границ; затем лишь при выявленном пробеле минимальная производная связь Action→Attempt→Outcome→Refs и согласование terminal/effect; ContextPort retrieval и native skills уточнять адресно. Отказ от заранее обязательных индексатора, Host summaries/compaction, semantic context fairness, MCP, нового Controller turn, native session persistence, project file discovery и Host filesystem runtime. Повторная модельная проверка может быть самостоятельным разумным выбором, поэтому её количество не является PASS/FAIL само по себе.
+
+**Инженерный handoff:** следующий C12R.9.0 → самостоятельные commits с применимыми тестами, документацией и обновлением этого STATUS; runtime-код, product contracts и матрица в ходе подготовки плана **не изменялись**. Предыдущий verified CI **324/324** относится только к `4c3f324`; новый плановый документационный HEAD требует собственной проверки, native и quality comparison не заявлены.
 
 ## C12R.8R — исправления после ревью (2026-11-11)
 
