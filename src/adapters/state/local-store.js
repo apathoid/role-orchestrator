@@ -58,6 +58,12 @@ export function createLocalStateStore(directory, io = fs) {
   /** @type {DatabaseSync | undefined} */
   let owner;
   let queue = Promise.resolve();
+  // One verified immutable artifact image per StateStore instance. The cache
+  // is an ephemeral optimization, never a second persistent source of truth.
+  // Recheck the backing inode/version (including ctime) on every access.
+  const verifiedCacheMaxBytes = 16 * 1024 * 1024;
+  /** @type {{hash:string, stamp:string, bytes:Buffer} | undefined} */
+  let verifiedCache;
 
   /** @template T @param {() => Promise<T>} task */
   function serialize(task) {
@@ -95,6 +101,52 @@ export function createLocalStateStore(directory, io = fs) {
       throw new LocalStoreError('corrupt_snapshot');
     }
     return parsed.value;
+  }
+
+
+  /**
+   * Read/verify the full content-addressed bytes once for each unchanged file
+   * version. Cached bytes are never returned directly to an external caller.
+   * @param {import('../../core/observation.js').ArtifactReference} reference
+   * @returns {Promise<ArtifactRead>}
+   */
+  async function verifiedArtifact(reference) {
+    requireOpen();
+    const match = artifactRef.exec(reference.ref);
+    if (!match || !Number.isSafeInteger(reference.size) || reference.size < 0 ||
+        !Number.isSafeInteger(reference.originalSize) || reference.originalSize < reference.size ||
+        reference.truncated !== (reference.size < reference.originalSize)) return {kind:'integrity_error'};
+    try {
+      const file = await io.open(join(root, 'artifact-' + match[1] + '.blob'), 'r');
+      try {
+        const stat = await file.stat({bigint:true});
+        const stamp = [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+        if (verifiedCache?.hash === match[1] && verifiedCache.stamp === stamp &&
+            verifiedCache.bytes.length === reference.size) {
+          return {kind:'available',bytes:verifiedCache.bytes};
+        }
+        verifiedCache = undefined;
+        const data = Buffer.allocUnsafe(reference.size + 1);
+        let offset = 0;
+        while (offset < data.length) {
+          const {bytesRead} = await file.read(data, offset, data.length - offset, offset);
+          if (!bytesRead) break;
+          offset += bytesRead;
+        }
+        const bytes = data.subarray(0, offset);
+        if (offset !== reference.size || hashBytes(bytes) !== match[1]) return {kind:'integrity_error'};
+        if (bytes.length <= verifiedCacheMaxBytes) {
+          verifiedCache = {hash:match[1],stamp,bytes};
+        }
+        return {kind:'available',bytes};
+      } finally {
+        await file.close();
+      }
+    } catch (error) {
+      verifiedCache=undefined;
+      return isMissing(error) && await hasRetentionMarker(match[1])
+        ? {kind:'unavailable',reason:'retention'} : {kind:'unavailable'};
+    }
   }
 
   async function snapshotNames() {
@@ -278,6 +330,7 @@ export function createLocalStateStore(directory, io = fs) {
       return serialize(async () => {
         const handle = requireOpen();
         try {
+          verifiedCache = undefined;
           await publish(handle, 'artifact-' + hash + '.blob', data);
           if (await hasRetentionMarker(hash)) {
             await io.unlink(join(root, 'artifact-' + hash + '.retention')).then(() => handle.sync()).catch(() => {});
@@ -292,33 +345,23 @@ export function createLocalStateStore(directory, io = fs) {
     async readArtifact(reference, maxBytes) {
       checkBound(maxBytes);
       requireOpen();
-      const match = artifactRef.exec(reference.ref);
-      if (!match || !Number.isSafeInteger(reference.size) || reference.size < 0 ||
-          !Number.isSafeInteger(reference.originalSize) || reference.originalSize < reference.size ||
-          reference.truncated !== (reference.size < reference.originalSize)) return { kind: 'integrity_error' };
-      if (reference.size > maxBytes) return { kind: 'unavailable' };
+      if (reference.size > maxBytes) return {kind:'unavailable'};
+      const result = await verifiedArtifact(reference);
+      return result.kind === 'available'
+        ? {kind:'available',bytes:Buffer.from(result.bytes)} : result;
+    },
 
-      try {
-        const file = await io.open(join(root, 'artifact-' + match[1] + '.blob'), 'r');
-        try {
-          // Read one extra byte to distinguish a longer or changing file.
-          const data = Buffer.allocUnsafe(reference.size + 1);
-          let offset = 0;
-          while (offset < data.length) {
-            const { bytesRead } = await file.read(data, offset, data.length - offset, offset);
-            if (!bytesRead) break;
-            offset += bytesRead;
-          }
-          const bytes = data.subarray(0, offset);
-          if (offset !== reference.size || hashBytes(bytes) !== match[1]) return { kind: 'integrity_error' };
-          return { kind: 'available', bytes };
-        } finally {
-          await file.close();
-        }
-      } catch (error) {
-        return isMissing(error) && await hasRetentionMarker(match[1])
-          ? { kind: 'unavailable', reason: 'retention' } : { kind: 'unavailable' };
+    async readArtifactSlice(reference, offset, length) {
+      checkBound(length);
+      requireOpen();
+      if (!Number.isSafeInteger(offset) || offset < 0 ||
+          !Number.isSafeInteger(reference.size) || offset > reference.size) {
+        return {kind:'integrity_error'};
       }
+      const result = await verifiedArtifact(reference);
+      return result.kind === 'available'
+        ? {kind:'available',bytes:Buffer.from(result.bytes.subarray(offset,Math.min(reference.size,offset+length)))}
+        : result;
     },
 
     async artifactPresence(reference) {
@@ -338,6 +381,7 @@ export function createLocalStateStore(directory, io = fs) {
       return serialize(async () => {
         const handle = directoryHandle;
         directoryHandle = undefined;
+        verifiedCache = undefined;
         try {
           try {
             await handle?.close();

@@ -47,6 +47,7 @@
  *   close: () => Promise<void>,
  *   writeArtifact?: ArtifactStore['writeArtifact'],
  *   readArtifact?: ArtifactStore['readArtifact'],
+ *   readArtifactSlice?: ArtifactStore['readArtifactSlice'],
  *   artifactPresence?: ArtifactStore['artifactPresence']
  * }} StateStore
  * @typedef {{maxAgeMs?: number, maxBytes?: number}} ArtifactRetention
@@ -55,6 +56,7 @@
  * @typedef {{
  *   writeArtifact: (bytes: Uint8Array, maxBytes: number) => Promise<ArtifactReference>,
  *   readArtifact: (reference: ArtifactReference, maxBytes: number) => Promise<ArtifactRead>,
+ *   readArtifactSlice?: (reference: ArtifactReference, offset: number, length: number) => Promise<ArtifactRead>,
  *   artifactPresence: (reference: ArtifactReference) => Promise<ArtifactPresence>
  * }} ArtifactStore
  *
