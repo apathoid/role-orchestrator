@@ -2,7 +2,7 @@ import { admitFindings, checkAssessment, evidenceRefs, findings, recordObservati
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
-import { applyEvent, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
+import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions } from './controller-context.js';
 import { handoffContext, materializeSkillInstructions, prepareHandoff } from './handoff.js';
@@ -22,7 +22,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {Clock, DiagnosticEvent, DiagnosticPort, IdFactory} from '../core/diagnostics.js' */
 /** @import {ContextItem, Observation} from '../core/observation.js' */
-/** @import {Event, Limits, Operation, Reason} from '../core/operation.js' */
+/** @import {Attempt, Event, Limits, Operation, Reason} from '../core/operation.js' */
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
@@ -105,6 +105,8 @@ export function createOrchestrator(deps) {
   const undetached = new Set();
   /** @type {Set<string>} */
   const liveAttempts = new Set();
+  /** @type {{operationId: string, actionId?: string, stop: AbortSignal}[]} */
+  const reservationQueue = [];
   /** @type {ResolveExecution} */
   const resolveExecution = deps.resolveExecution ?? (async () => /** @type {Execution} */ (deps));
   /** @param {Execution} execution */
@@ -270,6 +272,10 @@ export function createOrchestrator(deps) {
     workers.set(state.operationId, pending);
     const completion = (async () => {
       const lookups = recover ? await recoverAttempts(state.operationId, signal.signal, execution) : undefined;
+      if (recover && !signal.signal.aborted) {
+        const restored = await inspect(state.operationId);
+        await runRecoveredWorkers(restored, pending, execution, lookups);
+      }
       return drive(state.operationId, signal.signal, pending, execution, lookups);
     })().finally(() => {
       if (running.get(state.operationId)?.signal === signal) running.delete(state.operationId);
@@ -332,7 +338,8 @@ export function createOrchestrator(deps) {
       return serialize(async () => {
         requireRunning();
         const state = await inspect(operationId);
-        if (state.status !== 'active' || running.has(operationId)) return activeSubmission(state);
+        if (running.has(operationId) || (state.status !== 'active' &&
+            !(controllerFailureWaiting(state) && hasRecoverableWorkers(state)))) return activeSubmission(state);
         const execution = await resolveExecution(workspaceContextFor(state));
         requireRunning();
         const next = await transition(state, { kind: 'operation.recovered', trusted: trusted(execution) });
@@ -373,14 +380,82 @@ export function createOrchestrator(deps) {
   }
 
   /** @param {Operation} state */
-  async function settleOrphans(state) {
+  function admittedWorkers(state) {
+    return new Map(state.events.flatMap(event => event.kind === 'controller.responded'
+      ? (event.admissions ?? []).flatMap(item => item.kind === 'accepted'
+        ? [[item.action.actionId, item.action]] : []) : []));
+  }
+
+  /** @param {Operation} state */
+  function recoverableWorkers(state) {
+    const boundary = state.events.findLastIndex(event => event.kind === 'operation.finished');
+    const candidates = state.events.slice(boundary + 1).flatMap(event => event.kind === 'controller.responded'
+      ? (event.admissions ?? []).flatMap(item => item.kind === 'accepted' ? [item.action] : []) : []);
+    const accepted = new Set(state.events.flatMap(event => event.kind === 'controller.responded'
+      ? event.decision.acceptedActionIds ?? [] : []));
+    return candidates.filter(action => acceptedWorkerAllowed(state, action.actionId) &&
+      !state.attempts.some(attempt => attempt.actionId === action.actionId && attempt.status === 'terminal') &&
+      !action.dependsOn.some(edge => edge.kind === 'after_model_acceptance' && !accepted.has(edge.actionId)));
+  }
+
+  /** @param {Operation} state */
+  function hasRecoverableWorkers(state) {
+    return recoverableWorkers(state).length > 0 || state.attempts.some(attempt =>
+      attempt.actionId !== attempt.attemptId && attempt.status !== 'terminal' && !liveAttempts.has(attempt.attemptId));
+  }
+
+  /**
+   * Restore the existing action round from durable admissions. Recovery does
+   * not create actions, replace an unknown attempt or choose a new strategy.
+   * @param {Operation} state @param {Map<string, PendingAction>} pending @param {Execution} execution
+   * @param {ReadonlyMap<string, LookupStatus>} [lookups]
+   */
+  async function runRecoveredWorkers(state, pending, execution, lookups) {
+    if (state.status !== 'active' && !controllerFailureWaiting(state)) return;
+    const actions = admittedWorkers(state);
+    const candidates = recoverableWorkers(state);
+    const eligible = candidates.filter(action => !state.attempts.some(attempt =>
+      attempt.actionId === action.actionId && attempt.status === 'dispatched' && !liveAttempts.has(attempt.attemptId)));
+    const boundary = state.events.findLastIndex(event => event.kind === 'operation.continued');
+    const last = state.events.slice(boundary + 1).findLast(event => event.kind === 'controller.responded');
+    const decision = last?.kind === 'controller.responded' ? last.decision : undefined;
+    const localWait = controllerFailureWaiting(state);
+    const selected = localWait ? eligible : (decision?.waitPolicy?.targets ?? []).flatMap(target => {
+      const actionId = target.kind === 'action' ? target.id :
+        state.attempts.find(attempt => attempt.attemptId === target.id)?.actionId;
+      const action = actionId === undefined ? undefined : actions.get(actionId);
+      return action && acceptedWorkerAllowed(state, action.actionId) ? [action] : [];
+    });
+    const newResult = !decision?.waitPolicy || state.events.some((event,index) =>
+      index + 1 > decision.contextCursor && event.kind === 'attempt.outcome' &&
+      state.attempts.some(attempt => attempt.attemptId === event.outcome.attemptId &&
+        selected.some(action => action.actionId === attempt.actionId)));
+    if (eligible.length || selected.length) {
+      await runActionRound(selected, eligible, actions, state,
+        (action, signal) => dispatchWorker(state, action, signal, execution, lookups),
+        (action, code, resource) => recordAction(state.operationId, action, 'action.deferred', code, resource),
+        pending, localWait ? 'all_requested' : decision?.waitPolicy?.kind ?? 'next_completion', newResult);
+    }
+    if (localWait && pending.size) {
+      const results = await Promise.allSettled([...pending.values()].map(task => task.completion));
+      const failure = results.find(result => result.status === 'rejected');
+      if (failure?.status === 'rejected') throw failure.reason;
+    }
+  }
+
+  /** @param {Operation} state @param {boolean} [recoverWorkers] */
+  async function settleOrphans(state, recoverWorkers = false) {
     let current = state;
     for (const attempt of state.attempts) {
       if (attempt.status === 'terminal' || liveAttempts.has(attempt.attemptId)) continue;
       const dispatched = attempt.status === 'dispatched';
+      if (recoverWorkers && !dispatched && !attempt.cancellation &&
+          attempt.actionId !== attempt.attemptId && acceptedWorkerAllowed(current, attempt.actionId) &&
+          recoverableWorkers(current).some(action => action.actionId === attempt.actionId) &&
+          resourceSnapshot(current).charged <= current.limits.maxInvocations) continue;
       current = await transition(current, {
         kind: 'attempt.outcome', dispatchCertainty: dispatched ? 'unknown' : 'not_sent',
-        outcome: failedOutcome(attempt.attemptId, 'PROVIDER_DISCONNECTED', dispatched),
+        outcome: failedOutcome(attempt.attemptId, attempt.cancellation ? 'CANCELLED' : 'PROVIDER_DISCONNECTED', dispatched),
       });
     }
     return current;
@@ -390,7 +465,7 @@ export function createOrchestrator(deps) {
   async function recoverAttempts(operationId, stop, { invocationTimeoutMs, catalog }) {
     const state = await serialize(async () => {
       const current = await inspect(operationId);
-      return stop.aborted ? current : settleOrphans(current);
+      return stop.aborted ? current : settleOrphans(current, true);
     });
     /** @type {Map<string, LookupStatus>} */
     const lookups = new Map();
@@ -910,45 +985,90 @@ export function createOrchestrator(deps) {
     };
   }
 
+  /**
+   * Technical admission only. Existing unsent Worker reservations retain
+   * their identity and charge; an orphan dispatched attempt is never reused.
+   * @param {Operation} state @param {string} [actionId]
+   * @returns {{kind: 'denied' | 'known' | 'resource' | 'busy' | 'ready', existing?: Attempt}}
+   */
+  function reservationAvailability(state, actionId) {
+    if (actionId ? !acceptedWorkerAllowed(state, actionId) : state.status !== 'active') return {kind:'denied'};
+    const existing = actionId ? state.attempts.find(attempt => attempt.actionId === actionId) : undefined;
+    if (existing && (existing.status !== 'reserved' || liveAttempts.has(existing.attemptId))) return {kind:'known'};
+    if (existing?.cancellation) return {kind:'denied'};
+    const resources = resourceSnapshot(state);
+    if (existing ? resources.charged > state.limits.maxInvocations : resources.remaining <= 0) return {kind:'resource'};
+    const active = new Set([...undetached, ...liveAttempts]);
+    const detachedPending = state.attempts.filter(attempt =>
+      attempt.status === 'terminal' && undetached.has(attempt.attemptId)).length;
+    if (undetached.size >= limits.maxConcurrentInvocations || detachedPending >= state.limits.maxConcurrentInvocations) {
+      return {kind:'resource'};
+    }
+    const localActive = existing ? state.attempts.filter(attempt =>
+      attempt.status !== 'terminal' && liveAttempts.has(attempt.attemptId)).length : resources.active;
+    if (active.size >= limits.maxConcurrentInvocations ||
+        localActive + detachedPending >= state.limits.maxConcurrentInvocations) return {kind:'busy'};
+    return {kind:'ready', existing};
+  }
+
   /** @param {string} operationId @param {AbortSignal} stop @param {string} [actionId] */
   async function reserve(operationId, stop, actionId) {
     let notified = false;
-    while (true) {
-      const result = await serialize(async () => {
-        const state = await inspect(operationId);
-        if (closing || stop.aborted || state.status !== 'active') return { state };
-        if (actionId) {
-          if (state.events.some(event => event.kind === 'action.cancelled' && event.actionId === actionId)) return { state };
-          if (state.attempts.some(attempt => attempt.actionId === actionId)) return { state, known: true };
-        }
-        const resources = resourceSnapshot(state);
-        if (resources.remaining <= 0) {
-          return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
-        }
-        const active = new Set([...undetached, ...liveAttempts]);
-        const detachedPending = state.attempts.filter(attempt =>
-          attempt.status === 'terminal' && undetached.has(attempt.attemptId)).length;
-        if (undetached.size >= limits.maxConcurrentInvocations || detachedPending >= state.limits.maxConcurrentInvocations) {
-          return { state: actionId ? state : await technicalWait(state, { code: 'RESOURCE_LIMIT', operationId }) };
-        }
-        if (active.size >= limits.maxConcurrentInvocations ||
-          resources.active + detachedPending >= state.limits.maxConcurrentInvocations) {
-          if (!notified && actionId) {
-            notified = true;
-            await transition(state, { kind: 'action.deferred', actionId, code: 'RESOURCE_LIMIT', resource: 'concurrency' });
+    const ticket = {operationId, actionId, stop};
+    reservationQueue.push(ticket);
+    const wake = () => releaseSlot();
+    stop.addEventListener('abort', wake, {once:true});
+    try {
+      while (true) {
+        const result = await serialize(async () => {
+          const state = await inspect(operationId);
+          if (closing || stop.aborted) return {state};
+          const available = reservationAvailability(state, actionId);
+          if (available.kind === 'denied') return {state};
+          if (available.kind === 'known') return {state, known:true};
+          if (available.kind === 'resource') {
+            return {state: actionId ? state : await technicalWait(state, {code:'RESOURCE_LIMIT', operationId})};
           }
-          return { state, ready: slot.promise };
-        }
-        const attemptId = ids.newId();
-        const reasoningDecisionId = actionId ? undefined : pendingControllerReasoning(state)?.decisionId;
-        const reserved = await transition(state, {
-          kind: 'attempt.reserved', attemptId, actionId: actionId ?? attemptId, reasoningDecisionId,
+          // FIFO among currently eligible reservation requests. A waiter
+          // blocked by its own operation limit cannot hold unrelated slots.
+          let earlierReady = false;
+          if (available.kind === 'ready') {
+            for (const earlier of reservationQueue) {
+              if (earlier === ticket) break;
+              if (earlier.stop.aborted) continue;
+              const prior = earlier.operationId === operationId ? state : await store.load(earlier.operationId);
+              if (prior && reservationAvailability(prior, earlier.actionId).kind === 'ready') {
+                earlierReady = true;
+                break;
+              }
+            }
+          }
+          if (available.kind === 'busy' || earlierReady) {
+            if (!notified && actionId) {
+              notified = true;
+              await transition(state, {kind:'action.deferred', actionId, code:'RESOURCE_LIMIT', resource:'concurrency'});
+            }
+            return {state, ready:slot.promise};
+          }
+          if (available.existing) {
+            liveAttempts.add(available.existing.attemptId);
+            return {attemptId:available.existing.attemptId, state};
+          }
+          const attemptId = ids.newId();
+          const reasoningDecisionId = actionId ? undefined : pendingControllerReasoning(state)?.decisionId;
+          const reserved = await transition(state, {
+            kind:'attempt.reserved', attemptId, actionId:actionId ?? attemptId, reasoningDecisionId,
+          });
+          liveAttempts.add(attemptId);
+          return {attemptId, state:reserved};
         });
-        liveAttempts.add(attemptId);
-        return { attemptId, state: reserved };
-      });
-      if (!result.ready) return result;
-      await result.ready;
+        if (!result.ready) return result;
+        await result.ready;
+      }
+    } finally {
+      stop.removeEventListener('abort', wake);
+      reservationQueue.splice(reservationQueue.indexOf(ticket), 1);
+      releaseSlot();
     }
   }
 
@@ -956,7 +1076,7 @@ export function createOrchestrator(deps) {
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] */
   async function dispatchWorker(state, action, stop, execution, lookups) {
     const current = await inspect(state.operationId);
-    if (stop.aborted || current.status !== 'active') return false;
+    if (stop.aborted || !acceptedWorkerAllowed(current, action.actionId)) return false;
     const entries = await execution.catalog.list();
     const handoff = prepareHandoff(current, action, entries);
     const choice = handoff.kind === 'accepted'
@@ -982,8 +1102,9 @@ export function createOrchestrator(deps) {
     const reserved = await reserve(state.operationId, stop, action.actionId);
     if (!reserved.attemptId) {
       if (reserved.known) return true;
-      if (!stop.aborted && !reserved.state.events.some(event => event.kind === 'action.cancelled' &&
-        event.actionId === action.actionId)) await recordAction(state.operationId, action, 'action.deferred', 'RESOURCE_LIMIT');
+      if (!stop.aborted && acceptedWorkerAllowed(reserved.state, action.actionId)) {
+        await recordAction(state.operationId, action, 'action.deferred', 'RESOURCE_LIMIT');
+      }
       return false;
     }
     const attemptId = reserved.attemptId;
@@ -1033,9 +1154,16 @@ export function createOrchestrator(deps) {
    * @param {ReasonCode} code @param {string} [resource]
    */
   async function recordAction(operationId, action, kind, code, resource) {
-    await serialize(async () => transition(await inspect(operationId), {
-      kind, actionId: action.actionId, code, resource,
-    }));
+    await serialize(async () => {
+      let current = await transition(await inspect(operationId), {kind, actionId:action.actionId, code, resource});
+      const orphan = current.attempts.find(attempt => attempt.actionId === action.actionId &&
+        attempt.status === 'reserved' && !liveAttempts.has(attempt.attemptId));
+      if (orphan) {
+        current = await transition(current, {kind:'attempt.outcome', dispatchCertainty:'not_sent',
+          outcome:failedOutcome(orphan.attemptId, code, false)});
+      }
+      return current;
+    });
   }
 
   /** @param {Operation} state @param {Decision} decision */
@@ -1175,7 +1303,13 @@ export function createOrchestrator(deps) {
         trace(state, 'controller.invalid_proposal', correction?.code ?? 'INVALID_PROPOSAL', attemptId);
         return state;
       }).finally(() => releaseAttempt(attemptId));
-      if (next.status !== 'active') return next;
+      if (next.status !== 'active') {
+        if (controllerFailureWaiting(next)) {
+          await runRecoveredWorkers(next, pending, execution, lookups);
+          return inspect(operationId);
+        }
+        return next;
+      }
       if (settleCancellation.length) await Promise.all(settleCancellation);
       if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
         (action, signal) => dispatchWorker(next, action, signal, execution, lookups),

@@ -112,6 +112,27 @@ export function pendingControllerReasoning(operation) {
   return {decisionId: candidate.decision.decisionId, reasoningLevel: candidate.decision.nextController.reasoningLevel};
 }
 
+/**
+ * A technical wait caused by a specific Controller invocation is local to
+ * that invocation. It is not an operation-wide resource or user-input wait.
+ * @param {Operation} state
+ */
+export function controllerFailureWaiting(state) {
+  const reason = state.waiting?.kind === 'technical' ? state.waiting.reason : undefined;
+  return state.status === 'waiting' && Boolean(reason?.attemptId && reason.actionId === reason.attemptId &&
+    state.attempts.some(attempt => attempt.attemptId === reason.attemptId &&
+      attempt.actionId === attempt.attemptId && attempt.status === 'terminal'));
+}
+
+/** @param {Operation} state @param {string} actionId */
+export function acceptedWorkerAllowed(state, actionId) {
+  if (state.status !== 'active' && !controllerFailureWaiting(state)) return false;
+  return state.events.some(event => event.kind === 'controller.responded' &&
+    event.admissions?.some(item => item.kind === 'accepted' && item.action.actionId === actionId)) &&
+    !state.events.some(event => (event.kind === 'action.cancelled' || event.kind === 'action.rejected') &&
+      event.actionId === actionId);
+}
+
 /** @param {Operation} operation */
 export function workspaceContextFor(operation) {
   const latest = operation.events.findLast(event => event.kind === 'operation.continued' && event.input.workspaceContext);
@@ -267,7 +288,10 @@ export function applyEvent(state, event) {
         if (event.reasoningDecisionId !== pendingReasoning?.decisionId) return reject('INVALID_PROPOSAL');
       } else if (event.reasoningDecisionId !== undefined) return reject('INVALID_PROPOSAL');
       if (state.events.some(item => item.kind === 'action.cancelled' && item.actionId === event.actionId)) return reject('CANCELLED');
-      if (state.status !== 'active') return reject(state.status === 'cancelled' ? 'CANCELLED' : 'INVALID_PROPOSAL');
+      if (state.status !== 'active' && (event.actionId === event.attemptId ||
+          !acceptedWorkerAllowed(state, event.actionId))) {
+        return reject(state.status === 'cancelled' ? 'CANCELLED' : 'INVALID_PROPOSAL');
+      }
       const resources = resourceSnapshot(state);
       if (resources.remaining <= 0 || resources.active >= state.limits.maxConcurrentInvocations) {
         return reject('RESOURCE_LIMIT');
@@ -351,7 +375,7 @@ export function applyEvent(state, event) {
         transcriptRefs: [...state.transcriptRefs, event.input.requestId],
       }, 'USER_INPUT');
     case 'operation.recovered':
-      if (state.status !== 'active') return reject('INVALID_PROPOSAL');
+      if (state.status !== 'active' && !controllerFailureWaiting(state)) return reject('INVALID_PROPOSAL');
       return apply({ ...resumeAuthority(event.trusted), generation: state.generation + 1 }, 'RECOVERED');
     case 'operation.finished':
       if (state.status !== 'active') return reject('INVALID_PROPOSAL');

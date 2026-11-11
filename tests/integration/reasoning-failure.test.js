@@ -99,3 +99,28 @@ test('C11R review P1: ACP session effort refusal becomes visible Host failure an
   assert.equal((await api.inspect(waiting.operationId)).status,'waiting');
   await api.close();
 });
+
+test('C12R.1 a local unsupported Controller choice preserves all previously accepted independent work', async () => {
+  const profile={profileId:'primary',providerId:'fixture',model:'same'};
+  const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
+    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[{level:'low',effort:'native-low'}]}},
+    controllerProfile:'primary'});
+  const worker=id=>({kind:'delegate',actionId:id,profileId:'primary',objective:id,
+    expectedResult:'Result',contextRefs:[],dependsOn:[]});
+  const {api,invocations}=setup({profile,catalog,maxInvocations:8,maxConcurrentInvocations:1,
+    respond(i){
+      if(i.kind==='delegate')return {dispatchCertainty:'sent',outcome:outcome(i.attemptId),output:i.actionId};
+      return final(i,{finalAssessment:undefined,additions:[worker('a'),worker('b'),worker('c'),
+        {...worker('dependent'),dependsOn:[{actionId:'c',kind:'after_terminal'}]},
+        {...worker('not-accepted'),dependsOn:[{actionId:'c',kind:'after_model_acceptance'}]}],
+        nextController:{continue:true,reasoningLevel:'unsupported'}});
+    }});
+  const state=await(await api.submit(request())).completion;
+  assert.equal(state.status,'waiting');
+  assert.equal(state.waiting.reason.code,'CAPABILITY_UNAVAILABLE');
+  assert.equal(state.waiting.reason.reasoningLevel,'unsupported');
+  assert.equal(invocations.filter(i=>i.kind==='controller').length,1);
+  assert.deepEqual(invocations.filter(i=>i.kind==='delegate').map(i=>i.actionId).sort(),['a','b','c','dependent']);
+  assert.ok(state.attempts.filter(a=>a.actionId!==a.attemptId).every(a=>a.outcome?.terminal==='completed'));
+  await api.close();
+});

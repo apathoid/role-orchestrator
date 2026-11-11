@@ -48,3 +48,24 @@ test('C11R.5 continue with no explicit level uses default, no sticky selection',
   assert.deepEqual(invocations.map(i=>i.reasoning.level),['low','high','low']);
   await api.close();
 });
+
+test('C12R.1 single slot serves ready Workers and repeated independent Controller turns', async () => {
+  const worker=id=>({kind:'delegate',actionId:id,profileId:'primary',objective:id,
+    contextRefs:[],dependsOn:[],expectedResult:'Result'});
+  let turns=0;
+  const {api,invocations}=setup({maxInvocations:12,maxConcurrentInvocations:1,respond(i){
+    if(i.kind==='delegate')return {dispatchCertainty:'sent',outcome:outcome(i.attemptId),output:i.actionId};
+    if(++turns===1)return final(i,{finalAssessment:undefined,additions:[worker('a'),worker('b'),worker('c')],
+      nextController:{continue:true}});
+    const completed=i.context[1].value.outcomes.filter(o=>['a','b','c'].includes(o.actionId));
+    if(completed.length===3)return final(i);
+    return final(i,{finalAssessment:undefined,nextController:{continue:true}});
+  }});
+  const state=await(await api.submit(request())).completion;
+  assert.equal(state.status,'finished');
+  const order=invocations.map(i=>i.kind==='controller'?'controller':i.actionId);
+  assert.equal(order.filter(x=>x!=='controller').length,3);
+  assert.ok(order.indexOf('a')<order.lastIndexOf('controller'));
+  assert.ok(order.length<12);
+  await api.close();
+});

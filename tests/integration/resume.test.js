@@ -6,10 +6,10 @@ import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLocalStateStore } from '../../src/adapters/state/local-store.js';
-import { resourceSnapshot } from '../../src/core/operation.js';
+import { applyEvent, createOperation, resourceSnapshot } from '../../src/core/operation.js';
 import { createAuthorityGrant } from '../../src/main/index.js';
 import { final, setup } from '../fixtures/application.js';
-import { outcome, request } from '../fixtures/core.js';
+import { decision, outcome, request } from '../fixtures/core.js';
 
 async function durableFixture(t) {
   const directory = await fs.mkdtemp(join(tmpdir(), 'role-orchestrator-resume-'));
@@ -171,4 +171,52 @@ test('a lookup result naming a different attempt cannot settle the recorded unce
   assert.equal(result.status, 'finished');
   assert.equal(result.attempts[0].outcome.effect, 'unknown');
   assert.ok(!result.events.some(event => event.kind === 'attempt.outcome' && event.outcome.attemptId === 'foreign-attempt'));
+});
+
+test('C12R.1 restart retains local Controller failure, resumes accepted unsent attempts and never replays dispatched effects', async t => {
+  const {store}=await durableFixture(t);
+  await store.open();
+  const limits={maxInvocations:15,maxConcurrentInvocations:4};
+  let state=createOperation('mixed-op',request(),'fixture-authority',limits);
+  let n=0;
+  const apply=event=>{
+    const result=applyEvent(state,{eventId:'seed-'+(++n),operationId:state.operationId,receivedAt:n,...event});
+    assert.equal(result.kind,'applied',JSON.stringify(result.reason));
+    state=result.state;
+  };
+  const worker=(id,dependsOn=[])=>({kind:'delegate',actionId:id,profileId:'primary',objective:id,
+    contextRefs:[],dependsOn,expectedResult:'Result'});
+  const additions=[worker('reserved'),worker('new'),worker('unknown'),worker('done'),worker('cancelled'),
+    worker('dependent',[{actionId:'unknown',kind:'after_terminal'}]),
+    worker('blocked',[{actionId:'done',kind:'after_model_acceptance'}])];
+  apply({kind:'controller.responded',decision:decision({operationId:state.operationId,finalAssessment:undefined,
+    additions,nextController:{continue:true,reasoningLevel:'unsupported'}}),
+    admissions:additions.map(action=>({kind:'accepted',action}))});
+  apply({kind:'attempt.reserved',attemptId:'reserved-id',actionId:'reserved'});
+  apply({kind:'attempt.reserved',attemptId:'unknown-id',actionId:'unknown'});
+  apply({kind:'attempt.dispatched',attemptId:'unknown-id'});
+  apply({kind:'attempt.reserved',attemptId:'done-id',actionId:'done'});
+  apply({kind:'attempt.dispatched',attemptId:'done-id'});
+  apply({kind:'attempt.outcome',outcome:outcome('done-id'),dispatchCertainty:'sent'});
+  apply({kind:'action.cancelled',actionId:'cancelled',source:'superseded'});
+  apply({kind:'attempt.reserved',attemptId:'controller-failed',actionId:'controller-failed',reasoningDecisionId:'decision-1'});
+  apply({kind:'attempt.outcome',outcome:outcome('controller-failed',{terminal:'failed',diagnostics:[{code:'CAPABILITY_UNAVAILABLE'}]}),
+    dispatchCertainty:'not_sent'});
+  apply({kind:'operation.waiting',waiting:{kind:'technical',reason:{code:'CAPABILITY_UNAVAILABLE',
+    operationId:state.operationId,attemptId:'controller-failed',actionId:'controller-failed',reasoningLevel:'unsupported'}}});
+  assert.deepEqual(await store.commit(state.operationId,null,state),{kind:'committed'});
+  const {api,invocations}=setup({store,idPrefix:'recovered-',...limits,respond(i){
+    assert.equal(i.kind,'delegate');
+    return {dispatchCertainty:'sent',outcome:outcome(i.attemptId),output:i.actionId};
+  }});
+  const restored=await(await api.resume(state.operationId)).completion;
+  assert.equal(restored.status,'waiting');
+  assert.equal(restored.waiting.reason.reasoningLevel,'unsupported');
+  assert.deepEqual(invocations.map(i=>i.actionId).sort(),['dependent','new','reserved']);
+  assert.equal(invocations.find(i=>i.actionId==='reserved').attemptId,'reserved-id');
+  assert.equal(restored.attempts.find(a=>a.attemptId==='unknown-id').outcome.effect,'unknown');
+  assert.equal(restored.attempts.find(a=>a.attemptId==='done-id').outcome.terminal,'completed');
+  assert.equal(restored.attempts.filter(a=>a.actionId==='reserved').length,1);
+  assert.ok(restored.attempts.every(a=>a.status==='terminal'));
+  await api.close();
 });
