@@ -32,15 +32,24 @@
 
 На актуальном implementation HEAD `4c3f324e11b8d7ab851f893bafcbd492fd03f26d` завершена доступная инженерная часть [C12R.8R](STATUS.md): восстановлена post-execution MCP provenance при response overflow, исправлен byte check полного JSON-RPC envelope и non-finite id, проверены общий tool/history budget, bounded cache, cancellation/late receipts, durable reopen и optional direct Controller без retrieval. **CI 324/324 PASS**; реальный Zed/ACP, независимые модели, native NixOS и качество сравнительных retrieval A/B прогонов остаются UNVERIFIED. C12R.8R не меняет обязательные runtime workflow, Host semantics, permissions или лимиты.
 
-## C12R.9 — непрерывность контекста Controller без искусственного Host knowledge
+## C12R.9 — обязательные исправления непрерывности контекста
 
-**Новый следующий инженерный шаг — C12R.9.0**, согласно [детальному плану C12R.9](C12R9_CONTEXT_CONTINUITY.md). Цель — устранить причины потери Controller сведений о уже выполненной работе и обеспечить использование сохранённых результатов без ненужного повторного исполнения. Основание: native-анализ пользователя (оригинальные traces пока не повторно верифицированы) и подтверждённая исходниками политика 64 КиБ / 128 optional context records, reverse-recency и совместное применение `context.maxBytes` к разным техническим ресурсам.
+**Текущий следующий шаг — C12R.9.0** по [STATUS](STATUS.md). [**Нормативный инженерный план C12R.9**](C12R9_CONTEXT_CONTINUITY.md) определяет обязательные результаты (а не гипотетические возможности). Предыдущие шаги C12R.0–.8R инженерно закрыты в доступном scope, реальная native acceptance остаётся открытой.
 
-**Порядок:** C12R.9.0 — воспроизведение/причинная карта; C12R.9.1 — доказанные дубликаты; C12R.9.2 — корректность технических границ контекста; C12R.9.3 — минимальная связь Action/Attempt/Outcome/result, согласованность effect/terminal; C12R.9.4 — проверка ContextPort/adapter retrieval, условное минимальное расширение лишь при воспроизведённой необходимости; C12R.9.5 — адресное уточнение Host/native skills без Host project discovery; C12R.9.6 — наблюдаемость по реально контролируемым границам; C12R.9.7 — регрессия, native сравнение, документация и handoff.
+| Этап | Обязательный результат |
+|---|---|
+| C12R.9.0 | Воспроизвести loss/duplication/size проблемы на synthetic fixtures, зафиксировать actual baseline |
+| C12R.9.1 | Удалить технически доказанную повторную inline-доставку одного результата, сохранив raw history |
+| C12R.9.2 | Разделить бюджеты Controller/handoff/fetch/capture/skills/tools, default Controller = 256 КиБ, убрать отдельный фиксированный 128-record guard и ограничить dynamic technical context |
+| C12R.9.3 | Добавить компактную **производную**, не persisted, карту Action→Attempt→Outcome→refs и разнести terminal completion/effect uncertainty |
+| C12R.9.4 | Сохранить MCP ContextPort и добавить **необязательный модельный** запрос refs/cursor в обычном `nextController` для случаев без retrieval tools; не создавать новый host index или workflow |
+| C12R.9.5 | Уточнить Host Catalog vs native skills, не сканируя проект и не ограничивая provider-native tools |
+| C12R.9.6 | Добавить техническую диагностику реальной границы доставки, без сбора bodies по умолчанию |
+| C12R.9.7 | Полная регрессия, comparative native acceptance (либо честный UNVERIFIED), документация и STATUS |
 
-План **не предписывает** новый индекс, глобальное увеличение лимита, обязательный MCP, Host compaction, второй файловый runtime, новую стратегию модели либо обязательные дополнительные Controller turns. Сначала проверять существующие `outcomes`, `operationHistory`, `ContextPort`, дублирование и корректность доставки; расширять контракты только при доказанном пробеле. Инженерный порядок не является runtime workflow; модель сохраняет право на прямой ответ, собственные инструменты, делегирование и осознанную повторную проверку.
+**Границы:** Model-first, provider-agnostic, unconstrained native execution в пределах настоящих permissions, отсутствие фиксированных workflows, Host compaction/summary/relevance scoring, нового indexed store, второго scheduler, Host файлового runtime, обязательного MCP/Worker/Controller turn или persistent native session. Эти шаги — этапы инженерной реализации, не новые runtime stages. Бюджеты по фактическим техническим ресурсам и все ссылки/исходные наблюдения сохраняют provenance. Сначала проверка на fixture, затем минимальное адресное изменение; новые возможности реализуются только для воспроизведённого случая, который не устраняется одной корректной inline-доставкой.
 
-Это **plan only / implementation NOT STARTED**; прежние CI результаты не подтверждают C12R.9. Нативные C12.3/C12.4/Zed/NixOS и сравнительная оценка качества остаются открытыми по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md) и [STATUS](STATUS.md).
+**План подготовлен, runtime implementation не началась.** NATIVE C12.3/C12.4/Zed/NixOS и comparative quality остаются UNVERIFIED. Действующие результаты и следующий шаг — только в [STATUS](STATUS.md).
 
 ## C12 — реализованные инженерные шаги и открытая приёмка
 
