@@ -46,7 +46,7 @@ function boundRequestedByteChunk(item, maxBytes) {
   if (!item.ref.startsWith('host:history-chunk:') || !item.value ||
       typeof item.value !== 'object' || !('base64' in item.value) ||
       !('offset' in item.value) || !('totalBytes' in item.value)) return undefined;
-  const value = item.value;
+  const value = /** @type {{base64:string, offset:number, totalBytes:number, nextOffset?:number} & Record<string,unknown>} */ (item.value);
   if (typeof value.base64 !== 'string' || !Number.isSafeInteger(value.offset) ||
       !Number.isSafeInteger(value.totalBytes)) return undefined;
   const data = Buffer.from(value.base64, 'base64');

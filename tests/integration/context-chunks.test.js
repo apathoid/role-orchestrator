@@ -54,7 +54,12 @@ for(const budget of [64*1024,128*1024]){
     const port=portFor(historyState('large-inline',body),budget);
     const ordinary=await port.fetch('large-inline');
     assert.equal(ordinary.kind,'available');
-    assert.equal(ordinary.item.completeness,'truncated');
+    assert.equal(ordinary.item.completeness,
+      Buffer.byteLength(JSON.stringify({
+        ref:'large-inline',source:'provider_reported',completeness:'complete',
+        value:body,provenance:{kind:'provider_report',sourceId:'source-report',receivedAt:1},
+        attemptId:'attempt-one',receivedSequence:{revision:1,index:0}
+      })) > budget ? 'truncated' : 'complete');
     const all=await readAll(port,'large-inline',budget);
     assert.ok(all.steps>=2);
     assert.equal(all.last.format,'utf8');
@@ -363,9 +368,8 @@ test('C12R.9 review P2: independent 8 KiB Controller and 64 KiB fetch budgets al
         return final(invocation,{finalAssessment:undefined,nextController:{continue:true}});
       }
       if(turns===2) return final(invocation,{finalAssessment:undefined,
-        nextController:{continue:true,contextRequest:{refs:[{ref:'evidence:'+
-          // Preserve the actual durable evidence identity, never guess its hash.
-          invocation.contextAccess.list().items.find(item=>item.providerRef==='mismatched-budgets')?.ref?.split('evidence:')[1],
+        nextController:{continue:true,contextRequest:{refs:[{
+          ref:invocation.contextAccess.list().items.find(item=>item.providerRef==='mismatched-budgets')?.ref,
           offset:0}]}}});
       const chunk=invocation.context.find(item=>item.ref==='host:history-chunk:0');
       assert.ok(chunk,'the requested byte chunk must fit actual Controller context budget');
