@@ -100,7 +100,7 @@ export function operationTrace(operation, redaction = {}) {
       effect: operation.waiting.reason.effect,
       profileId: operation.waiting.reason.profileId, reasoningLevel: operation.waiting.reason.reasoningLevel,
       availableLevels: operation.waiting.reason.availableLevels,
-      reasoningCause: operation.waiting.reason.reasoningCause }
+      reasoningCause: operation.waiting.reason.reasoningCause, resource: operation.waiting.reason.resource }
     : operation.waiting?.kind === 'question'
       ? { kind: 'question', questionId: operation.waiting.questionId } : undefined;
   const projection = {

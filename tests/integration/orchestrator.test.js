@@ -270,9 +270,13 @@ test('an undetached connection keeps its slot until late cleanup completes', { t
   assert.equal(waiting.attempts[0].outcome.effect, 'unknown');
   const blocked = await (await api.submit(request({ requestId: 'other' }))).completion;
   assert.equal(blocked.waiting.reason.code, 'RESOURCE_LIMIT');
+  assert.equal(blocked.waiting.reason.resource,'provider_cleanup_pending');
+  assert.ok(waiting.events.flatMap(e=>e.observations??[]).some(item=>item.value?.status==='not_confirmed' && item.value.slotRetained));
   assert.equal(invocations.length, 1);
   cleanup.resolve();
   await new Promise(resolve => setImmediate(resolve));
+  const after=await api.inspect(waiting.operationId);
+  assert.ok(after.events.flatMap(e=>e.observations??[]).some(item=>item.value?.status==='detached'));
   const resumed = await api.resume(blocked.operationId, { requestId: 'continue-other', text: 'Continue' });
   assert.equal((await resumed.completion).status, 'finished');
 });

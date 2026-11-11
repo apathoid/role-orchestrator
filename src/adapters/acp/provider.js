@@ -164,6 +164,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let messageId;
     let outputBytes = 0;
     let truncated = false;
+    /** @type {string | undefined} */
+    let limitRef;
     let line = 0;
     const updates = new Set();
     /** @type {Map<string, ToolCallUpdate>} */
@@ -193,8 +195,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       if (update.sessionUpdate !== 'agent_message_chunk' &&
           update.sessionUpdate !== 'tool_call' && update.sessionUpdate !== 'tool_call_update') return;
       const encoded = JSON.stringify(update);
-      if (truncated || outputBytes + Buffer.byteLength(encoded) > maxOutputBytes) {
+      if (truncated) return;
+      if (outputBytes + Buffer.byteLength(encoded) > maxOutputBytes) {
         truncated = true;
+        limitRef = publish({ref:'acp-output-limit',sourceId:invocation.attemptId,kind:'host_transport',
+          completeness:'complete',value:{reason:'accumulated_output_limit',limitBytes:maxOutputBytes,acceptedBytes:outputBytes}});
         return;
       }
       outputBytes += Buffer.byteLength(encoded);
@@ -340,19 +345,25 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
           configuredEffort = await configureReasoning(agent, a.session, session, invocation.reasoning, signal);
         } catch (error) {
           if (signal.aborted) throw error;
-          if (invocation.reasoning?.mode === 'selectable') {
+          if (invocation.reasoning?.mode === 'selectable' && error instanceof RequestError && !connection.signal.aborted) {
             return {...resultFor(invocation, 'CAPABILITY_UNAVAILABLE'),
               reasoningUnavailable: /** @type {const} */ ('session_option_rejected')};
           }
           throw error;
         }
-        if (!configuredEffort || modelOption(session.configOptions)?.currentValue !== model) {
+        if (!configuredEffort) {
           const failure = resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
           // Distinguish missing/refused reasoning from unrelated model selection
           // failures: only this signal becomes a user-visible effort error.
           if (invocation.reasoning?.mode === 'selectable') {
             failure.reasoningUnavailable = 'session_option_unavailable';
           }
+          return failure;
+        }
+        if (modelOption(session.configOptions)?.currentValue !== model) {
+          const failure=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+          failure.outcome.diagnostics[0].ref=publish({ref:'acp-model-selection',sourceId:invocation.attemptId,
+            kind:'host_transport',completeness:'complete',value:{reason:'model_selection_not_confirmed',profileId:invocation.profile.profileId}});
           return failure;
         }
         if (invocation.reasoning?.mode === 'selectable') {
@@ -377,13 +388,15 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
           result = resultFor(invocation, undefined, 'completed', 'sent');
           result.output = invocation.kind === 'controller' ? parseDecisionText(output) : output;
         } else {
-          const code = stopReason === 'max_tokens' || stopReason === 'max_turn_requests' ? 'RESOURCE_LIMIT' :
+          const code = truncated || stopReason === 'max_tokens' || stopReason === 'max_turn_requests' ? 'RESOURCE_LIMIT' :
             stopReason === 'refusal' ? 'PROVIDER_REFUSED' : 'PROTOCOL_ERROR';
           result = resultFor(invocation, code, 'failed', 'sent');
+          if (truncated) result.outcome.diagnostics[0].ref=limitRef;
         }
         flushMessage(!truncated && result.outcome.terminal === 'completed');
-        publish({ ref: 'acp-stop', sourceId: sessionId, kind: 'provider_report', completeness: 'complete',
+        const stopRef=publish({ ref: 'acp-stop', sourceId: sessionId, kind: 'provider_report', completeness: 'complete',
           value: { stopReason: stopReason ?? null, truncated, cancelRequested: signal.aborted } });
+        for(const diagnostic of result.outcome.diagnostics) diagnostic.ref ??= stopRef;
         return result;
       } finally {
         active = false;

@@ -961,12 +961,17 @@ export function createOrchestrator(deps) {
       signal.removeEventListener('abort', abort);
       if (opening) {
         let closed = false;
+        let cleanupFailed = false;
         // A late open still transfers a session to this cleanup path.
         const detached = opening.then(owned => executor.close(owned), () => {}).then(() => {
           closed = true;
           acceptingObservations = false;
-          if (undetached.delete(attemptId)) releaseSlot();
-        }).catch(() => trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId));
+          if (undetached.delete(attemptId)) {
+            receive(observation({ref:'host:cleanup-detached:'+attemptId,completeness:'complete',
+              value:{status:'detached'}},{kind:'host_transport',sourceId:attemptId,receivedAt:clock.now()}),true);
+            releaseSlot();
+          }
+        }).catch(() => { cleanupFailed=true; trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId); });
         /** @type {{promise: Promise<void>, resolve: () => void}} */
         const cleanupDeadline = Promise.withResolvers();
         const clearCleanup = schedule(invocationTimeoutMs, () => {
@@ -975,7 +980,12 @@ export function createOrchestrator(deps) {
         });
         await Promise.race([detached, cleanupDeadline.promise]);
         clearCleanup();
-        if (!closed) undetached.add(attemptId);
+        if (!closed) {
+          undetached.add(attemptId);
+          observations.push(observation({ref:'host:cleanup-pending:'+attemptId,completeness:'complete',
+            value:{status:'not_confirmed',reason:cleanupFailed?'close_failed':'deadline',slotRetained:true}},
+            {kind:'host_transport',sourceId:attemptId,receivedAt:clock.now()}));
+        }
       }
     }
     return {
@@ -989,7 +999,7 @@ export function createOrchestrator(deps) {
    * Technical admission only. Existing unsent Worker reservations retain
    * their identity and charge; an orphan dispatched attempt is never reused.
    * @param {Operation} state @param {string} [actionId]
-   * @returns {{kind: 'denied' | 'known' | 'resource' | 'busy' | 'ready', existing?: Attempt}}
+   * @returns {{kind: 'denied' | 'known' | 'resource' | 'busy' | 'ready', existing?: Attempt, resource?: string}}
    */
   function reservationAvailability(state, actionId) {
     if (actionId ? !acceptedWorkerAllowed(state, actionId) : state.status !== 'active') return {kind:'denied'};
@@ -997,12 +1007,12 @@ export function createOrchestrator(deps) {
     if (existing && (existing.status !== 'reserved' || liveAttempts.has(existing.attemptId))) return {kind:'known'};
     if (existing?.cancellation) return {kind:'denied'};
     const resources = resourceSnapshot(state);
-    if (existing ? resources.charged > state.limits.maxInvocations : resources.remaining <= 0) return {kind:'resource'};
+    if (existing ? resources.charged > state.limits.maxInvocations : resources.remaining <= 0) return {kind:'resource',resource:'invocation_budget'};
     const active = new Set([...undetached, ...liveAttempts]);
     const detachedPending = state.attempts.filter(attempt =>
       attempt.status === 'terminal' && undetached.has(attempt.attemptId)).length;
     if (undetached.size >= limits.maxConcurrentInvocations || detachedPending >= state.limits.maxConcurrentInvocations) {
-      return {kind:'resource'};
+      return {kind:'resource',resource:'provider_cleanup_pending'};
     }
     const localActive = existing ? state.attempts.filter(attempt =>
       attempt.status !== 'terminal' && liveAttempts.has(attempt.attemptId)).length : resources.active;
@@ -1027,7 +1037,8 @@ export function createOrchestrator(deps) {
           if (available.kind === 'denied') return {state};
           if (available.kind === 'known') return {state, known:true};
           if (available.kind === 'resource') {
-            return {state: actionId ? state : await technicalWait(state, {code:'RESOURCE_LIMIT', operationId})};
+            return {state: actionId ? state : await technicalWait(state, {code:'RESOURCE_LIMIT', operationId, resource:available.resource}),
+              resource:available.resource};
           }
           // FIFO among currently eligible reservation requests. A waiter
           // blocked by its own operation limit cannot hold unrelated slots.
@@ -1104,7 +1115,7 @@ export function createOrchestrator(deps) {
     if (!reserved.attemptId) {
       if (reserved.known) return true;
       if (!stop.aborted && acceptedWorkerAllowed(reserved.state, action.actionId)) {
-        await recordAction(state.operationId, action, 'action.deferred', 'RESOURCE_LIMIT');
+        await recordAction(state.operationId, action, 'action.deferred', 'RESOURCE_LIMIT', reserved.resource, 'resource');
       }
       return false;
     }

@@ -208,3 +208,5 @@ OBSERVED: [CI #42805542909](https://github.com/apathoid/role-orchestrator/action
 | A09–A12, A19–A26, A28, A40, A44–A54 | `reasoning-failure.test.js`, `reasoning-controller.test.js`, `resume.test.js`: local Controller failure, ready reservation fairness, mixed durable worker recovery; execution pending. |
 
 C12R.4 regression additions: `tests/integration/context.test.js` (ambiguous legacy references, directory/fetch cause, oversized missing/retained/present artifact); existing `evidence-addressing.test.js`, `context-quality.test.js`, `mcp-context.test.js` and finding/summary tests cover scoped historical retrieval and attribution. Verification remains pending on the implementation HEAD.
+
+C12R.5: ACP contract tests distinguish observed output cap and malformed terminal; orchestration tests verify retained slot, addressed cleanup reason and late detach. Existing cancellation, partial output, process ownership and recovery fixtures remain required. Native deep failure cause is UNVERIFIED.

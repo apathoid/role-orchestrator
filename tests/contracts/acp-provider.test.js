@@ -153,9 +153,14 @@ test('ACP bounds streamed text and rejects an unknown terminal', linux, () =>
     for (const scenario of ['oversize', 'malformed']) {
       await using call = await invoke(provider(cwd, scenario));
       const result = await call.completion;
-      assert.equal(result.outcome.diagnostics[0].code, 'PROTOCOL_ERROR');
+      assert.equal(result.outcome.diagnostics[0].code, scenario==='oversize'?'RESOURCE_LIMIT':'PROTOCOL_ERROR');
       assert.equal(result.output, undefined);
       assert.ok(call.observations.some(item => item.kind === 'model' && item.completeness === 'truncated'));
+      if(scenario==='oversize'){
+        const fact=call.observations.find(item=>item.value?.reason==='accumulated_output_limit');
+        assert.equal(fact.kind,'host_transport');
+        assert.equal(result.outcome.diagnostics[0].ref,fact.ref);
+      }
     }
   }));
 
