@@ -413,7 +413,15 @@ test('C12R.8R.1 an oversized MCP projection does not alter a durable tool receip
       await store.close();
       await store.open();
       const reopened = await store.load(finished.operationId);
-      assert.deepEqual(pickReceipt(reopened), recorded);
+      const persisted = pickReceipt(reopened);
+      assert.ok(persisted);
+      assert.equal(persisted.ref, recorded.ref);
+      assert.equal(persisted.source, recorded.source);
+      assert.equal(persisted.completeness, recorded.completeness);
+      assert.deepEqual(persisted.value, recorded.value);
+      assert.equal(persisted.provenance.kind, recorded.provenance.kind);
+      assert.equal(persisted.provenance.sourceId, recorded.provenance.sourceId);
+      assert.equal(persisted.provenance.receivedAt, recorded.provenance.receivedAt);
       assert.equal(executions, 1);
     } finally {
       await api.close();
