@@ -303,3 +303,22 @@ test('C12R.9 P2: mid-read cancellation closes chunk delivery after authenticated
   release();
   assert.deepEqual(await pending,{kind:'unavailable',reason:'closed'});
 });
+
+test('C12R.9 P2: no-MCP retrieval never unwraps ambiguous, stale or denied positional sources',async()=>{
+  const state=historyState('ambiguous','source A');
+  state.events.push({kind:'attempt.outcome',eventId:'event-two',
+    operationId:state.operationId,receivedAt:2,
+    outcome:outcome('attempt-two'),dispatchCertainty:'sent',
+    observations:[{ref:'ambiguous',source:'provider_reported',completeness:'complete',
+      value:'source B',provenance:{kind:'provider_report',sourceId:'other-source'}}]});
+  const open=portFor(state,4096);
+  const conflict=await materializeControllerHistory(open,{refs:['ambiguous',{revision:1,index:0}]},4096);
+  assert.equal(conflict.length,2);
+  assert.ok(conflict.every(item=>item.completeness==='unavailable'&&item.unavailableReason==='ambiguous'));
+  assert.ok(!JSON.stringify(conflict).includes('source A')&&!JSON.stringify(conflict).includes('source B'));
+  const stale=await materializeControllerHistory(open,{refs:[{revision:100,index:0}]},4096);
+  assert.equal(stale[0].unavailableReason,'missing');
+  const restricted=portFor(state,4096,{},()=>true,new Set(['some-other-source']));
+  const denied=await materializeControllerHistory(restricted,{refs:[{revision:1,index:0}]},4096);
+  assert.equal(denied[0].unavailableReason,'denied');
+});
