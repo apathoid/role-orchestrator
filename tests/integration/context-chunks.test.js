@@ -442,3 +442,71 @@ test('C12R.9 review P2: MCP transport receives readable chunks with fetchMaxByte
     assert.equal(Buffer.concat(bytes).toString('utf8'),original);
   }finally{stop.abort();bridge.close();}
 });
+
+test('C12R.9 review performance: verified artifact slices use bounded cache across Controller invocations',()=> 
+  withOwnedRun('C12R9-verified-range-cache',async cwd=>{
+    const fs=await import('node:fs/promises');
+    let readBytes=0;
+    const io={...fs,async open(name,...args){
+      const handle=await fs.open(name,...args);
+      if(!String(name).endsWith('.blob')) return handle;
+      return new Proxy(handle,{get(target,key){
+        if(key==='read') return async (...parts)=>{
+          const result=await target.read(...parts);
+          readBytes+=result.bytesRead;
+          return result;
+        };
+        const value=Reflect.get(target,key,target);
+        return typeof value==='function' ? value.bind(target) : value;
+      }});
+    }};
+    const store=createLocalStateStore(cwd,io);
+    await store.open();
+    const original=Buffer.alloc(4*1024*1024,0x5a);
+    const receipt=await store.writeArtifact(original,original.length);
+    const state=historyState('cached-artifact',undefined);
+    state.events[0].observations[0]={ref:'cached-artifact',source:'provider_reported',
+      completeness:'complete',artifact:receipt,
+      provenance:{kind:'provider_report',sourceId:'verified-file',receivedAt:1}};
+    try {
+      let offset=0;
+      let count=0;
+      const pieces=[];
+      do {
+        // A separate ContextPort instance mirrors a new native Controller turn.
+        const port=portFor(state,64*1024,store);
+        const next=await port.fetch('cached-artifact',undefined,{offset});
+        assert.equal(next.kind,'chunk');
+        const bytes=Buffer.from(next.base64,'base64');
+        pieces.push(bytes);
+        offset+=bytes.length;
+        count++;
+        if(next.nextOffset===undefined) break;
+        assert.equal(next.nextOffset,offset);
+        assert.ok(count<120);
+      } while(true);
+      assert.deepEqual(Buffer.concat(pieces),original);
+      assert.ok(count>70);
+      // The first read verifies SHA-256 over the entire file; later chunks
+      // stat the file and copy only their requested slices.
+      assert.ok(readBytes<=original.byteLength+1,
+        'sequential read must not perform O(numberOfChunks) full disk reads');
+      const raw=await store.readArtifactSlice(receipt,5,11);
+      assert.deepEqual(raw.bytes,original.subarray(5,16));
+      raw.bytes.fill(0);
+      const unchanged=await store.readArtifactSlice(receipt,5,11);
+      assert.deepEqual(unchanged.bytes,original.subarray(5,16),
+        'caller mutation cannot poison the verified cache');
+      const path=join(cwd,'artifact-'+receipt.ref.slice(7)+'.blob');
+      await writeFile(path,Buffer.from('changed'));
+      const rejected=await portFor(state,64*1024,store)
+        .fetch('cached-artifact',undefined,{offset:0});
+      assert.deepEqual(rejected,{kind:'unavailable',reason:'integrity_error'},
+        'a changed inode version must be rehashed and rejected');
+      await unlink(path);
+      assert.deepEqual(await portFor(state,64*1024,store)
+        .fetch('cached-artifact',undefined,{offset:0}),
+        {kind:'unavailable',reason:'payload'},
+        'the cache must not resurrect a missing artifact');
+    }finally{await store.close();}
+  }));

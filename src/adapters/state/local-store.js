@@ -8,7 +8,7 @@ import { artifactRef, expiredArtifacts } from './artifact-retention.js';
 import { sameRecord } from '../../core/operation.js';
 import { decodeSnapshot, encodeSnapshot } from '../../core/snapshot.js';
 
-/** @import {ArtifactRetention, ArtifactStore, CommitResult, SnapshotUnavailableReason, StateListEntry, StateStore} from '../../core/ports.js' */
+/** @import {ArtifactRetention, ArtifactRead, ArtifactStore, CommitResult, SnapshotUnavailableReason, StateListEntry, StateStore} from '../../core/ports.js' */
 /** @import {Operation} from '../../core/operation.js' */
 
 const snapshotName = /^([a-f0-9]{64})(?:-([a-f0-9]{64}))?\.json$/u;
