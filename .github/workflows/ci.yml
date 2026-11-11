@@ -42,9 +42,6 @@ jobs:
         run: nix develop --no-update-lock-file --command npm run test:core
       - name: Provider contract regression
         run: nix develop --no-update-lock-file --command npm run test:contracts
-      - name: C12R.9 review targeted integration
-        run: |
-          nix develop --no-update-lock-file --command node --test tests/integration/context-continuity.test.js tests/integration/context-chunks.test.js tests/integration/codex-provider.test.js
       - name: Integration regression
         run: |
           set +e
