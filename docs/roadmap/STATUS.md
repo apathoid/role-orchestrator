@@ -2,7 +2,7 @@
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 **Последний полностью выполненный инженерный этап:** C12.9 (Linux Nix и NixOS module evaluation).
-**Следующий шаг:** C12R.6.1–6.4 — проверка модельной координации. C12R.0 зафиксировал baseline и доступное evidence, воспроизведения lifecycle/snapshot продолжаются в адресных regression tests. C12.3/C12.4 и native NixOS acceptance остаются открытыми, не повторять C12.0.
+**Следующий шаг:** C12R.7 — общая инженерная приёмка и фиксация native gaps. C12R.0 зафиксировал baseline и доступное evidence. C12.3/C12.4 и native NixOS acceptance остаются открытыми, не повторять C12.0.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
@@ -27,8 +27,8 @@
 | C12R.3 | Implemented — durable contract correction, admission categories and trace; adapter classification checked in C12R.5; CI pending |
 | C12R.4 | Implemented — distinguish directory/fetch unavailability, verify ambiguity and artifact presence; CI pending |
 | C12R.5 | Implemented — observed ACP accumulated-output limit vs malformed terminal; cleanup evidence and retained-slot cause; CI pending |
-| C12R.6.1–6.4 | NEXT — проверка поведения, обоснованные точечные prompt changes |
-| C12R.7 | PLANNED — regression/native/comparative evaluation |
+| C12R.6.1–6.4 | Implemented — combined model coordination regression, existing direct/replan/effort/partial paths retained; no additional prompt changes justified; CI pending |
+| C12R.7 | NEXT — regression/native/comparative evaluation |
 
 ### C12R.0 — исходные доказательства и ограничения
 
