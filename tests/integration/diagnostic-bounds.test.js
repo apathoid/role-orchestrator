@@ -78,8 +78,12 @@ test('C11 review P2-4: long stored refs remain discoverable by ContextPort posit
   assert.equal(page.kind, 'available');
   assert.deepEqual(page.items[0].ref, { revision: 0, index: 0 });
   assert.ok(Buffer.byteLength(JSON.stringify(page)) < 8192);
-  assert.deepEqual(await insufficient.fetch(page.items[0].ref),
-    { kind: 'unavailable', reason: 'budget' });
+  const positioned = await insufficient.fetch(page.items[0].ref);
+  assert.equal(positioned.kind,'available');
+  assert.equal(positioned.item.ref,'host:history-position:0:0');
+  assert.deepEqual(positioned.item.receivedSequence,{revision:0,index:0});
+  assert.equal(positioned.item.provenance.sourceId,longRef);
+  assert.ok(Buffer.byteLength(JSON.stringify(positioned.item))<=70_000);
   const detail = await bind(150_000).fetch(page.items[0].ref);
   assert.equal(detail.kind, 'available');
   assert.equal(detail.item.ref, longRef);

@@ -167,7 +167,7 @@ export function bindContextAccess(scope) {
       if (item.completeness === 'unavailable') return unavailable(item.unavailableReason === 'duplicate_inline' ? 'payload' : item.unavailableReason ?? 'payload');
       // A positional lookup can address an opaque reference too long to echo
       // within fetchMaxBytes. Its receivedSequence remains the original identity.
-      const view = typeof ref !== 'string' && Buffer.byteLength(item.ref) > 128
+      const view = typeof ref !== 'string' && Buffer.byteLength(JSON.stringify(item)) > maxBytes
         ? { ...item, ref: 'host:history-position:' + ref.revision + ':' + ref.index } : item;
       const bounded = boundContextItem(view, maxBytes, maxBytes);
       return bounded ? { kind: 'available', item: structuredClone(bounded) } : unavailable('budget');
