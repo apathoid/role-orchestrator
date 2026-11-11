@@ -141,13 +141,8 @@ export async function materializeControllerHistory(port, request, maxBytes) {
   /** @type {ContextItem[]} */
   const delivered = [];
   let bytes = 0;
-  if (request.cursor !== undefined) {
-    const page = port.list(request.cursor);
-    const item = { ref: 'host:history-page:' + request.cursor, source: /** @type {const} */ ('host_observed'),
-      completeness: /** @type {const} */ ('complete'), value: page };
-    delivered.push(item);
-    bytes += Buffer.byteLength(JSON.stringify(item));
-  }
+  // An explicitly named raw result wins over a directory preview.
+  // The latter is still addressable by the original numeric cursor.
   const refs = request.refs ?? [];
   let represented = 0;
   for (const ref of refs) {
@@ -174,6 +169,40 @@ export async function materializeControllerHistory(port, request, maxBytes) {
     bytes += sizeAfter;
     delivered.push(item);
     represented++;
+  }
+  if (request.cursor !== undefined) {
+    const page = port.list(request.cursor);
+    const base = { ref: 'host:history-page:' + request.cursor,
+      source: /** @type {const} */ ('host_observed') };
+    if (page.kind === 'available') {
+      /** @type {typeof page.items} */
+      const items = [];
+      for (const next of page.items) {
+        const count = items.length + 1;
+        const cursor = count === page.items.length ? page.nextCursor : request.cursor + count;
+        const draft = { ...base, completeness: /** @type {const} */ ('complete'),
+          value: { kind: 'available', items: [...items, next],
+            ...(cursor === undefined ? {} : {nextCursor:cursor}) } };
+        if (bytes + Buffer.byteLength(JSON.stringify(draft)) > maxBytes) break;
+        items.push(next);
+      }
+      const nextCursor = items.length === page.items.length ? page.nextCursor : request.cursor + items.length;
+      const item = { ...base, completeness: /** @type {const} */ ('complete'),
+        value: { kind: 'available', items,
+          ...(nextCursor === undefined ? {} : { nextCursor }) } };
+      if ((items.length > 0 || page.items.length === 0) &&
+          bytes + Buffer.byteLength(JSON.stringify(item)) <= maxBytes) {
+        bytes += Buffer.byteLength(JSON.stringify(item));
+        delivered.push(item);
+      } else {
+        const unavailable = { ...base, completeness: /** @type {const} */ ('unavailable'),
+          unavailableReason: /** @type {const} */ ('budget') };
+        if (bytes + Buffer.byteLength(JSON.stringify(unavailable)) <= maxBytes) delivered.push(unavailable);
+      }
+    } else {
+      const item = { ...base, completeness: /** @type {const} */ ('complete'), value: page };
+      if (bytes + Buffer.byteLength(JSON.stringify(item)) <= maxBytes) delivered.push(item);
+    }
   }
   if (represented < refs.length) {
     delivered.push({ ref: 'host:history-request-budget', source: 'host_observed',
