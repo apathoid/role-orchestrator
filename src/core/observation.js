@@ -46,7 +46,7 @@ const itemFields = record({
  *   value?: unknown, provenance?: Provenance, providerRef?: string, artifact?: ArtifactReference, summary?: ReturnType<typeof summary>,
  *   reportedContext?: ReturnType<typeof reportedContext>}} Observation
  * @typedef {Observation & {receivedSequence?: {revision: number, index: number}, attemptId?: string,
- *   kind?: 'finding', excerpt?: string, unavailableReason?: 'missing' | 'budget' | 'payload' | 'ambiguous' | 'duplicate_inline', duplicateOf?: string,
+ *   kind?: 'finding', excerpt?: string, unavailableReason?: 'missing' | 'budget' | 'payload' | 'ambiguous' | 'duplicate_inline' | 'retention' | 'integrity_error' | 'denied' | 'closed', duplicateOf?: string,
  *   outputKind?: Outcome['outputRefs'][number]['kind']}} ContextItem
  * @typedef {{ref: string, sourceId: string, completeness: Observation['completeness'], value?: unknown, reportedContext?: Observation['reportedContext']} & (
  *   {kind: 'agent_exit', exitCode: number} |

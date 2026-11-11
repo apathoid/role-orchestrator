@@ -296,6 +296,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         unrepresented: history.length },
     },
   };
+  /** @param {unknown} value */
   const byteLength = value => Buffer.byteLength(JSON.stringify(value), 'utf8');
   // Base technical metadata (operation identity, trusted catalog and limits)
   // is required for a valid Decision. Optional rows and history share one

@@ -107,7 +107,7 @@ export function bindContextAccess(scope) {
           return unavailable(isActive() ? 'payload' : 'closed');
         }
       }
-      if (item.completeness === 'unavailable') return unavailable(item.unavailableReason ?? 'payload');
+      if (item.completeness === 'unavailable') return unavailable(item.unavailableReason === 'duplicate_inline' ? 'payload' : item.unavailableReason ?? 'payload');
       const bounded = boundContextItem(item, maxBytes, maxBytes);
       return bounded ? { kind: 'available', item: structuredClone(bounded) } : unavailable('budget');
     },

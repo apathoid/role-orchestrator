@@ -48,6 +48,7 @@ export const assessment = record({
 export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext });
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 /** @param {unknown} input @param {string} path */
+/** @param {unknown} input @param {string} path */
 const contextRequest = (input, path) => {
   const value = record({ refs: optional(ids), cursor: optional(count) })(input, path);
   if ((!value.refs || value.refs.length === 0) && value.cursor === undefined) {
