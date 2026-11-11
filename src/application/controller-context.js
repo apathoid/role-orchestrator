@@ -331,6 +331,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         represented: workRows.length, omitted: workRows.length,
         historyCursor: 0, entries: /** @type {typeof workRows} */ ([]) },
       technicalCoverage,
+      technicalBudget: { maxBytes, mandatoryBytes: 0, mandatoryOverflow: false },
       unresolvedAttempts: /** @type {typeof facts.unresolvedAttempts} */ ([]),
       effectUncertainties: /** @type {typeof facts.effectUncertainties} */ ([]),
       cancellations: /** @type {typeof facts.cancellations} */ ([]),
@@ -397,17 +398,24 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     if (!tryAdd(host.value.pendingAttempts, {attemptId: attempt.attemptId,
       actionId: attempt.actionId, status: attempt.status})) break;
   }
-  for (const [key, total] of Object.entries(categories)) {
-    const current = host.value[key];
-    const representedCount = Array.isArray(current) ? current.length : 0;
+  const representedCounts = {
+    actions: host.value.actions.length,
+    unresolvedAttempts: host.value.unresolvedAttempts.length,
+    effectUncertainties: host.value.effectUncertainties.length,
+    cancellations: host.value.cancellations.length,
+    outcomes: host.value.outcomes.length,
+    pendingAttempts: host.value.pendingAttempts.length,
+  };
+  for (const key of Object.keys(categories)) {
+    const representedCount = representedCounts[/** @type {keyof typeof representedCounts} */ (key)];
     host.value.technicalCoverage[key].represented = representedCount;
-    host.value.technicalCoverage[key].omitted = total - representedCount;
+    host.value.technicalCoverage[key].omitted = categories[/** @type {keyof typeof categories} */ (key)] - representedCount;
   }
   // A real consumed byte count includes the serialized host record. Legacy
   // clients can still find the mandatory identity and the omission counters.
   used = byteLength([host]);
-  host.value.technicalBudget = { maxBytes, mandatoryBytes: used,
-    mandatoryOverflow: used > maxBytes };
+  host.value.technicalBudget.mandatoryBytes = used;
+  host.value.technicalBudget.mandatoryOverflow = used > maxBytes;
   used = byteLength([host]);
   // Explicitly requested records take precedence without duplicating their
   // original inline bodies from the ordinary newest-first history.

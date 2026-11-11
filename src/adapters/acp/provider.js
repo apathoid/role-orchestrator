@@ -160,6 +160,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let active = false;
     let output = '';
     let pendingText = '';
+    /** @type {string | undefined} */
     let finalMessageRef;
     /** @type {string | null | undefined} */
     let messageId;
