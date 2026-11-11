@@ -2,7 +2,7 @@
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 **Последний полностью выполненный инженерный этап:** C12R.7 (implementation complete / regression verified).
-**Следующий шаг:** реальная native acceptance C12.3/C12.4, C12R.7 и NixOS по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). Инженерные C12R.0–.7 завершены; не повторять C12.0 или исправления C12R без нового evidence.
+**Следующий инженерный шаг (по новому запросу):** C12R.8.0 — диагностика по [плану C12R.8](C12R8_RELIABILITY.md). C12R.8.1–.6 условны, C12R.0–.7 остаются закрытыми без нового evidence. **Нативная приёмка C12.3/C12.4/C12R.7 и NixOS по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md) остаётся обязательной и UNVERIFIED.**
 
 | Слой готовности | Фактическое состояние |
 |---|---|
@@ -13,6 +13,14 @@
 | NixOS | **OBSERVED** `lib.nixosSystem` evaluation включает `environment.systemPackages` с продуктом. Реальный boot/запуск на NixOS **UNVERIFIED** |
 | Native providers / Zed | **UNVERIFIED**: два независимых реальных LLM, Codex CLI/ACP успешный prompt, Zed как ACP-клиент, реальные permissions/cancel/resume и native reasoning |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**; production readiness **NO** |
+
+## C12R.8 — план подготовлен, исполнение не начиналось
+
+- **PLAN READY, NOT IMPLEMENTED.** C12R.8.0 `NOT STARTED`; направления C12R.8.1–.6 `NOT ASSESSED` (условны по доказательствам), регрессия/приёмка C12R.8.7 `UNVERIFIED`. Подготовлены только roadmap и handoff, производственный код/тесты не изменены.
+- **Проверенный baseline для планирования:** `150046ef7ab0b48f75b115636b7f506fce1ba8d9`. `SUPPORTED` исходниками: MCP bridge имеет общий лимит 64 уникальных вызовов и concurrency 4; `context.maxBytes` применяется к истории, artifact capture/fetch, local store способен хранить усечённый префикс; Controller prompt рекомендует необязательный page-through history. **Это не подтверждённые первопричины прежних native failures.**
+- **Handoff:** агент начинает с [C12R.8.0](C12R8_RELIABILITY.md), сопоставляет с уже реализованными C12R.4/.5/.6/.7, фиксирует evidence/owners/различающие проверки, затем реализует только подтверждённый минимальный scope, отдельными логическими коммитами с тестами и обновлением STATUS.
+- **Происхождение проверок:** 310/310 — ранее выполненный CI на `4ecf0e5`, не новый прогон этого документационного HEAD. В рамках подготовки плана runtime/npm/Nix/native tests не запускались. C12.3/C12.4, live Zed/ACP, real NixOS и сравнительные performance/quality результаты по-прежнему `UNVERIFIED`.
+- **Готовность:** отдельно фиксировать implementation, automated regression, native integration и performance comparison; не отмечать `PASS` без реального evidence.
 
 ## C12R — инженерная часть завершена, native acceptance pending
 
