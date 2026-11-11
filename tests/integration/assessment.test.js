@@ -101,8 +101,11 @@ test('assessment correction validates structure and resumed context keeps unreso
   const continuation = invocations.at(-1).context;
   assert.equal(continuation.find(item => item.ref === ref), undefined);
   const progress = continuation.find(item => item.ref.startsWith('assessment-progress:'));
-  assert.equal(progress.source, 'model_claim');
-  assert.equal(progress.provenance.sourceId, 'primary');
-  assert.deepEqual(progress.value, { assessmentRef: ref, requirements: [{ requirementId: 'check', status: 'unverified' }] });
+  // A one-byte Controller budget cannot physically carry an optional
+  // progress projection; original Assessment remains addressable verbatim.
+  assert.equal(progress, undefined);
+  const source = await invocations.at(-1).contextAccess.fetch(ref);
+  assert.equal(source.kind,'available');
+  assert.deepEqual(source.item.value.requirements, [requirement]);
   assert.equal(continuation.find(item => item.ref === 'follow').value, 'Keep the check visible.');
 });

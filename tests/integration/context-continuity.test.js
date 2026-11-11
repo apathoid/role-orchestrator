@@ -115,7 +115,7 @@ test('C12R.9.4: optional history request arrives next turn without MCP or reexec
   let controllers = 0;
   let workers = 0;
   let selectedRef;
-  const { api, invocations } = setup({ context:{controllerMaxBytes:8192,fetchMaxBytes:65536},
+  const { api, invocations, respondErrors } = setup({ context:{controllerMaxBytes:8192,fetchMaxBytes:65536},
     maxInvocations:6, respond(invocation,count,observe) {
       if (invocation.kind === 'delegate') {
         workers++;
@@ -140,7 +140,7 @@ test('C12R.9.4: optional history request arrives next turn without MCP or reexec
       return final(invocation);
     } });
   const done=await (await api.submit(request())).completion;
-  assert.equal(done.status,'finished');
+  assert.equal(done.status,'finished',respondErrors.map(error=>error instanceof Error?error.stack:String(error)).join('\n'));
   assert.equal(controllers,3);
   assert.equal(workers,1);
   assert.equal(invocations.filter(item=>item.kind==='delegate').length,1);

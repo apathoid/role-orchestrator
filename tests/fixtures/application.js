@@ -20,6 +20,7 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
   const events = [];
   const closed = [];
   const cancellations = [];
+  const respondErrors = [];
   let sequence = 0;
   let sessionSequence = 0;
   const store = {
@@ -52,13 +53,14 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
       },
       async invoke(session, invocation, observe) {
         invocations.push(invocation);
-        return respond(invocation, invocations.length, observe);
+        try { return await respond(invocation, invocations.length, observe); }
+        catch (error) { respondErrors.push(error); throw error; }
       },
       async cancel(session, attemptId) { cancellations.push(attemptId); await cancel?.(); },
       async close(session) { closed.push(session.sessionId); await close?.(); },
     },
   });
-  return { api, invocations, events, closed, cancellations };
+  return { api, invocations, events, closed, cancellations, respondErrors };
 }
 
 export function abortOnly(signal) {

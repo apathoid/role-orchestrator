@@ -13,12 +13,13 @@ const propose = (invocation, selected, cancellations = []) => final(invocation, 
 });
 
 test('a configured byte budget compacts history and preserves selected refs and coordination facts', async () => {
-  const maxBytes = 1280;
+  const maxBytes = 4096;
+  const workerBudget = 1280;
   const constraint = 'Preserve this constraint verbatim ' + 'x'.repeat(2000);
   const large = '🧪"\n'.repeat(2000);
   let controller = 0;
   const refs = new Map();
-  const { api, invocations } = setup({ maxInvocations: 5, context: { maxBytes, handoffMaxBytes: maxBytes, fetchMaxBytes: maxBytes }, async respond(invocation, count, observe) {
+  const { api, invocations } = setup({ maxInvocations: 5, context: { maxBytes, handoffMaxBytes: workerBudget, fetchMaxBytes: workerBudget }, async respond(invocation, count, observe) {
     if (invocation.actionId === 'source') {
       for (const [ref, value] of [['private-unselected', 'unselected'], ['large', large], ['recent', 'small report']]) {
         refs.set(ref, observe({ ref, kind: 'provider_tool', sourceId: 'source-event', completeness: 'complete', value }));

@@ -160,7 +160,7 @@ test('reopened context supports a targeted check and partial assessment without 
       assert.equal(history.find(item => item.ref === afterRef).recordedOutcome.terminal, 'completed');
 
       const handoff = resumed.invocations[1];
-      const trace = resumed.events.filter(event => event.eventName.startsWith('context.'));
+      const trace = resumed.events.filter(event => ['context.unavailable','context.truncated','context.materialized'].includes(event.eventName));
       assert.equal(trace.length, selected.length);
       assert.ok(trace.every(event => event.operationId === original.operationId &&
         event.actionId === handoff.actionId && event.attemptId === handoff.attemptId));

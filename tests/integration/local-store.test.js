@@ -606,7 +606,7 @@ test('bound context fetch recovers artifacts and model summaries with raw covera
   let missingRef;
   let rawRef;
   const first = setup({
-    store, context: { maxBytes },
+    store, context: { maxBytes, fetchMaxBytes: maxBytes, captureMaxBytes: maxBytes },
     async respond(invocation, count, observe) {
       ref = await invocation.contextAccess.captureArtifact(bytes);
       missingRef = await invocation.contextAccess.captureArtifact(Buffer.from('will be missing'));

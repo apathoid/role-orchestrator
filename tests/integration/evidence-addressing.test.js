@@ -81,7 +81,7 @@ test('the model discovers omitted evidence under the default budget and delegate
   let calls = 0;
   let selectedRef;
   let access;
-  const { api, invocations } = setup({ maxInvocations: 5, context: { controllerMaxBytes: 65536 }, async respond(invocation, count, observe) {
+  const { api, invocations, respondErrors } = setup({ maxInvocations: 5, context: { controllerMaxBytes: 65536 }, async respond(invocation, count, observe) {
     if (invocation.actionId === 'collect') {
       observe({ ref: randomUUID(), kind: 'provider_tool', sourceId: 'fixture', completeness: 'complete',
         value: 'required evidence', reportedContext: { location } });
@@ -122,7 +122,8 @@ test('the model discovers omitted evidence under the default budget and delegate
       } while (cursor !== undefined && pages < 10);
       assert.ok(pages > 1 && cursor === undefined);
       assert.equal(typeof selectedRef, 'string');
-      assert.ok(!JSON.stringify(invocation.context).includes(selectedRef));
+      assert.ok(!invocation.context.some(item=>item.ref===selectedRef && item.value==='required evidence'),
+        'a technical work-map reference must not imply the inline source body was delivered');
       const detail = await access.fetch(selectedRef);
       assert.equal(detail.item.value, 'required evidence');
       assert.equal(detail.item.reportedContext.location, location);
@@ -132,7 +133,7 @@ test('the model discovers omitted evidence under the default budget and delegate
     return final(invocation, { finalAssessment: assessment({ observationRefs: [selectedRef] }) });
   } });
   const result = await (await api.submit(request())).completion;
-  assert.equal(result.status, 'finished');
+  assert.equal(result.status, 'finished', respondErrors.map(error=>error instanceof Error?error.stack:String(error)).join('\n'));
   assert.equal(invocations.length, 5);
   assert.deepEqual(result.assessment.observationRefs, [selectedRef]);
   assert.deepEqual(access.list(), { kind: 'unavailable', reason: 'closed' });

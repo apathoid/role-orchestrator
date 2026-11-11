@@ -64,7 +64,7 @@ test('explicit resume reuses crash history, current grant and alternative provid
   const [first, concurrent] = await Promise.all([current.api.resume(operationId), current.api.resume(operationId)]);
   assert.equal(first.completion, concurrent.completion);
   const recovered = await first.completion;
-  assert.equal(recovered.status, 'finished');
+  assert.equal(recovered.status, 'finished',current.respondErrors.map(error=>error instanceof Error?error.stack:String(error)).join('\n'));
   assert.equal(recovered.assessment.author, alt.profileId);
   assert.equal(recovered.request.configurationRef, 'test-config');
   assert.equal(recovered.events.find(event => event.kind === 'operation.recovered').trusted.configurationRef, 'new-config');
@@ -102,7 +102,7 @@ test('negotiated status lookup settles the original attempt without executing ol
   });
   const result = await (await current.api.resume(lost.operationId, { requestId: 'follow', text: 'Continue' })).completion;
   assert.deepEqual(lookedUp, [[lost.operationId, lost.attempts[0].attemptId]]);
-  assert.equal(result.assessment.answer, 'Direct answer');
+  assert.equal(result.assessment?.answer, 'Direct answer', current.respondErrors.map(error=>error instanceof Error?error.stack:String(error)).join('\n'));
   assert.equal(result.attempts[0].outcome.effect, 'confirmed');
   assert.equal(current.invocations.length, 1);
   assert.equal(resourceSnapshot(result).charged, 2);
