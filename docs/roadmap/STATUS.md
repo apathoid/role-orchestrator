@@ -2,7 +2,7 @@
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 **Последний полностью выполненный инженерный этап:** C12R.7 (implementation complete / regression verified).
-**Следующий инженерный шаг (по новому запросу):** C12R.8.0 — диагностика по [плану C12R.8](C12R8_RELIABILITY.md). C12R.8.1–.6 условны, C12R.0–.7 остаются закрытыми без нового evidence. **Нативная приёмка C12.3/C12.4/C12R.7 и NixOS по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md) остаётся обязательной и UNVERIFIED.**
+**Следующий шаг:** C12R.8.0 — диагностика по [плану C12R.8](C12R8_RELIABILITY.md). C12R.8.1–.6 условны, C12R.0–.7 остаются закрытыми без нового evidence. **Нативная приёмка C12.3/C12.4/C12R.7 и NixOS по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md) остаётся обязательной и UNVERIFIED.**
 
 | Слой готовности | Фактическое состояние |
 |---|---|
@@ -13,6 +13,16 @@
 | NixOS | **OBSERVED** `lib.nixosSystem` evaluation включает `environment.systemPackages` с продуктом. Реальный boot/запуск на NixOS **UNVERIFIED** |
 | Native providers / Zed | **UNVERIFIED**: два независимых реальных LLM, Codex CLI/ACP успешный prompt, Zed как ACP-клиент, реальные permissions/cancel/resume и native reasoning |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**; production readiness **NO** |
+
+## C12R.8.0 — первичная диагностика на HEAD 6f6f6f3 (2026-11-11)
+
+**OBSERVED / CI blocker:** HEAD `6f6f6f39fc7b872c102120497645371cd0bca66d` имеет два failed CI запуска [43019760145](https://github.com/apathoid/role-orchestrator/actions/runs/43019760145) и [43019751964](https://github.com/apathoid/role-orchestrator/actions/runs/43019751964). В обоих failing step — Acceptance regression, `tests/acceptance/delivery.test.js:50`: handoff ожидает заголовок `**Следующий шаг:**` / `**Следующий этап:**`, а подготовленный STATUS содержал `**Следующий инженерный шаг (по новому запросу):**`. Это проверяемый конфликт документационного handoff, а не failure модели, MCP, context или provider. В этом изменении восстановлен допустимый заголовок без изменения теста.
+
+**SUPPORTED / уже закрытые механизмы:** C12R.4 проверяет ambiguous refs и причины недоступности payload; C12R.5 разделяет ACP accumulated-output limit от protocol failures; C12R.6.0 обеспечивает selected skill delivery; C12R.1 сохраняет независимые Workers при Controller fault. Сохранение их статуса требует новой отличающей регрессии для открытия дефекта.
+
+**Незакрытые диагностические гипотезы:** без исходных native traces нельзя приписать прежние MISSING / CAPABILITY_UNAVAILABLE / PROTOCOL_ERROR непосредственно лимитам bridge или утрате output. Bridge имеет ограниченное число calls/concurrency, artifact storage может хранить префикс; сами эти свойства ещё не доказывают неисправность. Исследование C12R.8.1–.6 продолжается; native подтверждение/замеры отсутствуют. Следующее действие — адресные source-level регрессии, а не подмена технических причин предположениями.
+
+**CI этого коммита:** ещё не выполнен; прежние 310/310 относятся к `4ecf0e5`, а CI базового документационного HEAD красный. Implementation/regression C12R.8 пока не завершены.
 
 ## C12R.8 — план подготовлен, исполнение не начиналось
 
