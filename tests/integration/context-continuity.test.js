@@ -5,6 +5,7 @@ import { coordinationFacts, controllerContext, operationHistory, operationWorkMa
 import { decodeDecision } from '../../src/core/contracts.js';
 import { createOperation } from '../../src/core/operation.js';
 import { request, outcome } from '../fixtures/core.js';
+import { setup } from '../fixtures/application.js';
 
 // C12R.9.0: desired behaviour is intentionally established before the fix.
 // These fixtures are synthetic; they do not assert real-model quality.
@@ -143,4 +144,20 @@ test('C12R.9.4: optional history request arrives next turn without MCP or reexec
   assert.equal(controllers,3);
   assert.equal(workers,1);
   assert.equal(invocations.filter(item=>item.kind==='delegate').length,1);
+});
+
+test('C12R.9.6: telemetry measures Host serialization, not provider internal context', async () => {
+  const { api, events } = setup({ maxInvocations:2, context:{controllerMaxBytes:8192} });
+  const state=await (await api.submit(request())).completion;
+  assert.equal(state.status,'finished');
+  const host=events.find(event=>event.eventName==='context.host_prepared');
+  assert.ok(host);
+  assert.equal(host.details.kind,'controller');
+  assert.ok(host.details.serializedContextBytes>0);
+  assert.equal(host.details.recordCount>=2,true);
+  assert.equal(host.details.workTotal,0);
+  assert.ok(!JSON.stringify(host).includes('Literal task'));
+  const reply=events.find(event=>event.eventName==='provider.reply_observed');
+  assert.equal(reply.details.terminal,'completed');
+  assert.equal(reply.details.inputTokens,null);
 });

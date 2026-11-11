@@ -13,6 +13,8 @@
 
 **C12R.9.5:** clarified Host-only semantics of explicit Action.skills; tested native tools need no Host Catalog entry and invalid explicitly selected catalog ID still rejects without changing permissions. Native provider smoke UNVERIFIED.
 
+**C12R.9.6:** bounded body-free diagnostics now distinguish measured host-context serialization, model-requested retrieval and observed provider reply/usage (unknown remains null); adapter-internal token window is not inferred. Added regression for redaction and correlation. CI pending.
+
 **Последний полностью выполненный инженерный этап:** C12R.8R (implementation complete / automated regression verified для подтверждённого technical scope).
 **Следующий шаг:** **C12R.9.0** — baseline/воспроизведение потери видимости завершённых результатов Controller и проверка существующих ограничений/дублирования по [C12R.9](C12R9_CONTEXT_CONTINUITY.md). Реальная native acceptance C12.3/C12.4/C12R.7–.9, Zed/NixOS и сравнительная оценка остаются UNVERIFIED и выполняются при доступе к настоящим средам по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). Не вводить новый Host механизм только ради непроверенной гипотезы о качестве.
 

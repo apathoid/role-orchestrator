@@ -903,9 +903,32 @@ export function createOrchestrator(deps) {
             requireAuthority();
             context.context = controllerContext(dispatched, entries, correction, lookups,
               controllerMaxBytes, catalog.preferences, records);
+            const unavailable = records.filter(item => item.completeness === 'unavailable').length;
+            trace(dispatched, 'context.history_requested', 'DELIVERY_OBSERVED', attemptId, {
+              details: { requestedRefs: requested.refs?.length ?? 0,
+                cursorRequested: requested.cursor !== undefined,
+                representedRecords: records.length, unavailableRecords: unavailable,
+                materializedBytes: Buffer.byteLength(JSON.stringify(records)) },
+            });
           }
           signal.throwIfAborted();
           requireAuthority();
+          const contextBytes = Buffer.byteLength(JSON.stringify(context.context));
+          const hostFacts = !handoff ? context.context.find(item => item.ref === 'host:invocation-context')?.value : undefined;
+          const map = hostFacts && typeof hostFacts === 'object' && 'workMap' in hostFacts
+            ? hostFacts.workMap : undefined;
+          const budget = hostFacts && typeof hostFacts === 'object' && 'historyBudget' in hostFacts
+            ? hostFacts.historyBudget : undefined;
+          trace(dispatched, 'context.host_prepared', 'SERIALIZED', attemptId, {
+            details: { kind: handoff ? 'delegate' : 'controller', serializedContextBytes: contextBytes,
+              recordCount: context.context.length,
+              ...(map && typeof map === 'object' && 'total' in map && 'represented' in map && 'omitted' in map
+                ? { workTotal: Number(map.total), workRepresented: Number(map.represented),
+                  workOmitted: Number(map.omitted) } : {}),
+              ...(budget && typeof budget === 'object' && 'omitted' in budget
+                ? { historyOmitted: Number(budget.omitted) } : {}),
+            },
+          });
           mayHaveSent = true;
           if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
           return executor.invoke(owned, {
@@ -958,6 +981,14 @@ export function createOrchestrator(deps) {
         certainty = 'unknown';
       } else {
         ({ dispatchCertainty: certainty, output, findings: reportedFindings } = reply);
+        trace(state, 'provider.reply_observed', 'PROVIDER_REPLIED', attemptId, {
+          details: { dispatchCertainty: certainty, terminal: reply.outcome.terminal,
+            outputRefs: reply.outcome.outputRefs.length,
+            inputTokens: reply.outcome.usage.inputTokens,
+            outputTokens: reply.outcome.usage.outputTokens,
+            cost: reply.outcome.usage.cost,
+          },
+        });
         outcome = bindOutcomeEvidence(state.operationId, reply.outcome, observations);
         if (!handoff && reply.reasoningUnavailable && reasoning.mode === 'selectable') {
           const catalogProfile = entries.find(item => item.kind === 'profile' &&
