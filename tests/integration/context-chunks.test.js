@@ -125,14 +125,26 @@ test('C12R.9 P2: artifact chunks verify integrity, retention, capture truncation
       assert.equal(truncatedResult.bytes.length,64*1024);
       assert.equal(truncatedResult.last.item.artifact.originalSize,data.length);
       assert.equal(truncatedResult.last.item.artifact.truncated,true);
+      const high=portFor(state,128*1024,store);
+      const highChunks=await readAll(high,'artifact-source',128*1024);
+      assert.deepEqual(highChunks.bytes,data);
+      assert.ok(highChunks.steps<=chunks.steps);
       const hash=ref.ref.slice('sha256:'.length);
       const file=join(cwd,'artifact-'+hash+'.blob');
       await writeFile(file,Buffer.from('tampered'));
       assert.deepEqual(await after.fetch('artifact-source',undefined,{offset:0}),
         {kind:'unavailable',reason:'integrity_error'});
+      await writeFile(file,data);
+      const validFirst=await after.fetch('artifact-source',undefined,{offset:0});
+      assert.equal(validFirst.kind,'chunk');
+      assert.ok(validFirst.nextOffset>0);
       await unlink(file);
-      assert.deepEqual(await after.fetch('artifact-source',undefined,{offset:0}),
-        {kind:'unavailable',reason:'payload'});
+      assert.deepEqual(await after.fetch('artifact-source',undefined,{offset:validFirst.nextOffset}),
+        {kind:'unavailable',reason:'payload'},
+        'an artifact deleted between chunks must not silently return fabricated bytes');
+      await writeFile(join(cwd,'artifact-'+hash+'.retention'),'');
+      assert.deepEqual(await after.fetch('artifact-source',undefined,{offset:validFirst.nextOffset}),
+        {kind:'unavailable',reason:'retention'});
     } finally { await store.close(); }
   }));
 
@@ -271,4 +283,23 @@ test('C12R.9 P2: malformed UTF-16 stored JSON strings round-trip without replace
   const result=await readAll(port,'unpaired-string',512);
   assert.equal(result.last.format,'json');
   assert.equal(JSON.parse(result.bytes.toString('utf8')),body);
+});
+
+test('C12R.9 P2: mid-read cancellation closes chunk delivery after authenticated read',async()=>{
+  const bytes=Buffer.alloc(120*1024,42);
+  const ref='sha256:'+createHash('sha256').update(bytes).digest('hex');
+  let release;
+  let active=true;
+  const state=historyState('delayed-artifact',undefined);
+  state.events[0].observations[0]={ref:'delayed-artifact',source:'provider_reported',
+    completeness:'complete',artifact:{ref,size:bytes.length,originalSize:bytes.length,truncated:false}};
+  const store={async readArtifact(){
+    return new Promise(resolve=>{release=()=>resolve({kind:'available',bytes});});
+  }};
+  const port=portFor(state,64*1024,store,()=>active);
+  const pending=port.fetch('delayed-artifact',undefined,{offset:0});
+  while(!release) await Promise.resolve();
+  active=false;
+  release();
+  assert.deepEqual(await pending,{kind:'unavailable',reason:'closed'});
 });
