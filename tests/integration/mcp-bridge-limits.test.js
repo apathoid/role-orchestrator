@@ -355,3 +355,69 @@ test('C12R.8R.2 closing an in-flight MCP bridge releases the transport without k
     finish.resolve({ status: 'unknown', effect: 'unknown' });
   }
 });
+
+test('C12R.8R.1 an oversized MCP projection does not alter a durable tool receipt across reopen', async () => {
+  const { createLocalStateStore } = await import('../../src/adapters/state/local-store.js');
+  const { withOwnedRun } = await import('../../scripts/owned-run.mjs');
+  const { setup, final } = await import('../fixtures/application.js');
+  const { request } = await import('../fixtures/core.js');
+  await withOwnedRun('C12R.8R-mcp-receipt', async directory => {
+    const store = createLocalStateStore(directory);
+    await store.open();
+    let executions = 0;
+    const output = 'z'.repeat(300 * 1024);
+    const tools = {
+      bind(scope) {
+        return {
+          list: () => [{ id: 'write', description: 'contract fixture', resource: 'fixture:write',
+            effect: 'write', inputSchema: { type: 'object' } }],
+          async call() {
+            executions++;
+            const callId = 'receipt-' + executions;
+            const ref = scope.receive('write', { status: 'completed', effect: 'possible',
+              callId, toolId: 'write', attemptId: scope.attemptId, output });
+            return { status: 'completed', effect: 'possible', callId, ref, output };
+          },
+        };
+      },
+    };
+    const { api } = setup({ store, tools, async respond(invocation) {
+      const bridge = await startMcpBridge(invocation);
+      try {
+        const response = await invoke(bridge.url, 1, 'write', {});
+        assert.equal(response.status, 200);
+        assert.equal(response.body.result.isError, true);
+        assert.deepEqual(value(response), { status: 'completed', effect: 'possible',
+          callId: 'receipt-1', ref: 'host:tool:receipt-1', outputUnavailableReason: 'budget' });
+        assert.deepEqual(value(await invoke(bridge.url, 1, 'write', {})), value(response));
+      } finally {
+        bridge.close();
+      }
+      return final(invocation);
+    } });
+    try {
+      const finished = await (await api.submit(request())).completion;
+      assert.equal(finished.status, 'finished');
+      assert.equal(executions, 1);
+      const pickReceipt = state => state.events.flatMap(event => event.observations ?? [])
+        .find(item => item.ref === 'host:tool:receipt-1');
+      const recorded = pickReceipt(finished);
+      assert.ok(recorded);
+      assert.equal(recorded.source, 'host_observed');
+      assert.equal(recorded.value.status, 'completed');
+      assert.equal(recorded.value.effect, 'possible');
+      assert.equal(recorded.value.callId, 'receipt-1');
+      assert.equal(recorded.value.output, output);
+      assert.equal(recorded.value.outputUnavailableReason, undefined);
+      await api.close();
+      await store.close();
+      await store.open();
+      const reopened = await store.load(finished.operationId);
+      assert.deepEqual(pickReceipt(reopened), recorded);
+      assert.equal(executions, 1);
+    } finally {
+      await api.close();
+      await store.close();
+    }
+  });
+});
