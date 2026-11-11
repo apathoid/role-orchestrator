@@ -250,3 +250,15 @@ C12R.6.1–6.4: `tests/integration/c12r-coordination.test.js` combines chosen sk
 
 Сравнение baseline 64 КиБ / исходный код 256–512 КиБ / исправленная архитектура с одинаковыми real model, provider/adapter/skills, task, workspace и permissions остаётся обязательной частью native acceptance; число Workers или synthetic PASS само по себе не доказывает качество. Отдельная матрица C12R.9 не создаётся.
 
+
+### C12R.9 review P1/P2 — адресные проверки (отдельно от настоящих моделей)
+
+| Поведение | Автоматизированный путь | Статус приёмки native |
+| --- | --- | --- |
+| Не дублировать совпадающее по adapter-proof final Worker body | `tests/integration/codex-provider.test.js` (real CLI subprocess), `tests/contracts/acp-provider.test.js` (real ACP protocol subprocess), `context-continuity.test.js` (independent equal-text claims остаются) | UNVERIFIED |
+| Не терять факт неизвестных эффектов / отмен / dispatch / pending при переполнении | `tests/integration/context-continuity.test.js`: 200 possible-effect attempts, 200 cancellations, unknown terminal, active dispatch, 1-byte budget, workCursor | UNVERIFIED |
+| Позиция и raw source provenance без MCP | `context-continuity.test.js` positional nextController; `context-chunks.test.js` giant-ref/denied/stale/bad refs | UNVERIFIED |
+| Сохранённые >64/128 КиБ без семантического Host compaction | `context-chunks.test.js`: UTF‑8/base64, chunks, full/truncated artifact, SHA‑256/integrity/retention, cancel, reopened store, MCP, no‑MCP Controller turns | UNVERIFIED |
+| Текущие бюджеты независимы и alias только Controller | `configuration.test.js`, `context.test.js`, `mcp-context.test.js`, `context-chunks.test.js` | UNVERIFIED |
+
+Итоговая строка **automated regression verified** должна ссылаться на конечный green CI и его точный HEAD; успешный исходный C12R.9 commit `1633a30` не подтверждает эти review fixes.

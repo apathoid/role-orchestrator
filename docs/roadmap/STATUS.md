@@ -17,22 +17,36 @@
 
 **C12R.9.7:** нормативные контракты, CHANGELOG и единственная tests/ACCEPTANCE_MATRIX актуализированы; синтетические регрессии выполняются в CI. Реальная native C12R.9 A/B/C сравнительная приёмка **UNVERIFIED**: в GitHub Actions нет доступной authenticated model/Zed с доказанными tools. Итоговые регрессии и Nix проверки можно считать verified только после SUCCESS привязанного к конечному HEAD, не по промежуточным коммитам.
 
-**Последний полностью выполненный инженерный этап:** C12R.8R (implementation complete / automated regression verified для подтверждённого technical scope).
-**Следующий шаг:** **C12R.9.0** — baseline/воспроизведение потери видимости завершённых результатов Controller и проверка существующих ограничений/дублирования по [C12R.9](C12R9_CONTEXT_CONTINUITY.md). Реальная native acceptance C12.3/C12.4/C12R.7–.9, Zed/NixOS и сравнительная оценка остаются UNVERIFIED и выполняются при доступе к настоящим средам по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). Не вводить новый Host механизм только ради непроверенной гипотезы о качестве.
+**Последний полностью выполненный инженерный этап:** C12R.9.7 (исходная инженерная реализация); C12R.9 review P1/P2 — исправления и адресные тесты внесены, окончательный regression verdict зависит от CI итогового HEAD.
+
+**Следующий шаг:** Закрыть review P1/P2 после проверенного SUCCESS CI, затем выполнить **реальные native C12.3/C12.4 / C12R.9 comparative A/B/C**, Zed и NixOS runtime. Не выдавать synthetic fixtures за native assessment и не возобновлять C12R.9.0.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
-| Implementation | C00–C11R, C12.0–C12.2/C12.5–C12.9 и C12R.0–.8R завершены в доступном инженерном scope. Нативные C12.3/C12.4 **не выполнены** |
-| Automated regression | **OBSERVED PASS 324/324** на `4c3f324e11b8d7ab851f893bafcbd492fd03f26d`: [GitHub Actions 43030150864](https://github.com/apathoid/role-orchestrator/actions/runs/43030150864), [43030159396](https://github.com/apathoid/role-orchestrator/actions/runs/43030159396), Linux x86_64 / Node 24. После закрывающего документационного commit его собственный CI проверяется отдельно |
-| Suite composition | foundation 4/4; core 25/25; contracts 53/53; integration 238/238; acceptance 4/4; root `npm test` тоже PASS |
-| Package / clean install | **OBSERVED**: checkJs/spec/boundaries, root locked npm install, `npm pack`, extracted tarball CLI diagnose + fixture E2E, Nix flake/check/build, `nix run`, `nix profile add`, non-Git workspace, lock consistency |
-| NixOS | **OBSERVED** `lib.nixosSystem` evaluation включает `environment.systemPackages` с продуктом. Реальный boot/запуск на NixOS **UNVERIFIED** |
-| Native providers / Zed | **UNVERIFIED**: два независимых реальных LLM, Codex CLI/ACP успешный prompt, Zed как ACP-клиент, реальные permissions/cancel/resume и native reasoning |
-| C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**; production readiness **NO** |
+| Implementation complete (original C12R.9) | **YES** на `1633a30a11a392bfd5b21474d0be6206b3a6fec7`; review fixes проверяются отдельно |
+| Regression verified (original C12R.9) | **OBSERVED SUCCESS**: [43083588324](https://github.com/apathoid/role-orchestrator/actions/runs/43083588324), [43083600272](https://github.com/apathoid/role-orchestrator/actions/runs/43083600272), оба на `1633a30` (Linux CI, package, Nix checks по run); это не доказательство исправления review |
+| Regression verified (review P1/P2) | **PENDING** финального green CI, промежуточные red CI не скрывать |
+| Native integration verified | **UNVERIFIED:** настоящие Codex/ACP LLM, Zed и реальная NixOS runtime интеграция |
+| Performance/quality comparison verified | **UNVERIFIED:** A/B/C, default Controller 256 КиБ и отдельно 512 КиБ, fetch 64/128 КиБ |
+| C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**, production readiness **NO** |
+
+## C12R.9 review — инженерные исправления P1/P2 (2026-11-11)
+
+**Основание:** ревью baseline `1633a30`. Два исходных GitHub Actions на этом commit — SUCCESS, но дальнейшая статическая проверка выявила независимые корректностные дефекты. Никаких выводов о качестве реальной модели из исходного CI не делается.
+
+| Обязательное исправление | Реализованные коммиты и проверки |
+| --- | --- |
+| P1 — повторная доставка Worker output | `4355098`: adapter-proven original output observation (Codex CLI/ACP), byte-identical cross-check in coordinator, preservation raw refs/provenance; реальный Codex и ACP subprocess regression |
+| P1 — silent omissions при исчерпании динамического технического бюджета | `c343252`, `a94e0b3`: exhaustive category totals/represented/omitted, workCursor page from same Operation, terminal uncertainty separated; stress 200 uncertain effects, cancellations, pending/unknown dispatch |
+| P2 — positional retrieval без MCP | `37257fb`: Decision refs decode string/position, действующий ContextPort boundary, persisted request and oversized reference tests |
+| P2 — сохранённые результаты >fetchMaxBytes | `3ec2492`, `2247ce4`: explicit offset base64 slices in existing ContextPort/MCP/Controller, per-response byte limit, integrity/truncation/retention/cancel/reopen/UTF-8 tests; defaults не повышались |
+| Типы, контрактные fixtures и дополнительные регрессии | `baa5b04`, `a2bee3e`, `7fd6a3b` и следующие проверочные фиксы; учитывать только после зелёного полного CI |
+
+**STATUS нового исправленного HEAD:** автоматические тесты ожидают окончательного прохода; Native integration / Performance comparison: **UNVERIFIED**. Contract source — [C12R9_CONTEXT_CONTINUITY](C12R9_CONTEXT_CONTINUITY.md), реальная проверка — [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md).
 
 ## C12R.9 — уточнённый обязательный план (2026-11-11)
 
-**Статусы:** PLAN READY; Implementation **NOT STARTED**; C12R.9 Regression **UNVERIFIED**; native integration **UNVERIFIED**; comparative quality/performance **UNVERIFIED**. Следующий инженерный шаг — **C12R.9.0** по [C12R9_CONTEXT_CONTINUITY](C12R9_CONTEXT_CONTINUITY.md); рабочая ветка `greenfield/model-first-core`. Подготовка не изменяет runtime code или действующие normative product contracts.
+**Историческая запись:** первоначально PLAN READY / NOT STARTED; затем C12R.9.0–.7 реализованы с исходным успешным CI `1633a30`. Текущее продолжение — исправления review P1/P2 (см. новый раздел ниже). Этот абзац сохраняет происхождение исходного плана, а не обозначает текущий следующий шаг.
 
 **Причина:** в предоставленном пользователем разборе native Codex JSONL предыдущие отчёты были вытеснены из prompt Controller (при `context.maxBytes=65536`, MCP off), что могло приводить к дублированию работы. Этот native диагноз пока основан на пользовательском анализе; исходные JSONL здесь не воспроизведены. **SUPPORTED по исходникам:** 64 КиБ default, recency-first и 128 optional-record guard, `host:invocation-context` с уже существующими outcomes/actions без компактной адресной связи поручений и результатов, общий `context.maxBytes` для history/handoff/fetch/capture/skills/tool, new native process/session per invocation в текущих adapters. Само повторное исследование не означает ошибку модели.
 

@@ -4,12 +4,15 @@
 
 ## Unreleased — C12 integration and delivery
 
-### C12R.9 — контекст и история (engineering changes; native UNVERIFIED)
+### C12R.9 — контекст и история, review P1/P2 (engineering changes; native UNVERIFIED)
 
 - Controller, handoff, fetch, artifact capture, host-managed skill instructions и external tool output имеют независимые config budgets с controller-only legacy alias.
 - Устранён artificial 128-entry cap; технический `workMap` вычисляется из исходной Operation, с сохранением refs/provenance и отличием terminal uncertain effect от in-flight.
 - Добавлен optional `nextController.contextRequest` (refs/cursor) для следующего обычного Controller без MCP/нового Worker, с неизменными permission и recovery правилами.
 - Добавлены технические body-free метрики доставки; provider-native files, skills, scripts, terminal и MCP остаются средствами провайдера.
+- Review P1/P2: убрана лишняя копия Worker final output на проверенном пути Codex CLI/ACP → Controller; все исходные refs/provenance остаются durable.
+- Контролируемые технико-исторические omissions теперь снабжены полной статистикой и model-selected workCursor.
+- ContextPort/MCP/contextRequest поддерживают позиционные refs и lossless byte-offset чтение фактически сохранённых результатов больше fetchMaxBytes без нового хранилища.
 - Реальная model/Zed native comparison не заменяется автоматическими fixtures.
 
 

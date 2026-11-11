@@ -140,3 +140,7 @@ Codex CLI передаёт per-invocation значение аргументом 
 
 `Action.skills` ссылается только на явно зарегистрированные Host-managed Catalog ids. Отсутствие id в каталоге не ограничивает provider-native tools, skill discovery, `AGENTS.md`, проектные файлы, terminal или scripts; ошибочный *явно выбранный* Catalog id отклоняется только как Host capability. ACP и CLI сохраняют свои native механизмы без host filesystem runtime и без обязательного MCP.
 
+
+### C12R.9 review — scoped chunk response
+
+Нативный MCP tool `context_fetch` принимает optional `offset` (safe nonnegative integer) как обычный аргумент. `ContextPort` возвращает origin/provenance и метаданные source completeness вместе с байтовым `base64`; `nextOffset` разрешает модели по желанию запросить следующую часть. Нет увеличения общего лимита MCP calls, response cap или изменения permissions. Без MCP тот же запрос можно выразить через `nextController.contextRequest.refs:[{ref,offset}]`. Legacy вызовы без `offset` сохраняют прежнее поведение. Полностью сохранённый artifact и ранее усечённый artifact различаются по receipt size/originalSize/truncated. Лимиты `controllerMaxBytes=262144`, `fetchMaxBytes=65536`, `captureMaxBytes=65536` не изменены; например, для хранения исходных 120 КиБ требуется отдельный доверенный `captureMaxBytes` не меньше фактического размера.

@@ -113,3 +113,9 @@ nextController.continue разрешает самостоятельный ход
 
 `host:invocation-context.value.workMap` — derived technical projection с `total/represented/omitted`, lifecycle, attributed refs и original objective Decision ref. Недоступность body, отсутствие сохранённого artifact, бюджет и retention не выдаются за семантический результат. Terminal effect uncertainty отделена от in-flight uncertainty. Отклонения Action сохраняются техническим bounded preview; semantic relevance и окончательный Assessment принадлежат модели.
 
+
+### C12R.9 review — точные расширения доступа
+
+`Decision.nextController.contextRequest` при `continue:true` поддерживает `refs: (string | {revision:number,index:number} | {ref:string|{revision:number,index:number},offset:number})[]`, а также `cursor?:number` (страница каталога) и `workCursor?:number` (страница workMap). Каждый запрос необязателен. Позиция — существующая revision/index собственной операции. Невалидные отрицательные/дробные offsets и позиции, лишние ключи и дубли адресуются ошибкой schema; cross-operation positional access остаётся запрещённым. История/read permissions/отмена/operation scope/retention проверяются ContextPort при каждом чтении, включая последующие страницы после restart.
+
+`ContextPort.fetch(ref,sourceOperationId?,{offset})` добавляет только явное чтение следующего фрагмента без изменения обычного fetch. `ContextFetch` может вернуть `kind:'chunk'` с base64 raw bytes, `format:'utf8'|'json'|'binary'`, `offset`, `totalBytes`, `nextOffset?` и source-attributed `item`; `invalid_offset` — отдельная причина недоступности. Byte budget проверяется по сериализованному ответу с metadata/base64, в том числе при fetchMaxBytes 64/128 КиБ. Для artifacts существующий store проверяет полный SHA‑256 перед выдачей части. Это чтение, не автоматическое действие/replay и не новый persisted index.
