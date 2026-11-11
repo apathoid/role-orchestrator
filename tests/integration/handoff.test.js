@@ -70,3 +70,21 @@ test('selected inline and loaded skills are attributed, bounded, and never dupli
   assert.deepEqual(await materializeSkillInstructions([selected[1]],{},32,signal),
     [{id:'loaded',version:'v2',status:'unavailable',reason:'loader_unavailable'}]);
 });
+
+test('C12R.9.5: native execution needs no Host skill registration; explicit unknown Catalog skill rejects', () => {
+  const operation=createOperation('native-skills', request(), 'grant',
+    { maxInvocations: 3, maxConcurrentInvocations: 1 });
+  const native={ actionId:'native-execution',kind:'delegate',profileId:'worker',
+    objective:'Use available native project files, scripts, skills and terminal',
+    contextRefs:[],dependsOn:[],expectedResult:'A provider report',skills:[] };
+  const entries=[{kind:'profile',value:{profileId:'worker',providerId:'p',model:'m'}}];
+  const allowed=prepareHandoff(operation,native,entries);
+  assert.equal(allowed.kind,'accepted');
+  assert.equal(allowed.handoff.skillInstructions,undefined);
+  assert.match(allowed.handoff.objective,/native project files/);
+  const rejected=prepareHandoff(operation,{...native,skills:['catalog-does-not-exist']},entries);
+  assert.equal(rejected.kind,'rejected');
+  assert.equal(rejected.category,'skill');
+  assert.equal(rejected.reason.code,'CAPABILITY_UNAVAILABLE');
+  assert.equal(rejected.reason.effect,'none');
+});

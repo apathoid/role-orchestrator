@@ -36,6 +36,8 @@ export function prepareHandoff(operation, action, catalog) {
   }
   /** @type {SkillInstructions[]} */
   const skillInstructions = [];
+  // Explicit Action.skills are Host Catalog references only. An absent
+  // provider-native skill is not an error and is never discovered or gated here.
   for (const id of new Set(action.skills ?? [])) {
     const skill = catalog.find(item => item.kind === 'skill' && item.value.id === id);
     if (skill?.kind !== 'skill') return missing(id, 'skill');
