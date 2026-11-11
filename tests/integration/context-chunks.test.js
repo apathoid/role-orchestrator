@@ -263,3 +263,12 @@ test('C12R.9 P2: accepted positional offset request survives snapshot reopen and
       await api.close();
     } finally {await store.close();}
   }));
+
+test('C12R.9 P2: malformed UTF-16 stored JSON strings round-trip without replacement',async()=>{
+  const body='valid 🚀 '+String.fromCharCode(0xd800)+' edge '+String.fromCharCode(0xdc00);
+  assert.equal(body.isWellFormed(),false);
+  const port=portFor(historyState('unpaired-string',body),512);
+  const result=await readAll(port,'unpaired-string',512);
+  assert.equal(result.last.format,'json');
+  assert.equal(JSON.parse(result.bytes.toString('utf8')),body);
+});

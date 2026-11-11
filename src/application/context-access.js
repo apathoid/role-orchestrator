@@ -114,7 +114,11 @@ export function bindContextAccess(scope) {
           }
           format = 'binary';
         } else if (item.value !== undefined) {
-          format = typeof item.value === 'string' ? 'utf8' : 'json';
+          // A persisted JSON string can contain an unpaired UTF-16 surrogate.
+          // Converting it directly to UTF-8 would silently replace data.
+          // Encode that case as JSON and label it so a reader can reconstruct
+          // the exact saved JS string by JSON.parse after joining chunks.
+          format = typeof item.value === 'string' && item.value.isWellFormed() ? 'utf8' : 'json';
           stored = Buffer.from(format === 'utf8' ? /** @type {string} */ (item.value) : JSON.stringify(item.value), 'utf8');
         } else {
           return unavailable('payload');
