@@ -277,3 +277,24 @@ test('C12R.9 P2: duplicate positional refs ignore JSON key order while distinct 
     contextRequest:{refs:[{ref:{revision:3,index:5},offset:0},
       {ref:{revision:3,index:5},offset:65536}]}}}).kind,'accepted');
 });
+
+test('C12R.9 review: workCursor order is based on immutable reservations, not racing outcomes',()=>{
+  const state=createOperation('stable-work',request(),'grant',
+    {maxInvocations:10,maxConcurrentInvocations:2});
+  for(const [index,id] of ['left','right'].entries()){
+    state.attempts.push({attemptId:'run-'+id,actionId:'work-'+id,status:'terminal',
+      generation:0,reservedAt:index,endedAt:index+2,dispatchCertainty:'sent',
+      outcome:outcome('run-'+id)});
+    state.events.push({kind:'attempt.reserved',eventId:'reserve-'+id,
+      receivedAt:index,operationId:'stable-work',actionId:'work-'+id,attemptId:'run-'+id});
+  }
+  const order=()=>operationWorkMap(state,operationHistory(state)).map(item=>item.actionId);
+  assert.deepEqual(order(),['work-right','work-left']);
+  state.events.push({kind:'attempt.outcome',eventId:'end-right',receivedAt:3,
+    operationId:'stable-work',dispatchCertainty:'sent',outcome:outcome('run-right')});
+  assert.deepEqual(order(),['work-right','work-left']);
+  state.events.push({kind:'attempt.outcome',eventId:'end-left',receivedAt:4,
+    operationId:'stable-work',dispatchCertainty:'sent',outcome:outcome('run-left')});
+  assert.deepEqual(order(),['work-right','work-left']);
+  assert.equal(controllerContext(state,[],undefined,undefined,4096)[1].value.workMap.entries[0].actionId,'work-right');
+});

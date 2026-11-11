@@ -186,10 +186,10 @@ export function operationWorkMap(state, history) {
         });
       }
     }
-    if (event.kind === 'attempt.reserved' || event.kind === 'attempt.outcome') {
-      const id = event.kind === 'attempt.reserved' ? event.attemptId : event.outcome.attemptId;
-      attemptOrder.set(id, index);
-    }
+    // Reservation identity/order is immutable after admission; completion
+    // order is not. Keeping the original order makes model-selected workCursor
+    // paging stable when independent Workers finish or late outcomes arrive.
+    if (event.kind === 'attempt.reserved') attemptOrder.set(event.attemptId, index);
   });
   const existingActions = new Set(state.attempts.map(attempt => attempt.actionId));
   const attempts = state.attempts.map(attempt => {
