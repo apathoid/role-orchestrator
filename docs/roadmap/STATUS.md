@@ -17,18 +17,24 @@
 
 **C12R.9.7:** нормативные контракты, CHANGELOG и единственная tests/ACCEPTANCE_MATRIX актуализированы; синтетические регрессии выполняются в CI. Реальная native C12R.9 A/B/C сравнительная приёмка **UNVERIFIED**: в GitHub Actions нет доступной authenticated model/Zed с доказанными tools. Итоговые регрессии и Nix проверки можно считать verified только после SUCCESS привязанного к конечному HEAD, не по промежуточным коммитам.
 
-**Последний подтверждённый инженерный этап:** C12R.9.7 исходной реализации на `1633a30` (CI SUCCESS). Изменения review P1/P2 внесены до code HEAD `edc0f8a14a9ffd52c3bff34a0446bb0a498438f7`, но **НЕ подтверждены полным CI** из-за заблокированной инфраструктуры GitHub Actions; считать их проверенными или production-ready нельзя.
+**Последний подтверждённый этап:** исходный C12R.9.7 на `1633a30` (полный CI SUCCESS). Адресные исправления повторного ревью дополнены до code HEAD `9885c1b`: focused CI SUCCESS, но **окончательный полный CI на обновлённой ветке пока PENDING**. Это не production readiness.
 
-**Следующий шаг:** Разблокировать/дождаться выполнения GitHub Actions на **финальном HEAD**, проверить checkJs/contracts/full integration/package/Nix; исправить все обнаруженные FAIL, затем закрыть review P1/P2. После этого — **реальная native C12.3/C12.4 / C12R.9 comparative A/B/C**, Zed и NixOS runtime. Не выдавать synthetic fixtures за native assessment и не возобновлять C12R.9.0.
+**Следующий шаг:** Проверить полный GitHub Actions на **финальном HEAD**, проверить checkJs/contracts/full integration/package/Nix; исправить все обнаруженные FAIL, затем закрыть review P1/P2. После этого — **реальная native C12.3/C12.4 / C12R.9 comparative A/B/C**, Zed и NixOS runtime. Не выдавать synthetic fixtures за native assessment и не возобновлять C12R.9.0.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
 | Implementation complete (original C12R.9) | **YES** на `1633a30a11a392bfd5b21474d0be6206b3a6fec7`; review fixes проверяются отдельно |
 | Regression verified (original C12R.9) | **OBSERVED SUCCESS**: [43083588324](https://github.com/apathoid/role-orchestrator/actions/runs/43083588324), [43083600272](https://github.com/apathoid/role-orchestrator/actions/runs/43083600272), оба на `1633a30` (Linux CI, package, Nix checks по run); это не доказательство исправления review |
-| Regression verified (review P1/P2) | **BLOCKED / UNVERIFIED**: code HEAD `edc0f8a` ожидает CI; промежуточные FAIL (в том числе integration на `8c52c4a`) не считаются исправленными без нового PASS |
+| Regression verified (review P1/P2) | **PARTIAL OBSERVED**: focused [43105690225](https://github.com/apathoid/role-orchestrator/actions/runs/43105690225) SUCCESS на `9885c1b`; полный CI финального HEAD **PENDING** |
 | Native integration verified | **UNVERIFIED:** настоящие Codex/ACP LLM, Zed и реальная NixOS runtime интеграция |
 | Performance/quality comparison verified | **UNVERIFIED:** A/B/C, default Controller 256 КиБ и отдельно 512 КиБ, fetch 64/128 КиБ |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**, production readiness **NO** |
+
+## C12R.9 review P2 — повторная проверка бюджетов, курсоров и verified artifact ranges (2026-11-12)
+
+**Текущее состояние:** реализованы независимые per-call chunk budgets Controller/MCP, явный end-of-workMap без повторного cursor, проверенные диапазоны артефакта с bounded ephemeral cache. Кодовые коммиты: `a50882e` (конец пагинации), `3dd23ef` (chunk ceilings), `c1d7855` (cross-budget tests), `470ea50` (strict types/long ref), `4ac5270` (контракт позиции при достаточном бюджете), `d413594` (cache), `17dc016` (slice path), `9885c1b` (I/O + corruption tests). **Focused CI:** [43105690225](https://github.com/apathoid/role-orchestrator/actions/runs/43105690225) SUCCESS для `9885c1b`; это адресная automated verification, а не полный CI окончательного документационного HEAD.
+
+**Следующий шаг:** дождаться full checkJs/contracts/integration/root test/package/Nix CI последнего HEAD; исправить любой FAIL до инженерной приёмки. После green final CI — native integration и сравнительные сценарии 256/512 КиБ Controller, 64/128 КиБ fetch, настоящий Codex/ACP/Zed/NixOS остаются **UNVERIFIED**. Ни одно P1/P2 не считается закрытым только по тексту этого статуса.
 
 ## C12R.9 review — инженерные исправления P1/P2 (2026-11-11)
 

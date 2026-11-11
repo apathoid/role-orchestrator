@@ -266,3 +266,15 @@ C12R.6.1–6.4: `tests/integration/c12r-coordination.test.js` combines chosen sk
 ### C12R.9 review — фактический статус CI после кодовых исправлений
 
 **OBSERVED:** исходный `1633a30` — два SUCCESS workflows (см. [STATUS](../docs/roadmap/STATUS.md)). Review code через `edc0f8a` содержит регрессии для Codex CLI/ACP, полной технической карты, stale/ambiguous/denied positional refs, состояния после restart, 64/128 КиБ byte-chunks (включая malformed UTF‑16), missing/retention/in-flight cancel и no-MCP Controller. Статус адресных тестов **NOT VERIFIED**: GitHub Actions ждёт выполнения из-за старых застрявших jobs, промежуточные integration FAIL не считаются погашенными. Нативная модель/Zed/NixOS и сравнительная A/B/C приёмка — **UNVERIFIED**. Не менять эту матрицу на PASS до наблюдённого SUCCESS итогового SHA.
+
+### C12R.9 повторное ревью — независимость транспортов и performance
+
+| Проверка | Наблюдаемая регрессия | Native status |
+| --- | --- | --- |
+| Controller 8 КиБ + ContextPort 64 КиБ | `context-chunks.test.js`: optional model-selected Controller continuation, несколько base64 частей, непрерывные `offset/nextOffset`, полное восстановление сохранённого UTF-8 | UNVERIFIED |
+| `fetchMaxBytes=128 КиБ` + per-call `maxBytes=4096` | `context-chunks.test.js`: все части укладываются в ограниченный сериализованный ответ, malformed limits reject | UNVERIFIED |
+| `fetchMaxBytes=512 КиБ` + MCP 256 КиБ | `context-chunks.test.js`: ответ MCP включая JSON-RPC не превышает transport bound; nextOffset даёт возможность собрать весь body | UNVERIFIED |
+| Последняя страница / нулевой прогресс workMap | `context-continuity.test.js`: нет phantom nextCursor, budget stall и invalid cursor различаются | UNVERIFIED |
+| Повторное чтение 4 МиБ артефакта через разные ContextPort | `context-chunks.test.js`: actual I/O bytes не увеличиваются пропорционально числу страниц; stat-backed SHA cache, corruption/missing/caller mutation | UNVERIFIED |
+
+Synthetic subprocess/CI PASS не означает проверенного качества поведения настоящих моделей. Итоговые results — только в STATUS и CI конечного HEAD.
