@@ -261,8 +261,17 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       value: { assessmentRef: 'assessment:' + previous.eventId, requirements: unresolved },
     }, { kind: 'model', sourceId: previous.assessment.author, receivedAt: previous.receivedAt }));
   }
-  const workRows = operationWorkMap(state, history);
-  const facts = coordinationFacts(state, lookups);
+  // The Controller currently receiving this prompt is neither an orphan
+  // awaiting recovery nor a pending assignment. Its own dispatch marker is
+  // only a lifecycle boundary, not historical work to tell itself about.
+  const currentControllerId = state.attempts.findLast(attempt =>
+    attempt.actionId === attempt.attemptId && attempt.status !== 'terminal')?.attemptId;
+  const workRows = operationWorkMap(state, history).filter(item => item.attemptId !== currentControllerId);
+  const rawFacts = coordinationFacts(state, lookups);
+  const facts = {
+    ...rawFacts,
+    unresolvedAttempts: rawFacts.unresolvedAttempts.filter(item => item.attemptId !== currentControllerId),
+  };
   const host = {
     ref: 'host:invocation-context', source: /** @type {const} */ ('host_observed'),
     completeness: /** @type {const} */ ('complete'),
@@ -363,7 +372,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     }
   }
   for (const attempt of state.attempts) {
-    if (attempt.status !== 'terminal' && !tryAdd(host.value.pendingAttempts, {
+    if (attempt.attemptId !== currentControllerId && attempt.status !== 'terminal' && !tryAdd(host.value.pendingAttempts, {
       attemptId: attempt.attemptId, actionId: attempt.actionId, status: attempt.status,
     })) break;
   }

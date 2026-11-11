@@ -155,7 +155,7 @@ test('C12R.9.6: telemetry measures Host serialization, not provider internal con
   assert.equal(host.details.kind,'controller');
   assert.ok(host.details.serializedContextBytes>0);
   assert.equal(host.details.recordCount>=2,true);
-  assert.equal(host.details.workTotal,1);
+  assert.equal(host.details.workTotal,0);
   assert.ok(!JSON.stringify(host).includes('Literal task'));
   const reply=events.find(event=>event.eventName==='provider.reply_observed');
   assert.equal(reply.details.terminal,'completed');

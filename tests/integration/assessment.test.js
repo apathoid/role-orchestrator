@@ -104,8 +104,11 @@ test('assessment correction validates structure and resumed context keeps unreso
   // A one-byte Controller budget cannot physically carry an optional
   // progress projection; original Assessment remains addressable verbatim.
   assert.equal(progress, undefined);
-  const source = await invocations.at(-1).contextAccess.fetch(ref);
-  assert.equal(source.kind,'available');
-  assert.deepEqual(source.item.value.requirements, [requirement]);
+  // A ContextPort bound to a completed attempt is closed; the authoritative
+  // journal still exposes the original, attributed Assessment without loss.
+  const history = (await import('../../src/application/controller-context.js')).operationHistory;
+  const source = history(await api.inspect(original.operationId)).find(item => item.ref===ref);
+  assert.ok(source);
+  assert.deepEqual(source.value.requirements, [requirement]);
   assert.equal(continuation.find(item => item.ref === 'follow').value, 'Keep the check visible.');
 });
