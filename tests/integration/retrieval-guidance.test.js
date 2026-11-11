@@ -65,3 +65,13 @@ test('C12R.8R.3 a direct Controller completion does not require historical MCP r
     await api.close();
   }
 });
+
+test('C12R.9 review: no-MCP advisory still exposes optional nextController history access',()=>{
+  const disabled=retrievalDetail(false);
+  assert.match(disabled,/nextController\.contextRequest/);
+  assert.match(disabled,/byte offsets/);
+  assert.match(disabled,/without MCP/);
+  const enabled=retrievalDetail(true);
+  assert.match(enabled,/nextOffset/);
+  assert.match(enabled,/saved data/);
+});

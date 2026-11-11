@@ -28,7 +28,7 @@ const listTool = {
   inputSchema: { type: 'object', properties: { cursor: countSchema }, additionalProperties: false },
 };
 const fetchTool = {
-  name: 'context_fetch', description: 'Retrieve a visible record by ref or position returned by context_list.',
+  name: 'context_fetch', description: 'Retrieve a visible record by ref or position returned by context_list. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; follow nextOffset to read more. Source completeness and truncation remain as recorded.',
   inputSchema: { type: 'object', properties: {
     ref: { anyOf: [{ type: 'string', minLength: 1 }, { type: 'object',
       properties: { revision: countSchema, index: countSchema }, required: ['revision', 'index'], additionalProperties: false }] },
@@ -40,8 +40,8 @@ const fetchTool = {
 /** @param {boolean} enabled */
 export function retrievalDetail(enabled) {
   return enabled
-    ? 'Optional MCP context_list and context_fetch retrieve omitted history when useful. Report material unavailable evidence explicitly.'
-    : 'Context retrieval is unavailable in this transport. Use the supplied context and report material missing evidence when relevant.';
+    ? 'Optional MCP context_list and context_fetch retrieve omitted history when useful. context_fetch offset reads saved data in bounded base64 chunks with nextOffset; retain original completeness. Report material unavailable evidence explicitly.'
+    : 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or cursors for a subsequent Controller turn without MCP; report material missing evidence when relevant.';
 }
 
 /** @param {unknown} value @returns {Record<string, unknown> | undefined} */
