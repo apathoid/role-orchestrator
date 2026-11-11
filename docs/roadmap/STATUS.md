@@ -5,6 +5,8 @@
 
 **C12R.9.1:** presentation-only conservative byte + attempt/providerRef/provenance dedup added; original observations and refs remain in journal. CI of this incremental commit is pending; synthetic regression covers independent equal-text reports.
 
+**C12R.9.2:** independent trusted context byte budgets wired through config/direct API, skills, handoff, fetch, capture and tools. Legacy maxBytes is a controller-only alias with exclusivity validation. 128-record ceiling removed. Dynamic Controller map bounding is completed by C12R.9.3; stage-level checks await CI.
+
 **Последний полностью выполненный инженерный этап:** C12R.8R (implementation complete / automated regression verified для подтверждённого technical scope).
 **Следующий шаг:** **C12R.9.0** — baseline/воспроизведение потери видимости завершённых результатов Controller и проверка существующих ограничений/дублирования по [C12R.9](C12R9_CONTEXT_CONTINUITY.md). Реальная native acceptance C12.3/C12.4/C12R.7–.9, Zed/NixOS и сравнительная оценка остаются UNVERIFIED и выполняются при доступе к настоящим средам по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md). Не вводить новый Host механизм только ради непроверенной гипотезы о качестве.
 

@@ -24,14 +24,14 @@ function directoryEntry(item) {
  * A hash names bytes in the store. Only a typed receipt in the source
  * operation identifies which bytes this invocation can actually retrieve.
  * @param {{
- *   state: Operation, store: StateStore, maxBytes: number, profileId: string, attemptId: string,
+ *   state: Operation, store: StateStore, maxBytes: number, captureMaxBytes?: number, profileId: string, attemptId: string,
  *   selected?: ReadonlySet<string>, allowShare?: ContextShare, isActive: () => boolean,
  *   newId: () => string, now: () => number, receive: (item: Observation) => void
  * }} scope
  * @returns {ContextPort}
  */
 export function bindContextAccess(scope) {
-  const { state, store, maxBytes, profileId, attemptId, selected, isActive } = scope;
+  const { state, store, maxBytes, captureMaxBytes = maxBytes, profileId, attemptId, selected, isActive } = scope;
   /** @param {Extract<ContextFetch, {kind: 'unavailable'}>['reason']} reason @returns {ContextFetch} */
   const unavailable = reason => ({ kind: 'unavailable', reason });
   /** @type {ContextItem[] | undefined} */
@@ -115,7 +115,7 @@ export function bindContextAccess(scope) {
     async captureArtifact(bytes) {
       if (!isActive() || !(bytes instanceof Uint8Array) || !store.writeArtifact) return undefined;
       try {
-        const artifact = await store.writeArtifact(bytes, Math.min(maxBytes, bytes.byteLength));
+        const artifact = await store.writeArtifact(bytes, Math.min(captureMaxBytes, bytes.byteLength));
         if (!isActive()) return undefined;
         const ref = 'artifact:' + scope.newId();
         scope.receive(observation({ ref, artifact, completeness: artifact.truncated ? 'truncated' : 'complete' },

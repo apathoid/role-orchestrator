@@ -12,7 +12,8 @@
  *   controllerProfile: string,
  *   roles?: Record<string, {purpose?: string, instructions: string, preferredProfiles?: string[]}>,
  *   resources?: ResourceConfig,
- *   context?: {maxBytes?: number},
+ *   context?: {maxBytes?: number, controllerMaxBytes?: number, handoffMaxBytes?: number, fetchMaxBytes?: number,
+ *     captureMaxBytes?: number, skillInstructionsMaxBytes?: number, toolOutputMaxBytes?: number},
  *   storage?: {directory: string, artifactRetention?: import('../../core/ports.js').ArtifactRetention},
  *   diagnostics?: {level?: 'debug' | 'info' | 'warn' | 'error', maxFileBytes?: number, retainedFiles?: number, captureBodies?: boolean},
  *   permissions?: {standing?: import('./permissions.js').StandingDecision[]},
@@ -73,6 +74,9 @@ export async function decodeConfiguration(input) {
     return specific ? report(specific) : failures[0] ? report(failures[0]) : reject('', 'schema');
   }
 
+  if (config.context?.maxBytes !== undefined && config.context.controllerMaxBytes !== undefined) {
+    return reject('/context/controllerMaxBytes', 'exclusive-with-maxBytes');
+  }
   if (!Object.hasOwn(config.profiles, config.controllerProfile)) {
     return reject('/controllerProfile', 'known-profile');
   }

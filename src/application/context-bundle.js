@@ -1,8 +1,18 @@
 /** @import {ContextItem} from '../core/observation.js' */
 
-export const defaultContextMaxBytes = 64 * 1024;
+export const defaultContextBudgets = Object.freeze({
+  controllerMaxBytes: 256 * 1024,
+  handoffMaxBytes: 64 * 1024,
+  fetchMaxBytes: 64 * 1024,
+  captureMaxBytes: 64 * 1024,
+  skillInstructionsMaxBytes: 64 * 1024,
+  toolOutputMaxBytes: 64 * 1024,
+});
+// Guard against unbounded allocations and serializations, independent of
+// native provider transport limits.
+export const maximumContextBudgetBytes = 16 * 1024 * 1024;
+export const defaultContextMaxBytes = defaultContextBudgets.controllerMaxBytes;
 const maxExcerptBytes = 512;
-const maxOptionalRecords = 128;
 
 /** @param {unknown} value */
 const jsonBytes = value => Buffer.byteLength(JSON.stringify(value), 'utf8');
@@ -51,23 +61,17 @@ export function compactContext(items, maxBytes, keepRefs) {
   /** @type {ContextItem[]} */
   const context = [];
   let remaining = Math.max(0, maxBytes - 2);
-  let omitted = 0, excerpted = 0, unrepresented = 0, optionalIncluded = 0;
+  let omitted = 0, excerpted = 0, unrepresented = 0;
   for (const item of items) {
     // Literal user instructions are not optional, even under a tiny budget.
     if (isUserMessage(item)) {
       context.push(item);
       continue;
     }
-    if (optionalIncluded >= maxOptionalRecords) {
-      omitted++;
-      unrepresented++;
-      continue;
-    }
     const bounded = boundContextItem(item, remaining - 1);
     if (bounded) {
       context.push(bounded);
       remaining -= jsonBytes(bounded) + 1;
-      optionalIncluded++;
       if (bounded !== item) excerpted++;
       continue;
     }
@@ -86,7 +90,6 @@ export function compactContext(items, maxBytes, keepRefs) {
     if (marker && markerBytes <= remaining) {
       context.push(marker);
       remaining -= markerBytes;
-      optionalIncluded++;
     } else {
       unrepresented++;
     }

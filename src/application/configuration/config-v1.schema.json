@@ -61,7 +61,39 @@
       "additionalProperties": false,
       "properties": {
         "maxBytes": {
-          "$ref": "#/definitions/limit"
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "controllerMaxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "handoffMaxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "fetchMaxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "captureMaxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "skillInstructionsMaxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "toolOutputMaxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
         }
       }
     },

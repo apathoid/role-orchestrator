@@ -72,3 +72,13 @@ test('C12R.9.1: dedup requires provider identity, attempt, provenance and identi
   assert.equal(history[1].value, 'full report');
   assert.equal(derived[4].value, 'different report');
 });
+
+test('C12R.9.2: direct API budgets reject conflicting aliases and unsafe limits', async () => {
+  const { createOrchestrator } = await import('../../src/application/orchestrator.js');
+  const source = (await import('../fixtures/application.js')).setup;
+  assert.throws(() => source({ context: { maxBytes: 12, controllerMaxBytes: 16 } }),
+    /cannot both be set/);
+  assert.throws(() => source({ context: { controllerMaxBytes: 16777217 } }), /context.controllerMaxBytes/);
+  const a = source({ context: { controllerMaxBytes: 512 * 1024 } });
+  assert.equal((await (await a.api.submit(request())).completion).status, 'finished');
+});

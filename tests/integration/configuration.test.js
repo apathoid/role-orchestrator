@@ -87,7 +87,10 @@ test('sources merge by field and project preferences cannot add authority', asyn
   assert.deepEqual(merged.value.resources, {
     maxConcurrentInvocations: 1, maxInvocationsPerOperation: 5, invocationTimeoutMs: 200,
   });
-  assert.deepEqual(merged.value.context, { maxBytes: 2048 });
+  assert.deepEqual(merged.value.context, {
+    controllerMaxBytes: 2048, handoffMaxBytes: 65536, fetchMaxBytes: 65536,
+    captureMaxBytes: 65536, skillInstructionsMaxBytes: 65536, toolOutputMaxBytes: 65536,
+  });
   const launchWins = resolveConfiguration(value, project, { controllerProfile: 'primary', preferredSkills: [] });
   assert.equal(launchWins.value.controllerProfile, 'primary');
   assert.deepEqual(launchWins.value.preferredSkills, []);

@@ -148,7 +148,7 @@ export function handoffContext(operation, refs, maxBytes, lookups) {
     // again. Use the maximal possible count to reserve enough decimal digits.
     /** @param {number} count @returns {ContextItem} */
     const summary = count => ({ ref: 'host:context-budget', source: 'host_observed',
-      completeness: 'complete', value: { omitted: count, selected: records.length, limit: 128 } });
+      completeness: 'complete', value: { omitted: count, selected: records.length, maxBytes } });
     const summaryBytes = Buffer.byteLength(JSON.stringify(summary(records.length))) + 1;
     bounded = compactContext(records, Math.max(0, maxBytes - summaryBytes), true);
     bounded.context.push(summary(bounded.unrepresented));
