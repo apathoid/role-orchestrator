@@ -401,7 +401,14 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   }
   host.value.workMap.represented = represented;
   host.value.workMap.omitted = workRows.length - represented;
-  host.value.workMap.nextCursor = cursorAvailable ? from + represented : undefined;
+  // A cursor is offered only when a subsequent nonempty page exists.
+  // If nothing fits, a retry with this same cursor and budget cannot progress.
+  const next = from + represented;
+  host.value.workMap.nextCursor = cursorAvailable && represented > 0 && next < workRows.length
+    ? next : undefined;
+  if (cursorAvailable && represented === 0 && from < workRows.length) {
+    host.value.workMap.unavailableReason = 'budget';
+  }
   // Existing legacy technical fields remain short, budgeted previews.
   for (const value of facts.unresolvedAttempts) if (!tryAdd(host.value.unresolvedAttempts, value)) break;
   for (const value of facts.effectUncertainties) if (!tryAdd(host.value.effectUncertainties, value)) break;

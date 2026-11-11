@@ -331,3 +331,30 @@ test('C12R.9 P1: serialized technical byte count is exact, including its own dig
     }
   }
 });
+
+test('C12R.9 review P2: workMap ends without phantom cursors and reports budget stalls',()=>{
+  const state=createOperation('page-end',request(),'grant',
+    {maxInvocations:8,maxConcurrentInvocations:1});
+  for(const [i,id] of ['first','second','third'].entries()){
+    state.attempts.push({attemptId:'run-'+id,actionId:'work-'+id,generation:0,
+      reservedAt:i,status:'terminal',endedAt:i+1,dispatchCertainty:'sent',
+      outcome:outcome('run-'+id,{effect:'possible'})});
+    state.events.push({kind:'attempt.reserved',attemptId:'run-'+id,
+      actionId:'work-'+id,eventId:'reserve-'+id,operationId:state.operationId,receivedAt:i});
+  }
+  const full=controllerContext(state,[],undefined,undefined,65536)[1].value.workMap;
+  assert.equal(full.represented,3);
+  assert.equal(full.nextCursor,undefined,'last page has no next page');
+  assert.equal(full.unavailableReason,undefined);
+  const atEnd=controllerContext(state,[],undefined,undefined,65536,undefined,[],3)[1].value.workMap;
+  assert.equal(atEnd.represented,0);
+  assert.equal(atEnd.nextCursor,undefined);
+  assert.equal(atEnd.unavailableReason,undefined);
+  const stalled=controllerContext(state,[],undefined,undefined,1)[1].value.workMap;
+  assert.equal(stalled.represented,0);
+  assert.equal(stalled.nextCursor,undefined);
+  assert.equal(stalled.unavailableReason,'budget');
+  const stale=controllerContext(state,[],undefined,undefined,4096,undefined,[],4)[1].value.workMap;
+  assert.equal(stale.unavailableReason,'invalid_cursor');
+  assert.equal(stale.nextCursor,undefined);
+});
