@@ -87,11 +87,13 @@
  *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
  * @typedef {{
  *   list: (cursor?: number) => ContextList,
- *   fetch: (ref: string | ContextPosition, sourceOperationId?: string) => Promise<ContextFetch>,
+ *   fetch: (ref: string | ContextPosition, sourceOperationId?: string, range?: {offset: number}) => Promise<ContextFetch>,
  *   captureArtifact: (bytes: Uint8Array) => Promise<string | undefined>
  * }} ContextPort
  * @typedef {{kind: 'available', item: ContextItem, bytes?: Uint8Array} |
- *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'ambiguous' | 'retention' | 'budget' | 'integrity_error' | 'closed'}} ContextFetch
+ *   {kind: 'chunk', item: ContextDirectoryItem & {provenance?: ContextItem['provenance'], artifact?: ContextItem['artifact']},
+ *     format: 'utf8' | 'json' | 'binary', offset: number, totalBytes: number, base64: string, nextOffset?: number} |
+ *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'ambiguous' | 'retention' | 'budget' | 'integrity_error' | 'closed' | 'invalid_offset'}} ContextFetch
  * @typedef {NonNullable<ContextItem['receivedSequence']>} ContextPosition
  * @typedef {Pick<ContextItem, 'source' | 'completeness' | 'attemptId' | 'receivedSequence' |
  *   'providerRef' | 'kind' | 'outputKind' | 'unavailableReason'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem

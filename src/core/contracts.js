@@ -53,7 +53,12 @@ const contextPosition = record({ revision: count, index: count });
 /** @param {unknown} input @param {string} path */
 export const contextReference = (input, path) => typeof input === 'string'
   ? id(input, path) : contextPosition(input, path);
-const contextReferences = arrayOf(contextReference);
+/** @param {unknown} input @param {string} path */
+const contextSelection = (input, path) => input && typeof input === 'object' &&
+    !Array.isArray(input) && Object.hasOwn(input, 'ref')
+  ? record({ref:contextReference,offset:count})(input,path)
+  : contextReference(input,path);
+const contextReferences = arrayOf(contextSelection);
 const contextRequest = (input, path) => {
   const value = record({ refs: optional(contextReferences), cursor: optional(count), workCursor: optional(count) })(input, path);
   if ((!value.refs || value.refs.length === 0) && value.cursor === undefined && value.workCursor === undefined) {

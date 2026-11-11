@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { count, decode, id, optional, record } from '../core/decode.js';
+import { contextReference } from '../core/contracts.js';
 
 /** @import {Invocation} from '../core/ports.js' */
 /** @import {IncomingMessage, ServerResponse} from 'node:http' */
@@ -14,12 +15,11 @@ const toolStatuses = new Set(['completed', 'failed', 'truncated', 'invalid_input
 const toolEffects = new Set(['none', 'possible', 'unknown']);
 const versions = new Set(['2025-03-26', '2025-06-18', '2025-11-25']);
 
-const position = record({ revision: count, index: count });
 const listArgs = record({ cursor: optional(count) });
 const fetchArgs = record({
-  ref: (/** @type {unknown} */ value, /** @type {string} */ path) => typeof value === 'string'
-    ? id(value, path) : position(value, path),
+  ref: contextReference,
   sourceOperationId: optional(id),
+  offset: optional(count),
 });
 
 const countSchema = { type: 'integer', minimum: 0 };
@@ -33,6 +33,7 @@ const fetchTool = {
     ref: { anyOf: [{ type: 'string', minLength: 1 }, { type: 'object',
       properties: { revision: countSchema, index: countSchema }, required: ['revision', 'index'], additionalProperties: false }] },
     sourceOperationId: { type: 'string', minLength: 1 },
+    offset: countSchema,
   }, required: ['ref'], additionalProperties: false },
 };
 
@@ -117,8 +118,9 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
       if (name === fetchTool.name && contextAccess) {
         const parsed = decode(fetchArgs, args);
         if (parsed.kind === 'rejected') return { kind: 'unavailable', reason: 'invalid_input' };
-        const { ref, sourceOperationId } = parsed.value;
-        const result = await contextAccess.fetch(ref, sourceOperationId);
+        const { ref, sourceOperationId, offset } = parsed.value;
+        const result = await contextAccess.fetch(ref, sourceOperationId,
+          offset === undefined ? undefined : {offset});
         if (result.kind !== 'available' || !result.bytes) return result;
         if (result.bytes.byteLength > (maxResponseBytes / 2)) return { kind: 'unavailable', reason: 'budget' };
         const { bytes, ...details } = result;

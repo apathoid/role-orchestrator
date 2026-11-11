@@ -59,9 +59,12 @@ export function bindContextAccess(scope) {
       return { kind: 'available', items, ...(cursor < directory.length ? { nextCursor: cursor } : {}) };
     },
 
-    async fetch(ref, sourceOperationId = state.operationId) {
+    async fetch(ref, sourceOperationId = state.operationId, range) {
       if (!isActive()) return unavailable('closed');
       if (typeof sourceOperationId !== 'string') return unavailable('denied');
+      if (range !== undefined && (!range || typeof range !== 'object' ||
+          !Number.isSafeInteger(range.offset) || range.offset < 0 ||
+          Object.keys(range).length !== 1)) return unavailable('invalid_offset');
       const sharedRequest = sourceOperationId !== state.operationId;
       if (typeof ref === 'string' ? !ref.trim() : sharedRequest || !ref || typeof ref !== 'object' ||
           !Number.isSafeInteger(ref.revision) || !Number.isSafeInteger(ref.index)) return unavailable('denied');
@@ -86,6 +89,51 @@ export function bindContextAccess(scope) {
       const items = source === state ? localHistory() : operationHistory(source);
       const item = historical ?? items.find(item => item.ref === ref);
       if (!item) return unavailable('missing');
+      if (range) {
+        if (item.completeness === 'unavailable') {
+          return unavailable(item.unavailableReason === 'duplicate_inline' ? 'payload' :
+            item.unavailableReason ?? 'payload');
+        }
+        /** @type {Buffer} */
+        let stored;
+        /** @type {'utf8' | 'json' | 'binary'} */
+        let format;
+        if (item.artifact) {
+          try {
+            const read = await store.readArtifact?.(item.artifact, item.artifact.size);
+            if (!isActive()) return unavailable('closed');
+            if (!allowed()) return unavailable('denied');
+            if (read?.kind !== 'available') {
+              return unavailable(read?.kind === 'integrity_error' ? 'integrity_error' :
+                read?.reason ?? 'payload');
+            }
+            if (read.bytes.byteLength !== item.artifact.size) return unavailable('integrity_error');
+            stored = Buffer.from(read.bytes);
+          } catch {
+            return unavailable(isActive() ? 'payload' : 'closed');
+          }
+          format = 'binary';
+        } else if (item.value !== undefined) {
+          format = typeof item.value === 'string' ? 'utf8' : 'json';
+          stored = Buffer.from(format === 'utf8' ? /** @type {string} */ (item.value) : JSON.stringify(item.value), 'utf8');
+        } else {
+          return unavailable('payload');
+        }
+        if (range.offset > stored.length) return unavailable('invalid_offset');
+        const itemMetadata = { ...directoryEntry(item), provenance: item.provenance, artifact: item.artifact };
+        const envelope = { kind: /** @type {const} */ ('chunk'), item: itemMetadata, format,
+          offset: range.offset, totalBytes: stored.length, base64: '', nextOffset: stored.length };
+        // Base64 is transport-safe even when an offset bisects a Unicode scalar.
+        // Its encoded envelope, not raw bytes alone, fits fetchMaxBytes.
+        const overhead = Buffer.byteLength(JSON.stringify(envelope)) + 8;
+        const allowance = 3 * Math.floor(Math.max(0, maxBytes - overhead) / 4);
+        if (!allowance && range.offset < stored.length) return unavailable('budget');
+        const end = Math.min(stored.length, range.offset + allowance);
+        const result = { ...envelope, base64: stored.subarray(range.offset, end).toString('base64'),
+          ...(end < stored.length ? { nextOffset: end } : { nextOffset: undefined }) };
+        if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) return unavailable('budget');
+        return result;
+      }
       if (item.artifact) {
         try {
           if (item.artifact.size > maxBytes) {
@@ -133,7 +181,8 @@ export function bindContextAccess(scope) {
  * operation's ContextPort under its active authority; no MCP requirement,
  * extra store, automatic Worker dispatch, or semantic selection.
  * @param {ContextPort} port
- * @param {{refs?: readonly (string | import('../core/ports.js').ContextPosition)[], cursor?: number}} request
+ * @param {{refs?: readonly (string | import('../core/ports.js').ContextPosition |
+ *     {ref: string | import('../core/ports.js').ContextPosition, offset: number})[], cursor?: number}} request
  * @param {number} maxBytes
  * @returns {Promise<ContextItem[]>}
  */
@@ -147,19 +196,35 @@ export async function materializeControllerHistory(port, request, maxBytes) {
   let represented = 0;
   for (const ref of refs) {
     if (bytes >= maxBytes) break;
-    const result = await port.fetch(ref);
-    const positionRef = typeof ref === 'string' ? ref :
-      'host:history-position:' + ref.revision + ':' + ref.index;
+    const selection = typeof ref === 'object' && 'ref' in ref ? ref.ref : ref;
+    const offset = typeof ref === 'object' && 'ref' in ref ? ref.offset : undefined;
+    const result = await port.fetch(selection, undefined, offset === undefined ? undefined : {offset});
+    const positionRef = typeof selection === 'string' ? selection :
+      'host:history-position:' + selection.revision + ':' + selection.index;
     /** @type {ContextItem} */
     let item;
-    if (result.kind === 'available') {
+    if (result.kind === 'chunk') {
+      // Fresh model-selected output: the evidence itself remains in the same
+      // journal, and chunk metadata preserves original source/provenance.
+      item = {
+        ref: 'host:history-chunk:' + represented, source: result.item.source,
+        completeness: result.nextOffset === undefined ? result.item.completeness : 'truncated',
+        provenance: result.item.provenance, attemptId: result.item.attemptId,
+        receivedSequence: result.item.receivedSequence,
+        value: { requestedRef: result.item.ref, format: result.format,
+          offset: result.offset, totalBytes: result.totalBytes,
+          nextOffset: result.nextOffset, base64: result.base64,
+          sourceCompleteness: result.item.completeness,
+          artifact: result.item.artifact },
+      };
+    } else if (result.kind === 'available') {
       const source = result.bytes ? { ...result.item, artifact: undefined,
         value: { encoding: 'base64', bytes: Buffer.from(result.bytes).toString('base64'),
           originalArtifact: result.item.artifact },
       } : result.item;
       // Directory positions remain useful when a source ref is too large
       // to fit in the prompt. Preserve provenance and received sequence.
-      item = typeof ref !== 'string' && Buffer.byteLength(source.ref) > 128
+      item = typeof selection !== 'string' && Buffer.byteLength(source.ref) > 128
         ? { ...source, ref: positionRef } : source;
     } else {
       item = { ref: positionRef, source: 'host_observed', completeness: 'unavailable',
