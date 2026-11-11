@@ -17,15 +17,15 @@
 
 **C12R.9.7:** нормативные контракты, CHANGELOG и единственная tests/ACCEPTANCE_MATRIX актуализированы; синтетические регрессии выполняются в CI. Реальная native C12R.9 A/B/C сравнительная приёмка **UNVERIFIED**: в GitHub Actions нет доступной authenticated model/Zed с доказанными tools. Итоговые регрессии и Nix проверки можно считать verified только после SUCCESS привязанного к конечному HEAD, не по промежуточным коммитам.
 
-**Последний полностью выполненный инженерный этап:** C12R.9.7 (исходная инженерная реализация); C12R.9 review P1/P2 — исправления и адресные тесты внесены, окончательный regression verdict зависит от CI итогового HEAD.
+**Последний подтверждённый инженерный этап:** C12R.9.7 исходной реализации на `1633a30` (CI SUCCESS). Изменения review P1/P2 внесены до code HEAD `edc0f8a14a9ffd52c3bff34a0446bb0a498438f7`, но **НЕ подтверждены полным CI** из-за заблокированной инфраструктуры GitHub Actions; считать их проверенными или production-ready нельзя.
 
-**Следующий шаг:** Закрыть review P1/P2 после проверенного SUCCESS CI, затем выполнить **реальные native C12.3/C12.4 / C12R.9 comparative A/B/C**, Zed и NixOS runtime. Не выдавать synthetic fixtures за native assessment и не возобновлять C12R.9.0.
+**Следующий шаг:** Разблокировать/дождаться выполнения GitHub Actions на **финальном HEAD**, проверить checkJs/contracts/full integration/package/Nix; исправить все обнаруженные FAIL, затем закрыть review P1/P2. После этого — **реальная native C12.3/C12.4 / C12R.9 comparative A/B/C**, Zed и NixOS runtime. Не выдавать synthetic fixtures за native assessment и не возобновлять C12R.9.0.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
 | Implementation complete (original C12R.9) | **YES** на `1633a30a11a392bfd5b21474d0be6206b3a6fec7`; review fixes проверяются отдельно |
 | Regression verified (original C12R.9) | **OBSERVED SUCCESS**: [43083588324](https://github.com/apathoid/role-orchestrator/actions/runs/43083588324), [43083600272](https://github.com/apathoid/role-orchestrator/actions/runs/43083600272), оба на `1633a30` (Linux CI, package, Nix checks по run); это не доказательство исправления review |
-| Regression verified (review P1/P2) | **PENDING** финального green CI, промежуточные red CI не скрывать |
+| Regression verified (review P1/P2) | **BLOCKED / UNVERIFIED**: code HEAD `edc0f8a` ожидает CI; промежуточные FAIL (в том числе integration на `8c52c4a`) не считаются исправленными без нового PASS |
 | Native integration verified | **UNVERIFIED:** настоящие Codex/ACP LLM, Zed и реальная NixOS runtime интеграция |
 | Performance/quality comparison verified | **UNVERIFIED:** A/B/C, default Controller 256 КиБ и отдельно 512 КиБ, fetch 64/128 КиБ |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**, production readiness **NO** |
@@ -40,13 +40,15 @@
 | P1 — silent omissions при исчерпании динамического технического бюджета | `c343252`, `a94e0b3`: exhaustive category totals/represented/omitted, workCursor page from same Operation, terminal uncertainty separated; stress 200 uncertain effects, cancellations, pending/unknown dispatch |
 | P2 — positional retrieval без MCP | `37257fb`: Decision refs decode string/position, действующий ContextPort boundary, persisted request and oversized reference tests |
 | P2 — сохранённые результаты >fetchMaxBytes | `3ec2492`, `2247ce4`: explicit offset base64 slices in existing ContextPort/MCP/Controller, per-response byte limit, integrity/truncation/retention/cancel/reopen/UTF-8 tests; defaults не повышались |
-| Типы, контрактные fixtures и дополнительные регрессии | `baa5b04`, `a2bee3e`, `7fd6a3b` и следующие проверочные фиксы; учитывать только после зелёного полного CI |
+| Типы, контрактные fixtures и дополнительные регрессии | `baa5b04`, `a2bee3e`, `7fd6a3b`, `8c52c4a` (grant тестового ACP Worker), `8b08cfd` (доступная workMap-пагинация), `03bc083` (snapshot/recovery + positional), `176c3e4` (immutable reservation order), `5af617f` (MCP off guidance), `5d16055` (UTF‑16), `1dd13ce` (artifact retention/missing/cancel), `4994841` (ambiguous/denied), `544b637` (stale workCursor), `6b93ee2` (exact byte measurements), `a353ab2` (partial last chunk), `edc0f8a` (explicit history-request omission counters). Всё требует post-change CI; ни один старый PASS не подменяет его |
 
-**STATUS нового исправленного HEAD:** автоматические тесты ожидают окончательного прохода; Native integration / Performance comparison: **UNVERIFIED**. Contract source — [C12R9_CONTEXT_CONTINUITY](C12R9_CONTEXT_CONTINUITY.md), реальная проверка — [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md).
+**BLOCKER (на момент 20:48 UTC, 2026-11-11):** GitHub Actions [43095041192](https://github.com/apathoid/role-orchestrator/actions/runs/43095041192) и [43095049039](https://github.com/apathoid/role-orchestrator/actions/runs/43095049039) на промежуточном `8c52c4a` застряли в статусе `in_progress` более 30 минут после завершённого с ошибкой шага Integration regression. Позднейшие push-workflows стоят в `queued`, включая [43097748084](https://github.com/apathoid/role-orchestrator/actions/runs/43097748084) для code HEAD `edc0f8a`. Доступный GitHub connector не предоставляет cancel workflow run; в локальном execution environment отсутствует checkout/Nix для замены CI. **Это реальный незакрытый CI blocker**, не PASS и не основание снижать контракты/ослаблять тесты. Полный regression verdict требует нового completed SUCCESS на итоговом SHA, после чего STATUS нужно обновить по наблюдениям. Дополнительный узкий диагностический workflow `C12R.9 review focused checks` также ожидает runner и не заменяет полный workflow.
+
+**STATUS нового исправленного HEAD:** source/test изменения внесены и опубликованы, **Regression verified: UNVERIFIED due to CI backlog**; Native integration / Performance comparison: **UNVERIFIED**. Contract source — [C12R9_CONTEXT_CONTINUITY](C12R9_CONTEXT_CONTINUITY.md), реальная проверка — [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md).
 
 ## C12R.9 — уточнённый обязательный план (2026-11-11)
 
-**Историческая запись:** первоначально PLAN READY / NOT STARTED; затем C12R.9.0–.7 реализованы с исходным успешным CI `1633a30`. Текущее продолжение — исправления review P1/P2 (см. новый раздел ниже). Этот абзац сохраняет происхождение исходного плана, а не обозначает текущий следующий шаг.
+**Исторический план:** C12R.9.0–.7 были реализованы на `1633a30` и прошли исходный CI. Текущий статус и следующий шаг приведены выше; старые указания начинать C12R.9.0 более не действуют.
 
 **Причина:** в предоставленном пользователем разборе native Codex JSONL предыдущие отчёты были вытеснены из prompt Controller (при `context.maxBytes=65536`, MCP off), что могло приводить к дублированию работы. Этот native диагноз пока основан на пользовательском анализе; исходные JSONL здесь не воспроизведены. **SUPPORTED по исходникам:** 64 КиБ default, recency-first и 128 optional-record guard, `host:invocation-context` с уже существующими outcomes/actions без компактной адресной связи поручений и результатов, общий `context.maxBytes` для history/handoff/fetch/capture/skills/tool, new native process/session per invocation в текущих adapters. Само повторное исследование не означает ошибку модели.
 

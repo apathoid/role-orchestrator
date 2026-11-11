@@ -262,3 +262,7 @@ C12R.6.1–6.4: `tests/integration/c12r-coordination.test.js` combines chosen sk
 | Текущие бюджеты независимы и alias только Controller | `configuration.test.js`, `context.test.js`, `mcp-context.test.js`, `context-chunks.test.js` | UNVERIFIED |
 
 Итоговая строка **automated regression verified** должна ссылаться на конечный green CI и его точный HEAD; успешный исходный C12R.9 commit `1633a30` не подтверждает эти review fixes.
+
+### C12R.9 review — фактический статус CI после кодовых исправлений
+
+**OBSERVED:** исходный `1633a30` — два SUCCESS workflows (см. [STATUS](../docs/roadmap/STATUS.md)). Review code через `edc0f8a` содержит регрессии для Codex CLI/ACP, полной технической карты, stale/ambiguous/denied positional refs, состояния после restart, 64/128 КиБ byte-chunks (включая malformed UTF‑16), missing/retention/in-flight cancel и no-MCP Controller. Статус адресных тестов **NOT VERIFIED**: GitHub Actions ждёт выполнения из-за старых застрявших jobs, промежуточные integration FAIL не считаются погашенными. Нативная модель/Zed/NixOS и сравнительная A/B/C приёмка — **UNVERIFIED**. Не менять эту матрицу на PASS до наблюдённого SUCCESS итогового SHA.
