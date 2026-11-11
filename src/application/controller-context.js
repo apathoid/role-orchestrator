@@ -306,6 +306,11 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   };
   const technicalCoverage = Object.fromEntries(Object.entries(categories).map(([key, total]) =>
     [key, { total, represented: total, omitted: total }]));
+  const historyRequestBudget = requested.find(item => item.ref === 'host:history-request-budget')?.value;
+  const requestReport = historyRequestBudget && typeof historyRequestBudget === 'object' &&
+    'requested' in historyRequestBudget && 'represented' in historyRequestBudget &&
+    'omitted' in historyRequestBudget ? historyRequestBudget : undefined;
+  const requestRecords = requested.filter(item => item.ref !== 'host:history-request-budget');
   const host = {
     ref: 'host:invocation-context', source: /** @type {const} */ ('host_observed'),
     completeness: /** @type {const} */ ('complete'),
@@ -334,6 +339,15 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         represented: workRows.length, omitted: workRows.length,
         historyCursor: 0, entries: /** @type {typeof workRows} */ ([]) },
       technicalCoverage,
+      ...(requested.length && { historyRequestCoverage: {
+        requestedRefs: requestReport ? Number(requestReport.requested) :
+          requestRecords.filter(item => !item.ref.startsWith('host:history-page:')).length,
+        materializedRefs: requestReport ? Number(requestReport.represented) :
+          requestRecords.filter(item => !item.ref.startsWith('host:history-page:')).length,
+        omittedDuringMaterialization: requestReport ? Number(requestReport.omitted) : 0,
+        materializedRecords: requestRecords.length, presentedRecords: 0,
+        omittedDuringPresentation: requestRecords.length,
+      } }),
       technicalBudget: { maxBytes, mandatoryBytes: 0, mandatoryOverflow: false },
       unresolvedAttempts: /** @type {typeof facts.unresolvedAttempts} */ ([]),
       effectUncertainties: /** @type {typeof facts.effectUncertainties} */ ([]),
@@ -449,6 +463,14 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   host.value.historyBudget.omitted = bounded.omitted;
   host.value.historyBudget.excerpted = bounded.excerpted;
   host.value.historyBudget.unrepresented = bounded.unrepresented;
+  if (host.value.historyRequestCoverage) {
+    const presented = new Set(bounded.context.map(item =>
+      JSON.stringify([item.ref, item.receivedSequence])));
+    const count = requestRecords.filter(item =>
+      presented.has(JSON.stringify([item.ref, item.receivedSequence]))).length;
+    host.value.historyRequestCoverage.presentedRecords = count;
+    host.value.historyRequestCoverage.omittedDuringPresentation = requestRecords.length - count;
+  }
   // History budget counters can shrink after optional packing; final
   // measured technical bytes must describe the actual delivered host record.
   measureHost();

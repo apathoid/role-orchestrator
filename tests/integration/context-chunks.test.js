@@ -326,3 +326,24 @@ test('C12R.9 P2: no-MCP retrieval never unwraps ambiguous, stale or denied posit
   const denied=await materializeControllerHistory(restricted,{refs:[{revision:1,index:0}]},4096);
   assert.equal(denied[0].unavailableReason,'denied');
 });
+
+test('C12R.9 P1: oversized requested history retains materialization and presentation omissions in mandatory facts',async()=>{
+  const state=createOperation('history-request-budget',request(),'grant',
+    {maxInvocations:3,maxConcurrentInvocations:1});
+  const port={list(){return {kind:'available',items:[]};},
+    async fetch(ref){return {kind:'available',item:{ref,
+      source:'provider_reported',completeness:'complete',value:'x'.repeat(1400)}};}};
+  const records=await materializeControllerHistory(port,
+    {refs:Array.from({length:20},(_,i)=>'record-'+i)},2048);
+  const context=(await import('../../src/application/controller-context.js')).controllerContext(
+    state,[],undefined,undefined,4096,undefined,records);
+  const coverage=context[1].value.historyRequestCoverage;
+  assert.equal(coverage.requestedRefs,20);
+  assert.ok(coverage.omittedDuringMaterialization>0);
+  assert.equal(coverage.requestedRefs,
+    coverage.materializedRefs+coverage.omittedDuringMaterialization);
+  assert.equal(coverage.materializedRecords,
+    coverage.presentedRecords+coverage.omittedDuringPresentation);
+  assert.ok(coverage.presentedRecords<=coverage.materializedRecords);
+  assert.ok(Buffer.byteLength(JSON.stringify(context.slice(1)))<=4096);
+});
