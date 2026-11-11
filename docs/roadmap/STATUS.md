@@ -20,13 +20,15 @@
 
 **SUPPORTED / уже закрытые механизмы:** C12R.4 проверяет ambiguous refs и причины недоступности payload; C12R.5 разделяет ACP accumulated-output limit от protocol failures; C12R.6.0 обеспечивает selected skill delivery; C12R.1 сохраняет независимые Workers при Controller fault. Сохранение их статуса требует новой отличающей регрессии для открытия дефекта.
 
+**SUPPORTED / C12R.8.6 prompt guidance:** исходные `controllerInstructions` и MCP `retrievalDetail(true)` предписывали искать историю даже если достаточно доставленного контекста. Это конкретный prompt-policy дефект: дополнительная загрузка не должна быть обязательным поведением. Корректировка делает retrieval опциональным решением модели, не меняет tool publication, authority, ContextPort или накопленные записи; добавлены регрессии на соответствующую границу. Prompt token savings / native quality effect пока UNVERIFIED. Изменение в отдельном implementation commit после `f078dc6`.
+
 **Незакрытые диагностические гипотезы:** без исходных native traces нельзя приписать прежние MISSING / CAPABILITY_UNAVAILABLE / PROTOCOL_ERROR непосредственно лимитам bridge или утрате output. Bridge имеет ограниченное число calls/concurrency, artifact storage может хранить префикс; сами эти свойства ещё не доказывают неисправность. Исследование C12R.8.1–.6 продолжается; native подтверждение/замеры отсутствуют. Следующее действие — адресные source-level регрессии, а не подмена технических причин предположениями.
 
 **CI этого коммита:** ещё не выполнен; прежние 310/310 относятся к `4ecf0e5`, а CI базового документационного HEAD красный. Implementation/regression C12R.8 пока не завершены.
 
-## C12R.8 — план подготовлен, исполнение не начиналось
+## C12R.8 — диагностика и адресные инженерные исправления
 
-- **PLAN READY, NOT IMPLEMENTED.** C12R.8.0 `NOT STARTED`; направления C12R.8.1–.6 `NOT ASSESSED` (условны по доказательствам), регрессия/приёмка C12R.8.7 `UNVERIFIED`. Подготовлены только roadmap и handoff, производственный код/тесты не изменены.
+- **IN PROGRESS.** C12R.8.0 начат на `6f6f6f3`, CI handoff fix `f078dc6ce3afeca5affc4ea2d3f868dbae32f73b` опубликован; C12R.8.1–.5 оцениваются условно, C12R.8.6 — адресное изменение рекомендации optional retrieval. C12R.8.7 (новые проверки этого HEAD) ещё не подтверждён.
 - **Проверенный baseline для планирования:** `150046ef7ab0b48f75b115636b7f506fce1ba8d9`. `SUPPORTED` исходниками: MCP bridge имеет общий лимит 64 уникальных вызовов и concurrency 4; `context.maxBytes` применяется к истории, artifact capture/fetch, local store способен хранить усечённый префикс; Controller prompt рекомендует необязательный page-through history. **Это не подтверждённые первопричины прежних native failures.**
 - **Handoff:** агент начинает с [C12R.8.0](C12R8_RELIABILITY.md), сопоставляет с уже реализованными C12R.4/.5/.6/.7, фиксирует evidence/owners/различающие проверки, затем реализует только подтверждённый минимальный scope, отдельными логическими коммитами с тестами и обновлением STATUS.
 - **Происхождение проверок:** 310/310 — ранее выполненный CI на `4ecf0e5`, не новый прогон этого документационного HEAD. В рамках подготовки плана runtime/npm/Nix/native tests не запускались. C12.3/C12.4, live Zed/ACP, real NixOS и сравнительные performance/quality результаты по-прежнему `UNVERIFIED`.
