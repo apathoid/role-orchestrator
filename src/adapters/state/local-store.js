@@ -135,7 +135,9 @@ export function createLocalStateStore(directory, io = fs) {
         }
         const bytes = data.subarray(0, offset);
         if (offset !== reference.size || hashBytes(bytes) !== match[1]) return {kind:'integrity_error'};
-        if (bytes.length <= verifiedCacheMaxBytes) {
+        // A close can race a previously started read. Never retain verified
+        // bytes after the owning Store has closed.
+        if (directoryHandle && bytes.length <= verifiedCacheMaxBytes) {
           verifiedCache = {hash:match[1],stamp,bytes};
         }
         return {kind:'available',bytes};
