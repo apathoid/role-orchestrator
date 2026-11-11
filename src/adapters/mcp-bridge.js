@@ -156,7 +156,11 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
       return;
     }
     if (message.id === undefined) { response.writeHead(202).end(); return; }
-    if (typeof message.id !== 'string' && typeof message.id !== 'number') { response.writeHead(400).end(); return; }
+    if ((typeof message.id !== 'string' && typeof message.id !== 'number') ||
+        (typeof message.id === 'number' && !Number.isFinite(message.id))) {
+      response.writeHead(400).end();
+      return;
+    }
     const requestId = message.id;
     const params = object(message.params);
     /** @type {unknown} */

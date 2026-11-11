@@ -255,6 +255,13 @@ for (const first of ['history', 'external']) {
           params: { name: 'echo', arguments: {} } }),
       });
       assert.equal(invalid.status, 400);
+      // A syntactically valid JSON exponent can become Infinity in JS; it
+      // must not be acknowledged later with a different JSON-RPC id (null).
+      const nonFinite = await fetch(bridge.url, { method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"jsonrpc":"2.0","id":1e400,"method":"tools/call","params":{"name":"echo","arguments":{}}}',
+      });
+      assert.equal(nonFinite.status, 400);
       assert.deepEqual([listed, fetched, tools], [16, 16, 32]);
     } finally {
       stop.abort();
