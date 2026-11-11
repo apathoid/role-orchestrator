@@ -48,12 +48,18 @@ export const assessment = record({
 export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext });
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 /** @param {unknown} input @param {string} path */
+const contextPosition = record({ revision: count, index: count });
+/** A history reference is the same identity used by ContextPort.fetch. */
+/** @param {unknown} input @param {string} path */
+export const contextReference = (input, path) => typeof input === 'string'
+  ? id(input, path) : contextPosition(input, path);
+const contextReferences = arrayOf(contextReference);
 const contextRequest = (input, path) => {
-  const value = record({ refs: optional(ids), cursor: optional(count), workCursor: optional(count) })(input, path);
+  const value = record({ refs: optional(contextReferences), cursor: optional(count), workCursor: optional(count) })(input, path);
   if ((!value.refs || value.refs.length === 0) && value.cursor === undefined && value.workCursor === undefined) {
     invalid(path, 'nonempty refs and/or cursor');
   }
-  if (value.refs && new Set(value.refs).size !== value.refs.length) {
+  if (value.refs && new Set(value.refs.map(ref => JSON.stringify(ref))).size !== value.refs.length) {
     invalid(path + '.refs', 'unique references');
   }
   return value;

@@ -15,7 +15,7 @@ export const controllerInstructions = [
   'Action.skills selects only Host-managed Catalog skill ids for a Worker. A skill absent from this Catalog does not imply the provider lacks native skills, terminal, project instructions, files or scripts. Use these through available native tools without requiring Host Catalog registration. Selected skill instructions apply only to that Worker; restrictions on native subagents do not by themselves prohibit orchestration. Honor applicable task instructions, user requirements and actual permissions.',
   'Delegate when useful by selecting a profile, optional reasoningLevel, objective, expected result and context references. Use all_requested or next_completion when waiting for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'Profiles expose logical reasoning levels, not their private native mapping. Different models at the same level are not guaranteed equal. Omit reasoningLevel to use the trusted profile default or native mode.',
-  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:string[],cursor?:number,workCursor?:number}} for an optional next Controller turn. A contextRequest selects original historical refs, a history-directory page, or a workMap page with workCursor; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
+  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:(string|{revision:number,index:number})[],cursor?:number,workCursor?:number}} for an optional next Controller turn. A contextRequest selects original historical refs, a history-directory page, or a workMap page with workCursor; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Workspace files and branches may change during the operation. Use observations to decide whether earlier findings still apply and whether to read a target again. Reported locations, versions and times describe individual observations.',
@@ -412,7 +412,10 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // Explicitly requested records take precedence without duplicating their
   // original inline bodies from the ordinary newest-first history.
   const requestedRefs = new Set(requested.map(item => item.ref));
-  const candidates = [...requested, ...history.reverse().filter(item => !requestedRefs.has(item.ref))];
+  const requestedPositions = new Set(requested.flatMap(item => item.receivedSequence
+    ? [JSON.stringify(item.receivedSequence)] : []));
+  const candidates = [...requested, ...history.reverse().filter(item => !requestedRefs.has(item.ref) &&
+    (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence))))];
   const bounded = compactContext(deduplicateInlineResults(candidates),
     Math.max(0, maxBytes - used + 1), false);
   host.value.historyBudget.omitted = bounded.omitted;

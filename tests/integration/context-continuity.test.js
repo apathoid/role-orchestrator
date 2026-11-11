@@ -212,3 +212,52 @@ test('C12R.9 review P1: accepted workCursor is optional and has strict bounds', 
       contextRequest:{workCursor}}}).kind,'rejected');
   }
 });
+
+test('C12R.9 review P2: persisted next-turn positional refs fetch the original without MCP', async () => {
+  const { setup, final }=await import('../fixtures/application.js');
+  let selected;
+  let controllers=0;
+  const {api,respondErrors}=setup({maxInvocations:4,context:{controllerMaxBytes:8192},
+    respond(invocation,_,observe) {
+      controllers++;
+      if(controllers===1){
+        observe({ref:'position-source',kind:'provider_report',sourceId:'fixture',completeness:'complete',
+          value:'original attributed positional body'});
+        return final(invocation,{finalAssessment:undefined,nextController:{continue:true}});
+      }
+      if(controllers===2){
+        const page=invocation.contextAccess.list();
+        const entry=page.items.find(item=>item.providerRef==='position-source');
+        assert.ok(entry?.receivedSequence);
+        selected=entry.receivedSequence;
+        return final(invocation,{finalAssessment:undefined,nextController:{
+          continue:true,contextRequest:{refs:[selected]}}});
+      }
+      const body=invocation.context.find(item=>item.receivedSequence?.revision===selected.revision &&
+        item.receivedSequence?.index===selected.index);
+      assert.equal(body.value,'original attributed positional body');
+      assert.equal(body.source,'provider_reported');
+      assert.equal(body.provenance.sourceId,'fixture');
+      return final(invocation);
+    }});
+  const result=await (await api.submit(request())).completion;
+  assert.equal(result.status,'finished',respondErrors.map(err=>String(err.stack??err)).join('\n'));
+  assert.equal(controllers,3);
+  const decision=result.events.find(event=>event.kind==='controller.responded' &&
+    event.decision.nextController?.contextRequest?.refs?.length);
+  assert.deepEqual(decision.decision.nextController.contextRequest.refs,[selected]);
+});
+
+test('C12R.9 review P2: malformed and duplicate positions reject in v1 Decision', () => {
+  const base={schemaVersion:1,decisionId:'pos',operationId:'op',contextCursor:1,
+    additions:[],cancellations:[],nextController:{continue:true,
+      contextRequest:{refs:[{revision:2,index:0}]}}};
+  assert.equal(decodeDecision(base).kind,'accepted');
+  for(const ref of [{revision:-1,index:0},{revision:1,index:0,foreign:true},
+    {revision:0,index:'0'},{revision:0},{revision:1,index:1.5}]) {
+    assert.equal(decodeDecision({...base,nextController:{continue:true,
+      contextRequest:{refs:[ref]}}}).kind,'rejected');
+  }
+  assert.equal(decodeDecision({...base,nextController:{continue:true,
+    contextRequest:{refs:[{revision:2,index:0},{revision:2,index:0}]}}}).kind,'rejected');
+});

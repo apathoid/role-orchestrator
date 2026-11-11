@@ -133,7 +133,7 @@ export function bindContextAccess(scope) {
  * operation's ContextPort under its active authority; no MCP requirement,
  * extra store, automatic Worker dispatch, or semantic selection.
  * @param {ContextPort} port
- * @param {{refs?: readonly string[], cursor?: number}} request
+ * @param {{refs?: readonly (string | import('../core/ports.js').ContextPosition)[], cursor?: number}} request
  * @param {number} maxBytes
  * @returns {Promise<ContextItem[]>}
  */
@@ -148,20 +148,26 @@ export async function materializeControllerHistory(port, request, maxBytes) {
   for (const ref of refs) {
     if (bytes >= maxBytes) break;
     const result = await port.fetch(ref);
+    const positionRef = typeof ref === 'string' ? ref :
+      'host:history-position:' + ref.revision + ':' + ref.index;
     /** @type {ContextItem} */
     let item;
     if (result.kind === 'available') {
-      item = result.bytes ? { ...result.item, artifact: undefined,
+      const source = result.bytes ? { ...result.item, artifact: undefined,
         value: { encoding: 'base64', bytes: Buffer.from(result.bytes).toString('base64'),
           originalArtifact: result.item.artifact },
       } : result.item;
+      // Directory positions remain useful when a source ref is too large
+      // to fit in the prompt. Preserve provenance and received sequence.
+      item = typeof ref !== 'string' && Buffer.byteLength(source.ref) > 128
+        ? { ...source, ref: positionRef } : source;
     } else {
-      item = { ref, source: 'host_observed', completeness: 'unavailable',
+      item = { ref: positionRef, source: 'host_observed', completeness: 'unavailable',
         unavailableReason: result.reason };
     }
     const size = Buffer.byteLength(JSON.stringify(item));
     if (bytes + size > maxBytes) {
-      item = { ref, source: 'host_observed', completeness: 'unavailable',
+      item = { ref: positionRef, source: 'host_observed', completeness: 'unavailable',
         unavailableReason: 'budget' };
     }
     const sizeAfter = Buffer.byteLength(JSON.stringify(item));

@@ -6,7 +6,7 @@ Decision v1 (fields marked ? are optional and should be omitted when absent):
   contextCursor: host:invocation-context.value.contextCursor, additions: Action[], cancellations: string[],
   acceptedActionIds?: string[], waitPolicy?: {kind: "all_requested" | "next_completion", targets: {kind: "action" | "attempt", id: string}[]},
   clarification?: {question: string}, finalAssessment?: Assessment, findings?: Finding[],
-  nextController?: {reasoningLevel?: string, continue?: true, contextRequest?: {refs?: string[], cursor?: number, workCursor?: number}}
+  nextController?: {reasoningLevel?: string, continue?: true, contextRequest?: {refs?: (string|{revision:number,index:number})[], cursor?: number, workCursor?: number}}
 Action: {actionId: string, kind: "delegate", objective: string, profileId: string, contextRefs: string[],
   dependsOn: {actionId: string, kind: "after_terminal" | "after_model_acceptance"}[], expectedResult: string,
   roleId?: string, reasoningLevel?: string, skills?: string[], requiredCapabilities?: string[], continuationReference?: string,
