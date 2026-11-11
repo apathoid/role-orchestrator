@@ -2,7 +2,7 @@
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 **Последний полностью выполненный инженерный этап:** C12.9 (Linux Nix и NixOS module evaluation).
-**Следующий шаг для закрытия C12:** получить реальные результаты C12.3/C12.4, выполнить native NixOS acceptance и повторить финальную регрессию. Это не запрос на повторную реализацию C12.0.
+**Следующий шаг:** C12R.0 — baseline и воспроизведение дефектов по [плану C12R](C12R_STABILIZATION.md). C12R ещё не реализован; начать с актуального HEAD, затем выполнять самостоятельные шаги с тестами и отдельными коммитами. C12.3/C12.4 и native NixOS acceptance остаются открытыми, не повторять C12.0.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
@@ -13,6 +13,24 @@
 | NixOS | **OBSERVED** `lib.nixosSystem` evaluation включает `environment.systemPackages` с продуктом. Реальный boot/запуск на NixOS **UNVERIFIED** |
 | Native providers / Zed | **UNVERIFIED**: два независимых реальных LLM, Codex CLI/ACP успешный prompt, Zed как ACP-клиент, реальные permissions/cancel/resume и native reasoning |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**; production readiness **NO** |
+
+## C12R — активный корректирующий этап
+
+**Baseline:** `4ebaf262b98d541120745e04f697ebbb3404fc88`. План подготовлен, инженерные исправления C12R **NOT STARTED**. Источник задач — [C12R_STABILIZATION](C12R_STABILIZATION.md); текущие требования и единая матрица сохраняются.
+
+| Шаг | Состояние |
+|---|---|
+| C12R.0 | NEXT — baseline, доступные native evidence, адресные воспроизведения |
+| C12R.6.0 | PLANNED — skills scope/delivery/identity |
+| C12R.1 | PLANNED — независимые Actions, fairness, recovery |
+| C12R.2 | PLANNED — reasoning provenance |
+| C12R.3 | PLANNED — диагностика |
+| C12R.4 | PLANNED — context/evidence |
+| C12R.5 | PLANNED — ACP/resources |
+| C12R.6.1–6.4 | PLANNED — проверка поведения, обоснованные точечные prompt changes |
+| C12R.7 | PLANNED — regression/native/comparative evaluation |
+
+Исходниками baseline поддержаны дефекты lifecycle, пропуска skillInstructions в renderer и проверки explicit Controller reasoning mode. Воспроизведение тестами и результаты трёх обсуждавшихся native runs предстоит зафиксировать в C12R.0; причины PROTOCOL_ERROR, влияние native skill discovery и количественный эффект исправлений не подтверждены. Не превращать обсуждение или historical CI в native PASS. При отсутствии оригинальных материалов отметить UNVERIFIED и продолжить доступные инженерные проверки.
 
 ## Реализованные изменения и происхождение
 
