@@ -28,6 +28,10 @@
 
 Реальная native acceptance [C12.3/C12.4/C12R.7/NixOS](NATIVE_ACCEPTANCE.md) по-прежнему не закрыта. Текущее выполнение, проверки и оставшиеся gaps — только в [STATUS](STATUS.md).
 
+## C12R.8R — адресные исправления по ревью
+
+На актуальном implementation HEAD `4c3f324e11b8d7ab851f893bafcbd492fd03f26d` завершена доступная инженерная часть [C12R.8R](STATUS.md): восстановлена post-execution MCP provenance при response overflow, исправлен byte check полного JSON-RPC envelope и non-finite id, проверены общий tool/history budget, bounded cache, cancellation/late receipts, durable reopen и optional direct Controller без retrieval. **CI 324/324 PASS**; реальный Zed/ACP, независимые модели, native NixOS и качество сравнительных retrieval A/B прогонов остаются UNVERIFIED. C12R.8R не меняет обязательные runtime workflow, Host semantics, permissions или лимиты.
+
 ## C12 — реализованные инженерные шаги и открытая приёмка
 
 | Шаг | Содержание | Завершение |
