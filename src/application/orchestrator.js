@@ -914,7 +914,7 @@ export function createOrchestrator(deps) {
             signal.throwIfAborted();
             requireAuthority();
             context.context = controllerContext(dispatched, entries, correction, lookups,
-              controllerMaxBytes, catalog.preferences, records);
+              controllerMaxBytes, catalog.preferences, records, requested.workCursor);
             const unavailable = records.filter(item => item.completeness === 'unavailable').length;
             trace(dispatched, 'context.history_requested', 'DELIVERY_OBSERVED', attemptId, {
               details: { requestedRefs: requested.refs?.length ?? 0,

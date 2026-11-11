@@ -49,8 +49,8 @@ export const followup = record({ requestId: id, text, questionId: optional(id), 
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 /** @param {unknown} input @param {string} path */
 const contextRequest = (input, path) => {
-  const value = record({ refs: optional(ids), cursor: optional(count) })(input, path);
-  if ((!value.refs || value.refs.length === 0) && value.cursor === undefined) {
+  const value = record({ refs: optional(ids), cursor: optional(count), workCursor: optional(count) })(input, path);
+  if ((!value.refs || value.refs.length === 0) && value.cursor === undefined && value.workCursor === undefined) {
     invalid(path, 'nonempty refs and/or cursor');
   }
   if (value.refs && new Set(value.refs).size !== value.refs.length) {

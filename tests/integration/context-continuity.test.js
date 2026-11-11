@@ -161,3 +161,54 @@ test('C12R.9.6: telemetry measures Host serialization, not provider internal con
   assert.equal(reply.details.terminal,'completed');
   assert.equal(reply.details.inputTokens,null);
 });
+
+test('C12R.9 review P1: exhausted technical map advertises exact uncertainty and cancellation omissions', () => {
+  const state=createOperation('many-work',request(), 'grant',
+    {maxInvocations:1000,maxConcurrentInvocations:4});
+  for(let i=0;i<200;i++){
+    const id='attempt-'+i,actionId='work-'+i;
+    state.attempts.push({attemptId:id,actionId,generation:0,reservedAt:i,
+      status:'terminal',endedAt:i+1,dispatchCertainty:'sent',
+      outcome:outcome(id,{effect:'possible'})});
+    state.events.push({kind:'action.cancelled',eventId:'cancel-'+i,
+      operationId:'many-work',receivedAt:i,actionId,source:'superseded'});
+  }
+  const pendingId='active-attempt';
+  state.attempts.push({attemptId:pendingId,actionId:'active-work',
+    status:'dispatched',generation:0,reservedAt:1,dispatchCertainty:'unknown'});
+  const unknownId='orphan-attempt';
+  state.attempts.push({attemptId:unknownId,actionId:'old-work',generation:0,
+    reservedAt:1,endedAt:2,dispatchCertainty:'unknown',status:'terminal',
+    outcome:outcome(unknownId,{terminal:'unknown',effect:'unknown'})});
+  const ctx=controllerContext(state,[],undefined,undefined,4096);
+  const host=ctx[1].value;
+  assert.equal(host.technicalCoverage.effectUncertainties.total,200);
+  assert.equal(host.technicalCoverage.cancellations.total,200);
+  assert.equal(host.technicalCoverage.unresolvedAttempts.total,2);
+  assert.equal(host.technicalCoverage.pendingAttempts.total,1);
+  assert.equal(host.technicalCoverage.outcomes.total,201);
+  for(const [key,counts] of Object.entries(host.technicalCoverage)) {
+    assert.equal(counts.total,counts.represented+counts.omitted,key);
+  }
+  assert.ok(host.technicalCoverage.effectUncertainties.omitted>0);
+  assert.ok(host.workMap.omitted>0);
+  assert.ok(host.workMap.nextCursor>=host.workMap.cursor);
+  assert.ok(Buffer.byteLength(JSON.stringify(ctx.slice(1)))<=4096);
+  const next=controllerContext(state,[],undefined,undefined,4096,undefined,[],host.workMap.nextCursor);
+  assert.equal(next[1].value.workMap.cursor,host.workMap.nextCursor);
+  assert.equal(next[1].value.technicalCoverage.effectUncertainties.total,200);
+  const tiny=controllerContext(state,[],undefined,undefined,1)[1].value;
+  assert.equal(tiny.technicalCoverage.effectUncertainties.total,200);
+  assert.equal(tiny.technicalBudget.mandatoryOverflow,true);
+});
+
+test('C12R.9 review P1: accepted workCursor is optional and has strict bounds', () => {
+  const base={schemaVersion:1,decisionId:'history',operationId:'op',
+    contextCursor:1,additions:[],cancellations:[],
+    nextController:{continue:true,contextRequest:{workCursor:199}}};
+  assert.equal(decodeDecision(base).kind,'accepted');
+  for(const workCursor of [-1,1.5,'20',null]) {
+    assert.equal(decodeDecision({...base,nextController:{continue:true,
+      contextRequest:{workCursor}}}).kind,'rejected');
+  }
+});
