@@ -1,133 +1,145 @@
-# C12R.9 — Непрерывность контекста Controller без Host-managed knowledge
+# C12R.9 — Исправление непрерывности контекста Controller
 
-**Статус:** APPROVED PLAN / NOT IMPLEMENTED. **Рабочая ветка:** `greenfield/model-first-core`. **Baseline подготовки:** `b497b28c145fdbc3b17703e543fece6994ae82a6`. Следующий инженерный шаг — **C12R.9.0**. Фактические HEAD, CI, результаты и незакрытые обязательства — только в [STATUS](STATUS.md).
+**Статус: IMPLEMENTATION PLAN / NOT IMPLEMENTED.** Ветка: `greenfield/model-first-core`. Начинать с **C12R.9.0** по [STATUS](STATUS.md). План задаёт **обязательные результаты текущей итерации**, а не список гипотетических механизмов. Детали размещения функций и внутренние алгоритмы исполнитель выбирает самостоятельно, не меняя наблюдаемые контракты и инварианты.
 
-## 1. Проблема и цель
+## 1. Цель, доказательства и границы
 
-В предоставленном пользователем разборе реального запуска Controller повторно поручал уже проведённую проверку: содержательные отчёты более ранних исполнителей исчезали из его новых prompt при `context.maxBytes = 65536`, а retrieval через MCP был выключен. Эти наблюдения об исходных JSONL/trace представлены **со слов предоставленного анализа**; оригинальные файлы и реальный native replay не включены в репозиторий и здесь повторно не проверены. Само по себе повторное делегирование не является дефектом модели: новая проверка может быть сознательной. Дефект — отсутствие прозрачной возможности обнаружить и использовать уже полученные результаты.
+**Цель:** при очередном Controller invocation модель должна иметь достоверную картину уже порученных и завершённых действий, адресуемые ссылки на их результаты и возможность по собственному решению получить сохранённые данные, которые не помещаются в текущий prompt. Controller не должен повторно запускать работу *из-за скрытой потери сведений*; он вправе сознательно поручить дополнительную проверку.
 
-**SUPPORTED по текущему коду:** `controller-context.js` строит историю с приоритетом более свежих записей; `context-bundle.js` ограничивает необязательную историю по умолчанию 64 КиБ и 128 записями; `host:invocation-context` уже передаёт `outcomes`, `pendingAttempts` и `actions`, но не обеспечивает удобной связки поручения с адресуемыми результатами. Одно `context.maxBytes` также применяется к handoff, `ContextPort.fetch/captureArtifact`, materialized skills и external tools. `ContextPort.list/fetch` существует, но его доступность для модели зависит от фактического adapter/transport и настройки `mcpBridge`. ACP и Codex CLI в текущих адаптерах создают новые native sessions/processes на invocation; native Codex compaction не переносит автоматически историю между этими вызовами.
+**SUPPORTED текущими исходниками:** `src/application/context-bundle.js` ограничивает необязательную историю 64 КиБ по умолчанию и **128 optional records**; `controller-context.js` выбирает новые события прежде старых; `host:invocation-context` уже несёт `outcomes/pendingAttempts/actions`, но не даёт компактного, адресного представления исходного поручения и его результатов; этот обязательный технический payload может расти отдельно от лимита истории. Один `context.maxBytes` подаётся в Controller history, Worker handoff, `ContextPort.fetch/captureArtifact`, selected skill instructions и external-tool output. `ContextPort.list/fetch` существует, но доступ модели к нему не универсален и в исходном описанном запуске был выключен MCP. Текущие CLI/ACP адаптеры создают новые native invocation sessions/processes — native Codex compaction между ними не гарантирует перенос истории.
 
-**Цель C12R.9:** Controller при последующих ходах получает достоверное, ограниченное представление того, *какие действия выполнялись, чем они закончились и какие сохранённые результаты можно получить*, и при необходимости самостоятельно читает их без повторного исполнения исходной работы. Не обещать безусловно показать все тела и все записи за произвольно долгую операцию в конечном prompt; обеспечить обнаружение пропусков, адресуемость и фактически доступный способ получения данных либо честно указанную техническую невозможность.
+**Сообщено пользователем, не перепроверено по исходным JSONL здесь:** прежние полные Worker-отчёты исчезали из фактических промптов Controller, последний отчёт дублировался, после чего Sol поручал схожую работу повторно. Достоверно воспроизводить локальными synthetic fixtures; native cause/quality comparison остаются UNVERIFIED до оригинальных данных и реальных прогонов. Не выдавать поведение Sol за дефект модели.
 
-**Приоритет решения:** устранить подтверждённое ненужное вытеснение и дублирование → проверить достаточность уже имеющихся технических фактов и ContextPort → минимально расширить представление/доступ только по воспроизведённому пробелу → измерить результат. **Новый индекс, дополнительный Decision field, native session persistence, увеличение лимитов и новый retrieval transport — не заранее обязательные deliverables.**
+**Обязательный итог данной итерации:**
+1. Устранены технически доказанные дубликаты доставки одного результата и молчаливое вытеснение сведений о существовании старых работ.
+2. Настройки/лимиты Controller history, Worker handoff, history fetch, artifact capture, selected skills и external tools **разделены**; default Controller inline budget увеличен до **256 КиБ**, без синхронного увеличения остальных бюджетов.
+3. Добавлена **компактная техническая карта завершённой и незавершённой работы** как вычисляемая проекция существующего operation state; никакого нового indexed/mutable/persistent registry.
+4. Исправлено смешение `terminal/status` и `effect uncertainty` в `unresolvedAttempts`.
+5. Есть модельно-инициируемый способ открыть сохранённую историю **без обязательного MCP** (через обычное продолжение Controller, подробнее в C12R.9.4), при сохранении всех trusted authority и ресурсных границ. Native ContextPort/MCP продолжает работать.
+6. Пройдены доступные автоматизированные проверки и документированы ограничения и нативная приёмка; готовность реальных моделей не выдумывается.
 
-## 2. Архитектурные инварианты и границы
+## 2. Неизменяемые инварианты
 
-Применять [AGENTS.md](../../AGENTS.md), [.agents/REASONING.md](../../.agents/REASONING.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [CONTEXT_AND_RECOVERY](../CONTEXT_AND_RECOVERY.md), [EXECUTION](../EXECUTION.md), [EXTENSIONS](../EXTENSIONS.md), [PROVIDERS_AND_CONFIGURATION](../PROVIDERS_AND_CONFIGURATION.md), [DECISIONS](../DECISIONS.md) и единственную [матрицу приёмки](../../tests/ACCEPTANCE_MATRIX.md).
+Нормативные источники: [AGENTS](../../AGENTS.md), [.agents/REASONING](../../.agents/REASONING.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [CONTEXT_AND_RECOVERY](../CONTEXT_AND_RECOVERY.md), [EXECUTION](../EXECUTION.md), [PROVIDERS_AND_CONFIGURATION](../PROVIDERS_AND_CONFIGURATION.md), [EXTENSIONS](../EXTENSIONS.md), [DECISIONS](../DECISIONS.md), [DIAGNOSTICS](../DIAGNOSTICS.md), [текущая acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md).
 
-1. **Model-first:** модель выбирает стратегию, глубину исследования, исполнителей/модели/effort, декомпозицию, повторную проверку и завершение. Нет обязательного Worker, Reviewer, review-progress, acceptance quorum, модельного summary, retrieval перед Decision или Host-вердикта о полезности результата. Повторное исследование может быть разумным решением модели, даже когда предыдущий результат доступен.
-2. **Host технически достоверен:** собственные Action/Attempt/Outcome/Observation identities, ссылки, происхождение, полнота, бюджеты, permission, cancellation, durable state и no-blind-replay unknown. Никаких Host semantic relevance, приоритетов по роли/модели/«важности» findings или автоматического планирования.
-3. **Единый источник истины:** использовать существующий Operation/Event/Observation/Outcome и `ContextPort`. Любая компактная карта — вычисляемое представление, а не новый mutable registry/index, параллельная история, materialized knowledge store или workflow state.
-4. **Provider-agnostic:** Core и application-контракты не зависят от Codex, ACP, MCP, имен моделей, вида задачи, cwd, Git, каталога проекта или формата skills. Adapter-specific возможности и native session handling остаются в adapters. Не обязать MCP и не создавать искусственную файловую/terminal среду.
-5. **Реальное окружение:** skills, AGENTS-like файлы, скрипты, repository files и native tools доступны модели естественным способом через её провайдера и его permissions; Host не сканирует project files, не подменяет native capabilities и не заставляет Controller перечислять обнаруженные skills. `Action.skills` — только явно выбранные Host-managed каталожные skills.
-6. **Честность данных:** отдельные состояния «ссылка существует», «result/receipt наблюдался», «байты реально сохранены полностью/частично», «transport разрешает fetch», «конкретный fetch успешен». Сохранённая ссылка не обещает исходные байты. `completed` не равно `effect: none`; неизвестный эффект не меняется на известный.
-7. **Технические пределы — по ресурсу:** защищать реальные bounded ресурсы и явно сообщать причину; нельзя использовать одинаковый лимит для разных целей лишь по инерции или превращать техническую выборку в семантическую стратегию. UTF-8 bytes не равны token budget/window модели. Нельзя полагаться на auto-compaction конкретного провайдера между независимыми invocations.
-8. **Mutable workspace и восстановление:** никакого Git/source freshness gate, forced reconciliation, Host isolation, автоматического повторения попытки с unknown effect или блокирования независимой разрешённой работы.
-9. **Наблюдаемость:** telemetry не источник истины; не хранить приватные bodies по умолчанию, не обещать наблюдение внутреннего prompt провайдера. Не раскрывать chain-of-thought.
+- **Model-first:** решение о стратегии, числе моделей/исполнителей, effort, проверках, retrieval, достаточности и завершении принадлежит модели. Ни Host, ни этот план не требуют review workflow, определённого числа Workers, обязательного запроса истории или повторного хода Controller.
+- **Provider-agnostic:** универсальные контракты не знают Codex, ACP/MCP, форматов native skills, названий моделей, Git, cwd, файловой структуры проекта, конкретного workflow. Adapter-specific wire/transport — только в адаптере.
+- **Инструменты/окружение принадлежат исполнителю:** project files, skills, scripts, Git, edit/terminal и tool permissions используются естественно через провайдера. Host не ищет project instructions, не строит свой filesystem/terminal runtime, не создаёт sandbox/изоляцию, не ограничивает toolkits по роли.
+- **Техническая достоверность:** Operation/Action/Attempt/Outcome/Observation/ref/provenance/permission и raw durable records остаются источником истины. Host не генерирует semantic summaries, relevance/rank/coverage scores и не объединяет findings по тексту. Не превращать `unknown` в `none`, не повторять unknown effects автоматически, не вводить source freshness/reconciliation gate.
+- **Никаких Host compaction и automatic model summarization.** Нативная compaction конкретного провайдера не является механизмом сохранения межвызовной истории. Сохранение одной native Controller session — **вне scope**; в будущем только необязательная provider-specific оптимизация при отдельном подтверждении.
+- **Нагрузка bounded и наблюдаема:** доступность ссылки, наличие полного/усечённого payload, доступность инструмента retrieval и результат реального fetch — разные факты. UTF-8 bytes не равны tokens/window. Сокращение prompt не оправдывает потерю исходных записей в state.
 
-Это инженерные шаги разработки, **не** runtime workflow, стадии Controller или обязательная последовательность для моделей. Исполнитель вправе уточнять границы шагов при доказанных зависимостях, фиксируя причины, но не расширять scope новым абстрактным механизмом без наблюдаемого требования.
+Инженерные C12R.9.0–.7 — **шаги разработки, не runtime workflow**. Каждый имеет обязательный результат. Если проверка обнаруживает, что требуемый эффект уже реализован, исполнитель фиксирует тест и `NO CODE CHANGE` с доказательством; это не освобождает от приёмочного требования.
 
-## 3. План реализации
+## 3. Конкретный контракт бюджетов C12R.9
 
-### C12R.9.0 — Baseline, причинная карта и регрессии до изменений (P1)
+В `context` доверенной user config v1 и соответствующем API реализовать **независимые** positive safe-integer поля (байты UTF-8 сериализованного представления, где применимо):
 
-- Прочитать актуальный HEAD и применимые инструкции. Проверить, какие C12R.4/C12R.8/C12R.8R исправления уже действуют; не реализовывать их повторно.
-- Изучить `controller-context.js`, `context-bundle.js`, `context-access.js`, `handoff.js`, `orchestrator.js`, `operation.js`, `local-store.js`, ACP/CLI prompt adapters и конфигурационные default/schema. Карта: provider output → adapter observation/capture → durable operation → operationHistory → compacted Controller context → provider payload → optional retrieval.
-- На обезличенных **синтетических** fixtures воспроизвести два/несколько завершённых делегирования, содержательно разные и большие результаты, >64 КиБ истории, 128+ records, новый Controller turn, retrieval выключен/включён, повторяющееся представление одного результата, `completed + effect: unknown`. Тест фиксирует фактическую видимость/доступность, а не «модель должна закончить review».
-- До исправления измерить размер **всего** materialized invocation и отдельных частей: user text, instructions, catalog, operation facts, history, observations/output, selected skills; количество duplicate copies, included/excerpted/omitted records и доступность refs. Раздельно фиксировать payload captured, stored, sent, fetched.
-- Пробные 64/256/512 КиБ проводить контролируемо; **существующая общая `context.maxBytes` меняет одновременно несколько механизмов**, поэтому пометить этот конфаундер. Не считать численные размеры лучшими defaults без сравнительных данных.
-- Отдельно характеризовать на CI действительный лимит 128 optional records и размер обязательного `host:invocation-context` за пределами лимита необязательной history. Проверить возможный неограниченный рост структурных metadata.
-- Native JSONL/trace пользователя использовать только при фактическом доступе; не коммитить приватные prompt, конфиги, секреты или исходные логи. Если их нет, факт native causality отмечать UNVERIFIED.
+| Поле | Default | Назначение |
+|---|---:|---|
+| `controllerMaxBytes` | **262144 (256 КиБ)** | Общий бюджет **необязательной** истории Controller и производных динамических технических records, включая карту выполненных Actions; не предел всех system/user instructions |
+| `handoffMaxBytes` | **65536** | Только выбранные `Action.contextRefs` и их представление в Worker handoff |
+| `fetchMaxBytes` | **65536** | Размер одного ответа `ContextPort.fetch`; действительные protocol limits дополнительно учитываются |
+| `captureMaxBytes` | **65536** | Сколько исходных байтов `captureArtifact` вправе сохранять; факт truncation обязателен |
+| `skillInstructionsMaxBytes` | **65536** | Только выбранные Host-managed skill instructions, не native skill discovery |
+| `toolOutputMaxBytes` | **65536** | Бюджет output внешнего ToolPort, **не** новый способ расширить его существующий жёсткий cap 64 КиБ |
 
-**Exit:** воспроизведён конкретный механизм потери видимости, известен владелец каждого ограничения; регрессии фиксируют нарушаемые технические инварианты до исправления. Возможен переход непосредственно к меньшему исправлению, если тесты исключат часть гипотез.
+**Совместимость без повышения schemaVersion:** существующий `context.maxBytes` сохранять как явно задокументированный **устаревающий alias только для `controllerMaxBytes`** (на этом этапе не удалять). При одновременном задании обоих имён возвращать адресную ошибку конфигурации вместо неявного приоритета. Значение старого поля больше **не меняет** handoff/fetch/capture/skills/tool; это намеренное устранение ошибочной связи, явно описать в документации и regression tests. При отсутствии обоих полей действует новый default 262144. В остальных сферах действуют независимые defaults, даже если указан `maxBytes`.
 
-### C12R.9.1 — Устранение доказанных дубликатов и технически неоправданного усечения (P1)
+Не добавлять конфигурацию `unlimited`/`null`, вычисление «доступного окна модели» по её имени или автоматическое повышение budget по reasoning effort. Не увеличивать MCP request/response/call/concurrency limits и не обходить hard caps ToolPort. Разделение должно работать также через прямой программный `createOrchestrator`, а не только CLI.
 
-- Проверить происхождение повторов между raw provider messages, `attempt.outcome.observations`, `outputRefs`, `attempt-output:*` и прочими context records. Устранять в **представлении очередного Invocation** лишь достоверно идентичные копии одной записи/результата с известной identity/provenance; не сливать независимые findings, разных Workers или совпадающие текстом, но разные по происхождению утверждения.
-- Оригинальные observations, outcome links, receivedSequence, completeness и durable payload сохранять без изменения. Если техническая идентичность не доказана — оставить раздельными.
-- Проверить `compactContext()`: старые записи и их доступные ссылки не должны молча исчезать так, будто работы не было. Явно отличать included, excerpted, omitted, unrepresented. Не объявлять excerpt полным.
-- Не добавлять Host content summarization, semantic filters, приоритеты по роли/model/workflow и квоты на Worker. Детерминированная техническая упаковка допустима, если она не претендует на содержательную важность.
+**Обязательные ограничения:** валидация новых полей и безопасных верхних границ, обусловленных реализованным allocation/transport; адресная диагностика при невозможности доставки; `maxBytes` выше лимита adapter не обещает успешный transport. Изменения лишь в user-config/configuration API, не вводить project-owned способ увеличения budgets/permissions. Сохранять текущее правило trusted project preferences не расширять полномочия.
 
-**Exit:** нет ненужной полной дубликации одного result в Controller payload; в state ничего не теряется; регрессии identity и provenance зелёные.
+**Контекст Controller:** удалить независимый фиксированный guard `maxOptionalRecords=128` как безусловную причину потери записей. Ограничивать *фактически включаемые* необязательные records общим byte budget, сохраняя bounded вычисления и честные omitted/excerpted/unrepresented. Динамические массивы `outcomes/actions/uncertainties` больше не должны обходить `controllerMaxBytes`: представлять их внутри общего бюджета, с total/represented/omitted и адресуемым курсором/страницей для недостающих записей. Буквальные пользовательские инструкции, trusted restrictions и остальные обязательные поля не сокращать без сообщения о реальном transport failure; общий итоговый размер provider payload отдельно диагностировать.
 
-### C12R.9.2 — Пересмотр контекстных и payload budgets по реальным границам (P1)
+## 4. Этапы исполнения
 
-- Развести концептуально: (a) необязательная inline-history Controller; (b) выбранный handoff; (c) per-fetch response; (d) artifact capture/storage prefix; (e) Host-managed skill materialization; (f) external-tool output; (g) фактический provider/transport payload/window. Не увеличивать одним изменением все границы из-за потребности Controller.
-- Проверить, какие лимиты действительно нужны для памяти, безопасности и транспорта и почему. Сохранять bounded consumption, explicit truncation/unavailable и ранее принятые права. **Не заменять 64 КиБ/128 записей на неограниченное включение истории** и не объявлять 64 КиБ универсальным пределом модели.
-- Если выборка исторических записей всё ещё обрезает необходимые данные, выбрать самое простое доказанное решение: другой проверенный размер/правило, прозрачные references/omission, возможность адресного fetch. Менять default и/или добавлять отдельную пользовательскую настройку **только по необходимости**; предпочесть сохранение config v1 без изменения схемы, если возможно. `null`/«без лимита» не вводить без точного технического контракта.
-- Независимо проверить 128-item guard и длинные обязательные `outcomes/actions`. Любое изменение должно иметь bounded поведение и корректное сообщение о пропуске, даже при очень длинной операции; не создавать неограниченный обязательный prompt.
-- Не подменять данные, потерянные на capture/store boundary, обещанием retrieval. Если необходимо изменить хранение, отдельно подтвердить размер, retention, integrity, crash/cancel и стоимость; не строить второй storage/runtime.
-- Нативный compaction провайдера — отдельная, необязательная capability; не полагаться на неё для сохранения истории межвызовных операций.
+### C12R.9.0 — Baseline и воспроизводимые проверки (P1)
 
-**Exit:** границы и их назначение объяснимы; длинная история не исчезает молча, ресурсные пределы остаются обоснованными, нет неконтролируемого prompt/tool/storage growth.
+1. Зафиксировать актуальный HEAD, открыть AGENTS/STATUS/IMPLEMENTATION_PLAN и engineering hard invariants. Построить корреляцию provider observation → outcome → persisted state → `operationHistory` → Controller context → adapter payload → optional ContextPort.
+2. Создать синтетическую регрессию: два разных завершённых Actions с большими результатами; >64 КиБ и >128 исторических записей; новый Controller invocation; retrieval выключен; исходные результаты durable. Отдельные fixture: последний output дублирован как model observation и attempt-output, `completed + effect: unknown`, большая обязательная техническая история. Никаких real/private JSONL в Git.
+3. Измерить baseline по слоям: общий Adapter payload, bytes и counts optional history, динамические technical metadata, количество **полных копий одного результата**, omitted refs, stored/captured bytes, доступность fetch.
+4. Зафиксировать тестами ожидаемое C12R.9 поведение сначала в воспроизводимых red/green regressions; не требовать имитации LLM reasoning. Пробные 64/256/512 КиБ использовать как измерения, не как замену исправлений.
 
-### C12R.9.3 — Минимальная техническая непрерывность Action → Attempt → Outcome → Result (P1)
+**Готово:** есть regression fixtures и причинная карта всех потерянных/дублированных данных; исторический native claim помечен UNVERIFIED там, где не подтверждён непосредственно.
 
-- Сначала проверить достаточность существующих `host:invocation-context.outcomes/pendingAttempts/actions`, `operationHistory()` и `ContextPort.list()`. Эти структуры уже являются частью решения; не вводить новый `workerResults` registry автоматически.
-- Если тест подтверждает смысловой пробел между «вызов завершён» и «что именно было поручено и где результат», минимально дополнить **производное** представление связями identity, исходной model-authored задачей/её адресом без Host paraphrase, terminal/effect и outcome/output/observation refs, completeness и реальной доступностью. Нельзя выдавать отсутствие результата за отсутствие работы; `acceptedActionIds` не является условием существования технического результата.
-- Применять к произвольным Actions/Attempts/Controller observations, не только к review и «Worker report». Порядок и лимит технические, без host relevance scoring, ranking, per-model fairness и специальных workflow assumptions.
-- Не пытаться гарантировать, что неограниченное множество Actions умещается в каждый prompt: ограниченный обзор + честный счётчик/курсор и фактически доступная адресация. Обязательно проверить, что при отключённом retrieval у модели не возникает ложной уверенности в полноте карты.
-- Исправить `coordinationFacts().unresolvedAttempts`: различить реально pending/unknown terminal, **completed с доступным результатом** и отдельно uncertain effect/dispatch. Сохранить `effect: unknown/possible` и no-blind-replay.
-- Долговременная идентичность/reopen и permission scope не должны изменяться из-за сокращения model-facing representation.
+### C12R.9.1 — Каноническая доставка результатов без повторов (P1)
 
-**Exit:** при двух и более завершённых задачах Controller технически может различить поручения и существование результатов; завершённый `unknown effect` не представлен как отсутствие completed outcome; новая независимая истина не создана.
+1. В invocation presentation передавать полный payload одного и того же исходного результата не более одного раза, если его тождество технически доказано посредством `attemptId`, correlation/ref и одинаковых оригинальных байтов. Отдельные ссылки на тот же результат можно оставить без повторной полной копии.
+2. Не объединять независимые observations/findings только потому, что тексты похожи или идентичны. Не стирать исходные записи, references, provenance, completeness или outcome links в durable state.
+3. Все excerpt/omissions маркировать честно. Упаковка не должна скрывать существование старого Action или выдавать усечённый payload за полный.
 
-### C12R.9.4 — Retrieval по выбору модели, без обязательного MCP (P1; расширение условно)
+**Готово:** duplicate fixture имеет одну полную копию в отправляемом Controller payload при исходном числе durable records; разные источники остаются различимыми.
 
-- Проверить реально работающий `ContextPort.list/fetch` через действующие CLI/ACP bridges, наличие `mcpBridge`, negotiation и фактическую доступность инструментов в конкретном Controller invocation. Опубликованная capability ≠ успешный fetch; `context.maxBytes` может ограничивать сам fetch. Сохранить `missing/payload/budget/retention/denied/closed/integrity_error`.
-- Если текущая доставка + техническая карта + поддерживаемый retrieval решают воспроизведённую проблему, **не создавать нового** Decision field, special Controller turn, fetch engine или adapter protocol.
-- Если значимый подтверждённый сценарий **без native tool retrieval** остаётся неразрешимым, отдельно спроектировать минимальный provider-independent model-initiated запрос *конкретных historical refs* для следующего обычного Controller invocation через существующий coordination loop/ContextPort. Это **условное** изменение контракта по тесту, без повторного Worker, Host selection, обязательного enumeration и скрытого вызова модели. Сохранить обычный invocation budget и explicit unavailable. До реализации сравнить с возможностью адаптера использовать существующие native инструменты.
-- Не делать MCP обязательным, не вводить native-session persistence как гарантию корректности, не реализовывать универсальный Host file reader, проектный индекс файлов, vector search или собственный shell runtime. Если провайдер не имеет ни tool retrieval, ни поддерживаемого способа самостоятельного следующего запроса, указать предел явно; не обещать невозможную доступность.
-- Проверить permissions и visibility для Worker-selected `contextRefs`, cross-operation shares, cancel, resume, late results и неизвестные effects. Не расширять scope history из текста модели.
+### C12R.9.2 — Независимые бюджеты и снятие искусственных ограничений (P1)
 
-**Exit:** модель может получить сохранённый выбранный результат, когда transport/contract это реально позволяет, без повторного исполнения, либо видит точное ограничение; direct answer без fetch остаётся допустим.
+1. Реализовать **ровно контракт раздела 3** в schema, decode/resolve config, public API, orchestration composition, Controller context, Worker handoff, ContextPort, skill materialization и external ToolPort. Удалить общий провод `contextMaxBytes` как управление всеми областями.
+2. Установить default Controller inline budget 256 КиБ, независимо от других defaults 64 КиБ. Старый `maxBytes` — только alias Controller, без schemaVersion bump и без неявного приоритета.
+3. Устранить жёсткое отсечение после 128 optional entries; замещать bounded byte-only delivery, explicit omission/cursor и технически согласованное представление динамического `host:invocation-context`.
+4. Проверить exact JSON/UTF-8 envelope, длинные refs, граничные значения (включая 1 байт и большие допустимые значения), malformed config, независимость custom budgets, retention и MCP/tool hard caps; не допускать бесконечного CPU/memory growth при большой истории.
+5. Не делать semantic selection of «лучшие» reports или автоматическое модельное summary.
 
-### C12R.9.5 — Native skills и project environment: только предотвращение подавления (P2, адресно)
+**Готово:** изменение `controllerMaxBytes`/legacy `maxBytes` не меняет реальный capture/fetch/handoff/skill/tool ceiling; необязательная история и техническая карта ограничены и имеют честный учёт omitted; при увеличенном бюджете >128 малых записей реально передаются, если помещаются.
 
-- Зафиксировать в model-facing контракте при доказанной неоднозначности: `Action.skills` выбирает только Host-managed Catalog entries; отсутствие там native skill **не** означает его отсутствия у провайдера. Отказ `CAPABILITY_UNAVAILABLE` должен адресно указывать именно на каталожный запрос.
-- Оставить Host-managed skill version/status/provenance validation и user/native permissions. Не автоматически регистрировать `.agents/skills`, не парсить `AGENTS.md`, не искать проектные скрипты Host и не переписывать native tool/skill discovery. Не требовать перечисления навыков в `objective`.
-- Если действующая формулировка уже достаточна по тестам, **NO CHANGE**; этот шаг не должен разрастаться в самостоятельную систему расширений.
+### C12R.9.3 — Компактная техническая карта Actions/Attempts/Results (P1)
 
-**Exit:** native skill/script discovery исполнителя не зависит от каталога Host; явный ошибочный запрос Host-managed skill по-прежнему корректно отвергается.
+1. **Реализовать**, а не только исследовать, компактную **derived projection** в уже существующем `host:invocation-context` (или заменяющем его эквивалентном model-facing представлении из Operation); **не** создавать новое persisted/indexed store, второй writable registry или параллельную историю.
+2. Для каждой представленной записи сообщать `actionId`, исходный `Decision`/ссылку на model-authored objective без Host paraphrase, `attemptId`, lifecycle/terminal, `effect` и `dispatchCertainty`, проверяемые `outcome/output/observationRefs` и известные признаки сохранности/полноты. Не придумывать доступность raw bytes или semantic status. Поддерживать также Controller responses/observations как существующие context refs, без требования Worker.
+3. Карта должна иметь технически стабильный порядок, **total/represented/omitted**, cursor/position в существующей истории для просмотра старых записей, ограниченный размер **внутри `controllerMaxBytes`**. При многих Actions давать paging по запросу модели (C12R.9.4), а не всё перечисление без потолка. Никаких per-role quotas, ranking, «review complete» или Host-generated summary.
+4. Исправить `coordinationFacts().unresolvedAttempts`: не включать completed attempts только потому, что `effect=unknown/possible`; отдельно отображать действительно pending/unknown-dispatch и неопределённость эффекта уже завершённой работы. Исторические `effect`/outcome не переписывать; no blind replay.
+5. Не делать `acceptedActionIds` условием видимости уже завершившегося факта. Проверить restart/reopen, отмену, late outcomes, multiple attempts per Action, permission scopes и длинные операции.
 
-### C12R.9.6 — Диагностика доставки и воспроизводимые измерения (P2)
+**Готово:** Controller различает, что были два разных поручения, какие результаты существуют и где находятся, даже если оба full bodies не поместились в очередной prompt; для каждого видимого результата нет ложных обещаний полноты/доступности.
 
-- По умолчанию без bodies: operation/action/attempt correlation, размер собранного optional history и **всего** адаптерного payload по известной границе, included/excerpted/omitted/unrepresented, result refs, доступный retrieval mode/negotiation/actual fetch, stored/captured completeness и технические причины. Избегать повторной записи полного контекста в логи.
-- Опциональное `diagnostics.captureBodies` можно улучшить, если нужен фактический материал диагностики: отдельно Host Invocation, payload на контролируемой Adapter boundary, provider-observed outputs. Не выдавать это за весь внутренний контекст модели. Учитывать redaction, секреты, retention, bounded sink, explicit opt-in; диагностика не изменяет execution outcome.
-- Отдельно измерять фактические provider tokens/cost, если сообщены, wall-clock, Tool/ContextPort calls, число Controller turns, размеры, качество requirement/evidence и сохранённую полезную работу. Не считать число Workers, длину prompt или «не было повторов» самостоятельным критерием качества.
+### C12R.9.4 — Model-initiated history access без обязательного MCP (P1)
 
-**Exit:** инженер может локализовать потерю информации по слоям без просмотра приватных provider logs; sink fail/drop не влияет на операцию.
+1. Сохранить действующие `ContextPort.list/fetch` и native MCP/ACP/CLI путь, когда он реально доступен. Не делать MCP обязательным для обычного Controller Decision.
+2. **Добавить универсальный необязательный путь для Controller без tool retrieval:** в существующем `Decision.nextController` поддержать **`contextRequest`** с `refs` (точно выбранные моделью historical refs) и/или `cursor` (страница технической истории с существующей моделью cursor/position). Применять только при `continue: true`; если нет `contextRequest`, обычный Controller путь неизменен. Пустой/invalid запрос — адресная ошибка Decision; не включать ссылки другой операции без действующей trusted share.
+3. Accepted Decision со ссылками уже хранится в operation journal. На **следующем обычном Controller invocation** Host материализует только явно выбранные refs или страницу из существующего `Operation/ContextPort`, применяет `controllerMaxBytes` и действительную видимость/permission, помечает `complete/truncated/unavailableReason`; при исчерпании бюджета сообщает реальную неполноту. Не создавать второй workflow, registry, scheduler, mandatory turn, невидимые automatic tool calls или отдельную квоту на «reasoning requests».
+4. Если model-selected ref существует, но байты не были captured/stored, вернуть `payload`/другую точную причину; недоступность HTTP MCP не должна уничтожать исходные refs. Не выполнять заново внешний Worker ради retrieval; не расширять worker-selected `contextRefs` и cross-operation scope.
+5. Сохранить существующие `nextController.reasoningLevel`, cancel/recovery, correction, idempotency, operation budget и возможность завершить задачу напрямую без history request. Проверить новый запрос по literal schema, replay accepted Decision, snapshot/restart и несанкционированный ref.
 
-### C12R.9.7 — Регрессия, native acceptance, документация и handoff (P1)
+**Готово:** fixture без MCP делает (a) direct completion без fetch, (b) модельно выбранный запрос старого результата/страницы и (c) продолжение с доставленными разрешёнными данными **без повторного Worker**. Провайдер со включённым MCP сохраняет native инструменты и может ими пользоваться без этого поля. Способность просматривать бесконечную историю не требует помещения бесконечной карты в prompt.
 
-**Автоматизированные тесты** в существующих `tests/` (подобрать текущие suite owners, включая context, context-quality, evidence-addressing, handoff, retrieval-guidance, mcp-context, skills/extensions, recovery, diagnostics и coordination):
+### C12R.9.5 — Native skills и проектное окружение (P2)
 
-- Две и более завершённые разные задачи с большими результатами и накопленной историей >64 КиБ: обнаруживаются факты выполнения и разрешённые result refs; не путаются авторы и Attempts.
-- Доказанный duplicate в prompt исчезает; независимые однотекстовые observations не объединяются; original state/provenance остаются.
-- 128+ records, большой последний result, большой `host:invocation-context`: bounded поведение без молчаливой ложной полноты.
-- 64/256/512 КиБ как **экспериментальные** конфигурации; capture/fetch/tool/skill limits не меняются непреднамеренно.
-- MCP off/on, provider without MCP, доступный/недоступный fetch, отказ, отсутствие байтов, retention, truncation; прямое завершение без retrieval.
-- `completed + effect: unknown`, pending, cancel/late/restart/reopen, unknown-dispatch no blind replay, independent Actions.
-- Native skills/scripts через provider, Host Catalog не обязателен, запрет несуществующего Host skill остаётся.
-- Никакой обязательной проверки, Reviewer, semantic Host selection, Git gate, source reconciliation, Host filesystem runtime или обязательного нового Controller turn.
+1. Уточнить model-facing описание `Action.skills`: только идентификаторы **Host-managed Catalog**. Отсутствие skill там **не** означает, что provider-native skill/скрипт отсутствует или запрещён. Исправить адресное сообщение `CAPABILITY_UNAVAILABLE`, если оно утверждает больше, чем установлено.
+2. Сохранить выбранные Host skill version/status/provenance и trust/permission. Не внедрять Host discovery project files/`.agents/skills`/`AGENTS.md`, автоматическую регистрацию или требование перечислять native skills в objective.
+3. Проверить без Host skill catalog native tool/skill/script у провайдера и отказ по явно ошибочному Host-managed skill; никакого role-based suppression.
 
-**Нативная приёмка** — по [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md) с дополнительным сравнительным сценарием C12R.9: одна и та же задача, исходное состояние, модели/effort, permissions, config и версии; A = исходная реализация, B = изменённое только `context.maxBytes` (64/256/512 KiB, измерить побочные изменения связанных лимитов), C = исправленный код. Сопоставить реально доставленные отчёты, re-fetch, reasoning/Assessment, качество, tokens/cost, latency, duplicate work. Учитывать конфаундеры, случайность и недоступные данные. Если оригиналов нет — native cause/comparison **UNVERIFIED**. Не считать CI fixtures нативным PASS.
+**Готово:** не обнаружена ни одна зависимость нативной работы от Host Catalog, ошибочный явный catalog ID по-прежнему отклоняется адресно.
 
-**Документация после изменений:** только затронутые нормативные `docs/CONTEXT_AND_RECOVERY.md`, `PROVIDERS_AND_CONFIGURATION.md`, `EXTENSIONS.md`, `DIAGNOSTICS.md`, при значимом компромиссе `DECISIONS.md`, `CHANGELOG.md` при продуктовой вехе, единственная `tests/ACCEPTANCE_MATRIX.md`, `docs/roadmap/STATUS.md` и при необходимости этот план. Не создавать второй roadmap/матрицу, не вводить новые нормативные утверждения до реализации.
+### C12R.9.6 — Диагностика границы и учёт стоимости (P2)
 
-**Статусы:** Implementation complete / Regression verified / Native integration verified / Performance & quality comparison verified — независимы; не выполненная native проверка = UNVERIFIED. Полное инженерное завершение C12R.9 не означает закрытия C12.3/C12.4/Zed/NixOS.
+1. Добавить bounded technical observations: total Controller context bytes и компоненты, техническая карта total/represented/omitted, retained/present/absent refs, excerpt/truncation, результат retrieval, фактически advertised/negotiated capabilities, correlation operation/decision/action/attempt, причины отсутствия.
+2. Разделить измерение **Host Invocation**, **Adapter submitted payload** и **фактический provider ACK/output**, когда они действительно наблюдаемы. Не утверждать, что Host знает внутренний context window/компактизацию провайдера.
+3. По умолчанию не писать приватные тела. Опциональная `diagnostics.captureBodies` должна сохранять только действительно доступные копии с explicit opt-in, redaction/limits/secure state directory; bounded diagnostic sink не влияет на outcome и не является knowledge store.
+4. Фиксировать сообщённые provider tokens/cost, latency, Controller turns, fetch calls и объём копий. Отсутствующие usage — `unknown`, а не оценка по UTF-8 bytes.
 
-## 4. Порядок работы агента-исполнителя
+**Готово:** диагностика различает вытеснение на сборке, усечение при capture, storage absence и отсутствие retrieval transport; отключённый sink не меняет результат операции.
 
-1. Обновить локальный checkout до актуального `greenfield/model-first-core`, прочитать AGENTS/STATUS/IMPLEMENTATION_PLAN/REASONING и нужные инженерные инструкции. Источник требований — актуальная ветка, **не** старый `development/` или исторические сценарии как новый контракт.
-2. Начать с **C12R.9.0** и фиксировать подтверждённые технические пробелы. **Не выполнять заранее все условные расширения.** После каждой проверки выбирать минимальное достаточное исправление, сохраняющее инварианты.
-3. Каждый самостоятельный инженерный шаг — отдельный commit с регрессиями и необходимой документацией; обновлять STATUS по фактам, а не заранее выставлять PASS. Не коммитить приватные native traces.
-4. После доступных проверок завершить инженерный scope без дополнительного запроса на продолжение. Не симулировать реальные Codex/Zed/NixOS и не объявлять native PASS, если доступных authenticated сред нет.
-5. Публиковать изменения **только** в `greenfield/model-first-core`; перед записью учитывать изменение HEAD и не переписывать чужие коммиты.
+### C12R.9.7 — Полная регрессия, сравнительная приёмка и documentation (P1)
 
-## 5. Явно исключено
+**Обязательные automated scenarios**, расширяя существующие suites в `tests/`:
+- 2+ завершённых разных Actions, 64 КиБ+ истории, 128+ малых records, крупный последний output и multiple Controller turns; факты предшествующей работы обнаруживаемы.
+- Duplicated final output — только одна inline full copy при сохранении двух оригинальных refs; независимые одинаковые строки не склеиваются.
+- Раздельные config budgets/legacy alias; 64/256/512-КиБ Controller context, точный учёт overflow, большой `host:invocation-context`, непустые/пустые cursors и ограниченное представление.
+- Без MCP: direct completion, `nextController.contextRequest` по refs и cursor, forbidden/unknown/missing/retained/truncated/huge result, restart/replay/permission checks.
+- С MCP: прежние `context_list/fetch` и optional direct path без обязательного prefetch; hard limits/late outcomes/unknown effect не ослаблены.
+- Вся нативная деятельность провайдера (project files, skills, scripts, terminal) без Host file discovery; non-Git и mutable workspace; нет workflow/Reviewer/Host semantic gate.
 
-Автоматическая смысловая компактизация/Host summaries, Host relevance scoring, vector search, второй индекс или второе хранилище, fixed workflow, Host review sufficiency/automatic re-review, обязательный MCP, обязательные дополнительные Controller turns, native-session persistence как обязательство, выбор провайдера/effort по эвристикам, project-skill scanning, Host FS/shell/VCS/sandbox, source freshness/reconciliation, искусственное ограничение числа Workers и произвольное увеличение всех бюджетов разом.
+Выполнить доступные `npm run check`, `npm test`, package/CI/Nix проверки по AGENTS и текущей acceptance matrix. При непрохождении исправить, не ослабляя тесты. **Нативная сравнительная проверка обязательна как требование приёмки**, но при отсутствии authenticated models/Zed оформляется **UNVERIFIED с точной причиной** и не блокирует отдельную завершённость инженерных regression-исправлений.
 
-**Ключевой критерий успеха:** исправлена техническая причина, по которой уже состоявшаяся работа становится невидимой или недоступной модели; сама модель по-прежнему решает, когда использовать старые результаты и когда обоснованно исследовать повторно.
+**Сравнение на реальных моделях:** A — прежний baseline 64 КиБ; B — прежний код с 256/512 КиБ (фиксировать факт совместного изменения старых budgets); C — новый код с разделёнными бюджетами и компактной технической картой. Сохранять одинаковые задачи, workspace, permissions, model/effort, actual adapter versions и реальные tool capabilities; фиксировать размер prompt/необязательной истории, доступность старых результатов, fetch, качество Assessment, корректность evidence, число *ненужных* повторных работ, latency и реально сообщённые tokens. Нельзя считать уменьшение числа Workers самостоятельным PASS. Провайдерская стохастичность и confounders должны быть обозначены. [Native protocol](NATIVE_ACCEPTANCE.md).
+
+По факту реализации обновить затронутые нормативные `docs/CONTEXT_AND_RECOVERY.md`, `PROVIDERS_AND_CONFIGURATION.md`, `CONTRACTS.md`, `EXECUTION.md`, `DIAGNOSTICS.md`, `EXTENSIONS.md` (по изменившемуся поведению), значимые решения в `DECISIONS.md`, `CHANGELOG.md`, **единственную** `tests/ACCEPTANCE_MATRIX.md`, `docs/roadmap/STATUS.md`. Не объявлять будущие контракты действующими до кода. Никакого второго roadmap/матрицы.
+
+## 5. Порядок передачи исполнителю и условия завершения
+
+1. Взять **актуальный HEAD** только `greenfield/model-first-core`; прочитать корневой AGENTS, STATUS, IMPLEMENTATION_PLAN, .agents/REASONING и применимые инженерные документы, затем этот план. Старые шаги C12R.0–.8R уже закрыты в доступном scope; не переигрывать их без регрессионных оснований.
+2. Реализовать **все обязательные результаты C12R.9.0–.7**, а не останавливаться после диагностики. Выбирать минимальную инженерную реализацию, которую можно проверить; не спрашивать о каждом следующем шаге. «Условность» допустима лишь для несущественных внутренних рефакторингов, а не для результата из раздела 1.
+3. Каждый самостоятельный инженерный шаг фиксировать отдельным коммитом с соответствующими тестами и документацией, обновлять STATUS и фактические commands/exits/CI; проверять изменения рабочего HEAD перед публикацией. Публиковать **только** в эту ветку.
+4. Отделять **Implementation complete**, **Automated regression verified**, **Native integration verified**, **Performance/quality comparison verified**. Не проведённые native пробы = `UNVERIFIED`; старый успешный CI не доказывает новую реализацию. Сохраняются C12.3/C12.4/Zed/NixOS native obligations.
+5. Не коммитить private JSONL, prompts, секреты или сырые диагностики. Не расширять scope до native session persistence, Host compaction, project-indexing, vector retrieval, второго storage, нового runtime workflow или универсального telemetry collector.
+
+**Итоговый контракт C12R.9:** Controller сохраняет техническую непрерывность прежних действий, может использовать сохранённые результаты без повторного исполнения, а семантические решения остаются целиком модельными. Это достигается раздельными бюджетами, устранением дубликатов, ограниченной производной картой и необязательным модельным запросом истории, **не** новой системой знаний Host.
