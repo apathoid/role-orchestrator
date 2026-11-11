@@ -20,6 +20,7 @@ const fetchArgs = record({
   ref: contextReference,
   sourceOperationId: optional(id),
   offset: optional(count),
+  maxBytes: optional(count),
 });
 
 const countSchema = { type: 'integer', minimum: 0 };
@@ -34,6 +35,7 @@ const fetchTool = {
       properties: { revision: countSchema, index: countSchema }, required: ['revision', 'index'], additionalProperties: false }] },
     sourceOperationId: { type: 'string', minLength: 1 },
     offset: countSchema,
+    maxBytes: countSchema,
   }, required: ['ref'], additionalProperties: false },
 };
 
@@ -118,9 +120,15 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
       if (name === fetchTool.name && contextAccess) {
         const parsed = decode(fetchArgs, args);
         if (parsed.kind === 'rejected') return { kind: 'unavailable', reason: 'invalid_input' };
-        const { ref, sourceOperationId, offset } = parsed.value;
+        const { ref, sourceOperationId, offset, maxBytes } = parsed.value;
+        // MCP JSON-RPC wraps the result as JSON-encoded text. Clamp the
+        // requested ContextPort reply *independently* of fetchMaxBytes so a
+        // large configured fetch ceiling cannot create an undeliverable reply.
+        const transportLimit = Math.floor(maxResponseBytes / 2);
         const result = await contextAccess.fetch(ref, sourceOperationId,
-          offset === undefined ? undefined : {offset});
+          offset === undefined ? undefined : {
+            offset, maxBytes: Math.min(transportLimit, maxBytes ?? transportLimit),
+          });
         if (result.kind !== 'available' || !result.bytes) return result;
         if (result.bytes.byteLength > (maxResponseBytes / 2)) return { kind: 'unavailable', reason: 'budget' };
         const { bytes, ...details } = result;

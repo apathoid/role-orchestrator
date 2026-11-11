@@ -64,7 +64,11 @@ export function bindContextAccess(scope) {
       if (typeof sourceOperationId !== 'string') return unavailable('denied');
       if (range !== undefined && (!range || typeof range !== 'object' ||
           !Number.isSafeInteger(range.offset) || range.offset < 0 ||
-          Object.keys(range).length !== 1)) return unavailable('invalid_offset');
+          (range.maxBytes !== undefined && (!Number.isSafeInteger(range.maxBytes) ||
+            range.maxBytes < 0)) ||
+          Object.keys(range).some(key => key !== 'offset' && key !== 'maxBytes'))) {
+        return unavailable('invalid_offset');
+      }
       const sharedRequest = sourceOperationId !== state.operationId;
       if (typeof ref === 'string' ? !ref.trim() : sharedRequest || !ref || typeof ref !== 'object' ||
           !Number.isSafeInteger(ref.revision) || !Number.isSafeInteger(ref.index)) return unavailable('denied');
@@ -129,13 +133,14 @@ export function bindContextAccess(scope) {
           offset: range.offset, totalBytes: stored.length, base64: '', nextOffset: stored.length };
         // Base64 is transport-safe even when an offset bisects a Unicode scalar.
         // Its encoded envelope, not raw bytes alone, fits fetchMaxBytes.
+        const responseLimit = Math.min(maxBytes, range.maxBytes ?? maxBytes);
         const overhead = Buffer.byteLength(JSON.stringify(envelope)) + 8;
-        const allowance = 3 * Math.floor(Math.max(0, maxBytes - overhead) / 4);
+        const allowance = 3 * Math.floor(Math.max(0, responseLimit - overhead) / 4);
         if (!allowance && range.offset < stored.length) return unavailable('budget');
         const end = Math.min(stored.length, range.offset + allowance);
         const result = { ...envelope, base64: stored.subarray(range.offset, end).toString('base64'),
           ...(end < stored.length ? { nextOffset: end } : { nextOffset: undefined }) };
-        if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) return unavailable('budget');
+        if (Buffer.byteLength(JSON.stringify(result)) > responseLimit) return unavailable('budget');
         return result;
       }
       if (item.artifact) {
@@ -202,7 +207,8 @@ export async function materializeControllerHistory(port, request, maxBytes) {
     if (bytes >= maxBytes) break;
     const selection = typeof ref === 'object' && 'ref' in ref ? ref.ref : ref;
     const offset = typeof ref === 'object' && 'ref' in ref ? ref.offset : undefined;
-    const result = await port.fetch(selection, undefined, offset === undefined ? undefined : {offset});
+    const result = await port.fetch(selection, undefined, offset === undefined ? undefined :
+      {offset, maxBytes: Math.max(0, maxBytes - bytes)});
     const positionRef = typeof selection === 'string' ? selection :
       'host:history-position:' + selection.revision + ':' + selection.index;
     /** @type {ContextItem} */
@@ -235,10 +241,13 @@ export async function materializeControllerHistory(port, request, maxBytes) {
       item = { ref: positionRef, source: 'host_observed', completeness: 'unavailable',
         unavailableReason: result.reason };
     }
-    const size = Buffer.byteLength(JSON.stringify(item));
-    if (bytes + size > maxBytes) {
-      item = { ref: positionRef, source: 'host_observed', completeness: 'unavailable',
-        unavailableReason: 'budget' };
+    // The ContextPort bounds its own reply; the Controller adds another
+    // attributed envelope and may have a still smaller optional budget.
+    // Reduce just the range payload and expose an exact nextOffset.
+    if (bytes + Buffer.byteLength(JSON.stringify(item)) > maxBytes) {
+      item = boundContextItem(item, Math.max(0, maxBytes - bytes)) ??
+        { ref: positionRef, source: 'host_observed', completeness: 'unavailable',
+          unavailableReason: 'budget' };
     }
     const sizeAfter = Buffer.byteLength(JSON.stringify(item));
     if (bytes + sizeAfter > maxBytes) break;

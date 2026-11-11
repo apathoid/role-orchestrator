@@ -87,7 +87,7 @@
  *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
  * @typedef {{
  *   list: (cursor?: number) => ContextList,
- *   fetch: (ref: string | ContextPosition, sourceOperationId?: string, range?: {offset: number}) => Promise<ContextFetch>,
+ *   fetch: (ref: string | ContextPosition, sourceOperationId?: string, range?: {offset: number, maxBytes?: number}) => Promise<ContextFetch>,
  *   captureArtifact: (bytes: Uint8Array) => Promise<string | undefined>
  * }} ContextPort
  * @typedef {{kind: 'available', item: ContextItem, bytes?: Uint8Array} |

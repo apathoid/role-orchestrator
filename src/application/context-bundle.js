@@ -35,10 +35,53 @@ function excerptItem(item, bytes, excerptLimit) {
   return excerpt ? { ...itemExcerpt, excerpt } : undefined;
 }
 
+/**
+ * A lossless Host-requested byte chunk may be reduced for a smaller actual
+ * presentation budget, while preserving the byte offset required to continue.
+ * Do not turn base64 into a string excerpt: that would destroy retrievability.
+ * @param {ContextItem} item @param {number} maxBytes
+ * @returns {ContextItem | undefined}
+ */
+function boundRequestedByteChunk(item, maxBytes) {
+  if (!item.ref.startsWith('host:history-chunk:') || !item.value ||
+      typeof item.value !== 'object' || !('base64' in item.value) ||
+      !('offset' in item.value) || !('totalBytes' in item.value)) return undefined;
+  const value = item.value;
+  if (typeof value.base64 !== 'string' || !Number.isSafeInteger(value.offset) ||
+      !Number.isSafeInteger(value.totalBytes)) return undefined;
+  const data = Buffer.from(value.base64, 'base64');
+  /** @param {number} count */
+  const candidate = count => {
+    const completePart = count === data.length && value.nextOffset === undefined;
+    const end = value.offset + count;
+    return {
+      ...item,
+      completeness: completePart && value.offset === 0 ? item.completeness : /** @type {const} */ ('truncated'),
+      value: { ...value, base64: data.subarray(0, count).toString('base64'),
+        nextOffset: completePart ? undefined : end },
+    };
+  };
+  let low = 0, high = data.length;
+  /** @type {ContextItem | undefined} */
+  let selected;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const partial = candidate(mid);
+    if (jsonBytes(partial) <= maxBytes) {
+      if (mid > 0 || data.length === 0) selected = partial;
+      low = mid + 1;
+    } else high = mid - 1;
+  }
+  return selected;
+}
+
 /** @param {ContextItem} item @param {number} maxBytes @param {number} [excerptLimit] */
 export function boundContextItem(item, maxBytes, excerptLimit = maxExcerptBytes) {
   if (maxBytes <= 0) return undefined;
   if (!(typeof item.value === 'string' && item.value.length > maxBytes) && jsonBytes(item) <= maxBytes) return item;
+  if (item.ref.startsWith('host:history-chunk:')) {
+    return boundRequestedByteChunk(item, maxBytes);
+  }
   return excerptItem(item, maxBytes, excerptLimit);
 }
 
