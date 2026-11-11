@@ -52,12 +52,15 @@ function object(value) {
  * Cache only the bounded, model-visible MCP reply for deduplication. Retaining
  * an arbitrary ToolPort payload in the invocation call map would also retain
  * omitted bytes until the bridge closed.
- * @param {unknown} value
+ * @param {unknown} value @param {string | number} requestId
  */
-function toolReply(value) {
+function toolReply(value, requestId) {
   const text = JSON.stringify(value);
-  const encoded = JSON.stringify([{ type: 'text', text }]);
-  if (Buffer.byteLength(encoded) <= maxResponseBytes) return { content: [{ type: 'text', text }] };
+  const full = { content: [{ type: 'text', text }] };
+  // The JSON-RPC envelope and request id also consume response bytes.
+  if (Buffer.byteLength(JSON.stringify({ jsonrpc: '2.0', id: requestId, result: full })) <= maxResponseBytes) {
+    return full;
+  }
   // The tool has already run. Limit the MCP representation, not its
   // receipt or execution status. A missing output is a delivery error,
   // not evidence of a no-effect pre-dispatch refusal.
@@ -186,10 +189,10 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
         let call = calls.get(message.id);
         if (call && call.key !== key) { error = { code: -32602, message: 'Request id already used' }; break; }
         if (!call && calls.size < maxToolCalls && active < maxConcurrentCalls) {
-          call = { key, response: callTool(params.name, args).then(toolReply) };
+          call = { key, response: callTool(params.name, args).then(value => toolReply(value, message.id)) };
           calls.set(message.id, call);
         }
-        result = call ? await call.response : toolReply({ kind: 'unavailable', reason: 'budget' });
+        result = call ? await call.response : toolReply({ kind: 'unavailable', reason: 'budget' }, message.id);
         break;
       }
       default: error = { code: -32601, message: 'Method not found' };

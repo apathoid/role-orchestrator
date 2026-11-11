@@ -430,3 +430,41 @@ test('C12R.8R.1 an oversized MCP projection does not alter a durable tool receip
     }
   });
 });
+
+test('C12R.8R.1 the full JSON-RPC envelope budget cannot turn a completed effect into HTTP 413', async () => {
+  const stop = new AbortController();
+  let calls = 0;
+  const make = n => ({
+    status: 'completed', effect: 'possible', callId: 'call-1', ref: 'receipt-1',
+    output: 'z'.repeat(n),
+  });
+  const max = 256 * 1024;
+  const contentBytes = n => Buffer.byteLength(JSON.stringify([{ type: 'text', text: JSON.stringify(make(n)) }]));
+  const length = max - contentBytes(0);
+  assert.ok(length > 0);
+  assert.equal(contentBytes(length), max);
+  const original = make(length);
+  const bridge = await startMcpBridge({
+    signal: stop.signal,
+    externalTools: {
+      list: () => [],
+      async call() { calls++; return original; },
+    },
+  });
+  try {
+    const response = await invoke(bridge.url, 1, 'write', {});
+    assert.equal(response.status, 200);
+    assert.equal(response.body.result.isError, true);
+    assert.deepEqual(value(response), {
+      status: 'completed', effect: 'possible', callId: 'call-1', ref: 'receipt-1',
+      outputUnavailableReason: 'budget',
+    });
+    assert.ok(Buffer.byteLength(JSON.stringify(response.body)) <= max);
+    assert.deepEqual(value(await invoke(bridge.url, 1, 'write', {})), value(response));
+    assert.equal(calls, 1);
+    assert.equal(original.output.length, length);
+  } finally {
+    stop.abort();
+    bridge.close();
+  }
+});
