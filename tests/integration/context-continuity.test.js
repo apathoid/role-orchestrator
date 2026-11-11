@@ -192,10 +192,13 @@ test('C12R.9 review P1: exhausted technical map advertises exact uncertainty and
   }
   assert.ok(host.technicalCoverage.effectUncertainties.omitted>0);
   assert.ok(host.workMap.omitted>0);
-  assert.ok(host.workMap.nextCursor>=host.workMap.cursor);
+  assert.ok(host.workMap.nextCursor>host.workMap.cursor,
+    'a model-requested workCursor must advance despite many action events');
   assert.ok(Buffer.byteLength(JSON.stringify(ctx.slice(1)))<=4096);
   const next=controllerContext(state,[],undefined,undefined,4096,undefined,[],host.workMap.nextCursor);
   assert.equal(next[1].value.workMap.cursor,host.workMap.nextCursor);
+  assert.ok(next[1].value.workMap.entries.length>0,
+    'next workMap page should contain previously omitted work');
   assert.equal(next[1].value.technicalCoverage.effectUncertainties.total,200);
   const tiny=controllerContext(state,[],undefined,undefined,1)[1].value;
   assert.equal(tiny.technicalCoverage.effectUncertainties.total,200);

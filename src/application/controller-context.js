@@ -364,11 +364,9 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     used += size;
     return true;
   }
-  // Optional detail is bounded separately from mandatory truthful totals.
-  host.value.actionEvents.total = actionEvents.length;
-  for (const event of actionEvents) if (!tryAdd(host.value.actions, event)) break;
-  host.value.actionEvents.represented = host.value.actions.length;
-  host.value.actionEvents.omitted = actionEvents.length - host.value.actions.length;
+  // The work-map is the addressable technical index over existing Operation,
+  // and a model-selected workCursor must be able to page even if the legacy
+  // actions preview is large. Pack that preview only after the map.
   let represented = 0;
   for (const row of workRows.slice(from)) {
     if (!tryAdd(host.value.workMap.entries, row)) {
@@ -398,6 +396,12 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     if (!tryAdd(host.value.pendingAttempts, {attemptId: attempt.attemptId,
       actionId: attempt.actionId, status: attempt.status})) break;
   }
+  // Action event preview is redundant with much of workMap; do not allow it
+  // to exhaust the budget before model-selected work/history, without removing
+  // any original action or decision from the authoritative journal.
+  for (const event of actionEvents) if (!tryAdd(host.value.actions, event)) break;
+  host.value.actionEvents.represented = host.value.actions.length;
+  host.value.actionEvents.omitted = actionEvents.length - host.value.actions.length;
   const representedCounts = {
     actions: host.value.actions.length,
     unresolvedAttempts: host.value.unresolvedAttempts.length,
