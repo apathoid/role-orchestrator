@@ -3,6 +3,8 @@
 /** @import {Observation} from './observation.js' */
 /** @import {Finding} from './finding.js' */
 /** @import {Admission} from './action-graph.js' */
+/** @import {FieldError} from './decode.js' */
+/** @typedef {'profile' | 'role' | 'skill' | 'reasoning' | 'adapter' | 'capability' | 'resource'} ActionFailureCategory */
 
 /**
  * @typedef {'not_sent' | 'sent' | 'unknown'} DispatchCertainty
@@ -31,7 +33,8 @@
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
  *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly Observation[], findings?: readonly Finding[], late?: true} |
  *   {kind: 'controller.responded', decision: Decision, attemptId?: string, admissions?: readonly Admission[]} |
-   {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string} |
+ *   {kind: 'controller.invalid_proposal', attemptId: string, decisionId?: string, reason: FieldError} |
+   {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string, category?: ActionFailureCategory} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
  *   {kind: 'operation.continued', input: ReturnType<typeof import('./contracts.js').followup>, trusted?: ResumeAuthority} |
@@ -191,7 +194,9 @@ function diagnosticContext(event) {
     case 'action.deferred':
       return { details: { subject: 'action', next: 'retry_when_capacity_allows' } };
     case 'action.rejected':
-      return { details: { subject: 'action', next: 'controller_replan' } };
+      return { details: { subject: 'action', next: 'controller_replan', ...(event.category && {category:event.category}) } };
+    case 'controller.invalid_proposal':
+      return { details: { subject: 'decision', next: 'controller_correction', category: 'contract' } };
     case 'action.cancelled':
       return { details: { subject: 'action', next: 'inspect' } };
     case 'attempt.cancel_requested':
@@ -227,6 +232,7 @@ export function journalReasonCode(event) {
     case 'operation.cancelled': return 'CANCELLED';
     case 'attempt.outcome': return event.outcome.diagnostics[0]?.code ?? event.outcome.terminal.toUpperCase();
     case 'controller.responded': return 'ACCEPTED';
+    case 'controller.invalid_proposal': return event.reason.code;
     case 'action.rejected':
     case 'action.deferred': return event.code;
     case 'operation.waiting': return event.waiting.kind === 'question' ? 'USER_INPUT' : event.waiting.reason.code;
@@ -244,7 +250,8 @@ export function applyEvent(state, event) {
       : 'attemptId' in event ? event.attemptId : undefined;
   const attempt = state.attempts.find(item => item.attemptId === attemptId);
   const actionId = attempt?.actionId ?? ('actionId' in event ? event.actionId : undefined);
-  const decisionId = event.kind === 'controller.responded' ? event.decision.decisionId : undefined;
+  const decisionId = event.kind === 'controller.responded' ? event.decision.decisionId :
+    event.kind === 'controller.invalid_proposal' ? event.decisionId : undefined;
   const duplicate = /** @type {const} */ ({ kind: 'duplicate', state });
 
   /** @param {ReasonCode} code @returns {Transition} */
@@ -265,7 +272,7 @@ export function applyEvent(state, event) {
       kind: 'applied', state: { ...state, ...patch, revision, events: [...state.events, event] }, intents,
       diagnostic: {
         schemaVersion: 1, eventId: event.eventId, receivedAt: event.receivedAt, sequence: revision,
-        level: eventName.endsWith('discrepancy') ? 'warn' : 'info', component: 'core', eventName,
+        level: eventName.endsWith('discrepancy') || eventName.endsWith('invalid_proposal') ? 'warn' : 'info', component: 'core', eventName,
         reasonCode: eventName === event.kind ? journalReasonCode(event) : reasonCode,
         operationId: state.operationId, attemptId, actionId, decisionId,
         // Taxonomy is technical only; never persist questions, proposals or tool bodies.
@@ -344,6 +351,10 @@ export function applyEvent(state, event) {
       attempt.status === 'terminal' || state.status === 'cancelled' || attempt.generation !== state.generation
         ? 'attempt.late_outcome' : 'attempt.outcome');
     }
+    case 'controller.invalid_proposal':
+      if (state.status !== 'active' || attempt?.actionId !== event.attemptId ||
+          attempt.status !== 'terminal' || attempt.outcome.terminal !== 'completed') return reject('INVALID_PROPOSAL');
+      return apply({}, event.reason.code);
     case 'controller.responded': {
       if (event.decision.operationId !== state.operationId) return reject('INVALID_PROPOSAL');
       const known = state.events.find(item => item.kind === 'controller.responded' &&

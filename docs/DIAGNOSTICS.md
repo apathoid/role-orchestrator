@@ -143,3 +143,7 @@ Configured mapping не означает, что provider получил нас�
 ## Provenance проверок на границе поставки
 
 Implementation complete — наличие проверенного кода заявленного контракта; regression verified — OBSERVED результат конкретных команд/CI на конкретном commit; native integration verified — отдельно OBSERVED исход реального agent/client сценария с версиями. Эти три состояния независимы. Подтверждённая исходная ветка на `cbd8e70` прошла [GitHub Actions run 42868825084](https://github.com/apathoid/role-orchestrator/actions/runs/42868825084); это не проверка новой структуры или конкретной модели. Подробные текущие результаты и открытые обязательства принадлежат единственному STATUS, а не этому нормативному описанию.
+
+### C12R: адресные технические причины
+
+Отказ admission сохраняет категорию (profile/role/skill/reasoning/adapter) и resource; существующие причины без категории остаются unknown. Отклонённый Controller Decision сохраняет `controller.invalid_proposal` с attemptId, доступным decisionId и ограниченным field/expected, но не копией отклонённого тела. Correction восстанавливается из journal после технического recovery; явное пользовательское продолжение или новый принятый Decision её заменяют. Trace отображает эти технические поля с действующей redaction. Это не новый цикл исправления и не изменение бюджета.

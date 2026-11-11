@@ -1084,19 +1084,20 @@ export function createOrchestrator(deps) {
     if (choice?.kind === 'rejected') {
       await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
         'reasoning:' + choice.profileId + ':' + (choice.requestedLevel ?? '(default)') +
-        ' available=' + choice.availableLevels.join(','));
+        ' available=' + choice.availableLevels.join(','), 'reasoning');
       return false;
     }
     const executor = handoff.kind === 'accepted' ? providerFor(handoff.handoff.profile) : undefined;
     if (handoff.kind === 'rejected' || !executor) {
       await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
-        handoff.kind === 'rejected' ? handoff.resource : action.profileId);
+        handoff.kind === 'rejected' ? handoff.resource : action.profileId,
+        handoff.kind === 'rejected' ? handoff.category : 'adapter');
       return false;
     }
     if (choice?.kind === 'selected' && choice.selection.mode === 'selectable' &&
         executor.supportsReasoningSelection !== true) {
       await recordAction(state.operationId, action, 'action.rejected', 'CAPABILITY_UNAVAILABLE',
-        'reasoning:adapter_without_selectable_support:' + action.profileId);
+        'reasoning:adapter_without_selectable_support:' + action.profileId, 'adapter');
       return false;
     }
     const reserved = await reserve(state.operationId, stop, action.actionId);
@@ -1152,10 +1153,11 @@ export function createOrchestrator(deps) {
 
   /** @param {string} operationId @param {Action} action @param {'action.rejected' | 'action.deferred'} kind
    * @param {ReasonCode} code @param {string} [resource]
+   * @param {import('../core/operation.js').ActionFailureCategory} [category]
    */
-  async function recordAction(operationId, action, kind, code, resource) {
+  async function recordAction(operationId, action, kind, code, resource, category) {
     await serialize(async () => {
-      let current = await transition(await inspect(operationId), {kind, actionId:action.actionId, code, resource});
+      let current = await transition(await inspect(operationId), {kind, actionId:action.actionId, code, resource, category});
       const orphan = current.attempts.find(attempt => attempt.actionId === action.actionId &&
         attempt.status === 'reserved' && !liveAttempts.has(attempt.attemptId));
       if (orphan) {
@@ -1211,6 +1213,9 @@ export function createOrchestrator(deps) {
     const { profile } = execution;
     /** @type {FieldError | undefined} */
     let correction;
+    const lastCorrection = (await inspect(operationId)).events.findLast(event =>
+      event.kind === 'controller.invalid_proposal' || event.kind === 'controller.responded' || event.kind === 'operation.continued');
+    if (lastCorrection?.kind === 'controller.invalid_proposal') correction = lastCorrection.reason;
     while (!stop.aborted) {
       const reserved = await reserve(operationId, stop);
       if (!reserved.attemptId) return reserved.state;
@@ -1300,8 +1305,32 @@ export function createOrchestrator(deps) {
             }
           }
         }
-        trace(state, 'controller.invalid_proposal', correction?.code ?? 'INVALID_PROPOSAL', attemptId);
-        return state;
+        if (!correction) correction = {code:'INVALID_PROPOSAL',path:'
+      }).finally(() => releaseAttempt(attemptId));
+      if (next.status !== 'active') {
+        if (controllerFailureWaiting(next)) {
+          await runRecoveredWorkers(next, pending, execution, lookups);
+          return inspect(operationId);
+        }
+        return next;
+      }
+      if (settleCancellation.length) await Promise.all(settleCancellation);
+      if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
+        (action, signal) => dispatchWorker(next, action, signal, execution, lookups),
+        (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
+        pending, selection.policy, selection.newResult);
+    }
+    return inspect(operationId);
+  }
+
+  return { submit, resume, inspect, inspectFinding, findRequest, cancel, close };
+}
+,expected:'a valid Decision'};
+        // The decoder's path can contain an arbitrary unknown key. Keep the
+        // technical correction bounded; never persist the rejected body here.
+        correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
+        return transition(state, {kind:'controller.invalid_proposal', attemptId,
+          decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined, reason:correction});
       }).finally(() => releaseAttempt(attemptId));
       if (next.status !== 'active') {
         if (controllerFailureWaiting(next)) {

@@ -53,6 +53,9 @@ test('malformed Decision is returned as a field error on the same shared budget'
   assert.equal(invocations[1].context[0].value, 'Literal task');
   assert.equal(invocations[1].context.at(-1).value.path, '$.schemaVersion');
   assert.equal(invocations[1].context.at(-1).source, 'host_observed');
+  const rejected=state.events.find(event=>event.kind==='controller.invalid_proposal');
+  assert.equal(rejected.attemptId,state.attempts[0].attemptId);
+  assert.equal(rejected.reason.path,'$.schemaVersion');
 });
 
 test('repeated malformed Decision exhausts resources without inventing a final', async () => {

@@ -129,7 +129,11 @@ export function operationTrace(operation, redaction = {}) {
         sequence: start + index + 1, eventId: event.eventId, receivedAt: event.receivedAt,
         eventName: event.kind, reasonCode: journalReasonCode(event), attemptId,
         actionId: 'actionId' in event ? event.actionId : attemptId ? actionByAttempt.get(attemptId) : undefined,
-        decisionId: event.kind === 'controller.responded' ? event.decision.decisionId : undefined,
+        decisionId: event.kind === 'controller.responded' ? event.decision.decisionId :
+          event.kind === 'controller.invalid_proposal' ? event.decisionId : undefined,
+        ...(event.kind === 'controller.invalid_proposal' && {category:'contract', field: event.reason.path, expected: event.reason.expected}),
+        ...((event.kind === 'action.rejected' || event.kind === 'action.deferred') &&
+          {category: event.category, resource: event.resource}),
         source: event.kind === 'operation.cancelled' || event.kind === 'action.cancelled' ||
           event.kind === 'attempt.cancel_requested' ? event.source : undefined,
       };

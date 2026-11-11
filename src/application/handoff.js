@@ -15,30 +15,30 @@ import { coordinationFacts, operationHistory } from './controller-context.js';
  * @param {Operation} operation
  * @param {Action} action
  * @param {readonly CatalogEntry[]} catalog
- * @returns {{kind: 'accepted', handoff: Handoff} | {kind: 'rejected', reason: Reason, resource: string}}
+ * @returns {{kind: 'accepted', handoff: Handoff} | {kind: 'rejected', reason: Reason, resource: string, category: import('../core/operation.js').ActionFailureCategory}}
  */
 export function prepareHandoff(operation, action, catalog) {
-  /** @param {string} resource @returns {{kind: 'rejected', reason: Reason, resource: string}} */
-  const missing = resource => ({
-    kind: 'rejected', resource, reason: {
+  /** @param {string} resource @param {import('../core/operation.js').ActionFailureCategory} category @returns {{kind: 'rejected', reason: Reason, resource: string, category: import('../core/operation.js').ActionFailureCategory}} */
+  const missing = (resource, category) => ({
+    kind: 'rejected', resource, category, reason: {
       code: 'CAPABILITY_UNAVAILABLE', operationId: operation.operationId, actionId: action.actionId,
       dispatchCertainty: 'not_sent', effect: 'none',
     },
   });
 
   const profile = catalog.find(item => item.kind === 'profile' && item.value.profileId === action.profileId);
-  if (profile?.kind !== 'profile') return missing(action.profileId);
+  if (profile?.kind !== 'profile') return missing(action.profileId, 'profile');
   const instructions = [];
   if (action.roleId) {
     const role = catalog.find(item => item.kind === 'role' && item.value.id === action.roleId);
-    if (role?.kind !== 'role') return missing(action.roleId);
+    if (role?.kind !== 'role') return missing(action.roleId, 'role');
     instructions.push(role.value.instructions);
   }
   /** @type {SkillInstructions[]} */
   const skillInstructions = [];
   for (const id of new Set(action.skills ?? [])) {
     const skill = catalog.find(item => item.kind === 'skill' && item.value.id === id);
-    if (skill?.kind !== 'skill') return missing(id);
+    if (skill?.kind !== 'skill') return missing(id, 'skill');
     const { version, unavailable, instructions: inline } = skill.value;
     const identity = { id, ...(version === undefined ? {} : { version }) };
     // Inline instructions are one complete source, not a second copy of the

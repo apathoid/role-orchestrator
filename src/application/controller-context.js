@@ -171,7 +171,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
           item.kind === 'accepted' ? { kind: item.kind, action: { actionId: item.action.actionId,
             profileId: item.action.profileId, dependsOn: item.action.dependsOn } } : item);
         if (event.kind === 'action.rejected' || event.kind === 'action.deferred') {
-          return [{ kind: event.kind, actionId: event.actionId, code: event.code, resource: event.resource }];
+          return [{ kind: event.kind, actionId: event.actionId, code: event.code, resource: event.resource, category: event.category }];
         }
         if (event.kind === 'action.cancelled') return [{ kind: event.kind, actionId: event.actionId, source: event.source }];
         return [];

@@ -88,11 +88,17 @@ const event = tagged('kind', {
   'controller.responded': record({
     ...eventFields, kind: oneOf('controller.responded'), decision, attemptId: optional(id), admissions: optional(arrayOf(admission)),
   }),
+  'controller.invalid_proposal': record({
+    ...eventFields, kind: oneOf('controller.invalid_proposal'), attemptId: id, decisionId: optional(id),
+    reason: record({code: oneOf('INVALID_PROPOSAL'), path: id, expected: id}),
+  }),
   'action.rejected': record({
     ...eventFields, kind: oneOf('action.rejected'), actionId: id, code: reasonCode, resource: optional(id),
+    category: optional(oneOf('profile','role','skill','reasoning','adapter','capability','resource')),
   }),
   'action.deferred': record({
     ...eventFields, kind: oneOf('action.deferred'), actionId: id, code: reasonCode, resource: optional(id),
+    category: optional(oneOf('profile','role','skill','reasoning','adapter','capability','resource')),
   }),
   'action.cancelled': record({ ...eventFields, kind: oneOf('action.cancelled'), actionId: id, source: cancellation }),
   'operation.waiting': record({ ...eventFields, kind: oneOf('operation.waiting'), waiting }),
@@ -238,6 +244,10 @@ function snapshot(input, path) {
       });
     } else {
       if (!prior) invalid(at + '.attemptId', 'a preceding reservation');
+      if (item.kind === 'controller.invalid_proposal' &&
+          (prior.actionId !== attemptId || prior.status !== 'terminal' || prior.outcome.terminal !== 'completed')) {
+        invalid(at + '.attemptId', 'a completed Controller attempt');
+      }
       if (item.kind === 'attempt.dispatched') {
         if (prior.status !== 'reserved') invalid(at + '.kind', 'a dispatch of a reserved attempt');
         const routeReasoning = item.route?.reasoning;
