@@ -130,7 +130,7 @@ agent()
       });
       const error = context.find(item => item.ref === 'host:decision-error')?.value;
       if (host.outcomes.length || error) {
-        if (scenario === 'decision-tool-invalid') {
+        if (['decision-tool-invalid', 'decision-tool-only', 'decision-tool-prior-anonymous'].includes(scenario)) {
           assert.equal(error.code, 'INVALID_PROPOSAL');
           assert.equal(error.expected, 'valid JSON');
         }
@@ -141,7 +141,9 @@ agent()
         return { stopReason: 'end_turn' };
       }
       const a = JSON.stringify(proposal('a'));
-      await message('progress', 'Native inspection before Controller result');
+      if (scenario === 'decision-tool-progress-b' || scenario === 'decision-tool-prior-id') await message('progress', a);
+      else if (scenario === 'decision-tool-prior-anonymous') await message(undefined, a);
+      else if (scenario !== 'decision-tool-only') await message('progress', 'Native inspection before Controller result');
       await client.notify(c.session.update, { sessionId, update: {
         sessionUpdate: 'tool_call', toolCallId: 'decision-shaped-tool', title: 'Read native result',
         kind: 'read', status: 'in_progress',
@@ -155,8 +157,9 @@ agent()
         try { await access(attemptId + '.release'); break; }
         catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
       }
+      if (['decision-tool-only', 'decision-tool-prior-id', 'decision-tool-prior-anonymous'].includes(scenario)) return { stopReason: 'end_turn' };
       const output = scenario === 'decision-tool-a' ? a :
-        scenario === 'decision-tool-b' ? JSON.stringify(proposal('b')) : 'not JSON';
+        ['decision-tool-b', 'decision-tool-progress-b'].includes(scenario) ? JSON.stringify(proposal('b')) : 'not JSON';
       await message('final', output);
       return { stopReason: 'end_turn' };
     }

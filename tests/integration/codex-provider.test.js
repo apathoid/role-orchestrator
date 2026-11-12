@@ -348,7 +348,7 @@ test('C12R.10: actual CLI Controller contract and distinct correction reasons pr
   assert.ok(first.observations.some(o=>o.value==='not JSON'));
 });
 
-for (const mode of ['a', 'b', 'invalid']) {
+for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id']) {
   test('C12R.10R.5 CLI Decision-shaped tool output vs final ' + mode, linux, async () => {
     const { api } = codexSetup('const mode = ' + JSON.stringify(mode) + ';\n' + `
       if (invocation.kind === 'delegate') {
@@ -367,10 +367,11 @@ for (const mode of ['a', 'b', 'invalid']) {
           message(JSON.stringify(decision({finalAssessment:assessment({answer:'Transport complete'})})), 'final');
         } else {
           const a = JSON.stringify(proposal('a'));
-          message('Native inspection before Controller result', 'progress');
+          if (mode === 'progress-b' || mode === 'prior-id') message(a, 'progress');
+          else if (mode !== 'only') message('Native inspection before Controller result', 'progress');
           emit('item.completed', {item:{type:'command_execution',id:'decision-shaped-tool',
             command:'fixture native action',aggregated_output:a,status:'completed',exit_code:0}});
-          message(mode === 'a' ? a : mode === 'b' ? JSON.stringify(proposal('b')) :
+          if (mode !== 'only' && mode !== 'prior-id') message(mode === 'a' ? a : ['b', 'progress-b'].includes(mode) ? JSON.stringify(proposal('b')) :
             String.fromCharCode(96).repeat(3) + 'json\\n{}\\n' + String.fromCharCode(96).repeat(3), 'final');
         }
         complete();
@@ -378,9 +379,13 @@ for (const mode of ['a', 'b', 'invalid']) {
     `);
     try {
       const state = await (await api.submit(request())).completion;
-      assert.equal(state.status, 'finished');
-      assert.equal(state.assessment.answer, 'Transport complete');
-      const expected = mode === 'invalid' ? [] : ['worker-' + mode];
+      assert.equal(state.status, mode === 'only' ? 'waiting' : 'finished');
+      if (mode === 'only') {
+        assert.equal(state.waiting.reason.code, 'PROTOCOL_ERROR');
+        assert.equal(state.assessment, undefined);
+      } else assert.equal(state.assessment.answer, 'Transport complete');
+      const expected = ['invalid', 'only'].includes(mode) ? [] :
+        [mode === 'a' || mode === 'prior-id' ? 'worker-a' : 'worker-b'];
       assert.deepEqual(state.events.flatMap(e => e.kind === 'controller.responded'
         ? e.admissions.filter(x => x.kind === 'accepted').map(x => x.action.actionId) : []), expected);
       assert.deepEqual(state.events.filter(e => e.kind === 'attempt.reserved' && e.actionId !== e.attemptId)
@@ -391,7 +396,7 @@ for (const mode of ['a', 'b', 'invalid']) {
         workers.some(w => w.attemptId === e.attemptId)).map(e => e.attemptId), workers.map(w => w.attemptId));
       const first = state.attempts[0].attemptId;
       const receipt = state.events.find(e => e.kind === 'attempt.outcome' && e.outcome.attemptId === first);
-      assert.equal(receipt.outcome.terminal, 'completed');
+      assert.equal(receipt.outcome.terminal, mode === 'only' ? 'unknown' : 'completed');
       assert.equal(receipt.dispatchCertainty, 'sent');
       const tool = receipt.observations.find(o => o.provenance?.sourceId === 'decision-shaped-tool');
       assert.equal(tool.source, 'provider_reported');
@@ -399,10 +404,28 @@ for (const mode of ['a', 'b', 'invalid']) {
       const a = JSON.parse(tool.value.output);
       assert.equal(decodeDecision(a).kind, 'accepted');
       assert.equal(a.additions[0].actionId, 'worker-a');
+      const prior = receipt.observations.find(o => o.provenance?.kind === 'model' && o.provenance.sourceId === 'progress');
+      if (['progress-b', 'prior-id'].includes(mode)) {
+        assert.deepEqual(JSON.parse(prior.value), a);
+        assert.equal(prior.source, 'model_claim');
+        assert.notEqual(prior.ref, tool.ref);
+        assert.ok(receipt.outcome.outputRefs.some(x => x.ref === prior.ref));
+      }
       const final = receipt.observations.find(o => o.provenance?.kind === 'model' && o.provenance.sourceId === 'final');
-      assert.equal(final.source, 'model_claim');
-      assert.notEqual(final.ref, tool.ref);
-      for (const observation of [tool, final]) assert.ok(receipt.outcome.outputRefs.some(x => x.ref === observation.ref));
+      if (mode === 'only') {
+        assert.equal(final, undefined);
+        assert.equal(prior, undefined);
+        assert.equal(state.attempts.length, 1);
+        assert.ok(!state.events.some(e => e.kind === 'controller.responded' || e.kind === 'controller.invalid_proposal'));
+        assert.equal(receipt.outcome.diagnostics[0].code, 'PROTOCOL_ERROR');
+        assert.ok(receipt.outcome.outputRefs.some(x => x.ref === tool.ref));
+        assert.ok(receipt.observations.some(o => o.provenance?.exit?.kind === 'agent_exit' && o.provenance.exit.code === 0));
+        return;
+      }
+      const selected = mode === 'prior-id' ? prior : final;
+      assert.equal(selected.source, 'model_claim');
+      assert.notEqual(selected.ref, tool.ref);
+      for (const observation of [tool, selected]) assert.ok(receipt.outcome.outputRefs.some(x => x.ref === observation.ref));
       const invalid = state.events.filter(e => e.kind === 'controller.invalid_proposal');
       assert.equal(invalid.length, mode === 'invalid' ? 1 : 0);
       if (mode === 'invalid') {
@@ -410,12 +433,13 @@ for (const mode of ['a', 'b', 'invalid']) {
         assert.equal(invalid[0].reason.expected, 'valid JSON');
         assert.equal(invalid[0].attemptId, first);
       } else {
-        const submitted = JSON.parse(final.value);
+        const submitted = JSON.parse(selected.value);
         const admitted = state.events.find(e => e.kind === 'controller.responded');
         assert.equal(admitted.attemptId, first);
         assert.equal(admitted.decision.decisionId, submitted.decisionId);
         assert.equal(submitted.additions[0].actionId, expected[0]);
-        assert.equal(mode === 'a', submitted.decisionId === a.decisionId);
+        assert.equal(mode === 'a' || mode === 'prior-id', submitted.decisionId === a.decisionId);
+        if (mode === 'progress-b') assert.notEqual(prior.ref, selected.ref);
         assert.equal(workers[0].outcome.terminal, 'completed');
         const result = state.events.find(e => e.kind === 'attempt.outcome' && e.outcome.attemptId === workers[0].attemptId);
         assert.ok(result.observations.some(o => o.source === 'model_claim' && o.value === 'Native Worker ' + expected[0]));

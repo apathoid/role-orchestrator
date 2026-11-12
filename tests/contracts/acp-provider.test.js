@@ -482,13 +482,14 @@ test('C12R.10 actual ACP prompt delivers the current Decision contract', linux, 
     assert.equal(state.events.find(e=>e.kind==='controller.invalid_proposal').reason.expected,'valid JSON');
   }));
 
-for (const mode of ['a', 'b', 'invalid']) {
+for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id', 'prior-anonymous']) {
   test('C12R.10R.5 ACP Decision-shaped tool output vs final ' + mode, linux, () =>
     withOwnedRun('C12R10R-acp-' + mode, async cwd => {
       const endpoint = provider(cwd, 'decision-tool-' + mode);
       const observed = Promise.withResolvers();
       const workerCalls = [];
       let firstAttempt;
+      let firstReply;
       const wrapped = { ...endpoint, invoke(session, invocation, observe) {
         if (invocation.kind === 'delegate') workerCalls.push(invocation.actionId);
         else firstAttempt ??= invocation.attemptId;
@@ -497,6 +498,9 @@ for (const mode of ['a', 'b', 'invalid']) {
           if (item.kind === 'provider_tool' && item.sourceId === 'decision-shaped-tool' &&
               item.value?.status === 'completed') observed.resolve({ item, ref });
           return ref;
+        }).then(reply => {
+          if (invocation.attemptId === firstAttempt) firstReply = reply;
+          return reply;
         });
       } };
       const { api } = setup({ provider: wrapped, profile, maxInvocations: 3 });
@@ -519,7 +523,8 @@ for (const mode of ['a', 'b', 'invalid']) {
         const state = await handle.completion;
         assert.equal(state.status, 'finished');
         assert.equal(state.assessment.answer, 'Transport complete');
-        const expected = mode === 'invalid' ? [] : ['worker-' + mode];
+        const expected = ['invalid', 'only', 'prior-anonymous'].includes(mode) ? [] :
+          [mode === 'a' || mode === 'prior-id' ? 'worker-a' : 'worker-b'];
         assert.deepEqual(workerCalls, expected);
         assert.deepEqual(state.events.flatMap(e => e.kind === 'controller.responded'
           ? e.admissions.filter(x => x.kind === 'accepted').map(x => x.action.actionId) : []), expected);
@@ -538,23 +543,42 @@ for (const mode of ['a', 'b', 'invalid']) {
         assert.equal(tool.source, 'provider_reported');
         assert.deepEqual(JSON.parse(JSON.parse(tool.value.json).content[0].content.text), a);
         assert.ok(receipt.outcome.outputRefs.some(x => x.ref === tool.ref));
+        const prior = receipt.observations.find(o => o.provenance?.kind === 'model' && o.value === JSON.stringify(a) && o.provenance.sourceId !== 'final');
+        if (['progress-b', 'prior-id', 'prior-anonymous'].includes(mode)) {
+          assert.ok(prior);
+          assert.equal(prior.source, 'model_claim');
+          assert.notEqual(prior.ref, tool.ref);
+          assert.ok(receipt.outcome.outputRefs.some(x => x.ref === prior.ref));
+          if (mode !== 'prior-anonymous') assert.equal(prior.provenance.sourceId, 'progress');
+        }
         const final = receipt.observations.find(o => o.provenance?.kind === 'model' && o.provenance.sourceId === 'final');
-        assert.equal(final.source, 'model_claim');
-        assert.notEqual(final.ref, tool.ref);
-        assert.ok(receipt.outcome.outputRefs.some(x => x.ref === final.ref));
+        const selected = mode === 'prior-id' ? prior : final;
+        if (selected) {
+          assert.equal(selected.source, 'model_claim');
+          assert.notEqual(selected.ref, tool.ref);
+          assert.ok(receipt.outcome.outputRefs.some(x => x.ref === selected.ref));
+          assert.equal(firstReply.outputObservationRef, selected.ref);
+        }
         const invalid = state.events.filter(e => e.kind === 'controller.invalid_proposal');
-        assert.equal(invalid.length, mode === 'invalid' ? 1 : 0);
-        if (mode === 'invalid') {
-          assert.equal(final.value, 'not JSON');
+        assert.equal(invalid.length, expected.length ? 0 : 1);
+        if (!expected.length) {
+          assert.equal(firstReply.output, mode === 'invalid' ? 'not JSON' : '');
+          assert.equal(firstReply.decisionTextError, 'invalid_json');
+          if (mode === 'invalid') assert.equal(final.value, 'not JSON');
+          else {
+            assert.equal(final, undefined);
+            assert.equal(firstReply.outputObservationRef, undefined);
+          }
           assert.equal(invalid[0].reason.expected, 'valid JSON');
           assert.equal(invalid[0].attemptId, firstAttempt);
         } else {
-          const submitted = JSON.parse(final.value);
+          const submitted = JSON.parse(selected.value);
           const admitted = state.events.find(e => e.kind === 'controller.responded');
           assert.equal(admitted.attemptId, firstAttempt);
           assert.equal(admitted.decision.decisionId, submitted.decisionId);
           assert.equal(submitted.additions[0].actionId, expected[0]);
-          assert.equal(mode === 'a', submitted.decisionId === a.decisionId);
+          assert.equal(mode === 'a' || mode === 'prior-id', submitted.decisionId === a.decisionId);
+          if (mode === 'progress-b') assert.notEqual(prior.ref, selected.ref);
           assert.equal(workers[0].outcome.terminal, 'completed');
           const result = state.events.find(e => e.kind === 'attempt.outcome' && e.outcome.attemptId === workers[0].attemptId);
           assert.ok(result.observations.some(o => o.source === 'model_claim' && o.value === 'Native Worker ' + expected[0]));
