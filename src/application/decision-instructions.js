@@ -18,7 +18,7 @@ Assessment: {author: current profileId, overall: "complete" | "partial" | "unres
   observationRefs: string[], findingRefs: string[], unresolvedQuestions: string[], answer: string}
 Finding: {findingId: string, author: current profileId, claim: string, subject: string,
   supports: string[], uncertainties: string[], supersedes?: string}
-Each finalAssessment.requirements[] entry needs its own observationRefs and findingRefs arrays, even when the Assessment-level arrays are present; use empty arrays when there are no corresponding refs. Omit absent optional fields; null is allowed only for explicitly nullable types. requirements[].reason is an optional string, not null.
+Each finalAssessment.requirements[] entry needs its own observationRefs and findingRefs arrays, even when the Assessment-level arrays are present; use empty arrays when there are no corresponding refs. Omit absent optional fields; null is allowed only for explicitly nullable types. requirements[].reason is an optional non-empty string (not whitespace-only); omit it when not needed.
 Use only the named fields. Include a finalAssessment, clarification, wait policy, addition, cancellation, or nextController.continue:true.
 Additions require a wait policy or continue:true. Wait targets must be nonempty; no waitPolicy with continue:true or clarification.
 Do not combine nextController with finalAssessment or clarification. finalAssessment cannot accompany new additions or clarification.

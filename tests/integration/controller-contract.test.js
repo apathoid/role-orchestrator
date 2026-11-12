@@ -25,7 +25,7 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     assert.match(prompt, /reads existing scoped records only/);
     assert.match(prompt, /workMap is a derived Host lifecycle view, not dispatch/);
     assert.match(prompt, /Each finalAssessment\.requirements\[\] entry needs its own observationRefs and findingRefs arrays/);
-    assert.match(prompt, /requirements\[\]\.reason is an optional string, not null/);
+    assert.match(prompt, /requirements\[\]\.reason is an optional non-empty string/);
     const output={...shape,operationId:invocation.operationId,contextCursor:host.contextCursor,
       finalAssessment:{...shape.finalAssessment,author:invocation.profile.profileId,answer}};
     return {...final(invocation),output};
@@ -36,6 +36,23 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     assert.equal(state.assessment.answer,answer);
     assert.deepEqual(state.assessment.requirements[0].findingRefs,[]);
   } finally { await api.close(); }
+});
+
+test('C12R.10R review: optional requirement reason follows the existing non-empty string decoder', () => {
+  for (const reason of [null, '', ' \t\n']) {
+    const value = JSON.parse(decisionExample);
+    value.finalAssessment.requirements[0].reason = reason;
+    assert.deepEqual(decodeDecision(value), {kind:'rejected',reason:{
+      code:'INVALID_PROPOSAL',path:'$.finalAssessment.requirements[0].reason',expected:'a non-empty string',
+    }});
+  }
+  const value = JSON.parse(decisionExample);
+  delete value.finalAssessment.requirements[0].reason;
+  assert.equal(decodeDecision(value).kind, 'accepted');
+  value.finalAssessment.requirements[0].reason = '  valid explanation  ';
+  const result = decodeDecision(value);
+  assert.equal(result.kind, 'accepted');
+  assert.equal(result.value.finalAssessment.requirements[0].reason, '  valid explanation  ');
 });
 
 test('C12R.10 text parse distinguishes malformed, non-object and bounded depth without repair',()=>{
