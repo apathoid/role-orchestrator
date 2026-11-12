@@ -21,7 +21,8 @@
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
  *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
  * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
- *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected'}} ProviderResult
+ *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected',
+ *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth'}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,

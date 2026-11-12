@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decisionContract, decisionExample } from '../../src/application/decision-instructions.js';
 import { decodeDecision } from '../../src/core/contracts.js';
-import { renderInvocationPrompt } from '../../src/adapters/invocation-prompt.js';
+import { parseDecisionText, renderInvocationPrompt } from '../../src/adapters/invocation-prompt.js';
 import { setup, final } from '../fixtures/application.js';
 import { request } from '../fixtures/core.js';
 
@@ -27,4 +27,17 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     assert.equal(state.assessment.answer,answer);
     assert.deepEqual(state.assessment.requirements[0].findingRefs,[]);
   } finally { await api.close(); }
+});
+
+test('C12R.10 text parse distinguishes malformed, non-object and bounded depth without repair',()=>{
+  for (const raw of ['{', 'not JSON', '```json\n{}\n```']) {
+    assert.deepEqual(parseDecisionText(raw),{output:raw,decisionTextError:'invalid_json'});
+  }
+  for (const raw of ['null','false','42','"text"','[]']) {
+    assert.deepEqual(parseDecisionText(raw),{output:JSON.parse(raw),decisionTextError:'non_object'});
+  }
+  const deep='{"x":'.repeat(17)+'0'+'}'.repeat(17);
+  assert.deepEqual(parseDecisionText(deep),{output:deep,decisionTextError:'depth'});
+  assert.deepEqual(parseDecisionText(decisionExample),{output:JSON.parse(decisionExample)});
+  assert.equal(decodeDecision(parseDecisionText('{"assessment":{}}').output).kind,'rejected');
 });

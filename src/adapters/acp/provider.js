@@ -390,7 +390,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if (signal.aborted || stopReason === 'cancelled') result = resultFor(invocation, 'CANCELLED', stopReason === 'cancelled' ? 'cancelled' : 'unknown', 'sent');
         else if (stopReason === 'end_turn' && !truncated) {
           result = resultFor(invocation, undefined, 'completed', 'sent');
-          result.output = invocation.kind === 'controller' ? parseDecisionText(output) : output;
+          if (invocation.kind === 'controller') Object.assign(result, parseDecisionText(output));
+          else result.output = output;
         } else {
           const code = truncated || stopReason === 'max_tokens' || stopReason === 'max_turn_requests' ? 'RESOURCE_LIMIT' :
             stopReason === 'refusal' ? 'PROVIDER_REFUSED' : 'PROTOCOL_ERROR';

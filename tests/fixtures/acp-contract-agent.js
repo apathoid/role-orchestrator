@@ -216,10 +216,18 @@ agent()
       await message('result', params.prompt[1]?.type === 'image' ? 'image delivered' : 'missing image');
     } else if (kind === 'controller') {
       const cursor = context.find(item => item.ref === 'host:invocation-context').value.contextCursor;
+      if (scenario === 'controller-contract') {
+        const error=context.find(item=>item.ref==='host:decision-error')?.value;
+        if (!error) {
+          await message(modelId,'not JSON');
+          return {stopReason:'end_turn'};
+        }
+        assert.equal(error.expected,'valid JSON');
+      }
       const decision = JSON.stringify({ schemaVersion: 1, decisionId: attemptId + '-decision',
         operationId, contextCursor: cursor, additions: [], cancellations: [], finalAssessment: {
           author: profileId, overall: 'partial', requirements: [], observationRefs: [], findingRefs: [],
-          unresolvedQuestions: [], answer: 'ACP Controller response',
+          unresolvedQuestions: [], answer: scenario === 'controller-contract' ? '# Result\nПроверка 🧪\n{"value":1}' : 'ACP Controller response',
         } });
       if (anonymous) await client.notify(c.session.update, { sessionId, update: {
         sessionUpdate: 'tool_call', toolCallId: 'inspect-config', title: 'Inspect configuration',

@@ -476,5 +476,7 @@ test('C12R.10 actual ACP prompt delivers the current Decision contract', linux, 
     const { api } = setup({provider:provider(cwd,'controller-contract'),profile});
     const state = await (await api.submit(request({workspaceContext:{cwd}}))).completion;
     assert.equal(state.status,'finished');
-    assert.equal(state.assessment.answer,'ACP Controller response');
+    assert.equal(state.assessment.answer,'# Result\nПроверка 🧪\n{"value":1}');
+    assert.equal(state.attempts.length,2);
+    assert.equal(state.events.find(e=>e.kind==='controller.invalid_proposal').reason.expected,'valid JSON');
   }));

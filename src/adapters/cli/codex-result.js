@@ -157,7 +157,7 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
       diagnostics: code ? [{ code, ref: providerErrorRef ?? processRef }, ...permissionDiagnostics] : permissionDiagnostics,
       outputRefs, usage,
     },
-    output: code || message === undefined ? undefined : kind === 'controller' ? parseDecisionText(message) : message,
+    ...(code || message === undefined ? { output: undefined } : kind === 'controller' ? parseDecisionText(message) : { output: message }),
     ...(!code && messageRef ? { outputObservationRef: messageRef } : {}),
   };
 }

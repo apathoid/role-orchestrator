@@ -15,17 +15,21 @@ export function renderInvocationPrompt(request, transportDetail) {
   });
 }
 
-/** @param {string} message @returns {unknown} */
+/** @param {string} message @returns {Pick<import('../core/ports.js').ProviderResult, 'output' | 'decisionTextError'>} */
 export function parseDecisionText(message) {
+  /** @type {unknown} */
+  let value;
   try {
-    /** @type {unknown} */
-    const value = JSON.parse(message);
-    // A v1 Decision is shallow. Preserve excessively nested input as text so
-    // it can be recorded without recursive admission of arbitrary JSON.
-    return withinDecisionDepth(value, 16) ? value : message;
+    value = JSON.parse(message);
   } catch {
-    return message;
+    return { output: message, decisionTextError: 'invalid_json' };
   }
+  // Preserve deeply nested input as text, never recursively admit arbitrary JSON.
+  if (!withinDecisionDepth(value, 16)) return { output: message, decisionTextError: 'depth' };
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { output: value, decisionTextError: 'non_object' };
+  }
+  return { output: value };
 }
 
 /** @param {unknown} value @param {number} remaining @returns {boolean} */
