@@ -265,7 +265,7 @@ C12R.6.1–6.4: `tests/integration/c12r-coordination.test.js` combines chosen sk
 
 ### C12R.9 review — фактический статус CI после кодовых исправлений
 
-**OBSERVED:** исходный `1633a30` — два SUCCESS workflows (см. [STATUS](../docs/roadmap/STATUS.md)). Review code через `edc0f8a` содержит регрессии для Codex CLI/ACP, полной технической карты, stale/ambiguous/denied positional refs, состояния после restart, 64/128 КиБ byte-chunks (включая malformed UTF‑16), missing/retention/in-flight cancel и no-MCP Controller. Статус адресных тестов **NOT VERIFIED**: GitHub Actions ждёт выполнения из-за старых застрявших jobs, промежуточные integration FAIL не считаются погашенными. Нативная модель/Zed/NixOS и сравнительная A/B/C приёмка — **UNVERIFIED**. Не менять эту матрицу на PASS до наблюдённого SUCCESS итогового SHA.
+**OBSERVED:** исходный `1633a30` — два SUCCESS workflows (см. [STATUS](../docs/roadmap/STATUS.md)). Review code через `edc0f8a` содержит регрессии для Codex CLI/ACP, полной технической карты, stale/ambiguous/denied positional refs, состояния после restart, 64/128 КиБ byte-chunks (включая malformed UTF‑16), missing/retention/in-flight cancel и no-MCP Controller. Исторически адресные тесты ожидали GitHub Actions из-за застрявших jobs. Последующий полный CI на `daefdbc` (43106917665) и текущий runtime `d57c11e` (43174314648) SUCCESS; промежуточные FAIL не являются текущим состоянием. Нативная модель/Zed/NixOS и сравнительная A/B/C приёмка — **UNVERIFIED**. Не менять эту матрицу на PASS до наблюдённого SUCCESS итогового SHA.
 
 ### C12R.9 повторное ревью — независимость транспортов и performance
 
@@ -283,5 +283,9 @@ Synthetic subprocess/CI PASS не означает проверенного ка
 
 | Проверка | Regression | Status |
 |---|---|---|
-| Growing Controller history / stable journal-prefix pages | `context-continuity.test.js`, real orchestrator nextController.contextRequest and mutable lifecycle | UNVERIFIED until final CI |
-| Accepted-only execution disposition, cancellation/effect, duplicate admission | `context-continuity.test.js`, authoritative applyEvent transitions | UNVERIFIED until final CI |
+| Growing Controller history / stable journal-prefix pages | `context-continuity.test.js`, real orchestrator nextController.contextRequest, exactly one row per page, new retry Worker, no skips/repeats | **PASS (synthetic)** |
+| Accepted-only execution disposition, cancellation/effect, duplicate admission | `context-continuity.test.js`, authoritative applyEvent/admitActions transitions, deferral vs terminal, omitted cancellations preview | **PASS (synthetic)** |
+| Mutable lifecycle and durable cursor | accepted→Attempt, late outcome, retry, file-store reopen and real Controller recovery, snapshot decode | **PASS (synthetic)** |
+| End, invalid cursor, budget | explicit end/stall and invalid historical offset; strict v1 Decision validation | **PASS (synthetic)** |
+
+**OBSERVED:** [CI 43174314648](https://github.com/apathoid/role-orchestrator/actions/runs/43174314648) на `d57c11ee414de13d8451202d28a9b19a36f0edd1`, 367/367 (280 integration), 0 failures/skipped, checkJs, package, Nix build/install and NixOS evaluation SUCCESS. Native integration и comparative real-model quality/performance остаются **UNVERIFIED**.

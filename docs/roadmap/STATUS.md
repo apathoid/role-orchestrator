@@ -17,22 +17,24 @@
 
 **C12R.9.7:** нормативные контракты, CHANGELOG и единственная tests/ACCEPTANCE_MATRIX актуализированы; синтетические регрессии выполняются в CI. Реальная native C12R.9 A/B/C сравнительная приёмка **UNVERIFIED**: в GitHub Actions нет доступной authenticated model/Zed с доказанными tools. Итоговые регрессии и Nix проверки можно считать verified только после SUCCESS привязанного к конечному HEAD, не по промежуточным коммитам.
 
-**Последний подтверждённый инженерный этап:** review C12R.9 P1/P2 + дополнительные P2 и performance corrections завершены в доступном кодовом scope на `1ea0a2f98b733a57b5098012245c0781db8e2dda`, полный CI **OBSERVED SUCCESS**. Native integration/quality остаются UNVERIFIED; production readiness не заявляется.
+**Последний подтверждённый инженерный этап:** C12R.9 review P1/P2, включая оба последних P2 workMap, завершён в доступном инженерном scope на `d57c11ee414de13d8451202d28a9b19a36f0edd1`; [CI 43174314648](https://github.com/apathoid/role-orchestrator/actions/runs/43174314648) **OBSERVED SUCCESS**, 367/367, без failed/skipped. Native integration/quality остаются UNVERIFIED; production readiness не заявляется.
 
-**Следующий шаг:** подтвердить CI текущих двух P2 workMap (stable journal-prefix pagination и актуальный execution disposition), затем **реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence. Для будущих документационных/CI изменений проверять собственный GitHub Actions run и не выдавать synthetic fixtures за native assessment.
+**Следующий шаг:** **реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence. Инженерная стабилизация C12R.9 подтверждена на последнем кодовом SHA; отдельный documentation-only commit проверяется собственным CI, не подменяет native assessment.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
 | Implementation complete (original C12R.9) | **YES** на `1633a30a11a392bfd5b21474d0be6206b3a6fec7`; review fixes проверяются отдельно |
 | Regression verified (original C12R.9) | **OBSERVED SUCCESS**: [43083588324](https://github.com/apathoid/role-orchestrator/actions/runs/43083588324), [43083600272](https://github.com/apathoid/role-orchestrator/actions/runs/43083600272), оба на `1633a30` (Linux CI, package, Nix checks по run); это не доказательство исправления review |
-| Regression verified (review P1/P2) | **YES для доступной automated engineering scope:** [полный CI 43106389538](https://github.com/apathoid/role-orchestrator/actions/runs/43106389538) и [focused 43106389515](https://github.com/apathoid/role-orchestrator/actions/runs/43106389515) оба SUCCESS на `1ea0a2f`. Документационный CI-cleanup commit требует самостоятельного CI |
+| Regression verified (review P1/P2) | **OBSERVED SUCCESS**: [CI 43174314648](https://github.com/apathoid/role-orchestrator/actions/runs/43174314648) на `d57c11ee414de13d8451202d28a9b19a36f0edd1`, 367/367 (foundation 4, core 25, provider 54, integration 280, acceptance 4); npm/checkJs, Nix build/install, NixOS evaluation, package/archive PASS. |
 | Native integration verified | **UNVERIFIED:** настоящие Codex/ACP LLM, Zed и реальная NixOS runtime интеграция |
 | Performance/quality comparison verified | **UNVERIFIED:** A/B/C, default Controller 256 КиБ и отдельно 512 КиБ, fetch 64/128 КиБ |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**, production readiness **NO** |
 
 ## C12R.9 повторное ревью — workMap (2026-11-12)
 
-Implementation: stable journal-prefix cursor `{revision,index}`, first Attempt retains admission position, live lifecycle and refs; accepted-only disposition reflects actual cancellation/rejection/deferral, not rejected repeated proposals. Code and synthetic regressions added. **Automated regression: pending CI on this new HEAD. Native integration / comparative quality/performance: UNVERIFIED.** Prior full CI on `daefdbc` ([43106917665](https://github.com/apathoid/role-orchestrator/actions/runs/43106917665)) is baseline, not proof of this change.
+**Implementation complete / automated regression verified: YES** на `d57c11ee414de13d8451202d28a9b19a36f0edd1`, [CI 43174314648](https://github.com/apathoid/role-orchestrator/actions/runs/43174314648) SUCCESS. Stable journal-prefix cursor `{revision,index}` фиксирует membership начатого обхода; первый Attempt сохраняет admission position, ties — admission index, lifecycle и refs актуальны. Accepted-only disposition отражает execution events cancellation/rejection/deferral, а не rejected repeated proposal. Стандартные лимиты не менялись. Коммиты: `3b9d779` (cursor), `da8aa11` (disposition), `c4173e4` (расширенная regression), `d57c11e` (journal ordering и valid concurrent fixture).
+
+**OBSERVED:** real orchestrator one-row paging с новым retry Worker, accepted→Attempt, late outcome, cancelled/rejected/deferred, omitted cancellations preview, malformed/stale/end/budget cursor, file-store reopen и real Controller recovery прошли. Промежуточный [43174013264](https://github.com/apathoid/role-orchestrator/actions/runs/43174013264) FAIL на `c4173e4`: fixture одновременно запрашивал waitPolicy и continue (запрещено контрактом); исправлено на `d57c11e`, контракт не ослаблялся. Полный CI baseline `daefdbc` [43106917665](https://github.com/apathoid/role-orchestrator/actions/runs/43106917665) SUCCESS, но не подтверждает новые изменения. **Native integration / comparative quality/performance: UNVERIFIED.**
 
 ## C12R.9 review P2 — повторная проверка бюджетов, курсоров и verified artifact ranges (2026-11-12)
 

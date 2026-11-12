@@ -6,7 +6,7 @@
 
 ### C12R.9 — контекст и история, review P1/P2 (engineering changes; native UNVERIFIED)
 
-- WorkMap pagination uses a stable journal-prefix cursor across Controller turns; first Attempt retains the accepted Action's position, while lifecycle and refs remain live. Accepted-only rows distinguish cancellation, execution rejection and deferral without changing admission or dispatch semantics.
+- WorkMap pagination uses a stable journal-prefix `{revision,index}` cursor across Controller turns (0 starts a fresh traversal; legacy nonzero offsets explicitly report `invalid_cursor`); first Attempt retains the accepted Action's position, while lifecycle and refs remain live. Accepted-only rows distinguish cancellation, execution rejection and deferral without changing admission or dispatch semantics.
 
 - Controller, handoff, fetch, artifact capture, host-managed skill instructions и external tool output имеют независимые config budgets с controller-only legacy alias.
 - Устранён artificial 128-entry cap; технический `workMap` вычисляется из исходной Operation, с сохранением refs/provenance и отличием terminal uncertain effect от in-flight.
