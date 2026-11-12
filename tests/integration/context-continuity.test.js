@@ -3,6 +3,10 @@ import { test } from 'node:test';
 import { compactContext } from '../../src/application/context-bundle.js';
 import { coordinationFacts, controllerContext, operationHistory, operationWorkMap, deduplicateInlineResults } from '../../src/application/controller-context.js';
 import { decodeDecision } from '../../src/core/contracts.js';
+import { admitActions } from '../../src/core/action-graph.js';
+import { decodeSnapshot, encodeSnapshot } from '../../src/core/snapshot.js';
+import { createLocalStateStore } from '../../src/adapters/state/local-store.js';
+import { withOwnedRun } from '../../scripts/owned-run.mjs';
 import { createOperation, applyEvent, acceptedWorkerAllowed } from '../../src/core/operation.js';
 import { request, outcome, decision } from '../fixtures/core.js';
 import { setup } from '../fixtures/application.js';
@@ -401,11 +405,14 @@ function workLifecycleFixture() {
   };
   const action=id=>({actionId:id,kind:'delegate',profileId:'primary',objective:id,
     expectedResult:'report',dependsOn:[],contextRefs:[]});
-  const admit=(ids,extra=[])=>{
-    const actions=ids.map(action);
+  const admit=ids=>{
+    const actions=ids.map(item=>typeof item==='string'?action(item):item);
+    const known=state.events.flatMap(event=>event.kind==='controller.responded'?
+      (event.admissions??[]).flatMap(item=>item.kind==='accepted'?[item.action]:[]):[]);
+    const admissions=admitActions(known,actions);
     apply({kind:'controller.responded',decision:decision({operationId:state.operationId,
-      decisionId:'decision-'+sequence,additions:actions,finalAssessment:undefined}),
-      admissions:[...actions.map(action=>({kind:'accepted',action})),...extra]});
+      decisionId:'decision-'+sequence,additions:actions,finalAssessment:undefined}),admissions});
+    return admissions;
   };
   const reserve=(id,attemptId='run-'+id)=>apply({kind:'attempt.reserved',actionId:id,attemptId});
   const row=id=>operationWorkMap(state,operationHistory(state)).find(item=>item.actionId===id);
@@ -427,12 +434,13 @@ test('C12R.9: workMap reports actual accepted-only execution disposition, not pr
   assert.equal(f.row('cancelled').cancellation,'superseded');
   assert.equal(f.row('rejected').status,'rejected');
   assert.equal(f.row('rejected').code,'CAPABILITY_UNAVAILABLE');
-  f.admit([], [{kind:'rejected',actionId:'duplicate',code:'IDENTITY_CONFLICT',reason:'identity'}]);
+  assert.equal(f.admit([{...f.action('duplicate'),objective:'changed proposal'}])[0].kind,'rejected');
   assert.equal(f.row('duplicate').status,'accepted');
   assert.equal(acceptedWorkerAllowed(f.state,'duplicate'),true);
   assert.equal(f.row('cancelled').objectiveRef,'decision:decision-0');
-  const restored=structuredClone(f.state);
-  assert.equal(operationWorkMap(restored,operationHistory(restored)).find(row=>row.actionId==='cancelled').status,'cancelled');
+  const restored=decodeSnapshot(encodeSnapshot(f.state));
+  assert.equal(restored.kind,'accepted');
+  assert.equal(operationWorkMap(restored.value,operationHistory(restored.value)).find(row=>row.actionId==='cancelled').status,'cancelled');
 });
 
 test('C12R.9: workMap preserves cancellation and effects for reserved/dispatched attempts',()=>{
@@ -465,7 +473,10 @@ test('C12R.9: journal-prefix pages keep accepted rows in place across reservatio
   assert.deepEqual(initial.entries.map(row=>row.actionId),['newer','a','b','c']);
   f.reserve('b');
   f.apply({kind:'attempt.dispatched',attemptId:'run-b'});
-  f.apply({kind:'attempt.outcome',dispatchCertainty:'sent',outcome:outcome('run-b')});
+  f.apply({kind:'attempt.outcome',dispatchCertainty:'unknown',
+    outcome:outcome('run-b',{terminal:'unknown',effect:'unknown'})});
+  f.apply({kind:'attempt.outcome',dispatchCertainty:'sent',late:true,
+    outcome:outcome('run-b',{effect:'confirmed'})});
   f.apply({kind:'action.cancelled',actionId:'c',source:'superseded'});
   f.admit(['later']);
   f.reserve('later');
@@ -476,7 +487,149 @@ test('C12R.9: journal-prefix pages keep accepted rows in place across reservatio
   assert.equal(page.liveTotal,5);
   assert.equal(page.entries[1].attemptId,'run-b');
   assert.equal(page.entries[1].status,'terminal');
+  assert.equal(page.entries[1].effect,'confirmed');
   assert.equal(page.entries[2].status,'cancelled');
   assert.equal(page.nextCursor,undefined);
   assert.equal(controllerContext(f.state,[],undefined,undefined,65536)[1].value.workMap.entries[0].actionId,'later');
 });
+
+test('C12R.9: cancelled accepted-only row remains truthful even without cancellations preview',()=>{
+  const f=workLifecycleFixture();
+  f.admit(['older']);
+  f.admit(['cancelled']);
+  f.apply({kind:'action.cancelled',actionId:'cancelled',source:'superseded'});
+  // Find the actual byte boundary rather than relying on a fixed-size estimate
+  // of mandatory metadata; the map must not depend on the separate preview.
+  let matching;
+  for(let budget=1000;budget<4096;budget+=1) {
+    const host=controllerContext(f.state,[],undefined,undefined,budget)[1].value;
+    if(host.workMap.entries[0]?.actionId==='cancelled' && host.cancellations.length===0) {
+      matching=host;
+      break;
+    }
+  }
+  assert.ok(matching);
+  assert.equal(matching.workMap.entries[0].status,'cancelled');
+  assert.equal(matching.workMap.entries[0].cancellation,'superseded');
+  assert.equal(matching.technicalCoverage.cancellations.omitted,1);
+});
+
+test('C12R.9: one-row Controller pages survive new retry Worker and growing journal',async()=>{
+  const {final}=await import('../fixtures/application.js');
+  const original={actionId:'original-worker',kind:'delegate',profileId:'primary',
+    objective:'Produce a report',expectedResult:'report',dependsOn:[],contextRefs:[]};
+  let expected, chosenBudget;
+  async function execute(calibrate) {
+    let controllers=0, originalAttempt;
+    const seen=[];
+    const {api,respondErrors,invocations}=setup({maxInvocations:30,idPrefix:'long-'+ 'x'.repeat(200)+'-',
+      context:{controllerMaxBytes:calibrate?65536:chosenBudget},
+      async respond(invocation) {
+        if(invocation.kind==='delegate') {
+          if(invocation.actionId===original.actionId) originalAttempt=invocation.attemptId;
+          return {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId)};
+        }
+        controllers++;
+        const host=invocation.context.find(item=>item.ref==='host:invocation-context').value;
+        const map=host.workMap;
+        if(controllers===1) return final(invocation,{finalAssessment:undefined,additions:[original],
+          waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:original.actionId}]}});
+        if(controllers<6) return final(invocation,{finalAssessment:undefined,nextController:{continue:true}});
+        if(calibrate) {
+          expected=map.entries.map(row=>row.attemptId);
+          // Calibrate against the actual invocation's persisted state and
+          // catalog. Long identities ensure a wide one-record byte interval.
+          const state=await api.inspect(invocation.operationId);
+          const candidates=[];
+          for(let bytes=1000;bytes<8192;bytes+=8) {
+            const probe=controllerContext(state,host.catalog,undefined,undefined,bytes,host.preferences)[1].value.workMap;
+            if(probe.entries.length===1 && probe.nextCursor) candidates.push(bytes);
+          }
+          assert.ok(candidates.length>8,'fixture needs a one-row byte interval');
+          chosenBudget=candidates[Math.floor(candidates.length/2)];
+          return final(invocation);
+        }
+        assert.equal(map.total,expected.length);
+        assert.equal(map.entries.length,1,'exactly one real workMap row per Controller invocation');
+        seen.push(map.entries[0].attemptId);
+        assert.deepEqual(seen,expected.slice(0,seen.length));
+        if(controllers===6) {
+          assert.ok(map.nextCursor);
+          const retry={...original,actionId:'retry-worker',retryOf:originalAttempt,retryBasis:'no_effect'};
+          return final(invocation,{finalAssessment:undefined,additions:[retry],
+            waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:retry.actionId}]},
+            nextController:{continue:true,contextRequest:{workCursor:map.nextCursor}}});
+        }
+        if(map.nextCursor) return final(invocation,{finalAssessment:undefined,
+          nextController:{continue:true,contextRequest:{workCursor:map.nextCursor}}});
+        assert.deepEqual(seen,expected);
+        assert.ok(map.liveTotal>map.total);
+        return final(invocation);
+      }});
+    const finished=await(await api.submit(request())).completion;
+    assert.equal(finished.status,'finished',respondErrors.map(error=>error.stack??String(error)).join('\n'));
+    assert.deepEqual(respondErrors,[]);
+    if(!calibrate) {
+      assert.deepEqual(invocations.filter(item=>item.kind==='delegate').map(item=>item.actionId),
+        ['original-worker','retry-worker']);
+      const map=operationWorkMap(finished,operationHistory(finished));
+      assert.ok(map.some(row=>row.actionId==='original-worker'&&row.terminal==='completed'));
+      assert.ok(map.some(row=>row.actionId==='retry-worker'&&row.terminal==='completed'));
+    }
+    await api.close();
+  }
+  await execute(true);
+  await execute(false);
+});
+
+test('C12R.9: accepted workMap cursor survives file-store restart and real Controller recovery',()=>
+  withOwnedRun('C12R9-workmap-recovery',async cwd=>{
+    let store=createLocalStateStore(cwd);
+    await store.open();
+    let state=createOperation('workmap-recovery',request(),'fixture-authority',
+      {maxInvocations:12,maxConcurrentInvocations:1});
+    assert.deepEqual(await store.commit(state.operationId,null,state),{kind:'committed'});
+    let n=0;
+    const append=async event=>{
+      const next=applyEvent(state,{eventId:'pre-'+(++n),receivedAt:n,operationId:state.operationId,...event});
+      assert.equal(next.kind,'applied',JSON.stringify(next.reason));
+      assert.deepEqual(await store.commit(state.operationId,state.revision,next.state),{kind:'committed'});
+      state=next.state;
+    };
+    for(const id of ['oldest','middle','newest']) {
+      await append({kind:'attempt.reserved',attemptId:id,actionId:id});
+      await append({kind:'attempt.dispatched',attemptId:id});
+      await append({kind:'attempt.outcome',dispatchCertainty:'sent',outcome:outcome(id)});
+    }
+    await append({kind:'attempt.reserved',attemptId:'current',actionId:'current'});
+    await append({kind:'attempt.dispatched',attemptId:'current'});
+    const revision=state.revision;
+    const before=controllerContext(state,[],undefined,undefined,65536)[1].value.workMap;
+    assert.deepEqual(before.entries.map(row=>row.attemptId),['newest','middle','oldest']);
+    await append({kind:'attempt.outcome',dispatchCertainty:'sent',outcome:outcome('current')});
+    const workCursor={revision,index:1};
+    await append({kind:'controller.responded',attemptId:'current',decision:decision({
+      operationId:state.operationId,decisionId:'continue-map',finalAssessment:undefined,
+      nextController:{continue:true,contextRequest:{workCursor}}})});
+    await store.close();
+    store=createLocalStateStore(cwd);
+    await store.open();
+    try {
+      const {final}=await import('../fixtures/application.js');
+      const {api,respondErrors,invocations}=setup({store,maxInvocations:12,idPrefix:'recovered-',
+        context:{controllerMaxBytes:65536},respond(invocation) {
+          const map=invocation.context.find(item=>item.ref==='host:invocation-context').value.workMap;
+          assert.deepEqual(map.cursor,workCursor);
+          assert.deepEqual(map.entries.map(row=>row.attemptId),['middle','oldest']);
+          assert.equal(map.total,3);
+          assert.equal(map.liveTotal,4);
+          assert.equal(map.nextCursor,undefined);
+          return final(invocation);
+        }});
+      const done=await(await api.resume(state.operationId)).completion;
+      assert.equal(done.status,'finished',respondErrors.map(error=>error.stack??String(error)).join('\n'));
+      assert.equal(invocations.length,1);
+      assert.equal(done.events.filter(event=>event.kind==='operation.recovered').length,1);
+      await api.close();
+    } finally {await store.close();}
+  }));
