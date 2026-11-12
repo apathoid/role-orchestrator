@@ -39,6 +39,10 @@ Handoff — материализованная часть Invocation: задач
 - Clarification и finalAssessment взаимоисключающие в одном Decision. Новые additions не совмещаются с finalAssessment; cancellations допускаются для завершения. При clarification независимая уже запущенная работа продолжается, если модель не попросила её отменить. Пустой Decision без действия, ожидания, вопроса или итога — INVALID_PROPOSAL, а не повод для busy loop. Утверждённое расширение ниже добавляет явное самостоятельное продолжение как ещё одно действительное решение модели.
 - Невалидный ответ модели возвращается тому же Controller как структурированная ошибка с допустимой схемой. Повтор потребляет общий бюджет. Нет regex fallback, синтетического плана или отдельной бесконечной correction-петли.
 
+### Controller transport
+
+Decision v1 — транспортная форма, а не пользовательский формат. Модель помещает требуемое содержимое в строку `finalAssessment.answer`, включая Markdown, Unicode и вложенный JSON как текст; Host не интерпретирует и не изменяет эту строку. Text adapters принимают один JSON object в итоговом Controller message без fences; нативный structured output остаётся допустимым по контракту адаптера. Промежуточные сообщения, tools и Worker result не ограничены форматом Controller Decision. Единственное модельное описание формы передаётся в Invocation.instructions; decoder/admission остаются авторитетом.
+
 ## Outcome и ошибки
 
 `Outcome` содержит attemptId, terminal=`completed | failed | cancelled | unknown`, `effect=none | possible | confirmed | unknown`, diagnostics, output refs, usage. Completed означает завершение исполнителя, а не успешность пользовательской задачи. `confirmed` подтверждает наличие наблюдённого эффекта, а не его корректность.
