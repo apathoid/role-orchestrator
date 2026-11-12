@@ -9,6 +9,8 @@
 - Clarified declared-result submission versus native tool observations, Action admission/dispatch/completion, bridge scope, optional history and nested Assessment fields without changing Decision v1 or coordination.
 - Added actual ACP/CLI synthetic subprocess regressions for Decision-shaped tool output A versus final A/B/invalid, including an ACP observation gate, journal lifecycle and attributed outcomes. Native subagent reports, missing refs and ordinary correction remain independent of Host delegation. See STATUS for actual CI evidence and separate local comparative acceptance.
 
+- Review follow-up: fixed stale ACP result observation identity on message reset; clarified prior-message/no-message transport boundaries and exact optional non-empty Assessment reason. Extended real-adapter synthetic regressions and structural prompt delivery checks. Full review CI 398/398; native comparative acceptance remains open.
+
 ### C12R.10 — Controller contract (engineering; native comparison UNVERIFIED)
 
 - Единое Decision v1 описание для прямого ProviderPort и CLI/ACP, точные history/workMap cursors, валидный пример и явная граница transport / finalAssessment.answer. Сохранены native tools и отдельный Worker result.
