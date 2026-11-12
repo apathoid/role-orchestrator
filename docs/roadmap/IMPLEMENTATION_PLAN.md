@@ -68,6 +68,23 @@
 
 **Границы:** model-first, provider-agnostic; нет Host semantics, read/write классификации, FS/OS isolation, новых workflow, discovery native окружения/skills, JSON repair, обязательного MCP/делегирования/проверок, изменения Decision schema/lifecycle или defaults budgets. Технические гарантии и реальные permissions сохраняются. Этапы относятся к разработке продукта, не к выполнению задач. Реальные LLM, OpenCode, llama.cpp и Zed не запускаются в GitHub Actions и не блокируют .0–.6; параметры native runs фиксируются только для последующего локального эксперимента. Существующие C12.3/C12.4/C12R.9/NixOS native obligations остаются открыты.
 
+## C12R.10R — точность transport contract и прозрачность нативного исполнения
+
+[**Детальный план C12R.10R (§12 существующего плана C12R.10)**](C12R10_CONTROLLER_CONTRACT.md#12-c12r10r--уточнение-transport-contract-и-прозрачность-native-execution) — адресное инженерное продолжение C12R.10 перед продолжением локальной native acceptance. Следующий шаг — [STATUS](STATUS.md). Не новый runtime workflow.
+
+| Этап | Обязательный результат |
+|---|---|
+| C12R.10R.0 | Actual baseline, границы адаптеров, evidence и пробелы покрытия |
+| C12R.10R.1 | Компактный submission/admission/dispatch contract, без предписания workflow |
+| C12R.10R.2 | Scope tools.bridge и независимость native tools/skills/environment |
+| C12R.10R.3 | Точная семантика optional retrieval и Host lifecycle, неизменные cursors |
+| C12R.10R.4 | Уточнение вложенных/optional полей Decision v1, без schema change/repair |
+| C12R.10R.5 | Реальные ACP/CLI adapter wire regressions, preservation tests |
+| C12R.10R.6 | Полная доступная инженерная проверка, docs, STATUS, handoff |
+| C12R.10R.7 | Локальное дополнение к C12R.10.7, реальная сравнительная приёмка или UNVERIFIED |
+
+Границы C12R.10 сохраняются. Не предполагать наличие конкретного workflow, провайдера, инструментов или окружения; Host не подменяет нативного исполнителя и модель. Production changes преимущественно в existing decision-instructions/controller-context; adapter/runtime change только при доказанном адресном дефекте. Тестовые subprocess fixtures не являются production mechanism. Реальные LLM не блокируют .0–.6 и не запускаются в GitHub Actions.
+
 ## C12 — реализованные инженерные шаги и открытая приёмка
 
 | Шаг | Содержание | Завершение |
