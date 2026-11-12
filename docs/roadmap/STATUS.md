@@ -17,18 +17,29 @@
 
 **C12R.9.7:** нормативные контракты, CHANGELOG и единственная tests/ACCEPTANCE_MATRIX актуализированы; синтетические регрессии выполняются в CI. Реальная native C12R.9 A/B/C сравнительная приёмка **UNVERIFIED**: в GitHub Actions нет доступной authenticated model/Zed с доказанными tools. Итоговые регрессии и Nix проверки можно считать verified только после SUCCESS привязанного к конечному HEAD, не по промежуточным коммитам.
 
-**Последний подтверждённый инженерный этап:** C12R.9 review P1/P2, включая оба последних P2 workMap, завершён в доступном инженерном scope на `d57c11ee414de13d8451202d28a9b19a36f0edd1`; [CI 43174314648](https://github.com/apathoid/role-orchestrator/actions/runs/43174314648) **OBSERVED SUCCESS**, 367/367, без failed/skipped. Native integration/quality остаются UNVERIFIED; production readiness не заявляется.
+**Последний подтверждённый инженерный этап:** C12R.9 review P1/P2, включая последний P2 history directory, завершён в доступном инженерном scope на `2cff795bcf851f05cba7febd1d7dc740bab99d96`; [CI 43183117068](https://github.com/apathoid/role-orchestrator/actions/runs/43183117068) **OBSERVED SUCCESS**, 375/375, 0 failed/skipped/cancelled. Native integration/quality остаются UNVERIFIED; production readiness не заявляется.
 
-**Следующий шаг:** проверить новый P2 history directory (journal-prefix cursor, partial structured pages, positional stability) на итоговом CI; затем **реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence. Инженерная стабилизация C12R.9 подтверждена на последнем кодовом SHA; отдельный documentation-only commit проверяется собственным CI, не подменяет native assessment.
+**Следующий шаг:** **реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence. Инженерная стабилизация C12R.9 подтверждена на последнем кодовом SHA; отдельный documentation-only commit проверяется собственным CI, не подменяет native assessment.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
 | Implementation complete (original C12R.9) | **YES** на `1633a30a11a392bfd5b21474d0be6206b3a6fec7`; review fixes проверяются отдельно |
 | Regression verified (original C12R.9) | **OBSERVED SUCCESS**: [43083588324](https://github.com/apathoid/role-orchestrator/actions/runs/43083588324), [43083600272](https://github.com/apathoid/role-orchestrator/actions/runs/43083600272), оба на `1633a30` (Linux CI, package, Nix checks по run); это не доказательство исправления review |
-| Regression verified (review P1/P2) | **OBSERVED SUCCESS**: [CI 43174314648](https://github.com/apathoid/role-orchestrator/actions/runs/43174314648) на `d57c11ee414de13d8451202d28a9b19a36f0edd1`, 367/367 (foundation 4, core 25, provider 54, integration 280, acceptance 4); npm/checkJs, Nix build/install, NixOS evaluation, package/archive PASS. |
+| Regression verified (review P1/P2) | **OBSERVED SUCCESS**: [CI 43183117068](https://github.com/apathoid/role-orchestrator/actions/runs/43183117068) на `2cff795bcf851f05cba7febd1d7dc740bab99d96`, 375/375 (foundation 4, core 25, provider 54, integration 288, acceptance 4); npm/checkJs, Nix build/install, NixOS evaluation, package/archive PASS. |
 | Native integration verified | **UNVERIFIED:** настоящие Codex/ACP LLM, Zed и реальная NixOS runtime интеграция |
 | Performance/quality comparison verified | **UNVERIFIED:** A/B/C, default Controller 256 КиБ и отдельно 512 КиБ, fetch 64/128 КиБ |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**, production readiness **NO** |
+
+## C12R.9 последнее P2 — history directory (2026-11-12)
+
+**Implementation complete / automated regression verified: YES** на `2cff795bcf851f05cba7febd1d7dc740bab99d96`, [CI 43183117068](https://github.com/apathoid/role-orchestrator/actions/runs/43183117068) SUCCESS. Последний review baseline `d3967a1` также имел собственный полный SUCCESS [43174646264](https://github.com/apathoid/role-orchestrator/actions/runs/43174646264), но он не является доказательством нового исправления.
+
+- `78f40f0`: journal-prefix cursor `{revision,index}` для ContextPort.list, Controller contextRequest.cursor и MCP context_list; точный structured partial page cursor вместо текстового excerpt; legacy numeric nonzero -> invalid_cursor.
+- `26cf6df`: event-local positional identity при late observations и явный directory coverage при отсутствии места в prompt; актуальная canonical source metadata без изменения membership.
+- `66f0422`: восемь новых регрессий в `tests/integration/history-directory.test.js`. Полный [43182766024](https://github.com/apathoid/role-orchestrator/actions/runs/43182766024) SUCCESS, 375/375.
+- `2cff795`: сохранение известного end/invalid/closed даже при отсутствии места для optional page, MCP schema advertises 0/structured cursor; расширены boundary tests. Полный [CI 43183117068](https://github.com/apathoid/role-orchestrator/actions/runs/43183117068) SUCCESS.
+
+**OBSERVED:** две prompt-only Controller traversal регрессии (256 КиБ и 6000 байт), 31 observation и Decision между вызовами, findings и новый Worker, полное совпадение с исходным prefix без skips/repeats; fresh traversal видит новые записи. Остальные тесты покрывают count/byte limits, remaining budget after refs, final packing, invalid/end/tiny budget, long positional refs, selected scope, close, late outcomes, MCP across bridges, persisted Decision и реальный recovery. Все прежние 367 тестов также PASS. Промежуточный CI `26cf6df` cancelled после публикации следующего commit, не считается PASS/FAIL кода. Стандартные бюджеты не менялись. **Native integration / comparative quality/performance: UNVERIFIED.**
 
 ## C12R.9 повторное ревью — workMap (2026-11-12)
 

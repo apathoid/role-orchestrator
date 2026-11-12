@@ -6,7 +6,7 @@
 
 ### C12R.9 — контекст и история, review P1/P2 (engineering changes; native UNVERIFIED)
 
-- History directory uses journal-prefix cursors across Controller/MCP retrieval, including structured partial page delivery and stable positional source addressing for late observations.
+- History directory uses journal-prefix `{revision,index}` cursors across Controller/MCP retrieval (0 starts fresh; legacy nonzero offsets explicitly return invalid_cursor). Structured partial pages advance by actual delivered count, end/errors survive omitted page envelopes, late observations preserve event-local positional identity; independent budgets unchanged.
 
 - WorkMap pagination uses a stable journal-prefix `{revision,index}` cursor across Controller turns (0 starts a fresh traversal; legacy nonzero offsets explicitly report `invalid_cursor`); first Attempt retains the accepted Action's position, while lifecycle and refs remain live. Accepted-only rows distinguish cancellation, execution rejection and deferral without changing admission or dispatch semantics.
 

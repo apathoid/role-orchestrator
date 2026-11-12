@@ -265,7 +265,7 @@ C12R.6.1–6.4: `tests/integration/c12r-coordination.test.js` combines chosen sk
 
 ### C12R.9 review — фактический статус CI после кодовых исправлений
 
-**OBSERVED:** исходный `1633a30` — два SUCCESS workflows (см. [STATUS](../docs/roadmap/STATUS.md)). Review code через `edc0f8a` содержит регрессии для Codex CLI/ACP, полной технической карты, stale/ambiguous/denied positional refs, состояния после restart, 64/128 КиБ byte-chunks (включая malformed UTF‑16), missing/retention/in-flight cancel и no-MCP Controller. Исторически адресные тесты ожидали GitHub Actions из-за застрявших jobs. Последующий полный CI на `daefdbc` (43106917665) и текущий runtime `d57c11e` (43174314648) SUCCESS; промежуточные FAIL не являются текущим состоянием. Нативная модель/Zed/NixOS и сравнительная A/B/C приёмка — **UNVERIFIED**. Не менять эту матрицу на PASS до наблюдённого SUCCESS итогового SHA.
+**OBSERVED:** исходный `1633a30` — два SUCCESS workflows (см. [STATUS](../docs/roadmap/STATUS.md)). Review code через `edc0f8a` содержит регрессии для Codex CLI/ACP, полной технической карты, stale/ambiguous/denied positional refs, состояния после restart, 64/128 КиБ byte-chunks (включая malformed UTF‑16), missing/retention/in-flight cancel и no-MCP Controller. Исторически адресные тесты ожидали GitHub Actions из-за застрявших jobs. Последующий полный CI на `daefdbc` (43106917665) и исторический runtime `d57c11e` (43174314648) SUCCESS; промежуточные FAIL не являются текущим состоянием. Нативная модель/Zed/NixOS и сравнительная A/B/C приёмка — **UNVERIFIED**. Не менять эту матрицу на PASS до наблюдённого SUCCESS итогового SHA.
 
 ### C12R.9 повторное ревью — независимость транспортов и performance
 
@@ -289,3 +289,17 @@ Synthetic subprocess/CI PASS не означает проверенного ка
 | End, invalid cursor, budget | explicit end/stall and invalid historical offset; strict v1 Decision validation | **PASS (synthetic)** |
 
 **OBSERVED:** [CI 43174314648](https://github.com/apathoid/role-orchestrator/actions/runs/43174314648) на `d57c11ee414de13d8451202d28a9b19a36f0edd1`, 367/367 (280 integration), 0 failures/skipped, checkJs, package, Nix build/install and NixOS evaluation SUCCESS. Native integration и comparative real-model quality/performance остаются **UNVERIFIED**.
+
+### C12R.9 final P2 — history directory (synthetic)
+
+| Проверка | Regression (`history-directory.test.js`) | Result |
+|---|---|---|
+| Growing prompt-only Controller directory | 256 KiB and 6000-byte budgets, 31 observations/Decision per turn, findings, new Worker, exact prefix and fresh traversal | PASS |
+| Page size/count/visibility/positional refs | 32/8192, long refs, selected scope, invalid/end/closed | PASS |
+| Partial delivery | refs consume budget, materialization and final packing, zero rows, tiny error/end coverage | PASS |
+| Late observation/outcome | stable prefix membership and event-local positions, ambiguous legacy slot, canonical body | PASS |
+| MCP | actual HTTP context_list across bridges with growing journal, same cursor contract | PASS |
+| Recovery | snapshot encode/decode, file-store reopen, real Controller continuation | PASS |
+| Decision v1 | structured cursor, 0, legacy numeric decode, malformed reject; contextCursor independent | PASS |
+
+**OBSERVED:** [CI 43183117068](https://github.com/apathoid/role-orchestrator/actions/runs/43183117068) на `2cff795bcf851f05cba7febd1d7dc740bab99d96`, 375/375 (288 integration), 0 failed/skipped/cancelled; checkJs, package, Nix build/install, NixOS evaluation SUCCESS. Native real models/Zed/NixOS runtime and comparative quality/performance remain **UNVERIFIED**.
