@@ -225,7 +225,7 @@ test('history directory: partial materialization and final prompt preserve exact
   const marker=(await materializeControllerHistory(access,{cursor:0},100))[0];
   assert.deepEqual(marker.value,{kind:'unavailable',reason:'budget'});
   const tiny=controllerContext(f.state,[],undefined,undefined,1,undefined,whole);
-  assert.deepEqual(tiny[1].value.historyRequestCoverage.directory,{kind:'unavailable',reason:'budget'});
+  assert.deepEqual(tiny[1].value.historyRequestCoverage.directory,{kind:'unavailable',end:false,reason:'budget'});
   assert.equal(tiny.some(item=>item.ref==='host:history-page:0'),false);
   const invalid=(await materializeControllerHistory(access,{cursor:17},65536))[0];
   assert.deepEqual(invalid.value,{kind:'unavailable',reason:'invalid_cursor'});
@@ -234,6 +234,18 @@ test('history directory: partial materialization and final prompt preserve exact
   assert.equal(last[0].value.kind,'available');
   assert.deepEqual(last[0].value.items,[]);
   assert.equal(last[0].value.nextCursor,undefined);
+  const tinyInvalid=await materializeControllerHistory(access,{cursor:17},1);
+  assert.deepEqual(tinyInvalid[0].value,{kind:'unavailable',reason:'invalid_cursor'});
+  assert.deepEqual(controllerContext(f.state,[],undefined,undefined,1,undefined,tinyInvalid)[1]
+    .value.historyRequestCoverage.directory,{kind:'unavailable',end:false,reason:'invalid_cursor'});
+  const tinyEnd=await materializeControllerHistory(access,{cursor:{revision:f.state.revision,
+    index:operationHistory(f.state).length}},1);
+  assert.equal(tinyEnd[0].value.kind,'available');
+  const endCoverage=controllerContext(f.state,[],undefined,undefined,1,undefined,tinyEnd)[1]
+    .value.historyRequestCoverage.directory;
+  assert.equal(endCoverage.kind,'available');
+  assert.equal(endCoverage.end,true);
+  assert.equal(endCoverage.reason,undefined);
 });
 
 test('history directory: late observations preserve prefix membership and event-local positional identity',async()=>{

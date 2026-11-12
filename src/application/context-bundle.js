@@ -83,7 +83,10 @@ function boundRequestedByteChunk(item, maxBytes) {
  */
 function boundHistoryPage(item, maxBytes) {
   const page = /** @type {import('../core/ports.js').ContextList} */ (item.value);
-  if (page?.kind === 'available') {
+  // A known error or empty terminal page is technical metadata, not a
+  // nonempty page stalled by bytes. Preserve it for the coverage report.
+  if (page?.kind !== 'available' || page.items.length === 0) return undefined;
+  {
     for (let count = page.items.length; count > 0; count--) {
       const nextCursor = count === page.items.length ? page.nextCursor :
         {revision: page.cursor.revision, index: page.cursor.index + count};

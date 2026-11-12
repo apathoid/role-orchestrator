@@ -418,7 +418,8 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         omittedDuringPresentation: requestRecords.length,
         // Reserve the longest reason before optional packing so even an
         // entirely omitted directory page has an explicit budget result.
-        ...(requestedPage && {directory: {kind: 'unavailable', reason: /** @type {string | undefined} */ ('invalid_cursor')}}),
+        ...(requestedPage && {directory: {kind: 'unavailable', end: false,
+          reason: /** @type {string | undefined} */ ('invalid_cursor')}}),
       } }),
       technicalBudget: { maxBytes, mandatoryBytes: 0, mandatoryOverflow: false },
       unresolvedAttempts: /** @type {typeof facts.unresolvedAttempts} */ ([]),
@@ -551,12 +552,16 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     host.value.historyRequestCoverage.omittedDuringPresentation = requestRecords.length - count;
     const directory = host.value.historyRequestCoverage.directory;
     if (directory && requestedPage) {
-      const page = bounded.context.find(item => item.ref === requestedPage.ref)?.value;
-      if (page && typeof page === 'object' && 'kind' in page && page.kind === 'available') {
+      const presentedPage = bounded.context.find(item => item.ref === requestedPage.ref)?.value;
+      const page = presentedPage ?? requestedPage.value;
+      if (page && typeof page === 'object' && 'kind' in page &&
+          page.kind === 'available' && 'items' in page && Array.isArray(page.items) &&
+          (presentedPage || page.items.length === 0)) {
         directory.kind = 'available';
+        directory.end = !('nextCursor' in page) || page.nextCursor === undefined;
         directory.reason = undefined;
-      } else directory.reason = page && typeof page === 'object' && 'reason' in page
-        ? String(page.reason) : 'budget';
+      } else directory.reason = page && typeof page === 'object' && 'kind' in page &&
+        page.kind === 'unavailable' && 'reason' in page ? String(page.reason) : 'budget';
     }
   }
   // History budget counters can shrink after optional packing; final

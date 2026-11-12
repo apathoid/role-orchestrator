@@ -26,7 +26,7 @@ const fetchArgs = record({
 const countSchema = { type: 'integer', minimum: 0 };
 const listTool = {
   name: 'context_list', description: 'List visible historical records by page. Copy nextCursor exactly to continue the same journal-prefix traversal; omit cursor or use 0 to start a fresh traversal.',
-  inputSchema: { type: 'object', properties: { cursor: { anyOf: [countSchema, { type: 'object',
+  inputSchema: { type: 'object', properties: { cursor: { anyOf: [{type:'integer',enum:[0]}, { type: 'object',
     properties: { revision: countSchema, index: countSchema }, required: ['revision','index'], additionalProperties: false }] } }, additionalProperties: false },
 };
 const fetchTool = {

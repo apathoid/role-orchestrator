@@ -324,7 +324,8 @@ export async function materializeControllerHistory(port, request, maxBytes) {
     // presentation. A budget marker is retained as technical metadata even
     // if no optional body fits, so final packing can report the omission.
     delivered.push(boundContextItem(item, Math.max(0, maxBytes - bytes)) ??
-      {...item, completeness: 'unavailable', value: {kind:'unavailable', reason:'budget'}});
+      (page.kind === 'unavailable' || page.items.length === 0 ? item :
+        {...item, completeness: 'unavailable', value: {kind:'unavailable', reason:'budget'}}));
   }
   if (represented < refs.length) {
     delivered.push({ ref: 'host:history-request-budget', source: 'host_observed',
