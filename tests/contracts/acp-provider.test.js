@@ -565,3 +565,23 @@ for (const mode of ['a', 'b', 'invalid']) {
       }
     }));
 }
+
+test('C12R.10R ACP native subagent observation does not need bridge support or a Host Worker', linux, () =>
+  withOwnedRun('C12R10R-native-subagent', async cwd => {
+    const endpoint = provider(cwd, 'native-subagent-report');
+    assert.equal((await endpoint.describe()).capabilities['tools.bridge'].support, 'unsupported');
+    const { api } = setup({ provider: endpoint, profile, maxInvocations: 1 });
+    try {
+      const state = await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status, 'finished');
+      assert.equal(state.assessment.answer, 'Native subagent reported a result');
+      assert.equal(state.attempts.length, 1);
+      const receipt = state.events.find(e => e.kind === 'attempt.outcome');
+      const tool = receipt.observations.find(o => o.provenance?.kind === 'provider_tool' &&
+        o.provenance.sourceId === 'native-subagent' && o.value.status === 'completed');
+      assert.equal(tool.source, 'provider_reported');
+      assert.match(tool.value.json, /Native subagent reported a result/);
+      assert.ok(receipt.outcome.outputRefs.some(ref => ref.ref === tool.ref));
+      assert.ok(state.events.every(e => e.kind !== 'controller.responded' || e.admissions.length === 0));
+    } finally { await api.close(); }
+  }));

@@ -319,18 +319,27 @@ test('C12R.10: actual CLI Controller contract and distinct correction reasons pr
       message(JSON.stringify(decision({finalAssessment:assessment({requirements:[
         {requirementId:'r',status:'unverified',observationRefs:[]}
       ]})})));
-    } else {
+    } else if (step === 4) {
       assert.equal(error.path, '$.finalAssessment.requirements[0].findingRefs');
       assert.equal(error.expected, 'an array');
-      message(JSON.stringify(decision({finalAssessment:assessment({answer:${JSON.stringify(answer)}})})));
+      message(JSON.stringify(decision({finalAssessment:assessment({requirements:[
+        {requirementId:'r',status:'unverified',observationRefs:[],findingRefs:[],reason:null}
+      ]})})));
+    } else {
+      assert.equal(error.path, '$.finalAssessment.requirements[0].reason');
+      assert.equal(error.expected, 'a non-empty string');
+      message(JSON.stringify(decision({finalAssessment:assessment({answer:${JSON.stringify(answer)},requirements:[
+        {requirementId:'r',status:'unverified',observationRefs:[],findingRefs:[]}
+      ]})})));
     }
     complete();
-  `, {maxInvocations:5});
+  `, {maxInvocations:6});
   const state = await (await api.submit(request())).completion;
   assert.equal(state.status,'finished');
   assert.equal(state.assessment.answer,answer);
-  assert.equal(state.attempts.length,5);
-  assert.equal(state.events.filter(e=>e.kind==='controller.invalid_proposal').length,4);
+  assert.equal(state.assessment.requirements[0].reason,undefined);
+  assert.equal(state.attempts.length,6);
+  assert.equal(state.events.filter(e=>e.kind==='controller.invalid_proposal').length,5);
   assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
   const first=state.events.find(e=>e.kind==='attempt.outcome');
   assert.equal(first.outcome.effect,'unknown');

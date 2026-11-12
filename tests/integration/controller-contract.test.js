@@ -133,3 +133,25 @@ test('C12R.10 invalid proposal leaves accepted independent Worker and observed n
     assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,3);
   }finally{release.resolve();await api.close();}
 });
+
+test('C12R.10R missing history is not an Action and does not require MCP or Workers', async () => {
+  const missing = 'never-created-action';
+  const { api, invocations, respondErrors } = setup({ maxInvocations: 2, respond(invocation, count) {
+    assert.equal(invocation.kind, 'controller');
+    if (count === 1) return final(invocation, { finalAssessment: undefined,
+      nextController: { continue: true, contextRequest: { refs: [missing] } } });
+    const record = invocation.context.find(item => item.ref === missing);
+    assert.equal(record?.unavailableReason, 'missing');
+    const host = invocation.context.find(item => item.ref === 'host:invocation-context').value;
+    assert.ok(!host.workMap.entries.some(row => row.actionId === missing));
+    return final(invocation);
+  } });
+  try {
+    const state = await (await api.submit(request())).completion;
+    assert.equal(state.status, 'finished', respondErrors.map(String).join('\n'));
+    assert.equal(invocations.length, 2);
+    assert.equal(state.attempts.length, 2);
+    assert.ok(state.attempts.every(attempt => attempt.actionId === attempt.attemptId));
+    assert.ok(state.events.every(e => e.kind !== 'controller.responded' || e.admissions.length === 0));
+  } finally { await api.close(); }
+});

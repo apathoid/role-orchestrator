@@ -95,6 +95,23 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
+    if (scenario === 'native-subagent-report') {
+      assert.equal(kind, 'controller');
+      const host = context.find(item => item.ref === 'host:invocation-context').value;
+      await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'tool_call', toolCallId: 'native-subagent', title: 'Native subagent',
+        kind: 'other', status: 'in_progress',
+      } });
+      await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'tool_call_update', toolCallId: 'native-subagent', status: 'completed',
+        content: [{type:'content',content:{type:'text',text:'Native subagent reported a result'}}],
+      } });
+      await message('final', JSON.stringify({schemaVersion:1,decisionId:attemptId+'-final',
+        operationId,contextCursor:host.contextCursor,additions:[],cancellations:[],
+        finalAssessment:{author:profileId,overall:'complete',requirements:[],observationRefs:[],
+          findingRefs:[],unresolvedQuestions:[],answer:'Native subagent reported a result'}}));
+      return {stopReason:'end_turn'};
+    }
     if (scenario.startsWith('decision-tool-')) {
       const host = context.find(item => item.ref === 'host:invocation-context')?.value;
       if (kind === 'delegate') {
