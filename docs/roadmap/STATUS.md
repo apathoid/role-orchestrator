@@ -1,6 +1,14 @@
 # Role Orchestrator — оперативный статус
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
+## C12R.10 — Controller contract (план принят, реализация не начата)
+
+**Исходный HEAD:** `0117f845c0a9647342279d9ab631c978fd08092d` (documentation baseline). **Implementation complete: NO; regression verified: UNVERIFIED; native integration/quality: UNVERIFIED.** Предыдущий CI C12R.9 не доказывает C12R.10.
+
+Пользовательские нативные отчёты показали ошибки Decision и Catalog selection, включая правильный содержательный ответ при невалидной структуре; нежелательные записи и содержательные ошибки наблюдались также напрямую через OpenCode. SUPPORTED исходниками: несогласованные cursor/ref определения, неточное имя assessment, неразличимая parsing/depth/type диагностика. Причинная связь с размером контекста/всеми задержками и сравнительное качество — UNVERIFIED.
+
+[План C12R.10](C12R10_CONTROLLER_CONTRACT.md) задаёт .0 synthetic baseline, .1–.4 согласованный Decision prompt/transport/error/Catalog contract, .5 сохранность возможностей, .6 full regression и инженерный handoff, .7 отдельную локальную comparative acceptance. Не изменять Decision schema/lifecycle, budgets, native permissions/skill discovery, не добавлять workflow, Host semantics или JSON repair. Не запускать реальные LLM в GitHub Actions и не требовать OpenCode/llama.cpp/Zed/credentials для .0–.6. Параметры реальных запусков — только метаданные последующего локального эксперимента. Все прежние native обязательства остаются открытыми.
+
 **C12R.9.0 baseline (synthetic, 2026-11-11):** на предыдущем HEAD подтверждены hard cap 128, несвязанный byte budget dynamic facts и несоответствие terminal/effect. Добавлена красная регрессия для этих границ и optional no-MCP retrieval; это ещё не native acceptance и не PASS новой функциональности.
 
 **C12R.9.1:** presentation-only conservative byte + attempt/providerRef/provenance dedup added; original observations and refs remain in journal. Исходная полная регрессия C12R.9 прошла на `1633a30`; review исправления проверены полным CI на `1ea0a2f`.
@@ -19,7 +27,7 @@
 
 **Последний подтверждённый инженерный этап:** C12R.9 review P1/P2, включая последний P2 history directory, завершён в доступном инженерном scope на `2cff795bcf851f05cba7febd1d7dc740bab99d96`; [CI 43183117068](https://github.com/apathoid/role-orchestrator/actions/runs/43183117068) **OBSERVED SUCCESS**, 375/375, 0 failed/skipped/cancelled. Native integration/quality остаются UNVERIFIED; production readiness не заявляется.
 
-**Следующий шаг:** **реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence. Инженерная стабилизация C12R.9 подтверждена на последнем кодовом SHA; отдельный documentation-only commit проверяется собственным CI, не подменяет native assessment.
+**Следующий шаг: C12R.10.0 — synthetic baseline и адресные регрессии** по [детальному плану C12R.10](C12R10_CONTROLLER_CONTRACT.md), затем .1–.6 до инженерного завершения с обязательным CI. Реальные модели не являются prerequisite разработки; .7 — отдельная локальная сравнительная приёмка после инженерной delivery. Реальные native C12.3/C12.4/C12R.9, Zed и NixOS остаются открытыми.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
