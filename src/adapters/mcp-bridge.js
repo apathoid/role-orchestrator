@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { count, decode, id, optional, record } from '../core/decode.js';
-import { contextReference } from '../core/contracts.js';
+import { contextReference, historyCursor } from '../core/contracts.js';
 
 /** @import {Invocation} from '../core/ports.js' */
 /** @import {IncomingMessage, ServerResponse} from 'node:http' */
@@ -15,7 +15,7 @@ const toolStatuses = new Set(['completed', 'failed', 'truncated', 'invalid_input
 const toolEffects = new Set(['none', 'possible', 'unknown']);
 const versions = new Set(['2025-03-26', '2025-06-18', '2025-11-25']);
 
-const listArgs = record({ cursor: optional(count) });
+const listArgs = record({ cursor: optional(historyCursor) });
 const fetchArgs = record({
   ref: contextReference,
   sourceOperationId: optional(id),
@@ -25,8 +25,9 @@ const fetchArgs = record({
 
 const countSchema = { type: 'integer', minimum: 0 };
 const listTool = {
-  name: 'context_list', description: 'List visible historical records by page. Omitted prompt records can be found here.',
-  inputSchema: { type: 'object', properties: { cursor: countSchema }, additionalProperties: false },
+  name: 'context_list', description: 'List visible historical records by page. Copy nextCursor exactly to continue the same journal-prefix traversal; omit cursor or use 0 to start a fresh traversal.',
+  inputSchema: { type: 'object', properties: { cursor: { anyOf: [countSchema, { type: 'object',
+    properties: { revision: countSchema, index: countSchema }, required: ['revision','index'], additionalProperties: false }] } }, additionalProperties: false },
 };
 const fetchTool = {
   name: 'context_fetch', description: 'Retrieve a visible record by ref or position returned by context_list. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; follow nextOffset to read more. Source completeness and truncation remain as recorded.',
@@ -42,8 +43,8 @@ const fetchTool = {
 /** @param {boolean} enabled */
 export function retrievalDetail(enabled) {
   return enabled
-    ? 'Optional MCP context_list and context_fetch retrieve omitted history when useful. context_fetch offset reads saved data in bounded base64 chunks with nextOffset; retain original completeness. Report material unavailable evidence explicitly.'
-    : 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or cursors for a subsequent Controller turn without MCP; report material missing evidence when relevant.';
+    ? 'Optional MCP context_list and context_fetch retrieve omitted history when useful. Copy context_list nextCursor exactly; cursor 0 starts a fresh directory traversal. context_fetch offset reads saved data in bounded base64 chunks with nextOffset; retain original completeness. Report material unavailable evidence explicitly.'
+    : 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.';
 }
 
 /** @param {unknown} value @returns {Record<string, unknown> | undefined} */

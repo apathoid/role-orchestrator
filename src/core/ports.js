@@ -88,7 +88,7 @@
  *   permissions?: Pick<AttemptPermissions, 'request'>, newId: () => string, maxBytes: number,
  *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
  * @typedef {{
- *   list: (cursor?: number) => ContextList,
+ *   list: (cursor?: HistoryCursor) => ContextList,
  *   fetch: (ref: string | ContextPosition, sourceOperationId?: string, range?: {offset: number, maxBytes?: number}) => Promise<ContextFetch>,
  *   captureArtifact: (bytes: Uint8Array) => Promise<string | undefined>
  * }} ContextPort
@@ -99,8 +99,9 @@
  * @typedef {NonNullable<ContextItem['receivedSequence']>} ContextPosition
  * @typedef {Pick<ContextItem, 'source' | 'completeness' | 'attemptId' | 'receivedSequence' |
  *   'providerRef' | 'kind' | 'outputKind' | 'unavailableReason'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem
- * @typedef {{kind: 'available', items: ContextDirectoryItem[], nextCursor?: number} |
- *   {kind: 'unavailable', reason: 'closed' | 'invalid_cursor'}} ContextList
+ * @typedef {number | {revision: number, index: number}} HistoryCursor
+ * @typedef {{kind: 'available', cursor: {revision: number, index: number}, items: ContextDirectoryItem[], nextCursor?: {revision: number, index: number}} |
+ *   {kind: 'unavailable', reason: 'closed' | 'invalid_cursor' | 'budget'}} ContextList
  * @typedef {(share: {sourceOperationId: string, targetOperationId: string, ref: string, profileId: string}) => boolean} ContextShare
  * @typedef {(retry: {operationId: string, attemptId: string, actionId: string, profileId: string}) => boolean} RetryApproval
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>

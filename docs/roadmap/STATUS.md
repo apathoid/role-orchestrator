@@ -19,7 +19,7 @@
 
 **Последний подтверждённый инженерный этап:** C12R.9 review P1/P2, включая оба последних P2 workMap, завершён в доступном инженерном scope на `d57c11ee414de13d8451202d28a9b19a36f0edd1`; [CI 43174314648](https://github.com/apathoid/role-orchestrator/actions/runs/43174314648) **OBSERVED SUCCESS**, 367/367, без failed/skipped. Native integration/quality остаются UNVERIFIED; production readiness не заявляется.
 
-**Следующий шаг:** **реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence. Инженерная стабилизация C12R.9 подтверждена на последнем кодовом SHA; отдельный documentation-only commit проверяется собственным CI, не подменяет native assessment.
+**Следующий шаг:** проверить новый P2 history directory (journal-prefix cursor, partial structured pages, positional stability) на итоговом CI; затем **реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence. Инженерная стабилизация C12R.9 подтверждена на последнем кодовом SHA; отдельный documentation-only commit проверяется собственным CI, не подменяет native assessment.
 
 | Слой готовности | Фактическое состояние |
 |---|---|

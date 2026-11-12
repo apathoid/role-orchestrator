@@ -1,9 +1,11 @@
 import { boundContextItem } from './context-bundle.js';
 import { operationHistory } from './controller-context.js';
 import { observation } from '../core/observation.js';
+import { decode } from '../core/decode.js';
+import { historyCursor } from '../core/contracts.js';
 
 /** @import {Operation} from '../core/operation.js' */
-/** @import {ContextDirectoryItem, ContextFetch, ContextPort, ContextShare, StateStore} from '../core/ports.js' */
+/** @import {ContextDirectoryItem, ContextFetch, ContextPort, ContextShare, StateStore, ContextList, HistoryCursor} from '../core/ports.js' */
 /** @import {ContextItem, Observation} from '../core/observation.js' */
 
 const pageRecords = 32;
@@ -37,26 +39,41 @@ export function bindContextAccess(scope) {
   /** @type {ContextItem[] | undefined} */
   let history;
   const localHistory = () => history ??= operationHistory(state);
-  /** @type {ContextItem[] | undefined} */
+  // Only invocation-local derived views; the cursor itself carries the
+  // journal boundary and needs no persisted pagination state.
+  /** @type {{revision: number, items: ContextItem[]} | undefined} */
   let directory;
   return {
     list(cursor = 0) {
       if (!isActive()) return { kind: 'unavailable', reason: 'closed' };
-      if (!Number.isSafeInteger(cursor) || cursor < 0) return { kind: 'unavailable', reason: 'invalid_cursor' };
-      directory ??= localHistory().filter(item => !selected || selected.has(item.ref)).reverse();
-      if (cursor > directory.length) return { kind: 'unavailable', reason: 'invalid_cursor' };
+      const parsed = decode(historyCursor, cursor);
+      if (parsed.kind !== 'accepted') return { kind: 'unavailable', reason: 'invalid_cursor' };
+      const value = parsed.value;
+      if (typeof value === 'number' && value !== 0) return { kind: 'unavailable', reason: 'invalid_cursor' };
+      const start = value === 0 ? {revision: state.events.length, index: 0} : value;
+      if (start.revision > state.events.length) return { kind: 'unavailable', reason: 'invalid_cursor' };
+      if (directory?.revision !== start.revision) {
+        const source = start.revision === state.events.length ? localHistory() : operationHistory(state, start.revision);
+        directory = {revision: start.revision, items: source.filter(item => !selected || selected.has(item.ref)).reverse()};
+      }
+      const rows = directory.items;
+      if (start.index > rows.length) return { kind: 'unavailable', reason: 'invalid_cursor' };
       /** @type {ContextDirectoryItem[]} */
       const items = [];
-      let bytes = 128;
-      while (cursor < directory.length && items.length < pageRecords) {
-        const entry = directoryEntry(directory[cursor]);
-        const size = Buffer.byteLength(JSON.stringify(entry)) + 1;
-        if (bytes + size > pageBytes) break;
-        bytes += size;
+      let index = start.index;
+      /** @type {Extract<ContextList, {kind: 'available'}>} */
+      const page = {kind: 'available', cursor: start, items};
+      while (index < rows.length && items.length < pageRecords) {
+        const entry = directoryEntry(rows[index]);
+        const next = index + 1;
+        const candidate = {...page, items: [...items, entry],
+          nextCursor: next < rows.length ? {revision: start.revision, index: next} : undefined};
+        if (Buffer.byteLength(JSON.stringify(candidate)) > pageBytes) break;
         items.push(entry);
-        cursor++;
+        index = next;
       }
-      return { kind: 'available', items, ...(cursor < directory.length ? { nextCursor: cursor } : {}) };
+      if (index === start.index && index < rows.length) return {kind: 'unavailable', reason: 'budget'};
+      return {...page, ...(index < rows.length && {nextCursor: {revision: start.revision, index}})};
     },
 
     async fetch(ref, sourceOperationId = state.operationId, range) {
@@ -72,8 +89,18 @@ export function bindContextAccess(scope) {
       const sharedRequest = sourceOperationId !== state.operationId;
       if (typeof ref === 'string' ? !ref.trim() : sharedRequest || !ref || typeof ref !== 'object' ||
           !Number.isSafeInteger(ref.revision) || !Number.isSafeInteger(ref.index)) return unavailable('denied');
-      const historical = typeof ref === 'string' ? undefined : localHistory().find(item =>
-        item.receivedSequence?.revision === ref.revision && item.receivedSequence?.index === ref.index);
+      // Resolve positions against the event prefix that originally assigned
+      // them. Later observations may replace an output-only placeholder.
+      // Never let a shifted position identify a different record, or bypass
+      // the current ambiguity/selection checks.
+      const positional = typeof ref === 'string' ? undefined :
+        ref.revision >= 0 && ref.revision <= state.events.length && ref.index >= 0
+          ? operationHistory(state, ref.revision).find(item =>
+            item.receivedSequence?.revision === ref.revision && item.receivedSequence?.index === ref.index)
+          : undefined;
+      const current = positional && localHistory().find(item => item.ref === positional.ref);
+      const historical = current?.unavailableReason === 'ambiguous' ? current :
+        current && current.attemptId === positional?.attemptId ? current : positional;
       if (selected && !selected.has(historical?.ref ?? (typeof ref === 'string' ? ref : ''))) return unavailable('denied');
       const allowed = () => !sharedRequest || (typeof ref === 'string' &&
         scope.allowShare?.({ sourceOperationId, targetOperationId: state.operationId, ref, profileId }) === true);
@@ -202,7 +229,7 @@ export function bindContextAccess(scope) {
  * extra store, automatic Worker dispatch, or semantic selection.
  * @param {ContextPort} port
  * @param {{refs?: readonly (string | import('../core/ports.js').ContextPosition |
- *     {ref: string | import('../core/ports.js').ContextPosition, offset: number})[], cursor?: number}} request
+ *     {ref: string | import('../core/ports.js').ContextPosition, offset: number})[], cursor?: HistoryCursor}} request
  * @param {number} maxBytes
  * @returns {Promise<ContextItem[]>}
  */
@@ -211,7 +238,7 @@ export async function materializeControllerHistory(port, request, maxBytes) {
   const delivered = [];
   let bytes = 0;
   // An explicitly named raw result wins over a directory preview.
-  // The latter is still addressable by the original numeric cursor.
+  // The latter retains the original journal-prefix cursor when shortened.
   const refs = request.refs ?? [];
   let represented = 0;
   for (const ref of refs) {
@@ -268,37 +295,16 @@ export async function materializeControllerHistory(port, request, maxBytes) {
   }
   if (request.cursor !== undefined) {
     const page = port.list(request.cursor);
-    const base = { ref: 'host:history-page:' + request.cursor,
-      source: /** @type {const} */ ('host_observed') };
-    if (page.kind === 'available') {
-      /** @type {typeof page.items} */
-      const items = [];
-      for (const next of page.items) {
-        const count = items.length + 1;
-        const cursor = count === page.items.length ? page.nextCursor : request.cursor + count;
-        const draft = { ...base, completeness: /** @type {const} */ ('complete'),
-          value: { kind: 'available', items: [...items, next],
-            ...(cursor === undefined ? {} : {nextCursor:cursor}) } };
-        if (bytes + Buffer.byteLength(JSON.stringify(draft)) > maxBytes) break;
-        items.push(next);
-      }
-      const nextCursor = items.length === page.items.length ? page.nextCursor : request.cursor + items.length;
-      const item = { ...base, completeness: /** @type {const} */ ('complete'),
-        value: { kind: 'available', items,
-          ...(nextCursor === undefined ? {} : { nextCursor }) } };
-      if ((items.length > 0 || page.items.length === 0) &&
-          bytes + Buffer.byteLength(JSON.stringify(item)) <= maxBytes) {
-        bytes += Buffer.byteLength(JSON.stringify(item));
-        delivered.push(item);
-      } else {
-        const unavailable = { ...base, completeness: /** @type {const} */ ('unavailable'),
-          unavailableReason: /** @type {const} */ ('budget') };
-        if (bytes + Buffer.byteLength(JSON.stringify(unavailable)) <= maxBytes) delivered.push(unavailable);
-      }
-    } else {
-      const item = { ...base, completeness: /** @type {const} */ ('complete'), value: page };
-      if (bytes + Buffer.byteLength(JSON.stringify(item)) <= maxBytes) delivered.push(item);
-    }
+    const key = typeof request.cursor === 'number' ? String(request.cursor) :
+      request.cursor.revision + ':' + request.cursor.index;
+    /** @type {ContextItem} */
+    const item = {ref: 'host:history-page:' + key, source: 'host_observed',
+      completeness: 'complete', value: page};
+    // Same structured bounding at materialization and final Controller
+    // presentation. A budget marker is retained as technical metadata even
+    // if no optional body fits, so final packing can report the omission.
+    delivered.push(boundContextItem(item, Math.max(0, maxBytes - bytes)) ??
+      {...item, completeness: 'unavailable', value: {kind:'unavailable', reason:'budget'}});
   }
   if (represented < refs.length) {
     delivered.push({ ref: 'host:history-request-budget', source: 'host_observed',

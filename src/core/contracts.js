@@ -49,6 +49,10 @@ export const followup = record({ requestId: id, text, questionId: optional(id), 
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 /** @param {unknown} input @param {string} path */
 const contextPosition = record({ revision: count, index: count });
+/** Journal-prefix page cursor. Legacy nonzero numbers decode for persisted Decisions;
+ * the ContextPort rejects them instead of silently reinterpreting a moving offset. */
+/** @param {unknown} value @param {string} at */
+export const historyCursor = (value, at) => typeof value === 'number' ? count(value, at) : contextPosition(value, at);
 /** A history reference is the same identity used by ContextPort.fetch. */
 /** @param {unknown} input @param {string} path */
 export const contextReference = (input, path) => typeof input === 'string'
@@ -68,7 +72,7 @@ function contextSelectionKey(ref) {
 }
 /** @param {unknown} input @param {string} path */
 const contextRequest = (input, path) => {
-  const value = record({ refs: optional(contextReferences), cursor: optional(count), workCursor: optional((value, at) => typeof value === 'number' ? count(value, at) : contextPosition(value, at)) })(input, path);
+  const value = record({ refs: optional(contextReferences), cursor: optional(historyCursor), workCursor: optional(historyCursor) })(input, path);
   if ((!value.refs || value.refs.length === 0) && value.cursor === undefined && value.workCursor === undefined) {
     invalid(path, 'nonempty refs and/or cursor');
   }

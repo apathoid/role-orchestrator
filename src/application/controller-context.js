@@ -15,7 +15,7 @@ export const controllerInstructions = [
   'Action.skills selects only Host-managed Catalog skill ids for a Worker. A skill absent from this Catalog does not imply the provider lacks native skills, terminal, project instructions, files or scripts. Use these through available native tools without requiring Host Catalog registration. Selected skill instructions apply only to that Worker; restrictions on native subagents do not by themselves prohibit orchestration. Honor applicable task instructions, user requirements and actual permissions.',
   'Delegate when useful by selecting a profile, optional reasoningLevel, objective, expected result and context references. Use all_requested or next_completion when waiting for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'Profiles expose logical reasoning levels, not their private native mapping. Different models at the same level are not guaranteed equal. Omit reasoningLevel to use the trusted profile default or native mode.',
-  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:(string|{revision:number,index:number}|{ref:string|{revision:number,index:number},offset:number})[],cursor?:number,workCursor?:0|{revision:number,index:number}}} for an optional next Controller turn. A contextRequest selects historical refs or {ref,offset} byte-chunks, a history-directory page, or a workMap page with workCursor (copy nextCursor exactly; 0 starts a fresh map including new work. total counts the original traversal, liveTotal counts current work; lifecycle and refs remain current); use nextOffset for subsequent chunks. Base64 chunks are lossless stored bytes (UTF-8/json/binary), not a promise that truncated capture can be reconstructed; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
+  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:(string|{revision:number,index:number}|{ref:string|{revision:number,index:number},offset:number})[],cursor?:0|{revision:number,index:number},workCursor?:0|{revision:number,index:number}}} for an optional next Controller turn. A contextRequest selects historical refs or {ref,offset} byte-chunks, a history-directory page (copy its nextCursor exactly; cursor:0 starts a new traversal; distinct from workCursor and Decision.contextCursor), or a workMap page with workCursor (copy nextCursor exactly; 0 starts a fresh map including new work. total counts the original traversal, liveTotal counts current work; lifecycle and refs remain current); use nextOffset for subsequent chunks. Base64 chunks are lossless stored bytes (UTF-8/json/binary), not a promise that truncated capture can be reconstructed; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Workspace files and branches may change during the operation. Use observations to decide whether earlier findings still apply and whether to read a target again. Reported locations, versions and times describe individual observations.',
@@ -57,23 +57,27 @@ export function coordinationFacts(state, lookups) {
   };
 }
 
-/** @param {Operation} state @returns {ContextItem[]} */
-export function operationHistory(state) {
+/** @param {Operation} state @param {number} [throughRevision] @returns {ContextItem[]} */
+export function operationHistory(state, throughRevision = state.events.length) {
+  const events = throughRevision === state.events.length ? state.events : state.events.slice(0, throughRevision);
   /** @type {ContextItem[]} */
   const items = [
     { ...observation({ ref: state.request.requestId, completeness: 'complete', value: state.request.text },
       { kind: 'user', sourceId: state.request.requestId, receivedAt: state.acceptedAt }),
     receivedSequence: { revision: 0, index: 0 } },
   ];
-  const owners = new Map(state.events.flatMap(event => event.kind === 'attempt.outcome'
+  const observedOwners = new Map(events.flatMap(event => event.kind === 'attempt.outcome'
     ? (event.observations ?? []).map(item => [item.ref, event.outcome.attemptId])
     : []));
-  for (const [index, event] of state.events.entries()) {
+  /** @type {Map<string, string>} */
+  const owners = new Map();
+  for (const [index, event] of events.entries()) {
     const revision = index + 1;
     let offset = 0;
     if (event.kind === 'attempt.outcome') {
       for (const [index, item] of (event.observations ?? []).entries()) {
         items.push({ ...item, attemptId: event.outcome.attemptId, receivedSequence: { revision, index } });
+        owners.set(item.ref, event.outcome.attemptId);
       }
       offset = event.observations?.length ?? 0;
     } else if (event.kind === 'controller.responded') {
@@ -105,8 +109,12 @@ export function operationHistory(state) {
       for (const { ref, providerRef, source, kind } of event.outcome.outputRefs) {
         if (owners.get(ref) === event.outcome.attemptId) continue;
         owners.set(ref, event.outcome.attemptId);
+        // Reserve the event-local position even when a later observation
+        // supersedes this output-only placeholder in the current projection.
+        const position = offset++;
+        if (observedOwners.get(ref) === event.outcome.attemptId) continue;
         items.push({ ref, ...(providerRef === undefined ? {} : { providerRef }), source, outputKind: kind, completeness: 'unavailable', unavailableReason: 'payload',
-          attemptId: event.outcome.attemptId, receivedSequence: { revision, index: offset++ } });
+          attemptId: event.outcome.attemptId, receivedSequence: { revision, index: position } });
       }
     }
 

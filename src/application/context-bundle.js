@@ -75,10 +75,34 @@ function boundRequestedByteChunk(item, maxBytes) {
   return selected;
 }
 
+/**
+ * Directory pages are structured technical data, never string excerpts.
+ * Advance only by the number of rows actually delivered, at either budget.
+ * @param {ContextItem} item @param {number} maxBytes
+ * @returns {ContextItem | undefined}
+ */
+function boundHistoryPage(item, maxBytes) {
+  const page = /** @type {import('../core/ports.js').ContextList} */ (item.value);
+  if (page?.kind === 'available') {
+    for (let count = page.items.length; count > 0; count--) {
+      const nextCursor = count === page.items.length ? page.nextCursor :
+        {revision: page.cursor.revision, index: page.cursor.index + count};
+      const candidate = {...item, value: {...page, items: page.items.slice(0, count), nextCursor}};
+      if (jsonBytes(candidate) <= maxBytes) return candidate;
+    }
+  }
+  /** @type {ContextItem} */
+  const marker = {...item, completeness: 'unavailable', value: {kind:'unavailable', reason:'budget'}};
+  return jsonBytes(marker) <= maxBytes ? marker : undefined;
+}
+
 /** @param {ContextItem} item @param {number} maxBytes @param {number} [excerptLimit] */
 export function boundContextItem(item, maxBytes, excerptLimit = maxExcerptBytes) {
   if (maxBytes <= 0) return undefined;
   if (!(typeof item.value === 'string' && item.value.length > maxBytes) && jsonBytes(item) <= maxBytes) return item;
+  if (item.source === 'host_observed' && item.ref.startsWith('host:history-page:')) {
+    return boundHistoryPage(item, maxBytes);
+  }
   if (item.ref.startsWith('host:history-chunk:')) {
     return boundRequestedByteChunk(item, maxBytes);
   }
