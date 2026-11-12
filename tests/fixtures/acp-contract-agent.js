@@ -87,6 +87,11 @@ agent()
     const prompt = params.prompt[0].text;
     const marker = '\n\nInvocation (JSON):\n';
     const { objective, attemptId, kind, profileId, operationId, context, skillInstructions } = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length));
+    if (scenario === 'controller-contract' && kind === 'controller') {
+      assert.ok(prompt.includes('cursor?:0|{revision:number,index:number}'));
+      assert.ok(prompt.includes('finalAssessment.answer'));
+      assert.ok(!prompt.includes('cursor?: number'));
+    }
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });

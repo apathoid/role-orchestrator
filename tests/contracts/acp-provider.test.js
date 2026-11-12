@@ -470,3 +470,11 @@ test('C12R.9 review P1: ACP Worker final message reaches Controller once without
     assert.ok(!receipts[0].observations.some(item=>item.ref.startsWith('attempt-output:')));
     assert.ok(receipts[0].outcome.outputRefs.some(ref=>ref.ref===delivered[0].ref));
   }));
+
+test('C12R.10 actual ACP prompt delivers the current Decision contract', linux, () =>
+  withOwnedRun('C12R10-controller-contract', async cwd => {
+    const { api } = setup({provider:provider(cwd,'controller-contract'),profile});
+    const state = await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+    assert.equal(state.status,'finished');
+    assert.equal(state.assessment.answer,'ACP Controller response');
+  }));

@@ -1,7 +1,7 @@
 # Role Orchestrator — оперативный статус
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
-## C12R.10 — Controller contract (план принят, реализация не начата)
+## C12R.10 — Controller contract (реализация начата)
 
 **Исходный HEAD:** `0117f845c0a9647342279d9ab631c978fd08092d` (documentation baseline). **Implementation complete: NO; regression verified: UNVERIFIED; native integration/quality: UNVERIFIED.** Предыдущий CI C12R.9 не доказывает C12R.10.
 
@@ -27,7 +27,9 @@
 
 **Последний подтверждённый инженерный этап:** C12R.9 review P1/P2, включая последний P2 history directory, завершён в доступном инженерном scope на `2cff795bcf851f05cba7febd1d7dc740bab99d96`; [CI 43183117068](https://github.com/apathoid/role-orchestrator/actions/runs/43183117068) **OBSERVED SUCCESS**, 375/375, 0 failed/skipped/cancelled. Native integration/quality остаются UNVERIFIED; production readiness не заявляется.
 
-**Следующий шаг: C12R.10.0 — synthetic baseline и адресные регрессии** по [детальному плану C12R.10](C12R10_CONTROLLER_CONTRACT.md), затем .1–.6 до инженерного завершения с обязательным CI. Реальные модели не являются prerequisite разработки; .7 — отдельная локальная сравнительная приёмка после инженерной delivery. Реальные native C12.3/C12.4/C12R.9, Zed и NixOS остаются открытыми.
+**C12R.10.0:** baseline `d73974c8789c68be9850cb162e518ceaf80f0a24`; исходники подтверждают конфликт cursor/ref, имя assessment и потерю причины parse/depth/type. Добавлены red-target fixtures actual CLI/ACP prompt, malformed/non-object/depth/missing findingRefs и сохранение tool observation/effect. Выполнение нового CI ещё UNVERIFIED; ожидаемые red assertions не являются observed test failures. **Следующий шаг: C12R.10.1–.2 — согласованный контракт и транспорт.**
+
+Исходный план: **C12R.10.0 — synthetic baseline и адресные регрессии** по [детальному плану C12R.10](C12R10_CONTROLLER_CONTRACT.md), затем .1–.6 до инженерного завершения с обязательным CI. Реальные модели не являются prerequisite разработки; .7 — отдельная локальная сравнительная приёмка после инженерной delivery. Реальные native C12.3/C12.4/C12R.9, Zed и NixOS остаются открытыми.
 
 | Слой готовности | Фактическое состояние |
 |---|---|

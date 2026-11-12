@@ -294,3 +294,46 @@ test('Codex preserves a non-fatal provider warning in a successful turn', linux,
   assert.deepEqual(report.value, { type: 'error', message: warning });
   assert.ok(persisted.outcome.outputRefs.some(item => item.ref === report.ref));
 });
+
+test('C12R.10: actual CLI Controller contract and distinct correction reasons preserve native effects', linux, async () => {
+  const answer = '# Result\nПроверка 🧪\n{"value":1}';
+  const { api } = codexSetup(`
+    assert.ok(prompt.includes('cursor?:0|{revision:number,index:number}'));
+    assert.ok(prompt.includes('finalAssessment.answer'));
+    assert.ok(!prompt.includes('cursor?: number'));
+    const error = invocation.context.find(item => item.ref === 'host:decision-error')?.value;
+    const step = host.outcomes.length;
+    if (step === 0) {
+      emit('item.completed', {item:{type:'command_execution',id:'native-effect',command:'fixture native action',
+        aggregated_output:'observed',status:'completed',exit_code:0}});
+      message('not JSON');
+    } else if (step === 1) {
+      assert.equal(error.expected, 'valid JSON');
+      message(JSON.stringify('not JSON'));
+    } else if (step === 2) {
+      assert.equal(error.expected, 'a JSON object');
+      message('['.repeat(17) + '0' + ']'.repeat(17));
+    } else if (step === 3) {
+      assert.equal(error.expected, 'JSON nesting depth at most 16');
+      message(JSON.stringify(decision({finalAssessment:assessment({requirements:[
+        {requirementId:'r',status:'unverified',observationRefs:[]}
+      ]})})));
+    } else {
+      assert.equal(error.path, '$.finalAssessment.requirements[0].findingRefs');
+      assert.equal(error.expected, 'an array');
+      message(JSON.stringify(decision({finalAssessment:assessment({answer:${JSON.stringify(answer)}})})));
+    }
+    complete();
+  `, {maxInvocations:5});
+  const state = await (await api.submit(request())).completion;
+  assert.equal(state.status,'finished');
+  assert.equal(state.assessment.answer,answer);
+  assert.equal(state.attempts.length,5);
+  assert.equal(state.events.filter(e=>e.kind==='controller.invalid_proposal').length,4);
+  assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+  const first=state.events.find(e=>e.kind==='attempt.outcome');
+  assert.equal(first.outcome.effect,'unknown');
+  assert.equal(first.dispatchCertainty,'sent');
+  assert.ok(first.observations.some(o=>o.provenance?.exit?.kind==='tool_exit'));
+  assert.ok(first.observations.some(o=>o.value==='not JSON'));
+});
