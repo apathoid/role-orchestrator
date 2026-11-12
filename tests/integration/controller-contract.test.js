@@ -73,3 +73,54 @@ test('C12R.10 missing explicit Catalog skill is addressed without blocking indep
     assert.equal(state.attempts.some(a=>a.actionId==='missing'),false);
   }finally{await api.close();}
 });
+
+test('C12R.10 invalid proposal leaves accepted independent Worker and observed native effects intact', {timeout:5000}, async()=>{
+  const started=Promise.withResolvers(), release=Promise.withResolvers();
+  const action=actionId=>({actionId,kind:'delegate',profileId:'primary',objective:'Independent work',
+    contextRefs:[],dependsOn:[],expectedResult:'Report'});
+  let controllers=0, workers=0;
+  const {api,invocations}=setup({maxInvocations:5,maxConcurrentInvocations:2,
+    async respond(invocation,count,observe) {
+      if(invocation.kind==='delegate'){
+        workers++;
+        assert.equal(invocation.actionId,'accepted');
+        started.resolve();
+        await release.promise;
+        return {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId),output:'Worker result'};
+      }
+      if(++controllers===1) return final(invocation,{finalAssessment:undefined,
+        additions:[action('accepted')],nextController:{continue:true}});
+      if(controllers===2){
+        await started.promise;
+        observe({ref:'native-effect',source:'provider_reported',completeness:'complete',value:'Native observation'});
+        const response=final(invocation,{finalAssessment:undefined,
+          additions:[action('never-dispatch')],nextController:{continue:true}});
+        return {...response,outcome:outcome(invocation.attemptId,{effect:'unknown'}),
+          output:{...response.output,schemaVersion:2}};
+      }
+      if(controllers===3){
+        const correction=invocation.context.find(x=>x.ref==='host:decision-error').value;
+        assert.equal(correction.path,'$.schemaVersion');
+        const host=invocation.context.find(x=>x.ref==='host:invocation-context').value;
+        assert.ok(host.effectUncertainties.some(x=>x.effect==='unknown'&&x.dispatchCertainty==='sent'));
+        release.resolve();
+        return final(invocation,{finalAssessment:undefined,
+          waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'accepted'}]}});
+      }
+      return final(invocation);
+    }});
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.equal(state.status,'finished');
+    assert.equal(workers,1);
+    assert.equal(controllers,4);
+    assert.equal(invocations.length,5);
+    assert.equal(state.attempts.some(a=>a.actionId==='never-dispatch'),false);
+    const rejected=state.events.find(e=>e.kind==='controller.invalid_proposal');
+    const invalidOutcome=state.events.find(e=>e.kind==='attempt.outcome'&&e.outcome.attemptId===rejected.attemptId);
+    assert.equal(invalidOutcome.outcome.effect,'unknown');
+    assert.equal(invalidOutcome.dispatchCertainty,'sent');
+    assert.ok(invalidOutcome.observations.some(o=>o.value==='Native observation'));
+    assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,3);
+  }finally{release.resolve();await api.close();}
+});
