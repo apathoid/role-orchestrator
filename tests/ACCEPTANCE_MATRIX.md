@@ -317,3 +317,15 @@ Synthetic subprocess/CI PASS не означает проверенного ка
 | C12R.9 pagination, bounded context, positional refs, recovery, and prior native obligations | existing `context-continuity.test.js`, `history-directory.test.js`, `context-chunks.test.js`, other suites | **PASS (synthetic)** |
 
 **OBSERVED:** [CI 43247177766](https://github.com/apathoid/role-orchestrator/actions/runs/43247177766) on `823b993fee85298fdc3d99431ada67f8436e8c33`: 381/381, 0 failed/skipped/cancelled, full root npm test and all Nix/package/specification checks SUCCESS. The evidence-only follow-up has its own CI; [STATUS](../docs/roadmap/STATUS.md) records the actual verified implementation SHA. Real models, real Zed, NixOS runtime and comparative quality/performance remain UNVERIFIED; synthetic PASS is not native acceptance.
+
+
+### C12R.10R — transport clarity and native transparency (synthetic)
+
+| Проверка | Regression | Evidence status |
+|---|---|---|
+| Decision A in ordinary native tool result; final A, B or invalid | tests/contracts/acp-provider.test.js, tests/fixtures/acp-contract-agent.js: actual ACP SDK/subprocess tool_call/update, observe gate before end_turn, no premature admission/reservation/Worker, final admission or correction; source/ref and outcome | CI pending; UNVERIFIED until observed |
+| Same three variants, including fenced final text | tests/integration/codex-provider.test.js: actual CLI JSONL command_execution and agent_message, exit/turn contract, accepted/reserved/dispatched action and actual Worker output, tool/agent/model provenance | CI pending; UNVERIFIED until observed |
+| Model-facing boundary, nested refs and optional reason | tests/integration/controller-contract.test.js, codex-provider.test.js and ACP prompt fixture: actual delivered instructions, valid example, missing findingRefs, reason:null rejection and omitted reason success | CI pending; UNVERIFIED until observed |
+| Native transparency and optional history | ACP native subagent tool observation without bridge/Host Worker; missing no-MCP ref without phantom Action; existing capability/Catalog/permissions/context/recovery/cancellation tests | CI pending; UNVERIFIED until observed |
+
+Synthetic wire events prove adapter and Host coordination only, not real LLM comprehension or quality. Final CI evidence is recorded in [STATUS](../docs/roadmap/STATUS.md). Real native C12R.10.7/.10R.7 and prior native obligations remain UNVERIFIED.
