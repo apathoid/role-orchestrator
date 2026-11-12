@@ -19,7 +19,7 @@
 
 **Последний подтверждённый инженерный этап:** review C12R.9 P1/P2 + дополнительные P2 и performance corrections завершены в доступном кодовом scope на `1ea0a2f98b733a57b5098012245c0781db8e2dda`, полный CI **OBSERVED SUCCESS**. Native integration/quality остаются UNVERIFIED; production readiness не заявляется.
 
-**Следующий шаг:** **Реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence; автоматизированная инженерная проверка C12R.9 review закрыта на последнем проверенном кодовом SHA. Для будущих документационных/CI изменений проверять собственный GitHub Actions run и не выдавать synthetic fixtures за native assessment.
+**Следующий шаг:** подтвердить CI текущих двух P2 workMap (stable journal-prefix pagination и актуальный execution disposition), затем **реальная native C12.3/C12.4 и C12R.9 comparative A/B/C**, Zed и NixOS runtime с отчётами и исходными evidence. Для будущих документационных/CI изменений проверять собственный GitHub Actions run и не выдавать synthetic fixtures за native assessment.
 
 | Слой готовности | Фактическое состояние |
 |---|---|
@@ -29,6 +29,10 @@
 | Native integration verified | **UNVERIFIED:** настоящие Codex/ACP LLM, Zed и реальная NixOS runtime интеграция |
 | Performance/quality comparison verified | **UNVERIFIED:** A/B/C, default Controller 256 КиБ и отдельно 512 КиБ, fetch 64/128 КиБ |
 | C12 в целом | **INCOMPLETE — NATIVE ACCEPTANCE PENDING**, production readiness **NO** |
+
+## C12R.9 повторное ревью — workMap (2026-11-12)
+
+Implementation: stable journal-prefix cursor `{revision,index}`, first Attempt retains admission position, live lifecycle and refs; accepted-only disposition reflects actual cancellation/rejection/deferral, not rejected repeated proposals. Code and synthetic regressions added. **Automated regression: pending CI on this new HEAD. Native integration / comparative quality/performance: UNVERIFIED.** Prior full CI on `daefdbc` ([43106917665](https://github.com/apathoid/role-orchestrator/actions/runs/43106917665)) is baseline, not proof of this change.
 
 ## C12R.9 review P2 — повторная проверка бюджетов, курсоров и verified artifact ranges (2026-11-12)
 

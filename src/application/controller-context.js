@@ -168,6 +168,8 @@ function orderedWorkMap(state, history) {
   const accepted = new Map();
   /** @type {Map<string, number>} */
   const attemptOrder = new Map();
+  /** @type {Map<string, Extract<import('../core/operation.js').Event, {kind: 'action.cancelled' | 'action.rejected' | 'action.deferred'}>>} */
+  const dispositions = new Map();
   /** @type {Map<string, string[]>} */
   const observations = new Map();
   /** @type {Map<string, ContextItem>} */
@@ -190,6 +192,17 @@ function orderedWorkMap(state, history) {
     // order is not. Keeping the original order makes model-selected workCursor
     // paging stable when independent Workers finish or late outcomes arrive.
     if (event.kind === 'attempt.reserved') attemptOrder.set(event.attemptId, index);
+    // These are execution lifecycle events, not rejected admissions of a
+    // new proposal that happens to reuse an already accepted actionId.
+    if (event.kind === 'action.cancelled' || event.kind === 'action.rejected' || event.kind === 'action.deferred') {
+      const prior = dispositions.get(event.actionId);
+      // Deferral is temporary and cannot undo a terminal execution blocker.
+      if (event.kind === 'action.cancelled' ||
+          (prior?.kind !== 'action.cancelled' &&
+            (event.kind === 'action.rejected' || prior?.kind !== 'action.rejected'))) {
+        dispositions.set(event.actionId, event);
+      }
+    }
   });
   const existingActions = new Set(state.attempts.map(attempt => attempt.actionId));
   const firstAttempts = new Set();
@@ -214,15 +227,23 @@ function orderedWorkMap(state, history) {
         actionId: attempt.actionId, attemptId: attempt.attemptId,
         ...(source ? { objectiveRef: source.decisionRef } : { kind: 'controller' }),
         status: attempt.status, dispatchCertainty: attempt.dispatchCertainty,
+        ...(attempt.cancellation ? { cancellation: attempt.cancellation } : {}),
         ...(attempt.outcome ? { terminal: attempt.outcome.terminal, effect: attempt.outcome.effect } : {}),
         outputRefs: outputs, observationRefs: allRefs.filter(ref => !outputNames.has(ref)),
       },
     };
   });
-  const unstarted = [...accepted].flatMap(([actionId, item]) => existingActions.has(actionId) ? [] : [{
-    order: item.order, row: { actionId, objectiveRef: item.decisionRef, status: 'accepted',
-      outputRefs: [], observationRefs: [] },
-  }]);
+  const unstarted = [...accepted].flatMap(([actionId, item]) => {
+    if (existingActions.has(actionId)) return [];
+    const event = dispositions.get(actionId);
+    const status = event?.kind === 'action.cancelled' ? 'cancelled' :
+      event?.kind === 'action.rejected' ? 'rejected' :
+        event?.kind === 'action.deferred' ? 'deferred' : 'accepted';
+    return [{ order: item.order, row: { actionId, objectiveRef: item.decisionRef, status,
+      ...(event?.kind === 'action.cancelled' ? { cancellation: event.source } :
+        event ? { code: event.code, resource: event.resource, category: event.category } : {}),
+      outputRefs: [], observationRefs: [] } }];
+  });
   return [...attempts, ...unstarted].sort((left, right) => right.order - left.order ||
     (left.row.actionId < right.row.actionId ? -1 : left.row.actionId > right.row.actionId ? 1 : 0));
 }

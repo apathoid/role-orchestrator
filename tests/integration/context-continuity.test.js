@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import { compactContext } from '../../src/application/context-bundle.js';
 import { coordinationFacts, controllerContext, operationHistory, operationWorkMap, deduplicateInlineResults } from '../../src/application/controller-context.js';
 import { decodeDecision } from '../../src/core/contracts.js';
-import { createOperation } from '../../src/core/operation.js';
-import { request, outcome } from '../fixtures/core.js';
+import { createOperation, applyEvent, acceptedWorkerAllowed } from '../../src/core/operation.js';
+import { request, outcome, decision } from '../fixtures/core.js';
 import { setup } from '../fixtures/application.js';
 
 // C12R.9.0: desired behaviour is intentionally established before the fix.
@@ -364,7 +364,7 @@ test('C12R.9: real Controller continuation traverses a growing workMap without d
   let controllers=0;
   let initialTotal=0;
   const seen=[];
-  const {api,respondErrors}=setup({maxInvocations:30,context:{controllerMaxBytes:4096},
+  const {api,respondErrors}=setup({maxInvocations:30,context:{controllerMaxBytes:2300},
     respond(invocation) {
       controllers++;
       const map=invocation.context.find(item=>item.ref==='host:invocation-context').value.workMap;
@@ -389,4 +389,94 @@ test('C12R.9: real Controller continuation traverses a growing workMap without d
   assert.equal(state.status,'finished');
   assert.equal(initialTotal,12);
   assert.equal(seen.length,12);
+});
+
+function workLifecycleFixture() {
+  let state=createOperation('lifecycle-map',request(),'grant',{maxInvocations:40,maxConcurrentInvocations:10});
+  let sequence=0;
+  const apply=event=>{
+    const next=applyEvent(state,{...event,operationId:state.operationId,eventId:'event-'+(++sequence),receivedAt:sequence});
+    assert.equal(next.kind,'applied',JSON.stringify(next.reason));
+    state=next.state;
+  };
+  const action=id=>({actionId:id,kind:'delegate',profileId:'primary',objective:id,
+    expectedResult:'report',dependsOn:[],contextRefs:[]});
+  const admit=(ids,extra=[])=>{
+    const actions=ids.map(action);
+    apply({kind:'controller.responded',decision:decision({operationId:state.operationId,
+      decisionId:'decision-'+sequence,additions:actions,finalAssessment:undefined}),
+      admissions:[...actions.map(action=>({kind:'accepted',action})),...extra]});
+  };
+  const reserve=(id,attemptId='run-'+id)=>apply({kind:'attempt.reserved',actionId:id,attemptId});
+  const row=id=>operationWorkMap(state,operationHistory(state)).find(item=>item.actionId===id);
+  return {apply,admit,reserve,row,action,get state(){return state}};
+}
+
+test('C12R.9: workMap reports actual accepted-only execution disposition, not proposal admission',()=>{
+  const f=workLifecycleFixture();
+  f.admit(['accepted','cancelled','rejected','deferred','duplicate']);
+  assert.equal(f.row('accepted').status,'accepted');
+  f.apply({kind:'action.deferred',actionId:'deferred',code:'RESOURCE_LIMIT',resource:'concurrency'});
+  assert.equal(f.row('deferred').status,'deferred');
+  assert.equal(acceptedWorkerAllowed(f.state,'deferred'),true);
+  f.apply({kind:'action.cancelled',actionId:'cancelled',source:'superseded'});
+  f.apply({kind:'action.rejected',actionId:'rejected',code:'CAPABILITY_UNAVAILABLE',category:'adapter'});
+  assert.equal(acceptedWorkerAllowed(f.state,'cancelled'),false);
+  assert.equal(acceptedWorkerAllowed(f.state,'rejected'),false);
+  assert.equal(f.row('cancelled').status,'cancelled');
+  assert.equal(f.row('cancelled').cancellation,'superseded');
+  assert.equal(f.row('rejected').status,'rejected');
+  assert.equal(f.row('rejected').code,'CAPABILITY_UNAVAILABLE');
+  f.admit([], [{kind:'rejected',actionId:'duplicate',code:'IDENTITY_CONFLICT',reason:'identity'}]);
+  assert.equal(f.row('duplicate').status,'accepted');
+  assert.equal(acceptedWorkerAllowed(f.state,'duplicate'),true);
+  assert.equal(f.row('cancelled').objectiveRef,'decision:decision-0');
+  const restored=structuredClone(f.state);
+  assert.equal(operationWorkMap(restored,operationHistory(restored)).find(row=>row.actionId==='cancelled').status,'cancelled');
+});
+
+test('C12R.9: workMap preserves cancellation and effects for reserved/dispatched attempts',()=>{
+  const f=workLifecycleFixture();
+  f.admit(['reserved','dispatched']);
+  f.reserve('reserved'); f.reserve('dispatched');
+  f.apply({kind:'attempt.dispatched',attemptId:'run-dispatched'});
+  f.apply({kind:'action.cancelled',actionId:'reserved',source:'superseded'});
+  f.apply({kind:'action.cancelled',actionId:'dispatched',source:'superseded'});
+  assert.equal(f.row('reserved').status,'reserved');
+  assert.equal(f.row('reserved').cancellation,'superseded');
+  assert.equal(f.row('reserved').dispatchCertainty,'not_sent');
+  assert.equal(f.row('dispatched').status,'dispatched');
+  assert.equal(f.row('dispatched').dispatchCertainty,'unknown');
+  f.apply({kind:'attempt.outcome',dispatchCertainty:'not_sent',
+    outcome:outcome('run-reserved',{terminal:'cancelled'})});
+  f.apply({kind:'attempt.outcome',dispatchCertainty:'unknown',
+    outcome:outcome('run-dispatched',{terminal:'unknown',effect:'unknown'})});
+  assert.equal(f.row('reserved').terminal,'cancelled');
+  assert.equal(f.row('dispatched').effect,'unknown');
+  assert.equal(f.row('dispatched').cancellation,'superseded');
+});
+
+test('C12R.9: journal-prefix pages keep accepted rows in place across reservation, cancellation, retry and new admissions',()=>{
+  const f=workLifecycleFixture();
+  f.admit(['a','b','c']);
+  f.admit(['newer']);
+  const revision=f.state.revision;
+  const initial=controllerContext(f.state,[],undefined,undefined,65536)[1].value.workMap;
+  assert.deepEqual(initial.entries.map(row=>row.actionId),['newer','a','b','c']);
+  f.reserve('b');
+  f.apply({kind:'attempt.dispatched',attemptId:'run-b'});
+  f.apply({kind:'attempt.outcome',dispatchCertainty:'sent',outcome:outcome('run-b')});
+  f.apply({kind:'action.cancelled',actionId:'c',source:'superseded'});
+  f.admit(['later']);
+  f.reserve('later');
+  const page=controllerContext(structuredClone(f.state),[],undefined,undefined,65536,undefined,[],
+    {revision,index:1})[1].value.workMap;
+  assert.deepEqual(page.entries.map(row=>row.actionId),['a','b','c']);
+  assert.equal(page.total,4);
+  assert.equal(page.liveTotal,5);
+  assert.equal(page.entries[1].attemptId,'run-b');
+  assert.equal(page.entries[1].status,'terminal');
+  assert.equal(page.entries[2].status,'cancelled');
+  assert.equal(page.nextCursor,undefined);
+  assert.equal(controllerContext(f.state,[],undefined,undefined,65536)[1].value.workMap.entries[0].actionId,'later');
 });

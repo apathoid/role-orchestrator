@@ -278,3 +278,10 @@ C12R.6.1–6.4: `tests/integration/c12r-coordination.test.js` combines chosen sk
 | Повторное чтение 4 МиБ артефакта через разные ContextPort | `context-chunks.test.js`: actual I/O bytes не увеличиваются пропорционально числу страниц; stat-backed SHA cache, corruption/missing/caller mutation | UNVERIFIED |
 
 Synthetic subprocess/CI PASS не означает проверенного качества поведения настоящих моделей. Итоговые results — только в STATUS и CI конечного HEAD.
+
+### C12R.9 повторное ревью — workMap continuity and disposition
+
+| Проверка | Regression | Status |
+|---|---|---|
+| Growing Controller history / stable journal-prefix pages | `context-continuity.test.js`, real orchestrator nextController.contextRequest and mutable lifecycle | UNVERIFIED until final CI |
+| Accepted-only execution disposition, cancellation/effect, duplicate admission | `context-continuity.test.js`, authoritative applyEvent transitions | UNVERIFIED until final CI |
