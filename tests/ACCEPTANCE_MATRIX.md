@@ -309,11 +309,11 @@ Synthetic subprocess/CI PASS не означает проверенного ка
 
 | Проверка | Regression | Evidence status |
 |---|---|---|
-| Shared Decision v1 example, required findingRefs, actual ids and admission; exact user answer | `controller-contract.test.js` (direct structured ProviderPort, Markdown/Unicode/JSON string) | CI on final SHA required |
-| Actual CLI/ACP prompt and text parsing/correction | `codex-provider.test.js`, `acp-provider.test.js`, `acp-contract-agent.js`: current cursor types, invalid JSON/non-object/depth/missing field, preserved tool effects and exact answer | CI on final SHA required |
-| Strict contract and no repair | `controller-contract.test.js`, existing core decoder tests and `orchestrator.test.js`: fenced/malformed, valid primitives, array, depth, field/enum/admission, bounded correction | CI on final SHA required |
-| Explicit Host Catalog rejection, independent Workers and permissions | `controller-contract.test.js`, existing `handoff.test.js`, `delegation.test.js`, `permissions.test.js`, CLI/ACP contract regressions | CI on final SHA required |
-| Invalid Decision with proposed additions, live accepted Worker and unknown effect | `controller-contract.test.js`: no rejected dispatch or replay; existing recovery/cancel tests preserve provenance | CI on final SHA required |
-| C12R.9 pagination, bounded context, positional refs, recovery, and prior native obligations | existing `context-continuity.test.js`, `history-directory.test.js`, `context-chunks.test.js`, other suites | CI on final SHA required |
+| Shared Decision v1 example, required findingRefs, actual ids and admission; exact user answer | `controller-contract.test.js` (direct structured ProviderPort, Markdown/Unicode/JSON string) | **PASS (synthetic)** |
+| Actual CLI/ACP prompt and text parsing/correction | `codex-provider.test.js`, `acp-provider.test.js`, `acp-contract-agent.js`: current cursor types, invalid JSON/non-object/depth/missing field, preserved tool effects and exact answer | **PASS (synthetic)** |
+| Strict contract and no repair | `controller-contract.test.js`, existing core decoder tests and `orchestrator.test.js`: fenced/malformed, valid primitives, array, depth, field/enum/admission, bounded correction | **PASS (synthetic)** |
+| Explicit Host Catalog rejection, independent Workers and permissions | `controller-contract.test.js`, existing `handoff.test.js`, `delegation.test.js`, `permissions.test.js`, CLI/ACP contract regressions | **PASS (synthetic)** |
+| Invalid Decision with proposed additions, live accepted Worker and unknown effect | `controller-contract.test.js`: no rejected dispatch or replay; existing recovery/cancel tests preserve provenance | **PASS (synthetic)** |
+| C12R.9 pagination, bounded context, positional refs, recovery, and prior native obligations | existing `context-continuity.test.js`, `history-directory.test.js`, `context-chunks.test.js`, other suites | **PASS (synthetic)** |
 
-The final engineering CI and SHA are tracked in [STATUS](../docs/roadmap/STATUS.md). Real models, real Zed, NixOS runtime and comparative quality/performance remain UNVERIFIED; synthetic PASS is not native acceptance.
+**OBSERVED:** [CI 43247177766](https://github.com/apathoid/role-orchestrator/actions/runs/43247177766) on `823b993fee85298fdc3d99431ada67f8436e8c33`: 381/381, 0 failed/skipped/cancelled, full root npm test and all Nix/package/specification checks SUCCESS. The evidence-only follow-up has its own CI; [STATUS](../docs/roadmap/STATUS.md) records the actual verified implementation SHA. Real models, real Zed, NixOS runtime and comparative quality/performance remain UNVERIFIED; synthetic PASS is not native acceptance.
