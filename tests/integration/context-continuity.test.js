@@ -434,6 +434,10 @@ test('C12R.9: workMap reports actual accepted-only execution disposition, not pr
   assert.equal(f.row('cancelled').cancellation,'superseded');
   assert.equal(f.row('rejected').status,'rejected');
   assert.equal(f.row('rejected').code,'CAPABILITY_UNAVAILABLE');
+  f.apply({kind:'action.deferred',actionId:'cancelled',code:'RESOURCE_LIMIT'});
+  f.apply({kind:'action.deferred',actionId:'rejected',code:'RESOURCE_LIMIT'});
+  assert.equal(f.row('cancelled').status,'cancelled');
+  assert.equal(f.row('rejected').status,'rejected');
   assert.equal(f.admit([{...f.action('duplicate'),objective:'changed proposal'}])[0].kind,'rejected');
   assert.equal(f.row('duplicate').status,'accepted');
   assert.equal(acceptedWorkerAllowed(f.state,'duplicate'),true);
@@ -520,7 +524,7 @@ test('C12R.9: one-row Controller pages survive new retry Worker and growing jour
     objective:'Produce a report',expectedResult:'report',dependsOn:[],contextRefs:[]};
   let expected, chosenBudget;
   async function execute(calibrate) {
-    let controllers=0, originalAttempt;
+    let controllers=0, originalAttempt, traversalDone=false;
     const seen=[];
     const {api,respondErrors,invocations}=setup({maxInvocations:30,idPrefix:'long-'+ 'x'.repeat(200)+'-',
       context:{controllerMaxBytes:calibrate?65536:chosenBudget},
@@ -549,6 +553,7 @@ test('C12R.9: one-row Controller pages survive new retry Worker and growing jour
           chosenBudget=candidates[Math.floor(candidates.length/2)];
           return final(invocation);
         }
+        if(traversalDone) return final(invocation);
         assert.equal(map.total,expected.length);
         assert.equal(map.entries.length,1,'exactly one real workMap row per Controller invocation');
         seen.push(map.entries[0].attemptId);
@@ -557,13 +562,18 @@ test('C12R.9: one-row Controller pages survive new retry Worker and growing jour
           assert.ok(map.nextCursor);
           const retry={...original,actionId:'retry-worker',retryOf:originalAttempt,retryBasis:'no_effect'};
           return final(invocation,{finalAssessment:undefined,additions:[retry],
-            waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:retry.actionId}]},
             nextController:{continue:true,contextRequest:{workCursor:map.nextCursor}}});
         }
         if(map.nextCursor) return final(invocation,{finalAssessment:undefined,
           nextController:{continue:true,contextRequest:{workCursor:map.nextCursor}}});
         assert.deepEqual(seen,expected);
         assert.ok(map.liveTotal>map.total);
+        traversalDone=true;
+        const state=await api.inspect(invocation.operationId);
+        if(!state.attempts.some(attempt=>attempt.actionId==='retry-worker' && attempt.status==='terminal')) {
+          return final(invocation,{finalAssessment:undefined,
+            waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'retry-worker'}]}});
+        }
         return final(invocation);
       }});
     const finished=await(await api.submit(request())).completion;

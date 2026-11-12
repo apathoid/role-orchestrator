@@ -15,7 +15,7 @@ export const controllerInstructions = [
   'Action.skills selects only Host-managed Catalog skill ids for a Worker. A skill absent from this Catalog does not imply the provider lacks native skills, terminal, project instructions, files or scripts. Use these through available native tools without requiring Host Catalog registration. Selected skill instructions apply only to that Worker; restrictions on native subagents do not by themselves prohibit orchestration. Honor applicable task instructions, user requirements and actual permissions.',
   'Delegate when useful by selecting a profile, optional reasoningLevel, objective, expected result and context references. Use all_requested or next_completion when waiting for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'Profiles expose logical reasoning levels, not their private native mapping. Different models at the same level are not guaranteed equal. Omit reasoningLevel to use the trusted profile default or native mode.',
-  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:(string|{revision:number,index:number}|{ref:string|{revision:number,index:number},offset:number})[],cursor?:number,workCursor?:0|{revision:number,index:number}}} for an optional next Controller turn. A contextRequest selects historical refs or {ref,offset} byte-chunks, a history-directory page, or a workMap page with workCursor (copy nextCursor exactly; 0 starts a fresh map including new work); use nextOffset for subsequent chunks. Base64 chunks are lossless stored bytes (UTF-8/json/binary), not a promise that truncated capture can be reconstructed; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
+  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:(string|{revision:number,index:number}|{ref:string|{revision:number,index:number},offset:number})[],cursor?:number,workCursor?:0|{revision:number,index:number}}} for an optional next Controller turn. A contextRequest selects historical refs or {ref,offset} byte-chunks, a history-directory page, or a workMap page with workCursor (copy nextCursor exactly; 0 starts a fresh map including new work. total counts the original traversal, liveTotal counts current work; lifecycle and refs remain current); use nextOffset for subsequent chunks. Base64 chunks are lossless stored bytes (UTF-8/json/binary), not a promise that truncated capture can be reconstructed; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Workspace files and branches may change during the operation. Use observations to decide whether earlier findings still apply and whether to read a target again. Reported locations, versions and times describe individual observations.',
@@ -164,10 +164,12 @@ export function deduplicateInlineResults(items) {
  * @param {Operation} state @param {readonly ContextItem[]} history
  */
 function orderedWorkMap(state, history) {
-  /** @type {Map<string, {decisionRef: string, action: import('../core/contracts.js').Action, order: number}>} */
+  /** @type {Map<string, {decisionRef: string, action: import('../core/contracts.js').Action, order: number, admissionIndex: number}>} */
   const accepted = new Map();
   /** @type {Map<string, number>} */
   const attemptOrder = new Map();
+  /** @type {Map<string, string>} */
+  const firstAttemptByAction = new Map();
   /** @type {Map<string, Extract<import('../core/operation.js').Event, {kind: 'action.cancelled' | 'action.rejected' | 'action.deferred'}>>} */
   const dispositions = new Map();
   /** @type {Map<string, string[]>} */
@@ -182,16 +184,19 @@ function orderedWorkMap(state, history) {
   }
   state.events.forEach((event, index) => {
     if (event.kind === 'controller.responded') {
-      for (const admission of event.admissions ?? []) {
+      for (const [admissionIndex, admission] of (event.admissions ?? []).entries()) {
         if (admission.kind === 'accepted') accepted.set(admission.action.actionId, {
-          action: admission.action, decisionRef: 'decision:' + event.decision.decisionId, order: index,
+          action: admission.action, decisionRef: 'decision:' + event.decision.decisionId, order: index, admissionIndex,
         });
       }
     }
     // Reservation identity/order is immutable after admission; completion
     // order is not. Keeping the original order makes model-selected workCursor
     // paging stable when independent Workers finish or late outcomes arrive.
-    if (event.kind === 'attempt.reserved') attemptOrder.set(event.attemptId, index);
+    if (event.kind === 'attempt.reserved') {
+      attemptOrder.set(event.attemptId, index);
+      if (!firstAttemptByAction.has(event.actionId)) firstAttemptByAction.set(event.actionId, event.attemptId);
+    }
     // These are execution lifecycle events, not rejected admissions of a
     // new proposal that happens to reuse an already accepted actionId.
     if (event.kind === 'action.cancelled' || event.kind === 'action.rejected' || event.kind === 'action.deferred') {
@@ -205,10 +210,8 @@ function orderedWorkMap(state, history) {
     }
   });
   const existingActions = new Set(state.attempts.map(attempt => attempt.actionId));
-  const firstAttempts = new Set();
   const attempts = state.attempts.map(attempt => {
-    const first = !firstAttempts.has(attempt.actionId);
-    firstAttempts.add(attempt.actionId);
+    const first = firstAttemptByAction.get(attempt.actionId) === attempt.attemptId;
     const source = accepted.get(attempt.actionId);
     const allRefs = observations.get(attempt.attemptId) ?? [];
     const outputs = (attempt.outcome?.outputRefs ?? []).map(item => {
@@ -223,6 +226,7 @@ function orderedWorkMap(state, history) {
       // The first Attempt replaces its accepted-only row in place. Further
       // Attempts have their own reservation position; outcomes never move rows.
       order: first && source ? source.order : attemptOrder.get(attempt.attemptId) ?? -1,
+      admissionIndex: first && source ? source.admissionIndex : 0,
       row: {
         actionId: attempt.actionId, attemptId: attempt.attemptId,
         ...(source ? { objectiveRef: source.decisionRef } : { kind: 'controller' }),
@@ -239,13 +243,13 @@ function orderedWorkMap(state, history) {
     const status = event?.kind === 'action.cancelled' ? 'cancelled' :
       event?.kind === 'action.rejected' ? 'rejected' :
         event?.kind === 'action.deferred' ? 'deferred' : 'accepted';
-    return [{ order: item.order, row: { actionId, objectiveRef: item.decisionRef, status,
+    return [{ order: item.order, admissionIndex: item.admissionIndex, row: { actionId, objectiveRef: item.decisionRef, status,
       ...(event?.kind === 'action.cancelled' ? { cancellation: event.source } :
         event ? { code: event.code, resource: event.resource, category: event.category } : {}),
       outputRefs: [], observationRefs: [] } }];
   });
   return [...attempts, ...unstarted].sort((left, right) => right.order - left.order ||
-    (left.row.actionId < right.row.actionId ? -1 : left.row.actionId > right.row.actionId ? 1 : 0));
+    left.admissionIndex - right.admissionIndex);
 }
 
 /** @param {Operation} state @param {readonly ContextItem[]} history */
