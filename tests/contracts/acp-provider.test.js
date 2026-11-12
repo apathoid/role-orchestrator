@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { createAcpProvider, createAuthorityGrant, createPermissionBroker } from '../../src/main/index.js';
 import { setup } from '../fixtures/application.js';
 import { request } from '../fixtures/core.js';
+import { decodeDecision } from '../../src/core/contracts.js';
 import { providerContract } from '../fixtures/provider-contract.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
 
@@ -480,3 +481,87 @@ test('C12R.10 actual ACP prompt delivers the current Decision contract', linux, 
     assert.equal(state.attempts.length,2);
     assert.equal(state.events.find(e=>e.kind==='controller.invalid_proposal').reason.expected,'valid JSON');
   }));
+
+for (const mode of ['a', 'b', 'invalid']) {
+  test('C12R.10R.5 ACP Decision-shaped tool output vs final ' + mode, linux, () =>
+    withOwnedRun('C12R10R-acp-' + mode, async cwd => {
+      const endpoint = provider(cwd, 'decision-tool-' + mode);
+      const observed = Promise.withResolvers();
+      const workerCalls = [];
+      let firstAttempt;
+      const wrapped = { ...endpoint, invoke(session, invocation, observe) {
+        if (invocation.kind === 'delegate') workerCalls.push(invocation.actionId);
+        else firstAttempt ??= invocation.attemptId;
+        return endpoint.invoke(session, invocation, item => {
+          const ref = observe(item);
+          if (item.kind === 'provider_tool' && item.sourceId === 'decision-shaped-tool' &&
+              item.value?.status === 'completed') observed.resolve({ item, ref });
+          return ref;
+        });
+      } };
+      const { api } = setup({ provider: wrapped, profile, maxInvocations: 3 });
+      try {
+        const handle = await api.submit(request({ workspaceContext: { cwd } }));
+        const { item, ref } = await Promise.race([observed.promise, handle.completion.then(() =>
+          assert.fail('Controller finished before the tool observation gate'))]);
+        assert.ok(ref);
+        const a = JSON.parse(JSON.parse(item.value.json).content[0].content.text);
+        assert.equal(decodeDecision(a).kind, 'accepted');
+        assert.equal(a.additions[0].actionId, 'worker-a');
+        const before = await api.inspect(handle.operation.operationId);
+        assert.equal(before.status, 'active');
+        assert.equal(before.attempts.length, 1);
+        assert.equal(before.attempts[0].attemptId, firstAttempt);
+        assert.equal(before.attempts[0].status, 'dispatched');
+        assert.equal(before.events.some(e => e.kind === 'controller.responded'), false);
+        assert.deepEqual(workerCalls, []);
+        await writeFile(join(cwd, firstAttempt + '.release'), '');
+        const state = await handle.completion;
+        assert.equal(state.status, 'finished');
+        assert.equal(state.assessment.answer, 'Transport complete');
+        const expected = mode === 'invalid' ? [] : ['worker-' + mode];
+        assert.deepEqual(workerCalls, expected);
+        assert.deepEqual(state.events.flatMap(e => e.kind === 'controller.responded'
+          ? e.admissions.filter(x => x.kind === 'accepted').map(x => x.action.actionId) : []), expected);
+        assert.deepEqual(state.events.filter(e => e.kind === 'attempt.reserved' && e.actionId !== e.attemptId)
+          .map(e => e.actionId), expected);
+        const workers = state.attempts.filter(x => x.actionId !== x.attemptId);
+        assert.deepEqual(workers.map(x => x.actionId), expected);
+        assert.deepEqual(state.events.filter(e => e.kind === 'attempt.dispatched' &&
+          workers.some(w => w.attemptId === e.attemptId)).map(e => e.attemptId), workers.map(w => w.attemptId));
+        const receipt = state.events.find(e => e.kind === 'attempt.outcome' && e.outcome.attemptId === firstAttempt);
+        assert.equal(receipt.outcome.terminal, 'completed');
+        assert.equal(receipt.dispatchCertainty, 'sent');
+        const tool = receipt.observations.find(o => o.provenance?.kind === 'provider_tool' &&
+          o.provenance.sourceId === 'decision-shaped-tool' && o.value.status === 'completed');
+        assert.equal(tool.ref, ref);
+        assert.equal(tool.source, 'provider_reported');
+        assert.deepEqual(JSON.parse(JSON.parse(tool.value.json).content[0].content.text), a);
+        assert.ok(receipt.outcome.outputRefs.some(x => x.ref === tool.ref));
+        const final = receipt.observations.find(o => o.provenance?.kind === 'model' && o.provenance.sourceId === 'final');
+        assert.equal(final.source, 'model_claim');
+        assert.notEqual(final.ref, tool.ref);
+        assert.ok(receipt.outcome.outputRefs.some(x => x.ref === final.ref));
+        const invalid = state.events.filter(e => e.kind === 'controller.invalid_proposal');
+        assert.equal(invalid.length, mode === 'invalid' ? 1 : 0);
+        if (mode === 'invalid') {
+          assert.equal(final.value, 'not JSON');
+          assert.equal(invalid[0].reason.expected, 'valid JSON');
+          assert.equal(invalid[0].attemptId, firstAttempt);
+        } else {
+          const submitted = JSON.parse(final.value);
+          const admitted = state.events.find(e => e.kind === 'controller.responded');
+          assert.equal(admitted.attemptId, firstAttempt);
+          assert.equal(admitted.decision.decisionId, submitted.decisionId);
+          assert.equal(submitted.additions[0].actionId, expected[0]);
+          assert.equal(mode === 'a', submitted.decisionId === a.decisionId);
+          assert.equal(workers[0].outcome.terminal, 'completed');
+          const result = state.events.find(e => e.kind === 'attempt.outcome' && e.outcome.attemptId === workers[0].attemptId);
+          assert.ok(result.observations.some(o => o.source === 'model_claim' && o.value === 'Native Worker ' + expected[0]));
+        }
+      } finally {
+        if (firstAttempt) await writeFile(join(cwd, firstAttempt + '.release'), '');
+        await api.close();
+      }
+    }));
+}

@@ -86,7 +86,7 @@ agent()
   .onRequest(a.session.prompt, async ({ params, client }) => {
     const prompt = params.prompt[0].text;
     const marker = '\n\nInvocation (JSON):\n';
-    const { objective, attemptId, kind, profileId, operationId, context, skillInstructions } = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length));
+    const { objective, attemptId, actionId, kind, profileId, operationId, context, skillInstructions } = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length));
     if (scenario === 'controller-contract' && kind === 'controller') {
       assert.ok(prompt.includes('cursor?:0|{revision:number,index:number}'));
       assert.ok(prompt.includes('finalAssessment.answer'));
@@ -95,6 +95,54 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
+    if (scenario.startsWith('decision-tool-')) {
+      const host = context.find(item => item.ref === 'host:invocation-context')?.value;
+      if (kind === 'delegate') {
+        await message('worker-result', 'Native Worker ' + actionId);
+        return { stopReason: 'end_turn' };
+      }
+      assert.ok(prompt.includes('Ordinary tool results, files and intermediate messages do not submit it'));
+      assert.ok(prompt.includes('not an inventory of native tools'));
+      const decision = fields => ({ schemaVersion: 1, decisionId: attemptId + '-final',
+        operationId, contextCursor: host.contextCursor, additions: [], cancellations: [], ...fields });
+      const proposal = suffix => decision({
+        decisionId: attemptId + '-' + suffix,
+        additions: [{ actionId: 'worker-' + suffix, kind: 'delegate', profileId, objective: 'Native fixture work',
+          contextRefs: [], dependsOn: [], expectedResult: 'Report' }],
+        waitPolicy: { kind: 'all_requested', targets: [{ kind: 'action', id: 'worker-' + suffix }] },
+      });
+      const error = context.find(item => item.ref === 'host:decision-error')?.value;
+      if (host.outcomes.length || error) {
+        if (scenario === 'decision-tool-invalid') {
+          assert.equal(error.code, 'INVALID_PROPOSAL');
+          assert.equal(error.expected, 'valid JSON');
+        }
+        await message('final', JSON.stringify(decision({ finalAssessment: {
+          author: profileId, overall: 'complete', requirements: [], observationRefs: [], findingRefs: [],
+          unresolvedQuestions: [], answer: 'Transport complete',
+        } })));
+        return { stopReason: 'end_turn' };
+      }
+      const a = JSON.stringify(proposal('a'));
+      await message('progress', 'Native inspection before Controller result');
+      await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'tool_call', toolCallId: 'decision-shaped-tool', title: 'Read native result',
+        kind: 'read', status: 'in_progress',
+      } });
+      await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'tool_call_update', toolCallId: 'decision-shaped-tool', status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: a } }],
+      } });
+      // The test releases only after the real adapter's observe callback.
+      for (;;) {
+        try { await access(attemptId + '.release'); break; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
+      }
+      const output = scenario === 'decision-tool-a' ? a :
+        scenario === 'decision-tool-b' ? JSON.stringify(proposal('b')) : 'not JSON';
+      await message('final', output);
+      return { stopReason: 'end_turn' };
+    }
     if (scenario === 'skill-delivery') {
       assert.deepEqual(skillInstructions,[{id:'checks',version:'v1',status:'complete',instructions:'Selected ACP skill'},
         {id:'partial',version:'v2',status:'truncated',instructions:'Partial'},

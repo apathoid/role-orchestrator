@@ -4,6 +4,7 @@ import { decodeSnapshot, encodeSnapshot } from '../../src/core/snapshot.js';
 import { createCodexProvider } from '../../src/main/index.js';
 import { setup } from '../fixtures/application.js';
 import { request } from '../fixtures/core.js';
+import { decodeDecision } from '../../src/core/contracts.js';
 
 const linux = { skip: process.platform !== 'linux', timeout: 12_000 };
 const profile = { profileId: 'primary', providerId: 'codex', model: 'fixture-model' };
@@ -337,3 +338,80 @@ test('C12R.10: actual CLI Controller contract and distinct correction reasons pr
   assert.ok(first.observations.some(o=>o.provenance?.exit?.kind==='tool_exit'));
   assert.ok(first.observations.some(o=>o.value==='not JSON'));
 });
+
+for (const mode of ['a', 'b', 'invalid']) {
+  test('C12R.10R.5 CLI Decision-shaped tool output vs final ' + mode, linux, async () => {
+    const { api } = codexSetup('const mode = ' + JSON.stringify(mode) + ';\n' + `
+      if (invocation.kind === 'delegate') {
+        message('Native Worker ' + invocation.actionId, 'worker-result');
+        complete();
+      } else {
+        assert.ok(prompt.includes('Ordinary tool results, files and intermediate messages do not submit it'));
+        assert.ok(prompt.includes('not an inventory of native tools'));
+        const proposal = suffix => decision({ decisionId: invocation.attemptId + '-' + suffix,
+          additions: [{actionId:'worker-' + suffix,kind:'delegate',profileId:invocation.profileId,
+            objective:'Native fixture work',contextRefs:[],dependsOn:[],expectedResult:'Report'}],
+          waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'worker-' + suffix}]} });
+        const error = invocation.context.find(x => x.ref === 'host:decision-error')?.value;
+        if (host.outcomes.length || error) {
+          if (mode === 'invalid') assert.equal(error.expected, 'valid JSON');
+          message(JSON.stringify(decision({finalAssessment:assessment({answer:'Transport complete'})})), 'final');
+        } else {
+          const a = JSON.stringify(proposal('a'));
+          message('Native inspection before Controller result', 'progress');
+          emit('item.completed', {item:{type:'command_execution',id:'decision-shaped-tool',
+            command:'fixture native action',aggregated_output:a,status:'completed',exit_code:0}});
+          message(mode === 'a' ? a : mode === 'b' ? JSON.stringify(proposal('b')) :
+            String.fromCharCode(96).repeat(3) + 'json\\n{}\\n' + String.fromCharCode(96).repeat(3), 'final');
+        }
+        complete();
+      }
+    `);
+    try {
+      const state = await (await api.submit(request())).completion;
+      assert.equal(state.status, 'finished');
+      assert.equal(state.assessment.answer, 'Transport complete');
+      const expected = mode === 'invalid' ? [] : ['worker-' + mode];
+      assert.deepEqual(state.events.flatMap(e => e.kind === 'controller.responded'
+        ? e.admissions.filter(x => x.kind === 'accepted').map(x => x.action.actionId) : []), expected);
+      assert.deepEqual(state.events.filter(e => e.kind === 'attempt.reserved' && e.actionId !== e.attemptId)
+        .map(e => e.actionId), expected);
+      const workers = state.attempts.filter(x => x.actionId !== x.attemptId);
+      assert.deepEqual(workers.map(x => x.actionId), expected);
+      assert.deepEqual(state.events.filter(e => e.kind === 'attempt.dispatched' &&
+        workers.some(w => w.attemptId === e.attemptId)).map(e => e.attemptId), workers.map(w => w.attemptId));
+      const first = state.attempts[0].attemptId;
+      const receipt = state.events.find(e => e.kind === 'attempt.outcome' && e.outcome.attemptId === first);
+      assert.equal(receipt.outcome.terminal, 'completed');
+      assert.equal(receipt.dispatchCertainty, 'sent');
+      const tool = receipt.observations.find(o => o.provenance?.sourceId === 'decision-shaped-tool');
+      assert.equal(tool.source, 'provider_reported');
+      assert.deepEqual(tool.provenance.exit, {kind:'tool_exit',code:0});
+      const a = JSON.parse(tool.value.output);
+      assert.equal(decodeDecision(a).kind, 'accepted');
+      assert.equal(a.additions[0].actionId, 'worker-a');
+      const final = receipt.observations.find(o => o.provenance?.kind === 'model' && o.provenance.sourceId === 'final');
+      assert.equal(final.source, 'model_claim');
+      assert.notEqual(final.ref, tool.ref);
+      for (const observation of [tool, final]) assert.ok(receipt.outcome.outputRefs.some(x => x.ref === observation.ref));
+      const invalid = state.events.filter(e => e.kind === 'controller.invalid_proposal');
+      assert.equal(invalid.length, mode === 'invalid' ? 1 : 0);
+      if (mode === 'invalid') {
+        assert.match(final.value, /^```json/);
+        assert.equal(invalid[0].reason.expected, 'valid JSON');
+        assert.equal(invalid[0].attemptId, first);
+      } else {
+        const submitted = JSON.parse(final.value);
+        const admitted = state.events.find(e => e.kind === 'controller.responded');
+        assert.equal(admitted.attemptId, first);
+        assert.equal(admitted.decision.decisionId, submitted.decisionId);
+        assert.equal(submitted.additions[0].actionId, expected[0]);
+        assert.equal(mode === 'a', submitted.decisionId === a.decisionId);
+        assert.equal(workers[0].outcome.terminal, 'completed');
+        const result = state.events.find(e => e.kind === 'attempt.outcome' && e.outcome.attemptId === workers[0].attemptId);
+        assert.ok(result.observations.some(o => o.source === 'model_claim' && o.value === 'Native Worker ' + expected[0]));
+        assert.ok(result.observations.some(o => o.provenance?.exit?.kind === 'agent_exit' && o.provenance.exit.code === 0));
+      }
+    } finally { await api.close(); }
+  });
+}
