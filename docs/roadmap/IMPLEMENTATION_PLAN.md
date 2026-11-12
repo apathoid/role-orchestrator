@@ -51,6 +51,23 @@
 
 **Историческая запись плана: первоначально runtime implementation не начиналась; C12R.9.0–.7 затем реализованы.** NATIVE C12.3/C12.4/Zed/NixOS и comparative quality остаются UNVERIFIED. Действующие результаты и следующий шаг — только в [STATUS](STATUS.md).
 
+## C12R.10 — устойчивость модельного интерфейса Controller
+
+[**Детальный план C12R.10**](C12R10_CONTROLLER_CONTRACT.md) — новый адресный инженерный этап по результатам пользовательских native runs. Текущий следующий шаг и фактическая готовность — [STATUS](STATUS.md). Не переоткрывает C12R.9 без нового воспроизводимого дефекта.
+
+| Этап | Обязательный результат |
+|---|---|
+| C12R.10.0 | Synthetic baseline, воспроизведение противоречий Decision и технических отказов; без prerequisites реальных моделей |
+| C12R.10.1 | Единое актуальное представление Decision v1, точные поля/cursors, валидные структурные примеры |
+| C12R.10.2 | Разделить итог пользователя и transport envelope, сохранить native tools и Worker format |
+| C12R.10.3 | Краткая адресная parsing/validation диагностика, строгий отказ без ремонта, сохранение effects/recovery |
+| C12R.10.4 | Точное объяснение Host Catalog rejection, независимость native capabilities |
+| C12R.10.5 | Проверка архитектурной нейтральности, permissions, выразительности и C12R.9 invariants |
+| C12R.10.6 | Адресные/полные регрессии, CI, документация, engineering handoff |
+| C12R.10.7 | Отдельное локальное comparative native acceptance после инженерного завершения, либо UNVERIFIED |
+
+**Границы:** model-first, provider-agnostic; нет Host semantics, read/write классификации, FS/OS isolation, новых workflow, discovery native окружения/skills, JSON repair, обязательного MCP/делегирования/проверок, изменения Decision schema/lifecycle или defaults budgets. Технические гарантии и реальные permissions сохраняются. Этапы относятся к разработке продукта, не к выполнению задач. Реальные LLM, OpenCode, llama.cpp и Zed не запускаются в GitHub Actions и не блокируют .0–.6; параметры native runs фиксируются только для последующего локального эксперимента. Существующие C12.3/C12.4/C12R.9/NixOS native obligations остаются открыты.
+
 ## C12 — реализованные инженерные шаги и открытая приёмка
 
 | Шаг | Содержание | Завершение |
