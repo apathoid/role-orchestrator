@@ -303,3 +303,17 @@ Synthetic subprocess/CI PASS не означает проверенного ка
 | Decision v1 | structured cursor, 0, legacy numeric decode, malformed reject; contextCursor independent | PASS |
 
 **OBSERVED:** [CI 43183117068](https://github.com/apathoid/role-orchestrator/actions/runs/43183117068) на `2cff795bcf851f05cba7febd1d7dc740bab99d96`, 375/375 (288 integration), 0 failed/skipped/cancelled; checkJs, package, Nix build/install, NixOS evaluation SUCCESS. Native real models/Zed/NixOS runtime and comparative quality/performance remain **UNVERIFIED**.
+
+
+### C12R.10 — Controller contract and transport (synthetic)
+
+| Проверка | Regression | Evidence status |
+|---|---|---|
+| Shared Decision v1 example, required findingRefs, actual ids and admission; exact user answer | `controller-contract.test.js` (direct structured ProviderPort, Markdown/Unicode/JSON string) | CI on final SHA required |
+| Actual CLI/ACP prompt and text parsing/correction | `codex-provider.test.js`, `acp-provider.test.js`, `acp-contract-agent.js`: current cursor types, invalid JSON/non-object/depth/missing field, preserved tool effects and exact answer | CI on final SHA required |
+| Strict contract and no repair | `controller-contract.test.js`, existing core decoder tests and `orchestrator.test.js`: fenced/malformed, valid primitives, array, depth, field/enum/admission, bounded correction | CI on final SHA required |
+| Explicit Host Catalog rejection, independent Workers and permissions | `controller-contract.test.js`, existing `handoff.test.js`, `delegation.test.js`, `permissions.test.js`, CLI/ACP contract regressions | CI on final SHA required |
+| Invalid Decision with proposed additions, live accepted Worker and unknown effect | `controller-contract.test.js`: no rejected dispatch or replay; existing recovery/cancel tests preserve provenance | CI on final SHA required |
+| C12R.9 pagination, bounded context, positional refs, recovery, and prior native obligations | existing `context-continuity.test.js`, `history-directory.test.js`, `context-chunks.test.js`, other suites | CI on final SHA required |
+
+The final engineering CI and SHA are tracked in [STATUS](../docs/roadmap/STATUS.md). Real models, real Zed, NixOS runtime and comparative quality/performance remain UNVERIFIED; synthetic PASS is not native acceptance.

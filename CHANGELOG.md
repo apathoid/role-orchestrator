@@ -4,6 +4,12 @@
 
 ## Unreleased — C12 integration and delivery
 
+### C12R.10 — Controller contract (engineering; native comparison UNVERIFIED)
+
+- Единое Decision v1 описание для прямого ProviderPort и CLI/ACP, точные history/workMap cursors, валидный пример и явная граница transport / finalAssessment.answer. Сохранены native tools и отдельный Worker result.
+- Различимые malformed JSON, non-object и depth ошибки используют существующий INVALID_PROPOSAL/correction без ремонта ответа или изменения Outcome/effect.
+- Точный отказ по незарегистрированному Host Catalog skill не ограничивает native capabilities. Новые synthetic regression fixtures проверяют доставку, точный ответ, независимые Workers и сохранение effects; фактическая готовность и CI — в STATUS. Native сравнительная приёмка C12R.10.7 и прежние обязательства остаются открытыми.
+
 ### C12R.9 — контекст и история, review P1/P2 (engineering changes; native UNVERIFIED)
 
 - History directory uses journal-prefix `{revision,index}` cursors across Controller/MCP retrieval (0 starts fresh; legacy nonzero offsets explicitly return invalid_cursor). Structured partial pages advance by actual delivered count, end/errors survive omitted page envelopes, late observations preserve event-local positional identity; independent budgets unchanged.

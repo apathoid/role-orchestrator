@@ -15,7 +15,7 @@
 | Authority | authorityId, trusted origin, permitted provider/tool resources, applicable scope expressed by available enforcement contract, standing decisions, revoked flag; без исходных секретов |
 | Profile | profileId, providerId, model selector, native execution settings, declared/negotiated capabilities |
 | Role | roleId, purpose, instructions, optional preferred profiles; роль не выдаёт capabilities или authority |
-| Decision | decisionId, operationId, contextCursor, additions[], cancellations[], waitPolicy, optional clarification или finalAssessment, optional findings[] |
+| Decision | decisionId, operationId, contextCursor, additions[], cancellations[], optional acceptedActionIds[], waitPolicy, clarification, finalAssessment, findings[], nextController (совместимость полей проверяет decoder/admission) |
 | Action | actionId, kind=`delegate`, objective, profileId, optional roleId/skills[], contextRefs[], dependsOn[], expectedResult, optional continuationReference |
 | Attempt | attemptId, actionId, operationId, generation, lifecycle status, dispatch certainty, effect knowledge, timestamps, reservation, terminal outcome reference |
 | Invocation | attemptId, task/handoff, profile, workspace context, context bundle, effective authority reference, resource envelope, cancel signal |
@@ -113,7 +113,7 @@ nextController.continue разрешает самостоятельный ход
 
 ## C12R.9 — расширение Decision без отдельного цикла
 
-Существующий version 1 `Decision.nextController` поддерживает optional `contextRequest:{refs?:string[],cursor?:0|{revision:number,index:number}}` вместе с `continue:true`. Достаточно непустого массива уникальных refs и/или journal-prefix cursor или 0. `contextRequest` без `continue:true`, пустой и неизвестные поля отклоняются адресно. Контракт не предписывает запрос истории; Controller может закончить напрямую. Принятая запись уже находится в неизменном journal и потребляется ровно следующим Controller invocation; Worker scope не расширяется. Неизвестный или неразрешённый ref не превращается в новое разрешение, повтор Worker или blind retry.
+Существующий version 1 `Decision.nextController` поддерживает optional `contextRequest` вместе с `continue:true` (точные актуальные refs/cursor/workCursor — в разделах review ниже). Достаточно хотя бы одного уникального ref или одного допустимого cursor. `contextRequest` без `continue:true`, пустой и неизвестные поля отклоняются адресно. Контракт не предписывает запрос истории; Controller может закончить напрямую. Принятая запись уже находится в неизменном journal и потребляется ровно следующим Controller invocation; Worker scope не расширяется. Неизвестный или неразрешённый ref не превращается в новое разрешение, повтор Worker или blind retry.
 
 `host:invocation-context.value.workMap` — derived technical projection с `total/represented/omitted`, lifecycle, attributed refs и original objective Decision ref. Недоступность body, отсутствие сохранённого artifact, бюджет и retention не выдаются за семантический результат. Terminal effect uncertainty отделена от in-flight uncertainty. Отклонения Action сохраняются техническим bounded preview; semantic relevance и окончательный Assessment принадлежат модели.
 
