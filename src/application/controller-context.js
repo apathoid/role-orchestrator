@@ -15,7 +15,7 @@ export const controllerInstructions = [
   'Action.skills selects only Host-managed Catalog skill ids for a Worker. A skill absent from this Catalog does not imply the provider lacks native skills, terminal, project instructions, files or scripts. Use these through available native tools without requiring Host Catalog registration. Selected skill instructions apply only to that Worker; restrictions on native subagents do not by themselves prohibit orchestration. Honor applicable task instructions, user requirements and actual permissions.',
   'Delegate when useful by selecting a profile, optional reasoningLevel, objective, expected result and context references. Use all_requested or next_completion when waiting for delegates; acceptedActionIds records your acceptance of specific terminal actions.',
   'Profiles expose logical reasoning levels, not their private native mapping. Different models at the same level are not guaranteed equal. Omit reasoningLevel to use the trusted profile default or native mode.',
-  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:(string|{revision:number,index:number}|{ref:string|{revision:number,index:number},offset:number})[],cursor?:number,workCursor?:number}} for an optional next Controller turn. A contextRequest selects historical refs or {ref,offset} byte-chunks, a history-directory page, or a workMap page with workCursor; use nextOffset for subsequent chunks. Base64 chunks are lossless stored bytes (UTF-8/json/binary), not a promise that truncated capture can be reconstructed; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
+  'Use nextController:{continue:true,reasoningLevel?:string,contextRequest?:{refs?:(string|{revision:number,index:number}|{ref:string|{revision:number,index:number},offset:number})[],cursor?:number,workCursor?:0|{revision:number,index:number}}} for an optional next Controller turn. A contextRequest selects historical refs or {ref,offset} byte-chunks, a history-directory page, or a workMap page with workCursor (copy nextCursor exactly; 0 starts a fresh map including new work); use nextOffset for subsequent chunks. Base64 chunks are lossless stored bytes (UTF-8/json/binary), not a promise that truncated capture can be reconstructed; no MCP or Worker is needed. Use it only when useful; original reports may be incomplete or unavailable. A reasoningLevel without continue needs an independent reason to revisit.',
   'To replan, add a new action id or cancel an existing action. Do not replace a dispatched action under the same id.',
   'For an explicit retry, use a new action id, retryOf with the original attempt id and a supported retryBasis. Unknown effects remain relevant to the choice of independent actions.',
   'Workspace files and branches may change during the operation. Use observations to decide whether earlier findings still apply and whether to read a target again. Reported locations, versions and times describe individual observations.',
@@ -163,7 +163,7 @@ export function deduplicateInlineResults(items) {
  * and stored evidence remain only in the operation journal.
  * @param {Operation} state @param {readonly ContextItem[]} history
  */
-export function operationWorkMap(state, history) {
+function orderedWorkMap(state, history) {
   /** @type {Map<string, {decisionRef: string, action: import('../core/contracts.js').Action, order: number}>} */
   const accepted = new Map();
   /** @type {Map<string, number>} */
@@ -192,7 +192,10 @@ export function operationWorkMap(state, history) {
     if (event.kind === 'attempt.reserved') attemptOrder.set(event.attemptId, index);
   });
   const existingActions = new Set(state.attempts.map(attempt => attempt.actionId));
+  const firstAttempts = new Set();
   const attempts = state.attempts.map(attempt => {
+    const first = !firstAttempts.has(attempt.actionId);
+    firstAttempts.add(attempt.actionId);
     const source = accepted.get(attempt.actionId);
     const allRefs = observations.get(attempt.attemptId) ?? [];
     const outputs = (attempt.outcome?.outputRefs ?? []).map(item => {
@@ -204,7 +207,9 @@ export function operationWorkMap(state, history) {
     });
     const outputNames = new Set(outputs.map(item => item.ref));
     return {
-      order: attemptOrder.get(attempt.attemptId) ?? -1,
+      // The first Attempt replaces its accepted-only row in place. Further
+      // Attempts have their own reservation position; outcomes never move rows.
+      order: first && source ? source.order : attemptOrder.get(attempt.attemptId) ?? -1,
       row: {
         actionId: attempt.actionId, attemptId: attempt.attemptId,
         ...(source ? { objectiveRef: source.decisionRef } : { kind: 'controller' }),
@@ -218,8 +223,27 @@ export function operationWorkMap(state, history) {
     order: item.order, row: { actionId, objectiveRef: item.decisionRef, status: 'accepted',
       outputRefs: [], observationRefs: [] },
   }]);
-  return [...attempts, ...unstarted].sort((left, right) => right.order - left.order)
-    .map(item => item.row);
+  return [...attempts, ...unstarted].sort((left, right) => right.order - left.order ||
+    (left.row.actionId < right.row.actionId ? -1 : left.row.actionId > right.row.actionId ? 1 : 0));
+}
+
+/** @param {Operation} state @param {readonly ContextItem[]} history */
+export function operationWorkMap(state, history) {
+  return orderedWorkMap(state, history).map(item => item.row);
+}
+
+/**
+ * Derive the Controller excluded from a historical page's membership from
+ * the same journal prefix, not from a persisted pagination snapshot.
+ * @param {Operation} state @param {number} revision
+ */
+function controllerAtRevision(state, revision) {
+  const active = new Set();
+  for (const event of state.events.slice(0, revision)) {
+    if (event.kind === 'attempt.reserved' && event.actionId === event.attemptId) active.add(event.attemptId);
+    if (event.kind === 'attempt.outcome') active.delete(event.outcome.attemptId);
+  }
+  return [...active].at(-1);
 }
 
 /**
@@ -248,7 +272,7 @@ export function pendingControllerHistoryRequest(state, attemptId) {
  * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {number} [maxBytes]
  * @param {Catalog['preferences']} [preferences]
  * @param {readonly ContextItem[]} [requested]
- * @param {number} [workCursor]
+ * @param {number | {revision: number, index: number}} [workCursor]
  * @returns {ContextItem[]}
  */
 export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor = 0) {
@@ -267,12 +291,23 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // only a lifecycle boundary, not historical work to tell itself about.
   const currentControllerId = state.attempts.findLast(attempt =>
     attempt.actionId === attempt.attemptId && attempt.status !== 'terminal')?.attemptId;
-  const workRows = operationWorkMap(state, history).filter(item => !('attemptId' in item) || item.attemptId !== currentControllerId);
-  // A workCursor is a read-only offset in this deterministically derived
-  // newest-first map; it is not stored or interpreted as a workflow stage.
-  const cursorAvailable = Number.isSafeInteger(workCursor) && workCursor >= 0 &&
-    workCursor <= workRows.length;
-  const from = cursorAvailable ? workCursor : workRows.length;
+  const ordered = orderedWorkMap(state, history);
+  const live = ordered.filter(item => !('attemptId' in item.row) || item.row.attemptId !== currentControllerId);
+  // A continuation describes the membership of the original journal prefix.
+  // Rows retain their original admission/reservation position but their
+  // lifecycle and refs are projected from current state. New work is visible
+  // on a fresh page (0), never inserted into a traversal already underway.
+  const revision = typeof workCursor === 'object' ? workCursor.revision : state.events.length;
+  const index = typeof workCursor === 'object' ? workCursor.index : 0;
+  const validRevision = Number.isSafeInteger(revision) && revision >= 0 && revision <= state.events.length;
+  const excluded = validRevision ? controllerAtRevision(state, revision) : undefined;
+  const workRows = live.filter(item => item.order < revision &&
+    (!('attemptId' in item.row) || item.row.attemptId !== excluded)).map(item => item.row);
+  // Legacy nonzero numeric offsets cannot be interpreted safely on a mutable
+  // map. Keep decoding old Decisions but report invalid_cursor, never reset.
+  const cursorAvailable = validRevision && (workCursor === 0 || typeof workCursor === 'object') &&
+    Number.isSafeInteger(index) && index >= 0 && index <= workRows.length;
+  const from = cursorAvailable ? index : workRows.length;
   const rawFacts = coordinationFacts(state, lookups);
   const facts = {
     ...rawFacts,
@@ -333,8 +368,8 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         })(),
         pending: pendingControllerReasoning(state) ?? null,
       },
-      workMap: { total: workRows.length, cursor: workCursor,
-        nextCursor: cursorAvailable ? workRows.length : undefined,
+      workMap: { total: workRows.length, liveTotal: live.length, cursor: workCursor,
+        nextCursor: cursorAvailable ? { revision, index: workRows.length } : undefined,
         ...(!cursorAvailable ? { unavailableReason: 'invalid_cursor' } : {}),
         represented: workRows.length, omitted: workRows.length,
         historyCursor: 0, entries: /** @type {typeof workRows} */ ([]) },
@@ -405,7 +440,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // If nothing fits, a retry with this same cursor and budget cannot progress.
   const next = from + represented;
   host.value.workMap.nextCursor = cursorAvailable && represented > 0 && next < workRows.length
-    ? next : undefined;
+    ? { revision, index: next } : undefined;
   if (cursorAvailable && represented === 0 && from < workRows.length) {
     host.value.workMap.unavailableReason = 'budget';
   }

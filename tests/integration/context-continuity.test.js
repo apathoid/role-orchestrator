@@ -192,11 +192,11 @@ test('C12R.9 review P1: exhausted technical map advertises exact uncertainty and
   }
   assert.ok(host.technicalCoverage.effectUncertainties.omitted>0);
   assert.ok(host.workMap.omitted>0);
-  assert.ok(host.workMap.nextCursor>host.workMap.cursor,
+  assert.ok(host.workMap.nextCursor.index>0,
     'a model-requested workCursor must advance despite many action events');
   assert.ok(Buffer.byteLength(JSON.stringify(ctx.slice(1)))<=4096);
   const next=controllerContext(state,[],undefined,undefined,4096,undefined,[],host.workMap.nextCursor);
-  assert.equal(next[1].value.workMap.cursor,host.workMap.nextCursor);
+  assert.deepEqual(next[1].value.workMap.cursor,host.workMap.nextCursor);
   assert.ok(next[1].value.workMap.entries.length>0,
     'next workMap page should contain previously omitted work');
   assert.equal(next[1].value.technicalCoverage.effectUncertainties.total,200);
@@ -208,9 +208,9 @@ test('C12R.9 review P1: exhausted technical map advertises exact uncertainty and
 test('C12R.9 review P1: accepted workCursor is optional and has strict bounds', () => {
   const base={schemaVersion:1,decisionId:'history',operationId:'op',
     contextCursor:1,additions:[],cancellations:[],
-    nextController:{continue:true,contextRequest:{workCursor:199}}};
+    nextController:{continue:true,contextRequest:{workCursor:{revision:199,index:2}}}};
   assert.equal(decodeDecision(base).kind,'accepted');
-  for(const workCursor of [-1,1.5,'20',null]) {
+  for(const workCursor of [-1,1.5,'20',null,{revision:1,index:-1},{revision:1,index:1,extra:true}]) {
     assert.equal(decodeDecision({...base,nextController:{continue:true,
       contextRequest:{workCursor}}}).kind,'rejected');
   }
@@ -346,7 +346,7 @@ test('C12R.9 review P2: workMap ends without phantom cursors and reports budget 
   assert.equal(full.represented,3);
   assert.equal(full.nextCursor,undefined,'last page has no next page');
   assert.equal(full.unavailableReason,undefined);
-  const atEnd=controllerContext(state,[],undefined,undefined,65536,undefined,[],3)[1].value.workMap;
+  const atEnd=controllerContext(state,[],undefined,undefined,65536,undefined,[],{revision:3,index:3})[1].value.workMap;
   assert.equal(atEnd.represented,0);
   assert.equal(atEnd.nextCursor,undefined);
   assert.equal(atEnd.unavailableReason,undefined);
@@ -354,7 +354,39 @@ test('C12R.9 review P2: workMap ends without phantom cursors and reports budget 
   assert.equal(stalled.represented,0);
   assert.equal(stalled.nextCursor,undefined);
   assert.equal(stalled.unavailableReason,'budget');
-  const stale=controllerContext(state,[],undefined,undefined,4096,undefined,[],4)[1].value.workMap;
+  const stale=controllerContext(state,[],undefined,undefined,4096,undefined,[],{revision:3,index:4})[1].value.workMap;
   assert.equal(stale.unavailableReason,'invalid_cursor');
   assert.equal(stale.nextCursor,undefined);
+});
+
+test('C12R.9: real Controller continuation traverses a growing workMap without duplicates', async () => {
+  const { setup, final } = await import('../fixtures/application.js');
+  let controllers=0;
+  let initialTotal=0;
+  const seen=[];
+  const {api,respondErrors}=setup({maxInvocations:30,context:{controllerMaxBytes:4096},
+    respond(invocation) {
+      controllers++;
+      const map=invocation.context.find(item=>item.ref==='host:invocation-context').value.workMap;
+      if(controllers<=12) return final(invocation,{finalAssessment:undefined,nextController:{continue:true}});
+      if(controllers===13) {
+        initialTotal=map.total;
+        assert.ok(map.nextCursor,'fixture must force paging');
+      }
+      assert.equal(map.total,initialTotal);
+      for(const row of map.entries) {
+        assert.ok(!seen.includes(row.attemptId),'duplicate historical Controller');
+        seen.push(row.attemptId);
+      }
+      if(map.nextCursor) return final(invocation,{finalAssessment:undefined,
+        nextController:{continue:true,contextRequest:{workCursor:map.nextCursor}}});
+      assert.equal(seen.length,initialTotal);
+      assert.ok(map.liveTotal>map.total);
+      return final(invocation);
+    }});
+  const state=await (await api.submit(request())).completion;
+  assert.deepEqual(respondErrors,[]);
+  assert.equal(state.status,'finished');
+  assert.equal(initialTotal,12);
+  assert.equal(seen.length,12);
 });

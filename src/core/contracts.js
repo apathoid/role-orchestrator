@@ -68,7 +68,7 @@ function contextSelectionKey(ref) {
 }
 /** @param {unknown} input @param {string} path */
 const contextRequest = (input, path) => {
-  const value = record({ refs: optional(contextReferences), cursor: optional(count), workCursor: optional(count) })(input, path);
+  const value = record({ refs: optional(contextReferences), cursor: optional(count), workCursor: optional((value, at) => typeof value === 'number' ? count(value, at) : contextPosition(value, at)) })(input, path);
   if ((!value.refs || value.refs.length === 0) && value.cursor === undefined && value.workCursor === undefined) {
     invalid(path, 'nonempty refs and/or cursor');
   }
