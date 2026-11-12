@@ -20,6 +20,8 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     assert.match(prompt, /Ordinary tool results, files and intermediate messages do not submit it/);
     assert.match(prompt, /Dispatch is not completion or proof of success/);
     assert.match(prompt, /one JSON object without fences/);
+    assert.match(prompt, /tools\.bridge describes tool bridging through this integration, not an inventory of native tools/);
+    assert.match(prompt, /Native subagent results are not Host Actions\/Attempts/);
     const output={...shape,operationId:invocation.operationId,contextCursor:host.contextCursor,
       finalAssessment:{...shape.finalAssessment,author:invocation.profile.profileId,answer}};
     return {...final(invocation),output};

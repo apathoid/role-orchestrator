@@ -14,6 +14,8 @@ Core получает ProviderPort, Profile и capabilities. Он не импо�
 
 ## Capability negotiation
 
+`tools.bridge` describes bridging through this integration (including configured ACP client FS/terminal or MCP as applicable), not an inventory of the executor's native tools. `supported`, `unsupported` and `unknown` retain their configured/negotiated scope; native availability and permissions are determined by the provider/environment. Native subagents do not become Host Actions/Attempts merely by returning results.
+
 Capabilities имеют explicit `supported | unsupported | unknown`, источник `configured | negotiated` и область действия. Минимум: input modalities, structured controller output, tool visibility, permission mediation, cancellation, usage reporting, session continuation, status lookup и допустимая concurrency. Не объявлять произвольный provider `read-only` лишь потому, что его роль Reviewer.
 
 `unknown` не означает запрет любого вызова. Проверяется именно обязательная для запрошенной операции возможность. Отсутствие streaming, tool details или точного usage допускает деградацию с честными метаданными. Невозможность передать обязательное изображение, получить требуемую техническую гарантию или выполнить выбранную функцию возвращает адресную ошибку и каталог альтернатив.
