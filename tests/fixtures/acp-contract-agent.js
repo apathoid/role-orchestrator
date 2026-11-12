@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { retrieveContext } from './mcp-client.js';
+import { decisionContract } from '../../src/application/decision-instructions.js';
+import { controllerInstructions } from '../../src/application/controller-context.js';
 import { agent, RequestError, methods, ndJsonStream } from '@agentclientprotocol/sdk';
 import { Readable, Writable } from 'node:stream';
 import { access, writeFile } from 'node:fs/promises';
@@ -86,11 +88,10 @@ agent()
   .onRequest(a.session.prompt, async ({ params, client }) => {
     const prompt = params.prompt[0].text;
     const marker = '\n\nInvocation (JSON):\n';
-    const { objective, attemptId, actionId, kind, profileId, operationId, context, skillInstructions } = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length));
+    const { objective, attemptId, actionId, kind, profileId, operationId, context, skillInstructions, instructions } = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length));
     if (scenario === 'controller-contract' && kind === 'controller') {
-      assert.ok(prompt.includes('cursor?:0|{revision:number,index:number}'));
-      assert.ok(prompt.includes('finalAssessment.answer'));
-      assert.ok(!prompt.includes('cursor?: number'));
+      assert.deepEqual(instructions, controllerInstructions);
+      assert.equal(instructions.filter(x => x === decisionContract).length, 1);
     }
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
@@ -115,11 +116,12 @@ agent()
     if (scenario.startsWith('decision-tool-')) {
       const host = context.find(item => item.ref === 'host:invocation-context')?.value;
       if (kind === 'delegate') {
+        assert.ok(!instructions.includes(decisionContract));
+        assert.ok(!prompt.slice(0, prompt.indexOf(marker)).includes('final Controller message'));
         await message('worker-result', 'Native Worker ' + actionId);
         return { stopReason: 'end_turn' };
       }
-      assert.ok(prompt.includes('Ordinary tool results and files do not submit it'));
-      assert.ok(prompt.includes('not an inventory of native tools'));
+
       const decision = fields => ({ schemaVersion: 1, decisionId: attemptId + '-final',
         operationId, contextCursor: host.contextCursor, additions: [], cancellations: [], ...fields });
       const proposal = suffix => decision({

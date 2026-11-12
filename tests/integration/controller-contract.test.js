@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decisionContract, decisionExample } from '../../src/application/decision-instructions.js';
+import { controllerInstructions } from '../../src/application/controller-context.js';
 import { decodeDecision } from '../../src/core/contracts.js';
 import { parseDecisionText, renderInvocationPrompt } from '../../src/adapters/invocation-prompt.js';
 import { setup, final } from '../fixtures/application.js';
@@ -16,16 +17,14 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     const prompt=renderInvocationPrompt(invocation,'fixture');
     const payload=JSON.parse(prompt.split('\n\nInvocation (JSON):\n')[1]);
     assert.equal(payload.instructions.filter(x=>x===decisionContract).length,1);
+    assert.deepEqual(payload.instructions, controllerInstructions);
     assert.ok(!prompt.includes('cursor?: number'));
-    assert.match(prompt, /Ordinary tool results and files do not submit it/);
-    assert.match(prompt, /Dispatch is not completion or proof of success/);
-    assert.match(prompt, /one JSON object without fences/);
-    assert.match(prompt, /tools\.bridge describes tool bridging through this integration, not an inventory of native tools/);
-    assert.match(prompt, /Native subagent results are not Host Actions\/Attempts/);
-    assert.match(prompt, /reads existing scoped records only/);
-    assert.match(prompt, /workMap is a derived Host lifecycle view, not dispatch/);
-    assert.match(prompt, /Each finalAssessment\.requirements\[\] entry needs its own observationRefs and findingRefs arrays/);
-    assert.match(prompt, /requirements\[\]\.reason is an optional non-empty string/);
+    assert.match(decisionContract, /declared result/);
+    assert.match(decisionContract, /finalAssessment\.answer/);
+    assert.match(decisionContract, /findingRefs/);
+    assert.match(decisionContract, /non-empty string/);
+    assert.ok(payload.instructions.some(x=>x.includes('tools.bridge')));
+    assert.ok(payload.instructions.some(x=>x.includes('workMap')));
     const output={...shape,operationId:invocation.operationId,contextCursor:host.contextCursor,
       finalAssessment:{...shape.finalAssessment,author:invocation.profile.profileId,answer}};
     return {...final(invocation),output};

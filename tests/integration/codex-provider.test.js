@@ -13,6 +13,8 @@ function codexSetup(body, { nativeSettings, ...options } = {}) {
   const source = `
     import assert from 'node:assert/strict';
     import { readFileSync } from 'node:fs';
+    import { decisionContract } from ${JSON.stringify(new URL('../../src/application/decision-instructions.js', import.meta.url).href)};
+    import { controllerInstructions } from ${JSON.stringify(new URL('../../src/application/controller-context.js', import.meta.url).href)};
     const prompt = readFileSync(0, 'utf8');
     const separator = ${JSON.stringify('\n\nInvocation (JSON):\n')};
     const boundary = prompt.indexOf(separator);
@@ -299,9 +301,8 @@ test('Codex preserves a non-fatal provider warning in a successful turn', linux,
 test('C12R.10: actual CLI Controller contract and distinct correction reasons preserve native effects', linux, async () => {
   const answer = '# Result\nПроверка 🧪\n{"value":1}';
   const { api } = codexSetup(`
-    assert.ok(prompt.includes('cursor?:0|{revision:number,index:number}'));
-    assert.ok(prompt.includes('finalAssessment.answer'));
-    assert.ok(!prompt.includes('cursor?: number'));
+    assert.deepEqual(invocation.instructions, controllerInstructions);
+    assert.equal(invocation.instructions.filter(x => x === decisionContract).length, 1);
     const error = invocation.context.find(item => item.ref === 'host:decision-error')?.value;
     const step = host.outcomes.length;
     if (step === 0) {
@@ -352,11 +353,12 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id']) {
   test('C12R.10R.5 CLI Decision-shaped tool output vs final ' + mode, linux, async () => {
     const { api } = codexSetup('const mode = ' + JSON.stringify(mode) + ';\n' + `
       if (invocation.kind === 'delegate') {
+        assert.ok(!invocation.instructions.includes(decisionContract));
+        assert.ok(!prompt.slice(0, boundary).includes('final Controller message'));
         message('Native Worker ' + invocation.actionId, 'worker-result');
         complete();
       } else {
-        assert.ok(prompt.includes('Ordinary tool results and files do not submit it'));
-        assert.ok(prompt.includes('not an inventory of native tools'));
+
         const proposal = suffix => decision({ decisionId: invocation.attemptId + '-' + suffix,
           additions: [{actionId:'worker-' + suffix,kind:'delegate',profileId:invocation.profileId,
             objective:'Native fixture work',contextRefs:[],dependsOn:[],expectedResult:'Report'}],

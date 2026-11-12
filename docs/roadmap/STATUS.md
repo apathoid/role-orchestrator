@@ -29,6 +29,8 @@ C12R.10 .0–.6 остаются engineering complete; исторический 
 
 **C12R.10R review P3 (reason):** existing core decoder uses optional(id): null, empty and whitespace-only reject at `$.finalAssessment.requirements[0].reason` with `a non-empty string`; omitted and non-empty values are accepted, original text unchanged. Prompt and CONTRACTS aligned; focused structural regression added, existing CLI correction retained. No schema/decoder/correction change. Regression UNVERIFIED pending CI.
 
+**C12R.10R review P3 (prompt tests):** actual Direct ProviderPort invocation and rendered JSON payload checked against the shared current controllerInstructions/decisionContract (one copy); actual ACP and CLI subprocess prompts checked the same way; Worker envelopes excluded in actual transport cases. Remove repeated long phrase assertions, retain focused contract/behavior checks and existing exact answer/correction tests. No production prompt DSL or metadata. Review follow-up delivery complete; full new CI pending.
+
 ## C12R.10 — Controller contract (engineering complete; regression verified)
 
 **Исходный HEAD:** `d73974c8789c68be9850cb162e518ceaf80f0a24` (actual implementation baseline; initial plan `0117f845c0a9647342279d9ab631c978fd08092d`). **Implementation complete: YES; regression verified: OBSERVED SUCCESS on `823b993fee85298fdc3d99431ada67f8436e8c33`; native integration verified: UNVERIFIED; comparative quality/performance verified: UNVERIFIED.** Предыдущий CI C12R.9 не доказывает C12R.10.
