@@ -17,6 +17,8 @@ C12R.10 .0–.6 остаются engineering complete; исторический 
 
 **C12R.10R.4:** clarified required nested refs and optional non-null reason in existing Decision description; decoder, example and correction unchanged. Prompt assertions added; regression UNVERIFIED.
 
+**Intermediate CI:** [43304575885](https://github.com/apathoid/role-orchestrator/actions/runs/43304575885) on `d70d754` failed `npm run check` (exit 1, unescaped apostrophe in Controller instruction). Fixed wording without changing the contract. Prior baseline CI [43304028464](https://github.com/apathoid/role-orchestrator/actions/runs/43304028464) SUCCESS is not verification of implementation.
+
 **C12R.10R.5:** added six actual-adapter synthetic subprocess cases (ACP/CLI × final A/B/invalid), ACP observe callback gate before release, journal admission/reservation/dispatch/Worker output and provenance assertions, correction without fallback. Production transport unchanged; actual regression results UNVERIFIED pending CI.
 
 ## C12R.10 — Controller contract (engineering complete; regression verified)
