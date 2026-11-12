@@ -118,7 +118,7 @@ agent()
         await message('worker-result', 'Native Worker ' + actionId);
         return { stopReason: 'end_turn' };
       }
-      assert.ok(prompt.includes('Ordinary tool results, files and intermediate messages do not submit it'));
+      assert.ok(prompt.includes('Ordinary tool results and files do not submit it'));
       assert.ok(prompt.includes('not an inventory of native tools'));
       const decision = fields => ({ schemaVersion: 1, decisionId: attemptId + '-final',
         operationId, contextCursor: host.contextCursor, additions: [], cancellations: [], ...fields });
@@ -130,7 +130,7 @@ agent()
       });
       const error = context.find(item => item.ref === 'host:decision-error')?.value;
       if (host.outcomes.length || error) {
-        if (['decision-tool-invalid', 'decision-tool-only', 'decision-tool-prior-anonymous'].includes(scenario)) {
+        if (['decision-tool-invalid', 'decision-tool-only', 'decision-tool-prior-anonymous', 'decision-tool-prior-empty'].includes(scenario)) {
           assert.equal(error.code, 'INVALID_PROPOSAL');
           assert.equal(error.expected, 'valid JSON');
         }
@@ -141,7 +141,7 @@ agent()
         return { stopReason: 'end_turn' };
       }
       const a = JSON.stringify(proposal('a'));
-      if (scenario === 'decision-tool-progress-b' || scenario === 'decision-tool-prior-id') await message('progress', a);
+      if (['decision-tool-progress-b', 'decision-tool-prior-id', 'decision-tool-prior-empty'].includes(scenario)) await message('progress', a);
       else if (scenario === 'decision-tool-prior-anonymous') await message(undefined, a);
       else if (scenario !== 'decision-tool-only') await message('progress', 'Native inspection before Controller result');
       await client.notify(c.session.update, { sessionId, update: {
@@ -157,7 +157,8 @@ agent()
         try { await access(attemptId + '.release'); break; }
         catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
       }
-      if (['decision-tool-only', 'decision-tool-prior-id', 'decision-tool-prior-anonymous'].includes(scenario)) return { stopReason: 'end_turn' };
+      if (scenario === 'decision-tool-prior-empty') await message('final', '');
+      if (['decision-tool-only', 'decision-tool-prior-id', 'decision-tool-prior-anonymous', 'decision-tool-prior-empty'].includes(scenario)) return { stopReason: 'end_turn' };
       const output = scenario === 'decision-tool-a' ? a :
         ['decision-tool-b', 'decision-tool-progress-b'].includes(scenario) ? JSON.stringify(proposal('b')) : 'not JSON';
       await message('final', output);

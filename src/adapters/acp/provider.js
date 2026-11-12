@@ -214,6 +214,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             flushMessage();
             messageId = id;
             output = '';
+            finalMessageRef = undefined;
           }
           output += update.content.text;
           pendingText += update.content.text;
@@ -226,7 +227,10 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       // With anonymous chunks, a new tool call separates progress from the
       // subsequent answer. Tool status updates can interleave with the answer.
       if (invocation.kind === 'controller' && messageId === null &&
-          update.sessionUpdate === 'tool_call' && !tools.has(update.toolCallId)) output = '';
+          update.sessionUpdate === 'tool_call' && !tools.has(update.toolCallId)) {
+        output = '';
+        finalMessageRef = undefined;
+      }
       tools.set(update.toolCallId, mergeToolCall(tools.get(update.toolCallId), update));
       // Keep opaque native payload as text to avoid recursive decoding of unbounded shapes.
       publish({ ref: 'acp-update-' + ++line, sourceId: update.toolCallId, kind: 'provider_tool', completeness: 'complete',

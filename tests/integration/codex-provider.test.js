@@ -355,7 +355,7 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id']) {
         message('Native Worker ' + invocation.actionId, 'worker-result');
         complete();
       } else {
-        assert.ok(prompt.includes('Ordinary tool results, files and intermediate messages do not submit it'));
+        assert.ok(prompt.includes('Ordinary tool results and files do not submit it'));
         assert.ok(prompt.includes('not an inventory of native tools'));
         const proposal = suffix => decision({ decisionId: invocation.attemptId + '-' + suffix,
           additions: [{actionId:'worker-' + suffix,kind:'delegate',profileId:invocation.profileId,

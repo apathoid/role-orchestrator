@@ -482,7 +482,7 @@ test('C12R.10 actual ACP prompt delivers the current Decision contract', linux, 
     assert.equal(state.events.find(e=>e.kind==='controller.invalid_proposal').reason.expected,'valid JSON');
   }));
 
-for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id', 'prior-anonymous']) {
+for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id', 'prior-anonymous', 'prior-empty']) {
   test('C12R.10R.5 ACP Decision-shaped tool output vs final ' + mode, linux, () =>
     withOwnedRun('C12R10R-acp-' + mode, async cwd => {
       const endpoint = provider(cwd, 'decision-tool-' + mode);
@@ -523,7 +523,7 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id', 'prio
         const state = await handle.completion;
         assert.equal(state.status, 'finished');
         assert.equal(state.assessment.answer, 'Transport complete');
-        const expected = ['invalid', 'only', 'prior-anonymous'].includes(mode) ? [] :
+        const expected = ['invalid', 'only', 'prior-anonymous', 'prior-empty'].includes(mode) ? [] :
           [mode === 'a' || mode === 'prior-id' ? 'worker-a' : 'worker-b'];
         assert.deepEqual(workerCalls, expected);
         assert.deepEqual(state.events.flatMap(e => e.kind === 'controller.responded'
@@ -544,7 +544,7 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id', 'prio
         assert.deepEqual(JSON.parse(JSON.parse(tool.value.json).content[0].content.text), a);
         assert.ok(receipt.outcome.outputRefs.some(x => x.ref === tool.ref));
         const prior = receipt.observations.find(o => o.provenance?.kind === 'model' && o.value === JSON.stringify(a) && o.provenance.sourceId !== 'final');
-        if (['progress-b', 'prior-id', 'prior-anonymous'].includes(mode)) {
+        if (['progress-b', 'prior-id', 'prior-anonymous', 'prior-empty'].includes(mode)) {
           assert.ok(prior);
           assert.equal(prior.source, 'model_claim');
           assert.notEqual(prior.ref, tool.ref);
