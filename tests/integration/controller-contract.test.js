@@ -22,6 +22,8 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     assert.match(prompt, /one JSON object without fences/);
     assert.match(prompt, /tools\.bridge describes tool bridging through this integration, not an inventory of native tools/);
     assert.match(prompt, /Native subagent results are not Host Actions\/Attempts/);
+    assert.match(prompt, /reads existing scoped records only/);
+    assert.match(prompt, /workMap is a derived Host lifecycle view, not dispatch/);
     const output={...shape,operationId:invocation.operationId,contextCursor:host.contextCursor,
       finalAssessment:{...shape.finalAssessment,author:invocation.profile.profileId,answer}};
     return {...final(invocation),output};
