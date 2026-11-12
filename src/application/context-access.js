@@ -64,7 +64,14 @@ export function bindContextAccess(scope) {
       /** @type {Extract<ContextList, {kind: 'available'}>} */
       const page = {kind: 'available', cursor: start, items};
       while (index < rows.length && items.length < pageRecords) {
-        const entry = directoryEntry(rows[index]);
+        const original = rows[index];
+        // Membership is historical; a later observation may supply the
+        // canonical body for the same output ref. Expose its actual current
+        // source position, not a stale placeholder position.
+        const current = original.outputKind && start.revision !== state.events.length
+          ? localHistory().find(item => item.ref === original.ref) : undefined;
+        const entry = directoryEntry(current?.unavailableReason === 'ambiguous' ||
+          (current && current.attemptId === original.attemptId) ? current : original);
         const next = index + 1;
         const candidate = {...page, items: [...items, entry],
           nextCursor: next < rows.length ? {revision: start.revision, index: next} : undefined};
@@ -89,18 +96,31 @@ export function bindContextAccess(scope) {
       const sharedRequest = sourceOperationId !== state.operationId;
       if (typeof ref === 'string' ? !ref.trim() : sharedRequest || !ref || typeof ref !== 'object' ||
           !Number.isSafeInteger(ref.revision) || !Number.isSafeInteger(ref.index)) return unavailable('denied');
-      // Resolve positions against the event prefix that originally assigned
-      // them. Later observations may replace an output-only placeholder.
-      // Never let a shifted position identify a different record, or bypass
-      // the current ambiguity/selection checks.
-      const positional = typeof ref === 'string' ? undefined :
-        ref.revision >= 0 && ref.revision <= state.events.length && ref.index >= 0
-          ? operationHistory(state, ref.revision).find(item =>
-            item.receivedSequence?.revision === ref.revision && item.receivedSequence?.index === ref.index)
-          : undefined;
-      const current = positional && localHistory().find(item => item.ref === positional.ref);
-      const historical = current?.unavailableReason === 'ambiguous' ? current :
-        current && current.attemptId === positional?.attemptId ? current : positional;
+      /** @type {ContextItem | undefined} */
+      let historical;
+      if (typeof ref !== 'string' && ref.revision >= 0 && ref.revision <= state.events.length && ref.index >= 0) {
+        const samePosition = /** @param {ContextItem} item */ item =>
+          item.receivedSequence?.revision === ref.revision && item.receivedSequence?.index === ref.index;
+        historical = localHistory().find(samePosition);
+        if (!historical) {
+          // An output-only placeholder can be superseded by an observation
+          // in a later event. The original position must never select a
+          // different ref. Old snapshots could have used shifted output
+          // positions; where another output could have occupied this slot
+          // do not silently return a later body on ambiguous legacy input.
+          const prefix = operationHistory(state, ref.revision);
+          const original = prefix.find(samePosition);
+          const current = original && localHistory().find(item => item.ref === original.ref);
+          if (current?.unavailableReason === 'ambiguous') historical = current;
+          else if (original && current && original.attemptId === current.attemptId) {
+            const possibleLegacyCollision = original.outputKind && prefix.some(item =>
+              item.outputKind && item.receivedSequence?.revision === ref.revision &&
+              item.receivedSequence.index > ref.index);
+            historical = possibleLegacyCollision
+              ? {...original, completeness:'unavailable', unavailableReason:'ambiguous'} : current;
+          } else historical = original;
+        }
+      }
       if (selected && !selected.has(historical?.ref ?? (typeof ref === 'string' ? ref : ''))) return unavailable('denied');
       const allowed = () => !sharedRequest || (typeof ref === 'string' &&
         scope.allowShare?.({ sourceOperationId, targetOperationId: state.operationId, ref, profileId }) === true);

@@ -379,6 +379,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     'requested' in historyRequestBudget && 'represented' in historyRequestBudget &&
     'omitted' in historyRequestBudget ? historyRequestBudget : undefined;
   const requestRecords = requested.filter(item => item.ref !== 'host:history-request-budget');
+  const requestedPage = requestRecords.find(item => item.ref.startsWith('host:history-page:'));
   const host = {
     ref: 'host:invocation-context', source: /** @type {const} */ ('host_observed'),
     completeness: /** @type {const} */ ('complete'),
@@ -415,6 +416,9 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         omittedDuringMaterialization: requestReport ? Number(requestReport.omitted) : 0,
         materializedRecords: requestRecords.length, presentedRecords: 0,
         omittedDuringPresentation: requestRecords.length,
+        // Reserve the longest reason before optional packing so even an
+        // entirely omitted directory page has an explicit budget result.
+        ...(requestedPage && {directory: {kind: 'unavailable', reason: /** @type {string | undefined} */ ('invalid_cursor')}}),
       } }),
       technicalBudget: { maxBytes, mandatoryBytes: 0, mandatoryOverflow: false },
       unresolvedAttempts: /** @type {typeof facts.unresolvedAttempts} */ ([]),
@@ -545,6 +549,15 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       presented.has(JSON.stringify([item.ref, item.receivedSequence]))).length;
     host.value.historyRequestCoverage.presentedRecords = count;
     host.value.historyRequestCoverage.omittedDuringPresentation = requestRecords.length - count;
+    const directory = host.value.historyRequestCoverage.directory;
+    if (directory && requestedPage) {
+      const page = bounded.context.find(item => item.ref === requestedPage.ref)?.value;
+      if (page && typeof page === 'object' && 'kind' in page && page.kind === 'available') {
+        directory.kind = 'available';
+        directory.reason = undefined;
+      } else directory.reason = page && typeof page === 'object' && 'reason' in page
+        ? String(page.reason) : 'budget';
+    }
   }
   // History budget counters can shrink after optional packing; final
   // measured technical bytes must describe the actual delivered host record.
