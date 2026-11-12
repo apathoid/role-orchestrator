@@ -17,6 +17,9 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     const payload=JSON.parse(prompt.split('\n\nInvocation (JSON):\n')[1]);
     assert.equal(payload.instructions.filter(x=>x===decisionContract).length,1);
     assert.ok(!prompt.includes('cursor?: number'));
+    assert.match(prompt, /Ordinary tool results, files and intermediate messages do not submit it/);
+    assert.match(prompt, /Dispatch is not completion or proof of success/);
+    assert.match(prompt, /one JSON object without fences/);
     const output={...shape,operationId:invocation.operationId,contextCursor:host.contextCursor,
       finalAssessment:{...shape.finalAssessment,author:invocation.profile.profileId,answer}};
     return {...final(invocation),output};
