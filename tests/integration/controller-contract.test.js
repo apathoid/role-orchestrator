@@ -24,6 +24,8 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     assert.match(prompt, /Native subagent results are not Host Actions\/Attempts/);
     assert.match(prompt, /reads existing scoped records only/);
     assert.match(prompt, /workMap is a derived Host lifecycle view, not dispatch/);
+    assert.match(prompt, /Each finalAssessment\.requirements\[\] entry needs its own observationRefs and findingRefs arrays/);
+    assert.match(prompt, /requirements\[\]\.reason is an optional string, not null/);
     const output={...shape,operationId:invocation.operationId,contextCursor:host.contextCursor,
       finalAssessment:{...shape.finalAssessment,author:invocation.profile.profileId,answer}};
     return {...final(invocation),output};
