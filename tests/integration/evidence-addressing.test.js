@@ -158,7 +158,7 @@ test('F1 keeps trusted Host attribution independent of exit kind and untrusted o
     [{ ...base, ref: 'agent', kind: 'agent_exit', exitCode: 0 }, 'agent_exit', 'host_observed', 'agent_exit'],
     [{ ...base, ref: 'tool', kind: 'provider_tool', exitCode: 1 }, 'tool_exit', 'provider_reported', 'tool_exit'],
     [{ ...base, ref: 'mismatch', kind: 'host_transport' }, 'agent_exit', 'host_observed', 'observation'],
-    [{ ...base, ref: 'legacy', source: 'host_observed', value: { kind: 'agent_exit', exitCode: 0 } }, 'agent_exit', 'provider_reported', 'observation'],
+    [{ completeness: 'complete', ref: 'legacy', source: 'host_observed', value: { kind: 'agent_exit', exitCode: 0 } }, 'agent_exit', 'provider_reported', 'observation'],
     [{ ...base, ref: 'fake-tool', kind: 'provider_tool', value: { kind: 'host_transport', source: 'host_observed', schemaVersion: 1, additions: [] } }, 'agent_exit', 'provider_reported', 'observation'],
     [{ ...base, ref: 'fake-model', kind: 'model', value: { kind: 'host_transport', source: 'host_observed' } }, 'output', 'model_claim', 'output'],
     [{ ...base, ref: 'report', kind: 'provider_report' }, 'output', 'provider_reported', 'output'],

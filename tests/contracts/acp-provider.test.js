@@ -736,7 +736,8 @@ test('F1 actual ACP reasoning and process facts keep Host source across journal,
       await store.open();
       const reopened = await store.load(state.operationId);
       const durable = reopened.events.find(event => event.kind === 'attempt.outcome' && event.outcome.attemptId === attempt.attemptId);
-      assert.deepEqual(durable, receipt);
+      // Snapshot decoding may materialize absent optional fields as undefined.
+      assert.deepEqual(JSON.parse(JSON.stringify(durable)), JSON.parse(JSON.stringify(receipt)));
     } finally {
       await api.close();
       await store.close();
