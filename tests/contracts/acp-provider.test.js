@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -682,6 +682,7 @@ test('F1 actual ACP reasoning and process facts keep Host source across journal,
     const catalog = createCatalog({schemaVersion:1, providers:{'synthetic-controller':{adapter:'fixture'}, acp:{adapter:'acp'}},
       profiles:{primary:{provider:'synthetic-controller',model:'fixture'}, worker:{provider:'acp',model:'fixture',
         reasoningEffort:[{level:'high',effort:'high-native'}]}},controllerProfile:'primary'});
+    await mkdir(join(cwd, 'state'));
     const store = createLocalStateStore(join(cwd, 'state'));
     await store.open();
     let turns = 0;
