@@ -156,7 +156,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let connection;
     /** @type {'after_exchange' | 'cancellation_deadline' | undefined} */
     let teardown;
-    /** @param {NonNullable<typeof teardown>} cause */
+    /** @param {'after_exchange' | 'cancellation_deadline'} cause */
     function closeConnection(cause) {
       if (!connection || connection.signal.aborted || teardown !== undefined) return;
       teardown = cause;
