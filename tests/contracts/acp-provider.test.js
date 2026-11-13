@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { Readable, Writable } from 'node:stream';
+import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
+import { startCliProcess } from '../../src/adapters/cli/owned-process.js';
 import { createAcpProvider, createAuthorityGrant, createPermissionBroker } from '../../src/main/index.js';
 import { setup } from '../fixtures/application.js';
 import { request } from '../fixtures/core.js';
@@ -36,6 +39,35 @@ providerContract('ACP ProviderPort', run => withOwnedRun('C08-contract', cwd => 
   release: id => writeFile(join(cwd, id + '.release'), ''),
   knownUsage: { inputTokens: null, outputTokens: null, cost: null },
 })), linux);
+
+
+test('ACP SDK intentional close preserves the exact reason through the subprocess stdout boundary', linux, () =>
+  withOwnedRun('C12R10R-F0-close-identity', async cwd => {
+    const owner = startCliProcess({
+      command: process.execPath, args: [script, 'basic'], options: { cwd, env: process.env, shell: false },
+    }, { timeoutMs: 5_000, signal: new AbortController().signal, onOutput() {} });
+    const pipes = owner.pipes;
+    assert.ok(pipes);
+    const connection = client().connect(ndJsonStream(Writable.toWeb(pipes.stdin), Readable.toWeb(pipes.stdout)));
+    try {
+      await connection.agent.request(methods.agent.initialize, {
+        protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      });
+      const reason = new Error('ACP connection closed');
+      const observed = Promise.withResolvers();
+      pipes.stdout.once('error', observed.resolve);
+      connection.close(reason);
+      const result = await owner.finished;
+      assert.equal(await Promise.race([observed.promise, Promise.resolve(undefined)]), reason);
+      // No close reason is registered with this generic process owner: it must
+      // still classify this error as I/O failure, even with the SDK's usual text.
+      assert.equal(result.errors.stdout, 'IO_ERROR');
+      assert.equal(result.reason, 'io_failed');
+    } finally {
+      connection.close();
+      await owner.close();
+    }
+  }));
 
 async function invoke(endpoint, overrides = {}) {
   const signal = new AbortController().signal;

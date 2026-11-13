@@ -1,9 +1,11 @@
 # Role Orchestrator — оперативный статус
 
 **Ветка:** `greenfield/model-first-core`. **Baseline перед C12:** `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
-## C12R.10R follow-up — Evidence Attribution and ACP Teardown (planned)
+## C12R.10R follow-up — Evidence Attribution and ACP Teardown (F0 in progress)
 
-**Следующий шаг:** F0 — baseline и адресное воспроизведение; затем F1–F3 по [детальному плану §13](C12R10_CONTROLLER_CONTRACT.md#13-c12r10r-follow-up--evidence-attribution-and-acp-teardown). **Baseline:** `12cbefbf57d1b1dc6900701143386d2b3fa737e6`. **Implementation complete: NO; regression verified: UNVERIFIED; native integration / comparative quality/performance: UNVERIFIED.** Это новый локальный инженерный follow-up, не переоткрытие завершённых C12R.10R.0–.6. Исторический PASS ниже не подтверждает будущие изменения.
+**Следующий шаг:** F0 — проверить SDK close identity fixture в CI; затем F1–F3 по [детальному плану §13](C12R10_CONTROLLER_CONTRACT.md#13-c12r10r-follow-up--evidence-attribution-and-acp-teardown). **Baseline:** `12cbefbf57d1b1dc6900701143386d2b3fa737e6`. **Implementation complete: NO; regression verified: UNVERIFIED; native integration / comparative quality/performance: UNVERIFIED.** Это новый локальный инженерный follow-up, не переоткрытие завершённых C12R.10R.0–.6. Исторический PASS ниже не подтверждает будущие изменения.
+
+**F0 actual baseline:** `22bb850dc7949c2bad761c9b38be1a406575d5e9`. Source inspection confirms `receiveProviderObservation` → attempt-scoped canonical refs → `bindOutcomeEvidence` → `attributeProviderOutputRefs`: non-exit trusted host_transport currently downgraded by the last step; exit attribution is independent. Added actual SDK/subprocess identity probe using the existing ACP fixture; generic owner must report the unregistered close error. Probe execution UNVERIFIED pending CI; direct local Git/npm registry DNS unavailable. No production changes in F0.
 
 - P2 F1: SUPPORTED по baseline source — attributeProviderOutputRefs теряет host_observed у matching trusted host_transport observation. Сохранить source без расширения trust/exit/attempt boundaries, без reconciliation истории.
 - P3 F2: REPORTED diagnostic run 56/56 PASS, 68 stream errors с ACP connection closed (SDK close, включая cancellation deadline), нормализованных в IO_ERROR; SUPPORTED по исходникам — stream handler также вызывает stop('io_failed'), owner.close использует cancel. Уточнить причинность и teardown diagnostics, сохранить genuine failure и lifecycle. Raw test log не проверен независимо; propagation identity через close(error) UNVERIFIED.
