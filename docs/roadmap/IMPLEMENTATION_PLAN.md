@@ -85,6 +85,20 @@
 
 Границы C12R.10 сохраняются. Не предполагать наличие конкретного workflow, провайдера, инструментов или окружения; Host не подменяет нативного исполнителя и модель. Production changes преимущественно в existing decision-instructions/controller-context; adapter/runtime change только при доказанном адресном дефекте. Тестовые subprocess fixtures не являются production mechanism. Реальные LLM не блокируют .0–.6 и не запускаются в GitHub Actions.
 
+## C12R.10R follow-up — Evidence Attribution and ACP Teardown
+
+[Детальный план §13](C12R10_CONTROLLER_CONTRACT.md#13-c12r10r-follow-up--evidence-attribution-and-acp-teardown); следующий шаг — [STATUS](STATUS.md). Локальное инженерное исправление, не новый runtime workflow и не переоткрытие завершённых этапов. 
+
+| Шаг | Назначение |
+|---|---|
+| F0 | Актуальный baseline, адресное воспроизведение |
+| F1 | P2: корректная Host provenance в matching Outcome refs |
+| F2 | P3: ACP intentional close и teardown/cancellation diagnostics |
+| F3 | Регрессии, docs, STATUS и engineering handoff |
+| F4 | Продолжение существующей C12R.10R.7 / C12R.10.7 native acceptance |
+
+Сохранять trusted attribution/exit/attempt identity, реальный transport failure, ownership/SIGKILL, deadlines/detach, model-first/provider/workflow/environment-agnostic. Никаких новых обязательных runtime проверок, retrieval, permissions, изоляции или Controller schema/prompt/scheduler изменений. Реальные LLM не обязательны для CI. 
+
 ## C12 — реализованные инженерные шаги и открытая приёмка
 
 | Шаг | Содержание | Завершение |
