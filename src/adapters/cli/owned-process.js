@@ -16,10 +16,11 @@ const drainAfterExitMs = 1_000;
  * and receive raw bytes. Transport termination carries no model verdict.
  *
  * @param {ProcessLaunch} launch
- * @param {{timeoutMs: number, signal: AbortSignal, onOutput: (stream: OutputStream, chunk: Buffer) => void}} options
+ * @param {{timeoutMs: number, signal: AbortSignal, onOutput: (stream: OutputStream, chunk: Buffer) => void,
+ *   expectedStdoutCloseError?: Error}} options
  * @returns {OwnedProcess & {pipes?: import('node:child_process').ChildProcessWithoutNullStreams}}
  */
-export function startCliProcess(launch, { timeoutMs, signal, onOutput }) {
+export function startCliProcess(launch, { timeoutMs, signal, onOutput, expectedStdoutCloseError }) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimerDelayMs) {
     throw new RangeError('timeoutMs must be an integer from 1 to 2147483647');
   }
@@ -92,6 +93,9 @@ export function startCliProcess(launch, { timeoutMs, signal, onOutput }) {
       }
     });
     child[name].on('error', error => {
+      // A stream consumer may deliberately close its reader with a known
+      // reason. Only that exact stdout error is expected, never its text.
+      if (name === 'stdout' && expectedStdoutCloseError !== undefined && error === expectedStdoutCloseError) return;
       errors[name] ??= errorCode(error);
       stop('io_failed');
     });

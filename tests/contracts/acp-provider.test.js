@@ -96,7 +96,13 @@ for (const [scenario, code, certainty] of [
     assert.equal(result.outcome.diagnostics[0]?.code, code);
     assert.equal(result.dispatchCertainty, certainty);
     assert.equal(result.outcome.effect, certainty === 'not_sent' ? 'none' : 'unknown');
-    if (scenario === 'disconnect') assert.ok(call.observations.some(item => item.value === 'progress attempt-test'));
+    if (scenario === 'disconnect') {
+      assert.ok(call.observations.some(item => item.value === 'progress attempt-test'));
+      const process = call.observations.find(item => item.ref === 'acp-process');
+      assert.equal(process.value.teardown, undefined);
+      assert.equal(process.value.exitCode, 3);
+      assert.equal(process.kind, 'agent_exit');
+    }
   }));
 }
 
@@ -107,6 +113,13 @@ test('ACP selects the exact model and closes the negotiated native session', lin
     assert.equal((await rejected.completion).outcome.diagnostics[0].code, 'CAPABILITY_UNAVAILABLE');
     await using call = await invoke(endpoint, { profile: { ...profile, model: 'other' } });
     assert.equal((await call.completion).output, 'other');
+    const fact = call.observations.find(item => item.ref === 'acp-process').value;
+    assert.equal(fact.teardown, 'after_exchange');
+    assert.equal(fact.errors.stdout, undefined);
+    assert.equal(fact.reason, 'cancelled');
+    assert.equal(fact.exitCode, null);
+    assert.equal(fact.signal, 'SIGKILL');
+    assert.equal(fact.cancelRequested, false);
     await access(join(cwd, 'closed'));
   }));
 
@@ -210,6 +223,10 @@ test('ACP retains late observations without accepting a decision after cancellat
     assert.equal(result.output, undefined);
     assert.ok(call.observations.some(item => item.value === 'late result'));
     assert.ok(call.observations.some(item => item.value?.stopReason === 'end_turn' && item.value.cancelRequested));
+    const fact = call.observations.find(item => item.ref === 'acp-process').value;
+    assert.equal(fact.teardown, 'after_exchange');
+    assert.equal(fact.errors.stdout, undefined);
+    assert.equal(fact.cancelRequested, true);
   }));
 
 test('ACP cleans up its process when cancellation receives no terminal response', linux, () =>
@@ -222,7 +239,13 @@ test('ACP cleans up its process when cancellation receives no terminal response'
     assert.equal(result.outcome.diagnostics[0].code, 'CANCELLED');
     assert.equal(result.dispatchCertainty, 'unknown');
     assert.ok(call.observations.some(item => item.value === 'progress attempt-test'));
-    assert.ok(call.observations.some(item => item.value?.signal === 'SIGKILL'));
+    const fact = call.observations.find(item => item.ref === 'acp-process').value;
+    assert.equal(fact.signal, 'SIGKILL');
+    assert.equal(fact.exitCode, null);
+    assert.equal(fact.teardown, 'cancellation_deadline');
+    assert.equal(fact.reason, 'cancelled');
+    assert.equal(fact.cancelRequested, true);
+    assert.equal(fact.errors.stdout, undefined);
   }));
 
 test('ACP records cancellation initiated by the agent', linux, () =>
@@ -230,6 +253,10 @@ test('ACP records cancellation initiated by the agent', linux, () =>
     await using call = await invoke(provider(cwd, 'provider-cancel'));
     assert.equal((await call.completion).outcome.terminal, 'cancelled');
     assert.ok(call.observations.some(item => item.value?.stopReason === 'cancelled' && item.value.cancelRequested === false));
+    const fact = call.observations.find(item => item.ref === 'acp-process').value;
+    assert.equal(fact.teardown, 'after_exchange');
+    assert.equal(fact.cancelRequested, false);
+    assert.equal(fact.errors.stdout, undefined);
   }));
 
 test('ACP forwards cancellation to an outstanding client tool', linux, () =>
@@ -571,6 +598,10 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id', 'prio
         const receipt = state.events.find(e => e.kind === 'attempt.outcome' && e.outcome.attemptId === firstAttempt);
         assert.equal(receipt.outcome.terminal, 'completed');
         assert.equal(receipt.dispatchCertainty, 'sent');
+        const processFact = receipt.observations.find(o => o.providerRef === 'acp-process').value;
+        assert.equal(processFact.teardown, 'after_exchange');
+        assert.equal(processFact.errors.stdout, undefined);
+        assert.notEqual(processFact.reason, 'io_failed');
         const tool = receipt.observations.find(o => o.provenance?.kind === 'provider_tool' &&
           o.provenance.sourceId === 'decision-shaped-tool' && o.value.status === 'completed');
         assert.equal(tool.ref, ref);
@@ -709,4 +740,20 @@ test('F1 actual ACP reasoning and process facts keep Host source across journal,
       await api.close();
       await store.close();
     }
+  }));
+
+test('F2 ACP timeout retains its deadline classification and partial native evidence', linux, () =>
+  withOwnedRun('C12R10R-F2-timeout', async cwd => {
+    await using call = await invoke(provider(cwd, 'ignore-cancel'), {objective:'hold', timeoutMs:3_000});
+    await ready(cwd, 'attempt-test.ready');
+    const result = await call.completion;
+    assert.equal(result.outcome.diagnostics[0].code, 'DEADLINE_EXCEEDED');
+    assert.equal(result.outcome.terminal, 'unknown');
+    assert.equal(result.dispatchCertainty, 'unknown');
+    assert.ok(call.observations.some(item => item.value === 'progress attempt-test'));
+    const fact = call.observations.find(item => item.ref === 'acp-process').value;
+    assert.equal(fact.reason, 'timed_out');
+    assert.equal(fact.cancelRequested, false);
+    assert.equal(fact.signal, 'SIGKILL');
+    assert.equal(fact.exitCode, null);
   }));

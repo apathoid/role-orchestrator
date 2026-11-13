@@ -6,7 +6,8 @@
 
 ### C12R.10R follow-up — evidence attribution and ACP teardown
 
-- Preserve trusted Host transport attribution in matching Outcome refs without relaxing exit/attempt identity or rewriting historical evidence. Regression and native acceptance tracked separately in STATUS.
+- Preserve trusted Host transport attribution in matching Outcome refs without relaxing exit/attempt identity or rewriting historical evidence.
+- Distinguish intentional ACP connection close from real stdout errors by exact per-invocation error identity. Record first intentional teardown and actual process exit facts separately from provider stop and cancellation. Preserve genuine stream/cleanup errors and existing ownership/deadlines/slots. Regression and native acceptance tracked separately in STATUS.
 
 ### C12R.10R — Controller submission clarity (engineering; native UNVERIFIED)
 

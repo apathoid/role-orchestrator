@@ -215,3 +215,73 @@ test('a descriptor inherited outside the group has a bounded drain with a diagno
     }
   });
 });
+
+for (const [name, stream, sameReason, duringCleanup, expectedReason, expectedError] of [
+  ['expected stdout', 'stdout', true, false, 'cancelled', undefined],
+  ['distinct same-text stdout', 'stdout', false, false, 'io_failed', 'IO_ERROR'],
+  ['same object on stderr', 'stderr', true, false, 'io_failed', 'IO_ERROR'],
+  ['genuine stdout during cleanup', 'stdout', false, true, 'cancelled', 'IO_ERROR'],
+  ['genuine stderr during cleanup', 'stderr', false, true, 'cancelled', 'IO_ERROR'],
+]) {
+  test('F2 owned process distinguishes ' + name, linux, async () => {
+    const expected = new Error('ACP connection closed');
+    const owner = startCliProcess({
+      command: process.execPath, args: ['--input-type=module','-e',
+        "process.stdout.write('ready'); setInterval(() => {}, 1000);"],
+      options: {shell:false,env:process.env},
+    }, {timeoutMs:4_000, signal:new AbortController().signal, onOutput(){}, expectedStdoutCloseError:expected});
+    const pipes = owner.pipes;
+    assert.ok(pipes);
+    try {
+      await new Promise(resolve => pipes.stdout.once('data', resolve));
+      if (duringCleanup) owner.cancel();
+      const seen = Promise.withResolvers();
+      pipes[stream].once('error', seen.resolve);
+      const error = sameReason ? expected : new Error(expected.message);
+      pipes[stream].destroy(error);
+      assert.equal(await seen.promise, error);
+      const result = await owner.close();
+      assert.equal(result.reason, expectedReason);
+      assert.equal(result.errors[stream], expectedError);
+      assert.equal(result.exitCode, null);
+      assert.equal(result.signal, 'SIGKILL');
+      assert.equal(await owner.close(), result);
+    } finally {
+      await owner.close();
+    }
+  });
+}
+
+test('F2 expected stdout closure does not conceal process cleanup failure', linux, async t => {
+  const expected = new Error('ACP connection closed');
+  const owner = startCliProcess({
+    command:process.execPath,args:['--input-type=module','-e',
+      "process.stdout.write('ready'); setInterval(() => {}, 1000);"],
+    options:{shell:false,env:process.env},
+  }, {timeoutMs:4_000,signal:new AbortController().signal,onOutput(){},expectedStdoutCloseError:expected});
+  const pipes = owner.pipes;
+  assert.ok(pipes);
+  const kill = process.kill;
+  try {
+    await new Promise(resolve => pipes.stdout.once('data', resolve));
+    const observed = Promise.withResolvers();
+    pipes.stdout.once('error', observed.resolve);
+    pipes.stdout.destroy(expected);
+    assert.equal(await observed.promise, expected);
+    const mock = t.mock.method(process, 'kill', (pid, signal) => {
+      if (pid === -pipes.pid && signal === 'SIGKILL') throw Object.assign(new Error('denied'), {code:'EPERM'});
+      return kill(pid, signal);
+    });
+    try { owner.cancel(); } finally { mock.mock.restore(); }
+    // The failure was observed; the fixture must still be explicitly disposed.
+    kill(-pipes.pid, 'SIGKILL');
+    await assert.rejects(owner.close(), /CLI process group cleanup failed: EPERM/);
+    const result = await owner.finished;
+    assert.equal(result.errors.cleanup, 'EPERM');
+    assert.equal(result.errors.stdout, undefined);
+    assert.equal(result.reason, 'cancelled');
+    assert.equal(result.signal, 'SIGKILL');
+  } finally {
+    await owner.finished;
+  }
+});

@@ -338,3 +338,4 @@ Synthetic wire events prove adapter and Host coordination only, not real LLM com
 | Контракт | Регрессия | Статус |
 |---|---|---|
 | Matching trusted Host observation preserves Outcome source; exit, aliases, Attempt isolation and late history unchanged | `evidence-addressing.test.js`, `orchestrator.test.js`, actual ACP reasoning/process `acp-provider.test.js` with ContextPort and durable reopen | UNVERIFIED (new implementation CI pending) |
+| ACP intentional close identity vs genuine stream errors, first teardown and cancellation/deadline, invalid Decision and partial evidence | `acp-provider.test.js` actual SDK fixture, `cli-process.test.js` real subprocess and injected cleanup EPERM | UNVERIFIED (new implementation CI pending) |

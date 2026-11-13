@@ -141,15 +141,27 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     try { env = launchEnvironment(launch.env, environment); }
     catch { return resultFor(invocation, 'PROVIDER_START_FAILED'); }
     const stderr = capturePrefix(maxStderrBytes);
+    // SDK close(error) cancels the Node stdout reader with this exact reason.
+    // A distinct transport error, even with the same text, remains a failure.
+    const intentionalClose = new Error('ACP connection closed');
     const owner = startCliProcess({
       command: launch.command, args: launch.args ?? [], options: { cwd, env, shell: false },
     }, {
       timeoutMs: invocation.timeoutMs,
       signal: new AbortController().signal,
+      expectedStdoutCloseError: intentionalClose,
       onOutput(stream, chunk) { if (stream === 'stderr') stderr.append(chunk); },
     });
     /** @type {ClientConnection | undefined} */
     let connection;
+    /** @type {'after_exchange' | 'cancellation_deadline' | undefined} */
+    let teardown;
+    /** @param {NonNullable<typeof teardown>} cause */
+    function closeConnection(cause) {
+      if (!connection || connection.signal.aborted || teardown !== undefined) return;
+      teardown = cause;
+      connection.close(intentionalClose);
+    }
     /** @type {string | undefined} */
     let sessionId;
     /** @type {NewSessionResponse | undefined} */
@@ -261,7 +273,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     const cancellation = addAbortListener(signal, () => {
       if (!active || !sessionId) return;
       void connection?.agent.notify(a.session.cancel, { sessionId }).catch(() => {});
-      cancelDeadline = setTimeout(() => { connection?.close(); owner.cancel(); }, closeGraceMs);
+      cancelDeadline = setTimeout(() => { closeConnection('cancellation_deadline'); owner.cancel(); }, closeGraceMs);
     });
     async function exchange() {
       if (!owner.pipes) return resultFor(invocation, 'PROVIDER_START_FAILED');
@@ -441,7 +453,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       cancellation[Symbol.dispose]();
       clearTimeout(cancelDeadline);
       mcp?.close();
-      connection?.close();
+      closeConnection('after_exchange');
       await owner.close();
     }
     const processResult = await owner.finished;
@@ -457,7 +469,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     }) : undefined;
     const processRef = publish({ ref: 'acp-process', sourceId: invocation.attemptId, completeness: 'complete',
       ...(processResult.exitCode === null ? { kind: 'host_transport' } : { kind: 'agent_exit', exitCode: processResult.exitCode }),
-      value: { reason: processResult.reason, signal: processResult.signal, errors: processResult.errors, cancelRequested: signal.aborted } });
+      value: { reason: processResult.reason, exitCode: processResult.exitCode, signal: processResult.signal,
+        errors: processResult.errors, cancelRequested: signal.aborted, ...(teardown === undefined ? {} : { teardown }) } });
     for (const diagnostic of result.outcome.diagnostics) diagnostic.ref ??= stderrRef || errorRef || processRef;
     result.outcome.outputRefs = refs;
     return result;
