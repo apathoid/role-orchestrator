@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createLocalStateStore } from '../../src/adapters/state/local-store.js';
 import { decodeSnapshot, encodeSnapshot } from '../../src/core/snapshot.js';
+import { receiveProviderObservation } from '../../src/core/observation.js';
+import { bindOutcomeEvidence, providerEvidenceRef } from '../../src/application/evidence-identity.js';
 import { final, setup } from '../fixtures/application.js';
 import { assessment, outcome, request } from '../fixtures/core.js';
 
@@ -36,9 +38,12 @@ test('provider refs reused by different attempts still identify the correct hist
       assert.equal(observe(report), ref);
       if (ref !== undefined) assert.equal(observe({ ...report, value: 'Conflicting duplicate' }), undefined);
       refs.set(invocation.actionId, ref ?? alias);
+      observe({ ref: 'shared-source', sourceId: 'same-provider', completeness: 'complete',
+        kind: before ? 'host_transport' : 'provider_tool', value: before ? 'host fact' : 'tool report' });
       return {
         dispatchCertainty: 'sent',
-        outcome: outcome(invocation.attemptId, { outputRefs: [{ ref: alias, source: 'provider_reported', kind: 'tool_exit' }] }),
+        outcome: outcome(invocation.attemptId, { outputRefs: [{ ref: alias, source: 'provider_reported', kind: 'tool_exit' },
+          { ref: 'shared-source', source: 'host_observed', kind: 'output' }] }),
         findings: [{ findingId: invocation.actionId, author: 'primary', claim: report.value,
           subject: 'check', supports: [alias], uncertainties: [] }],
       };
@@ -68,6 +73,11 @@ test('provider refs reused by different attempts still identify the correct hist
     assert.equal(item.item.providerRef, alias);
     assert.equal(item.attempt.actionId, id);
     assert.equal(item.recordedOutcome.outputRefs[0].ref, item.ref);
+    const sourceRef = item.recordedOutcome.outputRefs[1];
+    const observed = recorded(operation).find(candidate => candidate.ref === sourceRef.ref);
+    assert.equal(sourceRef.ref, providerEvidenceRef(operation.operationId, item.attempt.attemptId, 'shared-source'));
+    assert.equal(sourceRef.source, id === 'before' ? 'host_observed' : 'provider_reported');
+    assert.equal(sourceRef.source, observed.source);
   }
 
   const wire = JSON.parse(encodeSnapshot(operation));
@@ -137,4 +147,36 @@ test('the model discovers omitted evidence under the default budget and delegate
   assert.equal(invocations.length, 5);
   assert.deepEqual(result.assessment.observationRefs, [selectedRef]);
   assert.deepEqual(access.list(), { kind: 'unavailable', reason: 'closed' });
+});
+
+test('F1 keeps trusted Host attribution independent of exit kind and untrusted output labels', () => {
+  const operationId = 'operation';
+  const attemptId = 'attempt';
+  const base = { completeness: 'complete', sourceId: 'fixture' };
+  const reports = [
+    [{ ...base, ref: 'host', kind: 'host_transport' }, 'output', 'host_observed', 'output'],
+    [{ ...base, ref: 'agent', kind: 'agent_exit', exitCode: 0 }, 'agent_exit', 'host_observed', 'agent_exit'],
+    [{ ...base, ref: 'tool', kind: 'provider_tool', exitCode: 1 }, 'tool_exit', 'provider_reported', 'tool_exit'],
+    [{ ...base, ref: 'mismatch', kind: 'host_transport' }, 'agent_exit', 'host_observed', 'observation'],
+    [{ ...base, ref: 'legacy', source: 'host_observed', value: { kind: 'agent_exit', exitCode: 0 } }, 'agent_exit', 'provider_reported', 'observation'],
+    [{ ...base, ref: 'fake-tool', kind: 'provider_tool', value: { kind: 'host_transport', source: 'host_observed', schemaVersion: 1, additions: [] } }, 'agent_exit', 'provider_reported', 'observation'],
+    [{ ...base, ref: 'fake-model', kind: 'model', value: { kind: 'host_transport', source: 'host_observed' } }, 'output', 'model_claim', 'output'],
+    [{ ...base, ref: 'report', kind: 'provider_report' }, 'output', 'provider_reported', 'output'],
+  ];
+  const items = reports.map(([report]) => {
+    const received = receiveProviderObservation(report, 100);
+    assert.ok(received);
+    return { ...received, providerRef: received.ref, ref: providerEvidenceRef(operationId, attemptId, received.ref) };
+  });
+  const refs = reports.map(([report, kind]) => ({ ref: report.ref, kind, source: 'host_observed' }));
+  refs.push({ ref: 'absent', kind: 'agent_exit', source: 'host_observed' });
+  const bound = bindOutcomeEvidence(operationId, outcome(attemptId, { outputRefs: refs }), items);
+  for (const [index, [report, , source, kind]] of reports.entries()) {
+    assert.equal(bound.outputRefs[index].ref, items[index].ref, report.ref);
+    assert.equal(bound.outputRefs[index].source, source, report.ref);
+    assert.equal(bound.outputRefs[index].kind, kind, report.ref);
+  }
+  assert.equal(bound.outputRefs.at(-1).source, 'provider_reported');
+  assert.equal(bound.outputRefs.at(-1).kind, 'observation');
+  assert.equal(bound.outputRefs.at(-1).ref, providerEvidenceRef(operationId, attemptId, 'absent'));
 });

@@ -8,7 +8,9 @@ import { Readable, Writable } from 'node:stream';
 import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
 import { startCliProcess } from '../../src/adapters/cli/owned-process.js';
 import { createAcpProvider, createAuthorityGrant, createPermissionBroker } from '../../src/main/index.js';
-import { setup } from '../fixtures/application.js';
+import { setup, final } from '../fixtures/application.js';
+import { createCatalog } from '../../src/application/configuration/catalog.js';
+import { createLocalStateStore } from '../../src/adapters/state/local-store.js';
 import { request } from '../fixtures/core.js';
 import { decodeDecision } from '../../src/core/contracts.js';
 import { providerContract } from '../fixtures/provider-contract.js';
@@ -640,4 +642,71 @@ test('C12R.10R ACP native subagent observation does not need bridge support or a
       assert.ok(receipt.outcome.outputRefs.some(ref => ref.ref === tool.ref));
       assert.ok(state.events.every(e => e.kind !== 'controller.responded' || e.admissions.length === 0));
     } finally { await api.close(); }
+  }));
+
+test('F1 actual ACP reasoning and process facts keep Host source across journal, ContextPort and reopen', linux, () =>
+  withOwnedRun('C12R10R-F1-acp-provenance', async cwd => {
+    const endpoint = provider(cwd, 'reasoning-supported');
+    const controller = {profileId:'primary', providerId:'synthetic-controller', model:'fixture'};
+    const catalog = createCatalog({schemaVersion:1, providers:{'synthetic-controller':{adapter:'fixture'}, acp:{adapter:'acp'}},
+      profiles:{primary:{provider:'synthetic-controller',model:'fixture'}, worker:{provider:'acp',model:'fixture',
+        reasoningEffort:[{level:'high',effort:'high-native'}]}},controllerProfile:'primary'});
+    const store = createLocalStateStore(join(cwd, 'state'));
+    await store.open();
+    let turns = 0;
+    const contextRefs = [];
+    const fakeController = {
+      async open() { return { sessionId: 'synthetic-controller' }; },
+      async close() {},
+      async invoke(_session, invocation) {
+        if (++turns === 1) return final(invocation, {
+          contextCursor: invocation.context[1].value.contextCursor, finalAssessment: undefined,
+          additions: [{kind:'delegate',actionId:'worker',profileId:'worker',reasoningLevel:'high',
+            objective:'Produce evidence',expectedResult:'Report',dependsOn:[],contextRefs:[]}],
+          waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'worker'}]},
+        });
+        const page = invocation.contextAccess.list();
+        assert.equal(page.kind, 'available');
+        for (const name of ['acp-reasoning-ack', 'acp-process']) {
+          const entry = page.items.find(item => item.providerRef === name);
+          assert.ok(entry, name);
+          assert.equal(entry.source, 'host_observed');
+          const detail = await invocation.contextAccess.fetch(entry.ref);
+          assert.equal(detail.kind, 'available');
+          assert.equal(detail.item.source, 'host_observed');
+          assert.equal(detail.item.provenance.kind, 'host_transport');
+          assert.equal(detail.item.provenance.exit, undefined);
+          contextRefs.push(entry.ref);
+        }
+        return final(invocation, { contextCursor: invocation.context[1].value.contextCursor });
+      },
+    };
+    const {api} = setup({profile:controller, provider:fakeController, catalog, store, maxInvocations:4,
+      authority:createAuthorityGrant({reference:'fixture-authority',origin:'user',profileIds:['primary','worker']}),
+      providerFor: selected => selected.profileId === 'worker' ? endpoint : fakeController});
+    try {
+      const state = await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status, 'finished');
+      assert.equal(turns, 2);
+      const attempt = state.attempts.find(item => item.actionId === 'worker');
+      assert.equal(attempt.outcome.terminal, 'completed');
+      const receipt = state.events.find(event => event.kind === 'attempt.outcome' && event.outcome.attemptId === attempt.attemptId);
+      for (const ref of contextRefs) {
+        const fact = receipt.observations.find(item => item.ref === ref);
+        assert.equal(fact.source, 'host_observed');
+        assert.equal(receipt.outcome.outputRefs.find(item => item.ref === ref).source, fact.source);
+        assert.equal(receipt.outcome.outputRefs.find(item => item.ref === ref).kind, 'output');
+      }
+      assert.equal(contextRefs.length, 2);
+      const process = receipt.observations.find(item => item.providerRef === 'acp-process');
+      assert.equal(process.value.signal, 'SIGKILL');
+      await store.close();
+      await store.open();
+      const reopened = await store.load(state.operationId);
+      const durable = reopened.events.find(event => event.kind === 'attempt.outcome' && event.outcome.attemptId === attempt.attemptId);
+      assert.deepEqual(durable, receipt);
+    } finally {
+      await api.close();
+      await store.close();
+    }
   }));

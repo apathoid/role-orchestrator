@@ -301,13 +301,14 @@ test('a correlated reply during cleanup records late facts but cannot drive the 
   const invocation = await dispatched.promise;
   expire();
   await closing.promise;
-  const fact = { ref: 'late-exit', source: 'provider_reported', completeness: 'complete', value: 'failed before effect' };
+  const fact = { ref: 'late-exit', kind: 'host_transport', sourceId: 'fixture', completeness: 'complete', value: 'failed before effect' };
   observe(fact);
   observe(fact);
   reply.resolve({
     ...final(invocation),
     outcome: outcome(invocation.attemptId, {
       terminal: 'failed', effect: 'none', usage: { cost: 0.02, inputTokens: null, outputTokens: null },
+      outputRefs: [{ref: fact.ref, source: 'provider_reported', kind: 'output'}],
     }),
   });
   await new Promise(resolve => setImmediate(resolve));
@@ -321,7 +322,10 @@ test('a correlated reply during cleanup records late facts but cannot drive the 
   assert.equal(state.attempts[0].outcome.usage.cost, 0.02);
   assert.equal(resourceSnapshot(state).usage.cost.known, 0.02);
   assert.equal(state.events.filter(event => event.kind === 'controller.responded').length, 0);
-  assert.equal(state.events.flatMap(event => event.observations ?? []).filter(item => item.providerRef === fact.ref).length, 1);
+  const matching = state.events.flatMap(event => event.observations ?? []).filter(item => item.providerRef === fact.ref);
+  assert.equal(matching.length, 1);
+  assert.equal(matching[0].source, 'host_observed');
+  assert.equal(state.attempts[0].outcome.outputRefs.find(item => item.ref === matching[0].ref).source, 'host_observed');
   assert.equal(invocations.length, 1);
 });
 

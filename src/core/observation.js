@@ -137,7 +137,8 @@ export function attributeProviderOutputRefs(outcome, observations) {
       const source = item?.source ?? ref.source;
       return {
         ...ref,
-        source: source === 'model_claim' ? 'model_claim' : 'provider_reported',
+        source: item?.source === 'host_observed' && item.provenance?.kind === 'host_transport'
+          ? 'host_observed' : source === 'model_claim' ? 'model_claim' : 'provider_reported',
         kind: isExit ? 'observation' : ref.kind,
       };
     }),

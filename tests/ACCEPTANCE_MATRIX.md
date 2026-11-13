@@ -332,3 +332,9 @@ Synthetic subprocess/CI PASS не означает проверенного ка
 | Exact optional reason and current prompt payload | controller-contract.test.js: null/empty/whitespace rejected; omitted/non-empty accepted unchanged. Actual direct/ACP/CLI Controller payload and Worker envelope separation | **PASS (synthetic)** |
 
 Synthetic wire events prove adapter and Host coordination only, not real LLM comprehension or quality. **OBSERVED:** [CI 43305179978](https://github.com/apathoid/role-orchestrator/actions/runs/43305179978) on `c10b323f28ccbe0ee05b3f815640d0415ab452e0`, 389/389 root tests, 0 failures/skips/cancellations; all required Nix/package/specification checks SUCCESS. See [STATUS](../docs/roadmap/STATUS.md). Review follow-up **OBSERVED:** [CI 43308261449](https://github.com/apathoid/role-orchestrator/actions/runs/43308261449) on `9e80b19641f9e3df2aaa89a807e553121d0553e1`: 398/398 root tests, 0 failures/skips/cancellations; full required Nix/package/specification checks SUCCESS. Red baseline [CI 43307699883](https://github.com/apathoid/role-orchestrator/actions/runs/43307699883) on `028c9b8` reproduced stale ACP result identity; fixed in `36bb276`. Real native C12R.10.7/.10R.7 and prior native obligations remain UNVERIFIED.
+
+### C12R.10R follow-up — evidence attribution and ACP teardown
+
+| Контракт | Регрессия | Статус |
+|---|---|---|
+| Matching trusted Host observation preserves Outcome source; exit, aliases, Attempt isolation and late history unchanged | `evidence-addressing.test.js`, `orchestrator.test.js`, actual ACP reasoning/process `acp-provider.test.js` with ContextPort and durable reopen | UNVERIFIED (new implementation CI pending) |

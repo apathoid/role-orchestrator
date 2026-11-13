@@ -4,6 +4,10 @@
 
 ## Unreleased — C12 integration and delivery
 
+### C12R.10R follow-up — evidence attribution and ACP teardown
+
+- Preserve trusted Host transport attribution in matching Outcome refs without relaxing exit/attempt identity or rewriting historical evidence. Regression and native acceptance tracked separately in STATUS.
+
 ### C12R.10R — Controller submission clarity (engineering; native UNVERIFIED)
 
 - Clarified declared-result submission versus native tool observations, Action admission/dispatch/completion, bridge scope, optional history and nested Assessment fields without changing Decision v1 or coordination.
