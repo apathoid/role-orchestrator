@@ -316,3 +316,5 @@ CI использует synthetic/fake providers и настоящие subproces
 ### C13.5 — bounded delivery and local control
 
 Shared per-consumer FIFO, 128 notices including one gap and in-flight delivery, 1 MiB retained data; diagnostic subscriber gaps are delivery-only, not written to sink. Local control v1 optional live stream on accepted work request, explicit scoped subscription, pending inspection and correlated manual interaction answer bound to accepted work request + answer key; ACP owner retains existing run/resume prohibition. No new state writer, replay or execution wait on consumer. CI pending.
+
+C13.5 initial CI [43649555135](https://github.com/apathoid/role-orchestrator/actions/runs/43649555135) on `e2b6d0c1`: checkJs/spec/import and foundation tests PASS; package failed because Git tree update lost executable bit on src/main/cli.js. Restored original 100755; also retained accepted notification on deduplicated submit/resume (existing operation returns without callback). Full regression still pending on corrected HEAD.
