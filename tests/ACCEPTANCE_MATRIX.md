@@ -357,3 +357,16 @@ Synthetic wire events prove adapter and Host coordination only, not real LLM com
 C13.0–.5 fixture and CI evidence is recorded in [STATUS](../docs/roadmap/STATUS.md). C13.6 current full CI and C13.7 native/comparative remain separately tracked there. No fixture or provider installation is native acceptance.
 
 **C13 engineering OBSERVED:** [CI 43649941333](https://github.com/apathoid/role-orchestrator/actions/runs/43649941333) exact `01457b373cf5bd8946d04031bb7a9fc1f247d00a`, 424/424, zero failures/skips/cancellations, all mandatory checks. A55–A60 fixture/engineering PASS. A61 actual native/comparative **UNVERIFIED**, blockers and next probes in [NATIVE_ACCEPTANCE](../docs/roadmap/NATIVE_ACCEPTANCE.md#c137--actual-native-and-comparative-disposition). No F4/C12 native closure.
+
+
+## C14 — Client presentation acceptance
+
+| ID | Требования | Сценарий и обязательное наблюдение | Уровень / владелец |
+|---|---|---|---|
+| A62 | R18,R21,R22 | Pure modes, native source/scoped IDs, accepted findings vs live reports, safe terminal display, gap and partial outcome: `tests/integration/presentation.test.js` | I C14.1 |
+| A63 | R08,R14,R19,R22,R23 | Direct/attached CLI owner, permission options, native form, selection/EOF/cancel/unavailable, machine stdout compatibility: `tests/integration/cli-ux.test.js`, `host-cli.test.js`, `local-control.test.js`, actual Linux PTY transport fixture `tests/pty/cli.test.js` | I C14.2,.4 |
+| A64 | R08,R18,R19,R21,R23 | Actual SDK standard ACP native thinking/tool/plan, scoped parallel IDs, no synthetic updates or ambiguous messages, final once/load/clarification/background routing: `tests/integration/host-acp.test.js` | I C14.3 |
+| A65 | R01,R03,R09,R11,R13,R16,R18,R21,R26,R31 | All existing mandatory C13/baseline tests; identical deterministic execution across delivery modes, bounded slow/failing consumers and gap handling; CLI mode compatibility and SDK transport checks; installed package and Nix checks | I/E C14.4 |
+| A66 | R13,R18,R19,R27,R30,R31 | Actual native executors/model settings, real CLI terminal and Zed/graphical client, native input/tools/finding as supported, matched comparative task/quality/latency; precise UNVERIFIED per unavailable capability | N C14.5 |
+
+Engineering evidence pending on current C14 SHA; no actual LLM or graphical client claim.

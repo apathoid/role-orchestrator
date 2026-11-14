@@ -166,3 +166,7 @@ Text adapters distinguish malformed JSON (`valid JSON`), valid non-object JSON (
 ### C13 — delivery is not diagnostic persistence
 
 Programmatic `subscribe` and scoped `subscribeExecution` deliver already-redacted diagnostic snapshots through bounded per-subscriber queues. Overflow yields a local `delivery.gap` (count, reason, known scope), not a journal transition or a new sink/export event. The underlying diagnostic sink retains its own bounds and redaction. Raw provider activity is not automatically captured in diagnostics or durable model context. Activity and interaction native payloads travel only through existing trusted/scoped host paths; no local-control token/answer key in logs. Native input request/settlement notices carry technical correlation/reason, not the answer or full prompt. Wire frame limits, existing result capture/retention and delivery queue bytes are separate. A gap does not authorize reconstruction, inference of outcome or replay; inspect remains authoritative.
+
+### Presentation versus diagnostic evidence
+
+Live notices are bounded best effort; a gap is not a replay request. CLI may read current recorded findings or terminal snapshot, labelled authoritative records, not infer missing activity. Debug adds safe technical metadata, no full model prompt or hidden reasoning. ACP has no independent standard gap/lifecycle/finding notice: omit instead of injecting fake thought/tool or history. Final and interaction response paths are independent of presentation queue. No raw activity persistence added for UI.

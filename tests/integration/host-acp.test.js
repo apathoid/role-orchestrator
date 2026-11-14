@@ -71,6 +71,7 @@ test('external ACP v1 serves separate non-Git sessions, progress, cancellation a
       }), /text prompt blocks/);
       assert.equal((await prompt(first.agent, sessionId, 'Привет')).stopReason, 'end_turn');
       assert.ok(first.messages.some(message => message.sessionId === sessionId && message.update.content?.text === 'Ответ: Привет'));
+      assert.ok(!first.messages.some(message=>message.sessionId===sessionId&&message.update.sessionUpdate==='agent_thought_chunk'));
       const held = prompt(first.agent, second.sessionId, 'hold');
       await first.agent.notify(a.session.cancel, { sessionId: second.sessionId });
       assert.equal((await held).stopReason, 'cancelled');

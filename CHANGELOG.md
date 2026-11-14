@@ -73,3 +73,9 @@
 - Optional native input broker with correlated manual/handler owner, deadline/cancel and standard ACP session form elicitation where available.
 - Bounded execution notice delivery and existing local control v1 scoped stream/pending/answer routes; no new model calls, replay, writer or scheduler.
 - Native model/client quality and performance remain UNVERIFIED unless actual native evidence is recorded; see STATUS.
+
+### C14 — CLI and standard ACP presentation
+
+- Compact/detailed/debug client modes, stderr activity and technical display, unchanged stdout/final/exit codes; recorded findings, explicit delivery gaps and correlated terminal permission/form replies for direct and attached CLI.
+- Standard ACP native thinking/tool updates and Controller plan only; removed synthetic Controller progress, scoped native tool IDs, existing prompt/load/permission/elicitation and background operation route retained.
+- Added presentation golden, input owner, SDK and actual Linux PTY transport regressions. Native model and real graphical client acceptance remains separately UNVERIFIED.

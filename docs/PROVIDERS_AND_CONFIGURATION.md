@@ -168,3 +168,7 @@ Codex CLI передаёт per-invocation значение аргументом 
 ### C12R.9 review P2 — ограничение конкретного транспорта
 
 MCP `context_fetch` принимает `offset` и optional `maxBytes` для конкретного ответа. В адаптере per-call budget автоматически ограничивается половиной максимума MCP response 256 КиБ, чтобы оставалось место для двойной JSON-сериализации RPC. Проверка полного JSON-RPC envelope по-прежнему обязательна. Если `fetchMaxBytes=512 КиБ`, это **не** означает, что MCP может передать 512-КиБ chunk одним ответом; модель запрашивает следующий `nextOffset` по желанию. Controller при `controllerMaxBytes=8192`, `fetchMaxBytes=65536` получает меньшие фрагменты с корректным offset, без повторного запроса того же недоставляемого 64-КиБ тела. Ни дефолт 256-КиБ Controller, ни независимые trusted budgets не повышены.
+
+### Client presentation flag
+
+CLI run/resume и `role-orchestrator acp --presentation compact|detailed|debug` select renderer only. No provider/model setting changed. ACP maps native thought/tool updates and Controller plan (detailed/debug), Codex completed reasoning summary only; absent independent lifecycle/finding/gap or explicit message channels are omitted. Native tools/skills/settings/permissions/elicitation are not suppressed by mode. CLI supports session form primitive fields and primitive arrays as explicit JSON, not URL/auth or arbitrary complex forms. Actual graphical rendering/out-of-prompt activity and native providers remain UNVERIFIED.

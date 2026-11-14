@@ -39,3 +39,22 @@ test('C14 CLI opt-in modes and non-TTY default preserve machine grammar',()=>{
   assert.equal(parseCli(['run','hello','--format','json'],'/tmp').presentation,undefined);
   assert.throws(()=>parseCli(['run','hello','--presentation','invalid'],'/tmp'),/presentation/);
 });
+
+test('C14 input EOF, abort, unsupported form and non-interactive input settle explicitly', async()=>{
+  const input=new PassThrough(), output=new PassThrough();output.resume();
+  const terminal=createCliInput(input,output,true,()=>{});
+  const stop=new AbortController();
+  const first=terminal.ask(permission,stop.signal);
+  stop.abort();
+  assert.deepEqual(await first,{kind:'cancelled'});
+  const unsupported=structuredClone(form);
+  unsupported.request.payload.requestedSchema.properties.value={type:'object'};
+  assert.deepEqual(await terminal.ask(unsupported,new AbortController().signal),{kind:'unavailable'});
+  const next=terminal.ask(form,new AbortController().signal);
+  input.end();
+  assert.deepEqual(await next,{kind:'unavailable'});
+  terminal.close();
+  const noTTY=createCliInput(new PassThrough(),output,false,()=>{});
+  assert.deepEqual(await noTTY.ask(permission,new AbortController().signal),{kind:'unavailable'});
+  noTTY.close();
+});

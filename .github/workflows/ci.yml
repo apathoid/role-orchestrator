@@ -56,6 +56,10 @@ jobs:
             exit "$status"
           fi
           tail -n 20 "$RUNNER_TEMP/orchestrator-integration.log"
+      - name: Actual Linux PTY transport fixture (not native LLM)
+        run: |
+          command -v script
+          nix develop --no-update-lock-file --command node --test tests/pty/cli.test.js
       - name: Acceptance regression
         run: nix develop --no-update-lock-file --command npm run test:acceptance
       - name: Full applicable suite from root

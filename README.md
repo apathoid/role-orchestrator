@@ -46,3 +46,16 @@ role-orchestrator run --config /path/to/config.json 'Опиши содержим
 Программный клиент вызывает `openOrchestrator({ configuration, stateDirectory })`, где `configuration` содержит доверенный JSON, и передаёт выданный `configurationRef` в `submit`. Операция возвращается после принятия, итог доступен через `completion`. Для остановки экземпляра вызовите `close`.
 
 Обязательные ограничения для работающих в репозитории агентов находятся в [AGENTS.md](https://github.com/apathoid/role-orchestrator/blob/greenfield/model-first-core/AGENTS.md) и связанных инструкциях [.agents/REASONING.md](https://github.com/apathoid/role-orchestrator/blob/greenfield/model-first-core/.agents/REASONING.md); текущий STATUS — [roadmap](https://github.com/apathoid/role-orchestrator/blob/greenfield/model-first-core/docs/roadmap/STATUS.md). Документация описывает самостоятельный новый продукт; знание какой-либо предыдущей реализации не требуется.
+
+## Интерактивное представление (C13/C14)
+
+```sh
+role-orchestrator run --presentation compact 'Проверь изменения'
+role-orchestrator run --presentation detailed --format json 'Проверь изменения'
+role-orchestrator resume OPERATION_ID --presentation debug
+role-orchestrator acp --config /path/to/config.json --presentation detailed
+```
+
+Режимы compact/detailed/debug управляют только отображением; интерактивный text TTY по умолчанию compact, non-TTY/headless по умолчанию не добавляет stream. CLI activity и технические сообщения идут в stderr, stdout сохраняет прежний финальный текст/JSON. В терминале при реальном permission/form отображаются исходные варианты или schema; при нескольких запросах введите `#REQUEST_ID OPTION_ID` либо `#REQUEST_ID {"field":"value"}`. Один запрос можно ответить без label. Для native form доступны `decline`/`cancel`; сложные формы, URL/auth и отсутствие TTY явно unavailable. Ctrl-C отменяет foreground operation по существующему контракту, EOF не выдаёт разрешений. CLI peer, подключённый к writer через local control, отвечает только своим pending requests; disconnect не отменяет независимые operations.
+
+В ACP используются только standard native thinking/tool/Controller plan, existing permission/elicitation и final/clarification; отсутствие отдельного standard канала lifecycle/finding/gap означает omission, не искусственный thinking/tool. История session/load не дополняется activity. Реальный Zed, реальные модели и comparative quality/performance — UNVERIFIED до native acceptance; SDK/subprocess и PTY fixtures этого не доказывают.
