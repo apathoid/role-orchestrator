@@ -173,6 +173,20 @@ agent()
       await message('result','skills delivered');
       return {stopReason:'end_turn'};
     }
+    if (scenario === 'native-activity') {
+      await message('progress', 'ambiguous progress');
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'reasoning chunk' } } });
+      await client.notify(c.session.update, { sessionId: 'wrong', update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'foreign' } } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'plan', entries: [{ content: 'inspect', priority: 'medium', status: 'pending' }] } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 'shared', title: 'Read', kind: 'read', status: 'in_progress' } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'tool_call_update', toolCallId: 'shared', status: 'completed' } });
+      for (;;) {
+        try { await access(attemptId + '.release'); break; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
+      }
+      await message('final', 'native result');
+      return { stopReason: 'end_turn' };
+    }
     if (scenario === 'host-extension') {
       const advertised = clientCapabilities?._meta?.roleOrchestratorExtensions;
       assert.equal(clientCapabilities?.fs?.readTextFile ?? false, false);

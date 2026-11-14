@@ -83,7 +83,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       sessions.set(handle, { profile: { ...profile } });
       return handle;
     },
-    async invoke(handle, invocation, observe) {
+    async invoke(handle, invocation, observe, activity) {
       const state = sessions.get(handle);
       const selected = invocation.profile;
       if (!state || state.closing || state.call || selected.providerId !== providerId ||
@@ -93,7 +93,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       const stop = new AbortController();
       const signal = AbortSignal.any([stop.signal, invocation.signal]);
       /** @type {Call} */
-      const call = { attemptId: invocation.attemptId, stop, result: Promise.resolve().then(() => run(invocation, signal, observe)) };
+      const call = { attemptId: invocation.attemptId, stop, result: Promise.resolve().then(() => run(invocation, signal, observe, activity)) };
       state.call = call;
       return call.result;
     },
@@ -116,8 +116,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     },
   };
 
-  /** @param {Invocation} invocation @param {AbortSignal} signal @param {Parameters<ProviderPort['invoke']>[2]} observe */
-  async function run(invocation, signal, observe) {
+  /** @param {Invocation} invocation @param {AbortSignal} signal @param {Parameters<ProviderPort['invoke']>[2]} observe @param {Parameters<ProviderPort['invoke']>[3]} [activity] */
+  async function run(invocation, signal, observe, activity) {
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const required = invocation.requiredCapabilities ?? [];
     const { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } = await import('@agentclientprotocol/sdk');
@@ -213,6 +213,18 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     }
     /** @param {SessionUpdate} update */
     function receive(update) {
+      // Activity is independent of the accumulated execution output budget.
+      // Preserve the original native event, never classify result chunks as public messages.
+      if (activity && !signal.aborted) {
+        try {
+          const nativeKind = update.sessionUpdate;
+          if (nativeKind === 'agent_thought_chunk') activity({ kind: 'reasoning', nativeKind,
+            nativeId: update.messageId ?? undefined, payload: structuredClone(update) });
+          else if (nativeKind === 'plan') activity({ kind: 'plan', nativeKind, payload: structuredClone(update) });
+          else if (nativeKind === 'tool_call' || nativeKind === 'tool_call_update') activity({ kind: 'tool', nativeKind,
+            nativeId: update.toolCallId, payload: structuredClone(update) });
+        } catch { /* Activity delivery is not execution. */ }
+      }
       if (update.sessionUpdate !== 'agent_message_chunk' &&
           update.sessionUpdate !== 'tool_call' && update.sessionUpdate !== 'tool_call_update') return;
       const encoded = JSON.stringify(update);

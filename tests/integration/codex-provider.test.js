@@ -450,3 +450,51 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id']) {
     } finally { await api.close(); }
   });
 }
+
+
+test('C13 Codex JSONL activity arrives before exit and never alters execution frames', linux, async () => {
+  const { provider } = codexSetup(`
+    import { writeFile, access } from 'node:fs/promises';
+    import { setTimeout as sleep } from 'node:timers/promises';
+    message('ambiguous progress');
+    emit('item.completed', {item: {type:'reasoning', id:'thought', text:'native summary'}});
+    emit('item.started', {item: {type:'command_execution', id:'cmd', command:'echo x', aggregated_output:'', status:'in_progress'}});
+    emit('item.completed', {item: {type:'command_execution', id:'cmd', command:'echo x', aggregated_output:'x', status:'completed', exit_code:0}});
+    emit('item.updated', {item: {type:'todo_list', id:'plan', items:[{text:'inspect', completed:true}]}});
+    // No terminal result until the test has seen the activity callback.
+    for (;;) { try { await access(invocation.attemptId + '.release'); break; } catch { await sleep(10); } }
+    message('native result'); complete();
+  `);
+  const { withOwnedRun } = await import('../../scripts/owned-run.mjs');
+  const { writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  await withOwnedRun('C13-codex-activity', async cwd => {
+    const signal = new AbortController().signal;
+    const input = { attemptId: 'activity', operationId: 'op', actionId: 'action', kind: 'delegate', objective: 'task', profile,
+      instructions: [], context: [], userConstraints: [], authorityRef: 'grant', workspaceContext: { cwd }, timeoutMs: 5000, signal };
+    const observed = [], ready = Promise.withResolvers(), facts = [];
+    const handle = await provider.open(profile, signal);
+    try {
+      const completion = provider.invoke(handle, input, x => { facts.push(x); return x.ref; }, event => {
+        observed.push(event);
+        if (observed.length === 4) ready.resolve();
+        if (event.kind === 'tool') { event.payload.item.status = 'corrupt'; throw Error('consumer'); }
+      });
+      await Promise.race([ready.promise, completion.then(() => assert.fail('activity was not live'))]);
+      assert.deepEqual(observed.map(x => [x.kind, x.nativeKind, x.nativeId]), [
+        ['reasoning','item.completed','thought'], ['tool','item.started','cmd'], ['tool','item.completed','cmd'], ['plan','item.updated','plan'],
+      ]);
+      assert.deepEqual(facts, []);
+      await writeFile(join(cwd, 'activity.release'), '');
+      const result = await completion;
+      assert.equal(result.output, 'native result');
+      assert.equal(observed.length, 4);
+      const baseline = await provider.open(profile, signal);
+      const baselineFacts = [];
+      try {
+        assert.deepEqual(result, await provider.invoke(baseline, input, x => { baselineFacts.push(x); return x.ref; }));
+        assert.deepEqual(facts, baselineFacts);
+      } finally { await provider.close(baseline); }
+    } finally { await provider.close(handle); }
+  });
+});

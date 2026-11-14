@@ -58,7 +58,7 @@ export function createCodexProvider({ providerId, configuration, environment = p
       sessions.set(session, { profile: { profileId: profile.profileId, model: profile.model }, invoked: false, closing: false, stop: new AbortController() });
       return session;
     },
-    async invoke(session, request, observe) {
+    async invoke(session, request, observe, activity) {
       const state = sessions.get(session);
       if (!state || state.closing || state.invoked || request.profile.providerId !== providerId ||
         request.profile.profileId !== state.profile.profileId || request.profile.model !== state.profile.model) {
@@ -98,7 +98,20 @@ export function createCodexProvider({ providerId, configuration, environment = p
           model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt, mcpUrl: mcp?.url,
           reasoning: request.reasoning,
         }, environment);
-        const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal });
+        const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal,
+          onFrame: activity ? event => {
+            if (request.signal.aborted || !['item.started', 'item.updated', 'item.completed'].includes(event.type)) return;
+            const item = event.item;
+            if (!item || typeof item !== 'object' || !('type' in item)) return;
+            const nativeId = 'id' in item && typeof item.id === 'string' ? item.id : undefined;
+            const nativeKind = event.type;
+            if (item.type === 'reasoning') activity({ kind: 'reasoning', nativeKind, nativeId, payload: event });
+            else if (item.type === 'todo_list') activity({ kind: 'plan', nativeKind, nativeId, payload: event });
+            else if (['command_execution', 'file_change', 'mcp_tool_call', 'web_search', 'collab_tool_call'].includes(String(item.type))) {
+              activity({ kind: 'tool', nativeKind, nativeId, payload: event });
+            }
+          } : undefined,
+        });
         state.process = process;
         return receiveCodexResult(await process.finished, request, observe);
       } catch (error) {

@@ -18,8 +18,9 @@ const defaultLimits = {
  * Read the documented Codex JSONL transport. Event payloads remain attributed
  * to the provider for the caller to interpret. Diagnostics carry no raw text.
  * @param {OutputLimits} [limits]
+ * @param {(event: CodexEnvelope) => void} [onFrame]
  */
-export function createCodexOutputCapture(limits = defaultLimits) {
+export function createCodexOutputCapture(limits = defaultLimits, onFrame) {
   const { maxFrameBytes, maxStdoutBytes, maxStderrBytes } = limits;
   for (const [name, value] of Object.entries({ maxFrameBytes, maxStdoutBytes, maxStderrBytes })) {
     if (!Number.isSafeInteger(value) || value < 1 || value > constants.MAX_LENGTH) {
@@ -61,6 +62,9 @@ export function createCodexOutputCapture(limits = defaultLimits) {
     catch { return report('INVALID_JSON'); }
     if (!isEnvelope(event)) return report('INVALID_ENVELOPE');
     frames.push({ line, event });
+    if (onFrame) {
+      try { onFrame(structuredClone(event)); } catch { /* Delivery cannot change capture. */ }
+    }
   }
 
   return {
@@ -101,10 +105,10 @@ function isEnvelope(value) {
 /**
  * Collect bounded transport output for one owned Codex process.
  * @param {ReturnType<typeof import('./codex-launch.js').prepareCodexLaunch>} launch
- * @param {{timeoutMs: number, signal: AbortSignal, limits?: OutputLimits}} options
+ * @param {{timeoutMs: number, signal: AbortSignal, limits?: OutputLimits, onFrame?: (event: CodexEnvelope) => void}} options
  */
-export function startCodexProcess(launch, { timeoutMs, signal, limits }) {
-  const output = createCodexOutputCapture(limits);
+export function startCodexProcess(launch, { timeoutMs, signal, limits, onFrame }) {
+  const output = createCodexOutputCapture(limits, onFrame);
   const owned = startCliProcess(launch, { timeoutMs, signal, onOutput: output.write });
   const finished = owned.finished.then(result => ({ process: result, ...output.finish() }));
   return {
