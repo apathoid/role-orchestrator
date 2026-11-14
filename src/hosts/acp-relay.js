@@ -1,4 +1,4 @@
-import { methods, RequestError } from '@agentclientprotocol/sdk';
+import { methods, RequestError, CreateElicitationRequest } from '@agentclientprotocol/sdk';
 
 /** @import {ClientRequestMethod, ClientRequestParamsByMethod, ClientRequestResponsesByMethod, RequestPermissionResponse} from '@agentclientprotocol/sdk' */
 /** @import {PermissionHandler} from '../application/configuration/permissions.js' */
@@ -138,8 +138,33 @@ export function createAcpRelay(route, extensionMethods = []) {
     };
   }
 
+  /** @param {string} operationId */
+  function supportsInput(operationId) {
+    return route(operationId)?.capabilities.elicitation?.form != null;
+  }
+  /** @type {NonNullable<Parameters<typeof import('../application/interactions.js').createInteractionBroker>[0]['handleRequest']>} */
+  async function handleInteraction(request, signal) {
+    const destination = route(request.operationId);
+    if (!destination || !supportsInput(request.operationId)) return { kind: 'unavailable' };
+    const params = /** @type {import('@agentclientprotocol/sdk').CreateElicitationRequest} */ (request.payload);
+    if (request.nativeKind !== c.elicitation.create || !CreateElicitationRequest.isForm(params) || !('sessionId' in params)) return { kind: 'invalid' };
+    const stop = AbortSignal.any([signal, destination.signal]);
+    try {
+      const response = await destination.client.request(c.elicitation.create, {
+        ...params, sessionId: destination.sessionId,
+        ...(params.toolCallId && { toolCallId: JSON.stringify([request.attemptId, params.toolCallId]) }),
+      }, { cancellationSignal: stop, stopWaitingOnCancel: true });
+      if (stop.aborted || route(request.operationId)?.sessionId !== destination.sessionId) return { kind: 'cancelled' };
+      return { kind: 'answered', payload: response };
+    } catch (error) {
+      if (stop.aborted) return { kind: 'cancelled' };
+      if (error instanceof RequestError) return { kind: 'error', code: error.code, message: error.message, data: error.data };
+      return { kind: 'unavailable' };
+    }
+  }
+
   return {
-    handleRequest, extensionRelay,
+    handleRequest, extensionRelay, supportsInput, handleInteraction,
     /** @param {string} operationId */
     bridgeCapabilities(operationId) { return route(operationId)?.capabilities ?? {}; },
     bridge: {

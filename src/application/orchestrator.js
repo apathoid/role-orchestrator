@@ -27,7 +27,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
-/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextShare, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
+/** @import {AttemptInteractions, AttemptPermissions, AuthorityPort, Catalog, ContextShare, InteractionPort, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number}} Execution
@@ -38,7 +38,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
  *     captureMaxBytes?: number, skillInstructionsMaxBytes?: number, toolOutputMaxBytes?: number}, allowContextShare?: ContextShare,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
  *   approveRetry?: RetryApproval, tools?: import('../core/ports.js').ToolPort,
- *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, configurationRef: string,
+ *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, interactions?: InteractionPort, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
  * } & (Execution & {resolveExecution?: undefined} | {resolveExecution: ResolveExecution})} Dependencies
  * @typedef {{operation: Operation, completion: Promise<Operation>}} Submission
@@ -85,7 +85,7 @@ function notifyAccepted(listener, id) {
 /** @param {Dependencies} deps */
 export function createOrchestrator(deps) {
   const {
-    store, clock, ids, limits, authority, permissions, configurationRef,
+    store, clock, ids, limits, authority, permissions, interactions, configurationRef,
     allowContextShare,
     diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry, tools,
     providerFor = selected => !deps.resolveExecution && selected.providerId === deps.profile.providerId ? deps.provider : undefined,
@@ -576,6 +576,7 @@ export function createOrchestrator(deps) {
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {Action} [action]
    */
   async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs }, correction, handoff, executor = provider, lookups, action) {
+    const deadline = interactions ? clock.monotonicNow() + invocationTimeoutMs : 0;
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal, shuttingDown.signal]);
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
@@ -585,6 +586,8 @@ export function createOrchestrator(deps) {
     let session;
     /** @type {AttemptPermissions | undefined} */
     let boundPermissions;
+    /** @type {AttemptInteractions | undefined} */
+    let boundInteractions;
     let mayHaveSent = false;
     let contextCursor = state.revision;
     /** @type {'PERMISSION_DENIED' | 'REVOKED' | 'RETRY_NOT_AUTHORIZED' | undefined} */
@@ -899,6 +902,8 @@ export function createOrchestrator(deps) {
         contextOpen = true;
         const isActive = () => contextOpen && !signal.aborted &&
           authority.authorize(dispatched.authorityRef, selectedProfile.profileId) === 'ALLOWED';
+        boundInteractions = interactions?.bind({ operationId: state.operationId, attemptId, profileId: selectedProfile.profileId,
+          signal, isActive, deadline, clock, schedule, report: (event, reason) => trace(dispatched, event, reason, attemptId) });
         const reportActivity = activity.bind({ operationId: state.operationId, attemptId,
           profileId: selectedProfile.profileId, providerId: selectedProfile.providerId }, () => acceptingActivity && isActive());
         const contextAccess = bindContextAccess({
@@ -957,6 +962,7 @@ export function createOrchestrator(deps) {
           return executor.invoke(owned, {
           ...context, reasoning, isActive, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
+          interactions: boundInteractions ? { request: boundInteractions.request, supports: boundInteractions.supports } : undefined,
         }, item => {
           if (!acceptingObservations) return;
           const summary = item && typeof item === 'object' && 'kind' in item && item.kind === 'model_summary';
@@ -1039,6 +1045,7 @@ export function createOrchestrator(deps) {
       toolStop.abort();
       acceptingObservations = signal.aborted && mayHaveSent;
       boundPermissions?.close();
+      boundInteractions?.close();
       clear();
       signal.removeEventListener('abort', abort);
       if (opening) {

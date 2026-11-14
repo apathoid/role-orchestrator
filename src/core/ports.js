@@ -19,7 +19,7 @@
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
+ *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>}} Invocation
  * @typedef {{kind: 'reasoning' | 'user_message' | 'tool' | 'plan' | 'finding', payload: unknown,
  *   nativeId?: string, nativeKind?: string}} ProviderActivity
  * @typedef {(item: ProviderActivity) => void} ActivityCallback
@@ -116,6 +116,17 @@
  * @typedef {(retry: {operationId: string, attemptId: string, actionId: string, profileId: string}) => boolean} RetryApproval
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>
  *   'ALLOWED' | 'PERMISSION_DENIED' | 'REVOKED'}} AuthorityPort
+ * @typedef {{kind: 'input', nativeKind: string, providerRequestId: string, payload: unknown}} InteractionRequest
+ * @typedef {InteractionRequest & {requestId: string, operationId: string, attemptId: string, profileId: string, deadlineAt: number}} PendingInteraction
+ * @typedef {{kind: 'answered', payload: unknown} | {kind: 'unavailable' | 'cancelled' | 'timed_out' | 'invalid'} |
+ *   {kind: 'error', code: number, message: string, data?: unknown}} InteractionResult
+ * @typedef {{requestId: string, operationId: string, attemptId: string, providerRequestId: string, payload: unknown}} InteractionReply
+ * @typedef {{supports: (kind: InteractionRequest['kind']) => boolean,
+ *   request: (input: InteractionRequest, requestSignal?: AbortSignal) => Promise<InteractionResult>, close: () => void}} AttemptInteractions
+ * @typedef {{bind: (scope: {operationId: string, attemptId: string, profileId: string, signal: AbortSignal,
+ *   isActive: () => boolean, deadline: number, clock: import('./diagnostics.js').Clock,
+ *   schedule: (timeoutMs: number, expire: () => void) => () => void,
+ *   report?: (event: string, reason: string) => void}) => AttemptInteractions}} InteractionPort
  * @typedef {{id: string, kind: 'allow' | 'deny', label?: string, scope?: 'once' | 'always'}} PermissionOption
  * @typedef {{source: 'provider_reported', title?: string, kind?: string,
  *   locations?: readonly {path: string, line?: number}[], details?: string}} PermissionAction

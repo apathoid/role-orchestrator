@@ -6,6 +6,7 @@ export { decodeConfiguration } from '../application/configuration/decode-config.
 export { resolveConfiguration } from '../application/configuration/resolve-config.js';
 export { createCatalog } from '../application/configuration/catalog.js';
 export { createAuthorityGrant } from '../application/configuration/authority.js';
+export { createInteractionBroker } from '../application/interactions.js';
 export { createPermissionBroker } from '../application/configuration/permissions.js';
 export { createCodexProvider } from '../adapters/cli/codex-provider.js';
 export { createAcpProvider } from '../adapters/acp/provider.js';

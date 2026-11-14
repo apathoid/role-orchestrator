@@ -421,3 +421,30 @@ test('C13 ACP extension routing is explicitly enabled, session scoped and preser
       } finally { await host.close(); }
     }
   }));
+
+
+test('C13 ACP native form interaction negotiates actual client capability and keeps replies session scoped', { timeout: 12_000 }, () =>
+  withOwnedRun('C13-acp-form', async cwd => {
+    const config = await fixture(cwd, { providers: { test: { adapter: 'acp', launch: { command: process.execPath,
+      args: [fileURLToPath(new URL('../fixtures/acp-contract-agent.js', import.meta.url)), 'host-elicitation'] } } }, plugins: [] });
+    for (const enabled of [false, true]) {
+      const seen = [];
+      const host = launch(cwd, config, app => app.onRequest(c.elicitation.create, ({ params }) => {
+        seen.push(params);
+        assert.equal(params.message, 'Which value?');
+        assert.deepEqual(params.requestedSchema.required, ['value']);
+        return { action: 'accept', content: { value: params.sessionId } };
+      }));
+      try {
+        await host.agent.request(a.initialize, { protocolVersion: PROTOCOL_VERSION,
+          clientCapabilities: enabled ? { elicitation: { form: {}, url: {} } } : {} });
+        const { sessionId: one } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
+        const { sessionId: two } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
+        await Promise.all([prompt(host.agent, one, 'one'), prompt(host.agent, two, 'two')]);
+        const answer = id => host.messages.filter(x => x.sessionId === id && x.update.sessionUpdate === 'agent_message_chunk').at(-1).update.content.text;
+        assert.equal(answer(one), enabled ? one : 'unavailable');
+        assert.equal(answer(two), enabled ? two : 'unavailable');
+        assert.equal(seen.length, enabled ? 2 : 0);
+      } finally { await host.close(); }
+    }
+  }));

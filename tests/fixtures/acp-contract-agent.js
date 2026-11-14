@@ -173,6 +173,22 @@ agent()
       await message('result','skills delivered');
       return {stopReason:'end_turn'};
     }
+    if (scenario === 'host-elicitation') {
+      assert.equal(clientCapabilities?.elicitation?.url, undefined);
+      let text = 'unavailable';
+      const form = { mode: 'form', sessionId, message: 'Which value?', requestedSchema: {
+        type: 'object', properties: { value: { type: 'string' } }, required: ['value'],
+      } };
+      if (clientCapabilities?.elicitation?.form) {
+        assert.equal((await client.request(c.elicitation.create, { ...form, sessionId: 'wrong' })).action, 'cancel');
+        const reply = await client.request(c.elicitation.create, form);
+        text = reply.action === 'accept' ? reply.content.value : reply.action;
+      } else await assert.rejects(client.request(c.elicitation.create, form), error => error.code === -32601);
+      await message('result', JSON.stringify({ schemaVersion: 1, operationId, decisionId: 'elicitation-decision', contextCursor: 0,
+        additions: [], cancellations: [], finalAssessment: { author: profileId, overall: 'complete', requirements: [],
+          observationRefs: [], findingRefs: [], unresolvedQuestions: [], answer: text } }));
+      return { stopReason: 'end_turn' };
+    }
     if (scenario === 'native-activity') {
       await message('progress', 'ambiguous progress');
       await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'reasoning chunk' } } });

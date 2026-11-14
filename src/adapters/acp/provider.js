@@ -120,11 +120,12 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
   async function run(invocation, signal, observe, activity) {
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const required = invocation.requiredCapabilities ?? [];
-    const { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } = await import('@agentclientprotocol/sdk');
+    const { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, CreateElicitationRequest, CreateElicitationResponse } = await import('@agentclientprotocol/sdk');
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const supported = new Set(['input.text', 'output.decision', 'cancel']);
     if (resolveAttachment) supported.add('input.image');
     const clientCapabilities = bridgeCapabilities?.(invocation.operationId);
+    const form = invocation.interactions?.supports('input') === true;
     const extensions = extensionRelay?.capabilities(invocation.operationId);
     const extensionMethods = { requests: new Set(extensions?.requests ?? []), notifications: new Set(extensions?.notifications ?? []) };
     const terminal = configuredTerminal && (!bridgeCapabilities || clientCapabilities?.terminal === true);
@@ -346,6 +347,24 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             return cancelled;
           } finally { listener[Symbol.dispose](); }
         })
+        .onRequest(m.elicitation.create, async ({ params, requestId, signal: requestSignal }) => {
+          if (!form || !invocation.interactions || !CreateElicitationRequest.isForm(params) || !('sessionId' in params)) {
+            throw RequestError.methodNotFound(m.elicitation.create);
+          }
+          if (!active || params.sessionId !== sessionId || toolSignal.aborted) return { action: 'cancel' };
+          const result = await invocation.interactions.request({ kind: 'input', nativeKind: m.elicitation.create,
+            providerRequestId: JSON.stringify([sessionId, requestId]), payload: params }, AbortSignal.any([toolSignal, requestSignal]));
+          if (result.kind === 'answered') {
+            const reply = /** @type {import('@agentclientprotocol/sdk').CreateElicitationResponse} */ (result.payload);
+            if (CreateElicitationResponse.isAccept(reply) || CreateElicitationResponse.isDecline(reply) || CreateElicitationResponse.isCancel(reply)) return reply;
+            throw new RequestError(-32602, 'Invalid elicitation reply');
+          }
+          if (result.kind === 'cancelled') return { action: 'cancel' };
+          if (result.kind === 'timed_out') throw new RequestError(-32001, 'Interaction deadline exceeded');
+          if (result.kind === 'error') throw new RequestError(result.code, result.message, result.data);
+          if (result.kind === 'invalid') throw new RequestError(-32602, 'Invalid interaction');
+          throw RequestError.methodNotFound(m.elicitation.create);
+        })
         .onRequest(m.fs.readTextFile, forward(m.fs.readTextFile, fsCapabilities.readTextFile))
         .onRequest(m.fs.writeTextFile, forward(m.fs.writeTextFile, fsCapabilities.writeTextFile))
         .onRequest(m.terminal.create, forward(m.terminal.create, terminal))
@@ -376,6 +395,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       /** @type {InitializeResponse} */
       const initialized = await agent.request(a.initialize, {
         protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: fsCapabilities, terminal,
+          ...(form && { elicitation: { form: {} } }),
           ...(extensions && (extensions.requests.length || extensions.notifications.length) && {
             _meta: { roleOrchestratorExtensions: extensions },
           }),

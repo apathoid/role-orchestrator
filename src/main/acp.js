@@ -26,6 +26,7 @@ export async function runAcpStdio(args) {
     const relay = createAcpRelay(id => host?.route(id), values['relay-client-extension']);
     const runtime = await openRuntime({
       ...options, permissions: { handleRequest: relay.handleRequest },
+      interactions: { available: relay.supportsInput, handleRequest: relay.handleInteraction },
       acp: {
         ...(values['relay-client-tools'] && { bridge: relay.bridge, bridgeCapabilities: relay.bridgeCapabilities }),
         ...(values['relay-client-extension']?.length && { extensionRelay: relay.extensionRelay }),
