@@ -15,7 +15,9 @@ import { HostError, hostError } from './commands.js';
 /** @typedef {{channel: 'activity', event: import('../core/ports.js').ActivityNotice} | {channel: 'execution', event: import('../core/diagnostics.js').DiagnosticEvent} | {channel: 'gap', droppedCount: number, reason: 'overflow'}} ControlNotice */
 /** @typedef {{subscribe: (operationId: string, listener: (notice: ControlNotice) => Promise<void>) => () => void,
  * pending: (operationId: string) => unknown,
- * respond: (reply: import('../core/ports.js').InteractionReply) => unknown}} ControlStreams */
+ * respond: (reply: import('../core/ports.js').InteractionReply) => unknown,
+ * ownerAccepted?: (operationId:string,requestId:string,interactive:boolean)=>boolean,
+ * ownerDetached?: (operationId:string,requestId:string)=>void}} ControlStreams */
 /** @typedef {Command | {action: 'pending' | 'subscribe', requestId: string, operationId: string} | {action: 'answer', requestId: string, operationId: string, ownerRequestId: string, answerKey: string, reply: import('../core/ports.js').InteractionReply}} ControlCommand */
 
 const version = 1;
@@ -28,7 +30,7 @@ const shape = record({
   payload: record({
     text: optional(text), cwd: optional(id), questionId: optional(id), configurationRef: id,
     cancellationSource: optional(oneOf('client')),
-    stream: optional(oneOf('live')), ownerRequestId: optional(id), answerKey: optional(id),
+    stream: optional(oneOf('live')), interactive: optional(oneOf('yes')), ownerRequestId: optional(id), answerKey: optional(id),
     reply: optional(record({ requestId: id, operationId: id, attemptId: id, providerRequestId: id, payload: jsonValue })),
     launch: optional(record({ controllerProfile: optional(id), preferredSkills: optional(arrayOf(id)) })),
   }),
@@ -154,19 +156,24 @@ export async function openControl(directory, configurationRef, execute, launch, 
         else throw new HostError('CONTROL_BUSY', 'Too many control requests in progress');
       }
       const clients = new Set([socket]);
-      const answerKey = payload.stream === 'live' && (action === 'run' || action === 'resume') ? randomUUID() : undefined;
+      let answerKey = payload.stream === 'live' && (action === 'run' || action === 'resume') ? randomUUID() : undefined;
       const result = Promise.resolve().then(() => {
         if (action === 'answer') {
           const owner = payload.ownerRequestId && requests.get(payload.ownerRequestId);
           if (!streams || !owner || !owner.answerKey || owner.answerKey !== payload.answerKey ||
-              owner.operationId !== operationId || !payload.reply || payload.reply.operationId !== operationId) {
+              owner.settled || owner.clients.size === 0 || owner.operationId !== operationId || !payload.reply || payload.reply.operationId !== operationId) {
             throw new HostError('CONTROL_INTERACTION_OWNER_REQUIRED', 'Interaction answer requires the owning work request');
           }
           return streams.respond(payload.reply);
         }
         return execute({ action, requestId, operationId, ...payload }, id => {
         const current = requests.get(requestId);
-        if (current) current.operationId = id;
+        if (current) {
+          current.operationId = id;
+          if (streams?.ownerAccepted && !streams.ownerAccepted(id,requestId,payload.interactive === 'yes')) {
+            current.answerKey = undefined; answerKey = undefined;
+          }
+        }
         for (const client of clients) {
           send(client, { requestId, accepted: id, answerKey });
           if (payload.stream === 'live') subscribe(client, requestId, id);
@@ -184,7 +191,10 @@ export async function openControl(directory, configurationRef, execute, launch, 
       }
     }
     const clients = entry.clients;
-    const detach = () => { clients.delete(socket); };
+    const detach = () => {
+      clients.delete(socket);
+      if (clients.size === 0 && entry.operationId) streams?.ownerDetached?.(entry.operationId,requestId);
+    };
     socket.once('close', detach);
     try { return await entry.result; }
     finally { socket.removeListener('close', detach); detach(); }
@@ -243,7 +253,7 @@ export async function readDescriptor(directory) {
 
 /** @param {Descriptor} descriptor @param {string} configurationRef @param {ControlCommand} command
  * @param {(operationId: string, answerKey?: string) => void} [accepted] @param {LaunchOverrides} [launch]
- * @param {{notice?: (notice: ControlNotice) => void | Promise<void>, signal?: AbortSignal}} [live]
+ * @param {{notice?: (notice: ControlNotice) => void | Promise<void>, signal?: AbortSignal, interactive?:boolean}} [live]
  */
 export function callControl(descriptor, configurationRef, command, accepted, launch, live) {
   return new Promise((resolve, reject) => {
@@ -264,7 +274,8 @@ export function callControl(descriptor, configurationRef, command, accepted, lau
       const answer = action === 'answer' ? command : undefined;
       send(socket, { version, token: descriptor.token, requestId, action, operationId,
         payload: { text: work.text, cwd: work.cwd, questionId: work.questionId, configurationRef, cancellationSource: work.cancellationSource, launch,
-          stream: live?.notice && action !== 'subscribe' ? 'live' : undefined,
+          stream: (live?.notice || live?.interactive) && action !== 'subscribe' ? 'live' : undefined,
+          interactive: live?.interactive ? 'yes' : undefined,
           ownerRequestId: answer?.ownerRequestId, answerKey: answer?.answerKey, reply: answer?.reply } });
     });
     socket.once('error', error => {

@@ -4,7 +4,7 @@
 
 ## C13 / C14 — Interaction protocols and client UX (IN PROGRESS)
 
-**Следующий шаг: C14.2 — CLI presentation and interaction owner.** [Детальное задание C13](C13_INTERACTION_PROTOCOLS.md); [C14](C14_CLIENT_UX.md) после engineering handoff C13. [Активный план](IMPLEMENTATION_PLAN.md). Начинать реализацию на текущей ветке, не на master и не на прежней greenfield. C13 engineering handoff verified; native gaps remain open. 
+**Следующий шаг: C14.3 — graphical ACP presentation presentation and interaction owner.** [Детальное задание C13](C13_INTERACTION_PROTOCOLS.md); [C14](C14_CLIENT_UX.md) после engineering handoff C13. [Активный план](IMPLEMENTATION_PLAN.md). Начинать реализацию на текущей ветке, не на master и не на прежней greenfield. C13 engineering handoff verified; native gaps remain open. 
 
 - C13.0: baseline + new SDK subprocess probe OBSERVED (contract suite); C13.1: implementation complete, regression OBSERVED SUCCESS on `1ea8d210`; C13.2: implementation complete, regression OBSERVED SUCCESS on `65217cc1`; C13.3: implementation complete, regression OBSERVED SUCCESS on `1a38e6b0`; C13.4: implementation complete, regression OBSERVED SUCCESS on `a8b58679`; C13.5: implementation complete, regression OBSERVED SUCCESS on `fe93221c`; C13.6: implementation complete, full regression OBSERVED SUCCESS on `01457b37`; C13.7: recorded UNVERIFIED (no native executors/client/auth); implementation complete YES; regression verified YES; native integration UNVERIFIED; comparative quality/performance UNVERIFIED.
 - C14.0: baseline/mapping recorded; C14.1: implementation submitted, regression UNVERIFIED; C14.2–.6: NOT STARTED. C13 prerequisite satisfied (native gaps retained).
@@ -340,3 +340,7 @@ C13 engineering SHA `01457b37` verified, .7 `bc09f362` records native gaps. Read
 ### C14.1 — shared presentation mapping
 
 Pure `src/hosts/presentation.js`: display-only terminal control sanitization, attributed actual activity/lifecycle/recorded findings/gaps, current operation summary, ACP standard native update mapping and shared scoped ID. No aggregate Worker plan, guessed public message or synthetic thought/tool. Golden `presentation.test.js` checks modes, raw payload unchanged, native ID scope, actual/no unsupported channels. Await full C14 regression.
+
+### C14.2 — CLI presentation and live input
+
+CLI run/resume presentation flags/default, stderr renderer, authoritative recorded findings, shared terminal input owner, original permission options and supported form replies, correlated direct/attached pending input and owner-only answer. No provider/core changes. Tests added; regression pending.

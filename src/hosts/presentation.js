@@ -110,7 +110,7 @@ export function scopedNativeId(attemptId, nativeId) {
  * @param {ActivityNotice} event @param {PresentationMode} mode @param {boolean} controller @returns {SessionUpdate | undefined}
  */
 export function acpActivity(event, mode, controller) {
-  if (event.kind === 'gap') return;
+  if (event.kind === 'gap' || !event.payload || typeof event.payload !== 'object') return;
   const payload = object(event.payload);
   const update = /** @type {SessionUpdate} */ (event.payload);
   if (event.kind === 'reasoning') {

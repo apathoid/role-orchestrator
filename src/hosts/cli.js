@@ -19,14 +19,14 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
   export-diagnostics ID   Write a redacted journal to --output PATH
 
 Common: --config FILE, --format text|json, --help
-Run: --cwd DIR, --profile ID, --skill ID (repeatable), --stdin, --request-id ID
-Resume: --question ID, --stdin, --request-id ID
+Run: --cwd DIR, --profile ID, --skill ID (repeatable), --stdin, --request-id ID, --presentation compact|detailed|debug
+Resume: --question ID, --stdin, --request-id ID, --presentation compact|detailed|debug
 `;
 
 const common = {
   config: { type: 'string' }, format: { type: 'string' }, help: { type: 'boolean', short: 'h' },
 };
-const continuation = { stdin: { type: 'boolean' }, 'request-id': { type: 'string' } };
+const continuation = { presentation: { type: 'string' }, stdin: { type: 'boolean' }, 'request-id': { type: 'string' } };
 const flags = {
   run: { ...continuation, cwd: { type: 'string' }, profile: { type: 'string' }, skill: { type: 'string', multiple: true } },
   resume: { ...continuation, question: { type: 'string' } },
@@ -47,6 +47,10 @@ export function parseCli(argv, cwd) {
   if (values.help) return { kind: /** @type {const} */ ('help') };
   const format = values.format ?? 'text';
   if (format !== 'text' && format !== 'json') throw new HostError('INVALID_ARGUMENT', 'Expected --format text or json');
+  const presentation = values.presentation;
+  if (presentation !== undefined && presentation !== 'compact' && presentation !== 'detailed' && presentation !== 'debug') {
+    throw new HostError('INVALID_ARGUMENT', 'Expected --presentation compact, detailed or debug');
+  }
   const needsId = commandName !== 'run' && commandName !== 'diagnose';
   const operationId = needsId ? positionals.shift() : undefined;
   if (needsId && !operationId?.trim()) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
@@ -65,7 +69,7 @@ export function parseCli(argv, cwd) {
     questionId: typeof values.question === 'string' ? values.question : undefined,
   };
   return {
-    kind: /** @type {const} */ ('command'), command, format, output,
+    kind: /** @type {const} */ ('command'), command, format, output, presentation,
     stdin: values.stdin === true || (commandName === 'run' && command.text === undefined),
     config: typeof values.config === 'string' ? resolve(cwd, values.config) : undefined,
     launch: {

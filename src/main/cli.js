@@ -4,7 +4,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { access, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, isAbsolute, resolve } from 'node:path';
-import { cliPermissions } from '../hosts/cli-permissions.js';
+import { createCliInput } from '../hosts/cli-input.js';
+import { cliOwner } from '../hosts/cli-owner.js';
+import { cliPresentation } from '../hosts/cli-presentation.js';
 import { callControl, openControl, readDescriptor } from '../hosts/local-control.js';
 import { runCli } from '../hosts/cli.js';
 import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
@@ -72,9 +74,12 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
     const stop = new AbortController();
     const interrupt = () => stop.abort();
     process.on('SIGINT', interrupt);
+    const interactive = Boolean(process.stdin.isTTY && process.stderr.isTTY && !invocation.stdin);
+    const input = createCliInput(process.stdin,process.stderr,interactive,interrupt);
+    const clients = cliOwner(input);
+    const mode = invocation.presentation ?? (interactive && invocation.format === 'text' ? 'compact' : undefined);
+    const renderer = cliPresentation(mode,input.print);
     try {
-      const handleRequest = cliPermissions(process.stdin, process.stderr,
-        Boolean(process.stdin.isTTY && process.stderr.isTTY && !invocation.stdin), interrupt);
       const configurationRef = 'config:' + createHash('sha256').update(configuration).digest('hex');
       /** @param {(id: string) => Promise<unknown>} cancel */
       const onAccepted = cancel => /** @param {string} id */ id => {
@@ -87,11 +92,46 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
       for (;;) {
         const descriptor = await readDescriptor(stateDirectory);
         if (descriptor) {
-          const result = await callControl(descriptor, configurationRef, invocation.command, onAccepted(id =>
-            callControl(descriptor, configurationRef, {
-              action: 'cancel', operationId: id, requestId: randomUUID(), cancellationSource: 'client',
-            })), invocation.launch);
-          if (result !== undefined) return result;
+          const cancel = onAccepted(id => callControl(descriptor, configurationRef, {
+            action: 'cancel', operationId: id, requestId: randomUUID(), cancellationSource: 'client',
+          }));
+          const watch = new AbortController();
+          /** @type {Promise<void> | undefined} */
+          let polling;
+          /** @param {string} id */
+          const inspect = async id => /** @type {import('../core/operation.js').Operation} */ (await callControl(descriptor,configurationRef,{action:'inspect',operationId:id,requestId:randomUUID()},undefined,undefined,{signal:watch.signal}));
+          try {
+            const result = await callControl(descriptor, configurationRef, invocation.command, (id,key) => {
+              cancel(id);
+              if (!interactive || !key || polling) return;
+              polling = (async () => {
+                /** @type {Map<string,AbortController>} */
+                const shown = new Map();
+                try {
+                  while (!watch.signal.aborted) {
+                    const list = await callControl(descriptor,configurationRef,{action:'pending',operationId:id,requestId:randomUUID()},undefined,undefined,{signal:watch.signal});
+                    if (!Array.isArray(list)) break;
+                    const current = new Set(list.map(item=>item.request?.requestId));
+                    for (const [requestId,controller] of shown) if (!current.has(requestId)) { controller.abort(); shown.delete(requestId); }
+                    for (const entry of /** @type {import('../hosts/cli-input.js').PendingInput[]} */ (list)) {
+                      const request = entry.request;
+                      if (!request || request.operationId !== id || shown.has(request.requestId)) continue;
+                      const controller = new AbortController(); shown.set(request.requestId,controller);
+                      const signal = AbortSignal.any([watch.signal,controller.signal,stop.signal]);
+                      void input.ask(entry,signal).then(payload => {
+                        if (signal.aborted) return;
+                        return callControl(descriptor,configurationRef,{action:'answer',operationId:id,requestId:randomUUID(),
+                          ownerRequestId:invocation.command.requestId,answerKey:key,reply:{requestId:request.requestId,operationId:id,
+                            attemptId:request.attemptId,providerRequestId:request.providerRequestId,payload}},undefined,undefined,{signal});
+                      }).catch(()=>{});
+                    }
+                    await delay(100,undefined,{signal:watch.signal});
+                  }
+                } finally { for (const controller of shown.values()) controller.abort(); }
+              })().catch(()=>{});
+            }, invocation.launch, startsWork && (mode || interactive) ? {interactive,notice:mode ? notice=>renderer.notice(notice,inspect) : undefined} : undefined);
+            if (result !== undefined) { renderer.finish(result); return result; }
+          } finally { watch.abort(); await polling; }
         }
 
         /** @type {Awaited<ReturnType<typeof openControl>> | undefined} */
@@ -103,7 +143,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
         void readiness.promise.catch(() => {});
         try {
           runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
-            permissions: { handleRequest }, launch: invocation.launch,
+            permissions: { handleRequest:clients.handlePermission }, interactions: { available:clients.available,handleRequest:clients.handleInteraction }, launch: invocation.launch,
           }, startsWork ? async () => {
             const startupDeadline = performance.now() + 30_000;
             owner = await openControl(stateDirectory, configurationRef, async (command, accepted) => {
@@ -117,7 +157,8 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
                 ]);
                 return dispatchCommand(ready.api, command, accepted);
               } finally { timer.abort(); }
-            }, invocation.launch, controlStreams(() => runtime?.api)).catch(error => {
+            }, invocation.launch, { ...controlStreams(() => runtime?.api), pending:clients.pending,respond:clients.respond,
+              ownerAccepted:(id,requestId,enabled)=>clients.accept(id,requestId,true,enabled),ownerDetached:clients.detach }).catch(error => {
               if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
               process.stderr.write('CONTROL_UNAVAILABLE: local socket transport unavailable; this process retains writer ownership\n');
               return undefined;
@@ -128,7 +169,20 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             return { operationId: invocation.command.operationId, status: 'no_live_execution' };
           }
           const api = runtime.api;
-          return await dispatchCommand(api, invocation.command, onAccepted(id => api.cancel(id, 'client')));
+          const cancel = onAccepted(id => api.cancel(id, 'client'));
+          let detach = () => {};
+          try {
+            const result = await dispatchCommand(api, invocation.command,id=>{
+              cancel(id);
+              if (!startsWork) return;
+              clients.accept(id,invocation.command.requestId,false,interactive);
+              const streams = controlStreams(()=>api);
+              const unsubscribe = mode ? streams.subscribe(id,notice=>renderer.notice(notice,api.inspect)) : ()=>{};
+              detach = ()=>{unsubscribe();clients.detach(id,invocation.command.requestId);};
+            });
+            renderer.finish(result);
+            return result;
+          } finally { detach(); }
         } catch (error) {
           readiness.reject(error);
           if (runtime || hostError(error).code !== 'STATE_STORE_IN_USE') throw error;
@@ -141,5 +195,5 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
         }
         await delay(25);
       }
-    } finally { process.removeListener('SIGINT', interrupt); }
+    } finally { renderer.close(); input.close(); process.removeListener('SIGINT', interrupt); }
   });
