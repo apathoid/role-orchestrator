@@ -1,12 +1,12 @@
 # Активный план реализации и приёмки
 
-**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A54 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
+**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A66 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
 ## C13 / C14 — Interactive protocols and client UX (новая ветка)
 
-**Текущая работа:** `feature/interactive-ux`, ответвлена от master merge PR #2 (`50cffa4f0ab4151871beb36529be27e33f2c1d11`). Следующий шаг исключительно по [STATUS](STATUS.md). Два последовательных инженерных кластера, не runtime workflow; реализация на этой ветке, master не изменять без отдельного поручения.
+**Инженерный handoff завершён; реальные native/comparative обязательства открыты (см. STATUS). Ветка:** `feature/interactive-ux`, ответвлена от master merge PR #2 (`50cffa4f0ab4151871beb36529be27e33f2c1d11`). Следующий шаг исключительно по [STATUS](STATUS.md). Два последовательных инженерных кластера, не runtime workflow; реализация на этой ветке, master не изменять без отдельного поручения.
 
 | Шаг | Обязательный результат |
 |---|---|
