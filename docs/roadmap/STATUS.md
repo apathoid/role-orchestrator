@@ -4,10 +4,10 @@
 
 ## C13 / C14 — Interaction protocols and client UX (IN PROGRESS)
 
-**Следующий шаг: C14.1 — common presentation mapping.** [Детальное задание C13](C13_INTERACTION_PROTOCOLS.md); [C14](C14_CLIENT_UX.md) после engineering handoff C13. [Активный план](IMPLEMENTATION_PLAN.md). Начинать реализацию на текущей ветке, не на master и не на прежней greenfield. C13 engineering handoff verified; native gaps remain open. 
+**Следующий шаг: C14.2 — CLI presentation and interaction owner.** [Детальное задание C13](C13_INTERACTION_PROTOCOLS.md); [C14](C14_CLIENT_UX.md) после engineering handoff C13. [Активный план](IMPLEMENTATION_PLAN.md). Начинать реализацию на текущей ветке, не на master и не на прежней greenfield. C13 engineering handoff verified; native gaps remain open. 
 
 - C13.0: baseline + new SDK subprocess probe OBSERVED (contract suite); C13.1: implementation complete, regression OBSERVED SUCCESS on `1ea8d210`; C13.2: implementation complete, regression OBSERVED SUCCESS on `65217cc1`; C13.3: implementation complete, regression OBSERVED SUCCESS on `1a38e6b0`; C13.4: implementation complete, regression OBSERVED SUCCESS on `a8b58679`; C13.5: implementation complete, regression OBSERVED SUCCESS on `fe93221c`; C13.6: implementation complete, full regression OBSERVED SUCCESS on `01457b37`; C13.7: recorded UNVERIFIED (no native executors/client/auth); implementation complete YES; regression verified YES; native integration UNVERIFIED; comparative quality/performance UNVERIFIED.
-- C14.0: baseline/mapping recorded; C14.1–.6: NOT STARTED. C13 prerequisite satisfied (native gaps retained).
+- C14.0: baseline/mapping recorded; C14.1: implementation submitted, regression UNVERIFIED; C14.2–.6: NOT STARTED. C13 prerequisite satisfied (native gaps retained).
 - Planning commits: C13 `5010eb3e98be35fb4a5842257c819ae01e6183b5`; C14 `59fde53a043e3a43b5073e0bc6e92810274f6ee3`; roadmap index `f0d8210ec0776b8926878348d872552969472bca`. Не являются runtime/CI verification. Historical planning checkpoint only; current C13 evidence below.
 - F4 C12R.10R.7/C12R.10.7 остаётся **OPEN / UNVERIFIED**, как C12.3/.4, C12R.9 native, Zed и NixOS runtime. Предыдущая инженерная регрессия F0–F3 на `699237ec` историческая; новый baseline требуется в C13.0. Выполнить доступные F4 baseline probes до runtime changes; если реальные исполнители/клиенты недоступны, зафиксировать blocker, продолжить C13.1, сохранить obligation для C13.7/C14.5 или последующей native acceptance. Никакого фиктивного PASS. При подтверждённой существенной регрессии исправить в согласованном scope до handoff.
 - Независимые contract/execution/activity/interaction, UI только consumer; никакой изоляции OS/FS/host, VCS/workspace identity gate, новой модели полномочий, дополнительного scheduler/lifecycle, обязательного reporting, host inference/reconstruction или подавления native capabilities. Существующие correlation, permissions, grants, budgets и unknown effects сохраняются. Active-time — условное отдельное изменение только при подтверждённом контракте. Не объявлять unverified live channels доступными.
@@ -336,3 +336,7 @@ Actual deterministic C13.6 root fixture metrics: 2,000 native events per run, 4 
 ### C14.0 — baseline and mapping
 
 C13 engineering SHA `01457b37` verified, .7 `bc09f362` records native gaps. Read actual CLI grammar/stdout/permission and local owner paths, ACP session/prompt/load/route, C13 activity and interaction contracts, acceptance tests. Mapping and exact flags/defaults recorded in [C14](C14_CLIENT_UX.md#c140--observed-baseline-and-selected-mapping). No runtime changes in .0; next C14.1. Real graphical native widgets/out-of-prompt support remain UNVERIFIED.
+
+### C14.1 — shared presentation mapping
+
+Pure `src/hosts/presentation.js`: display-only terminal control sanitization, attributed actual activity/lifecycle/recorded findings/gaps, current operation summary, ACP standard native update mapping and shared scoped ID. No aggregate Worker plan, guessed public message or synthetic thought/tool. Golden `presentation.test.js` checks modes, raw payload unchanged, native ID scope, actual/no unsupported channels. Await full C14 regression.
