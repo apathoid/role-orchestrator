@@ -8,6 +8,7 @@ import { serveAcp } from '../hosts/acp.js';
 import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
 import { openControl } from '../hosts/local-control.js';
 import { cliConfiguration } from './cli-config.js';
+import { controlStreams } from '../hosts/control-streams.js';
 import { openRuntime } from './runtime.js';
 
 /** @param {string[]} args */
@@ -47,7 +48,7 @@ export async function runAcpStdio(args) {
           throw new HostError('CONTROL_ACP_SESSION_REQUIRED', 'Use the owning ACP session to submit or continue work');
         }
         return dispatchCommand(runtime.api, command);
-      }).catch(error => {
+      }, undefined, controlStreams(() => runtime.api)).catch(error => {
         if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
         return undefined;
       });

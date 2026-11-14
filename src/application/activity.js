@@ -1,12 +1,10 @@
 import { decode, jsonValue } from '../core/decode.js';
+import { createBoundedDelivery } from './delivery.js';
 
 /** @import {ProviderActivity, ActivityEvent, ActivityNotice, ActivityScope, ActivityListener, ActivityCallback} from '../core/ports.js' */
-/** @typedef {{event: ActivityEvent, bytes: number}} Entry */
-/** @typedef {{scope: ActivityScope, listener: ActivityListener, queue: Entry[], bytes: number,
- *   draining: boolean, active: boolean, gap?: Extract<ActivityNotice, {kind: 'gap'}>}} Subscriber */
+/** @typedef {Extract<ActivityNotice, {kind: 'gap'}>} Gap */
+/** @typedef {{scope: ActivityScope, delivery: ReturnType<typeof createBoundedDelivery<ActivityEvent, Gap>>}} Subscriber */
 
-const maxEvents = 128;
-const maxBytes = 1024 * 1024;
 const kinds = new Set(['reasoning', 'user_message', 'tool', 'plan', 'finding']);
 
 /** @param {unknown} value */
@@ -28,51 +26,21 @@ export function createActivityStream() {
 
   /** @param {Subscriber} sub */
   function detach(sub) {
-    sub.active = false;
-    sub.queue.length = 0;
-    sub.bytes = 0;
-    sub.gap = undefined;
+    sub.delivery.close();
     subscribers.delete(sub);
   }
 
-  /** @param {Subscriber} sub @param {ActivityEvent} event */
-  function drop(sub, event) {
-    const prior = sub.gap;
-    if (!prior) {
-      sub.gap = { kind: 'gap', operationId: event.operationId, attemptId: event.attemptId,
-        droppedCount: 1, reason: 'overflow', sequenceRange: { first: event.sequence, last: event.sequence } };
-    } else {
-      prior.droppedCount++;
-      if (prior.attemptId !== event.attemptId || !prior.sequenceRange ||
-          prior.sequenceRange.last + 1 !== event.sequence) {
-        delete prior.attemptId;
-        delete prior.sequenceRange;
-      } else prior.sequenceRange.last = event.sequence;
-    }
-  }
-
-  /** @param {Subscriber} sub */
-  function wake(sub) {
-    if (sub.draining || !sub.active) return;
-    sub.draining = true;
-    queueMicrotask(() => { void drain(sub); });
-  }
-
-  /** @param {Subscriber} sub */
-  async function drain(sub) {
-    try {
-      while (sub.active) {
-        const entry = sub.queue.shift();
-        const notice = entry?.event ?? sub.gap;
-        if (!notice) break;
-        if (!entry) sub.gap = undefined;
-        try { await sub.listener(notice); } catch { /* Delivery cannot fail execution. */ }
-        if (entry && sub.active) sub.bytes -= entry.bytes;
-      }
-    } finally {
-      sub.draining = false;
-      if (sub.active && (sub.queue.length || sub.gap)) wake(sub);
-    }
+  /** @param {Gap | undefined} prior @param {ActivityEvent} event @returns {Gap} */
+  function gapFor(prior, event) {
+    if (!prior) return { kind: 'gap', operationId: event.operationId, attemptId: event.attemptId,
+      droppedCount: 1, reason: 'overflow', sequenceRange: { first: event.sequence, last: event.sequence } };
+    prior.droppedCount++;
+    if (prior.attemptId !== event.attemptId || !prior.sequenceRange ||
+        prior.sequenceRange.last + 1 !== event.sequence) {
+      delete prior.attemptId;
+      delete prior.sequenceRange;
+    } else prior.sequenceRange.last = event.sequence;
+    return prior;
   }
 
   return {
@@ -85,7 +53,7 @@ export function createActivityStream() {
           typeof listener !== 'function') throw new TypeError('Invalid activity subscription');
       /** @type {Subscriber} */
       const sub = { scope: { operationId: scope.operationId, attemptId: scope.attemptId },
-        listener, queue: [], bytes: 0, draining: false, active: true };
+        delivery: createBoundedDelivery(listener, gapFor) };
       subscribers.add(sub);
       return () => detach(sub);
     },
@@ -115,14 +83,7 @@ export function createActivityStream() {
             ...(typeof item.nativeKind === 'string' && { nativeKind: item.nativeKind }) };
           const bytes = Buffer.byteLength(JSON.stringify(event));
           freeze(event);
-          for (const sub of matching) {
-            if (!sub.active) continue;
-            // Keep the pending gap after the already queued prefix; do not
-            // insert newer events ahead of the gap. No replay is promised.
-            if (sub.gap || sub.queue.length >= maxEvents - 1 || bytes > maxBytes - sub.bytes) drop(sub, event);
-            else { sub.queue.push({ event, bytes }); sub.bytes += bytes; }
-            wake(sub);
-          }
+          for (const sub of matching) sub.delivery.enqueue(event, bytes);
         } catch { /* Malformed/oversized activity is never a provider failure. */ }
       };
     },

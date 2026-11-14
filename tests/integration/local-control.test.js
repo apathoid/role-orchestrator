@@ -218,3 +218,36 @@ test('a peer waits for slow CLI initialization and uses its own workspace config
       assert.equal(JSON.parse(stopped.output).cancellation, 'client');
     } finally { for (const child of children) child.kill('SIGKILL'); }
   }));
+
+test('live control delivers scoped notices and requires the work answer binding', { skip: localSocketCheck }, () =>
+  withOwnedRun('C13-control-stream', async directory => {
+    const gate = Promise.withResolvers(), started = Promise.withResolvers(), seen = Promise.withResolvers();
+    const listeners = new Map();
+    let executions = 0, answers = 0, ownerKey;
+    const server = await openControl(directory, 'config', async (_command, accepted) => {
+      executions++; accepted('op'); started.resolve(); await gate.promise; return { done: true };
+    }, undefined, {
+      subscribe(operationId, listener) { listeners.set(operationId, listener); return () => listeners.delete(operationId); },
+      pending: operationId => [{ operationId, requestId: 'question' }],
+      respond: reply => { answers++; return { kind: 'accepted', reply }; },
+    });
+    try {
+      const descriptor = await readDescriptor(directory);
+      const run = callControl(descriptor, 'config', { action: 'run', requestId: 'work', text: 'task' },
+        (_id, key) => { ownerKey = key; }, undefined, { notice: seen.resolve });
+      await started.promise;
+      await listeners.get('op')({ channel: 'activity', event: { kind: 'reasoning', operationId: 'op', attemptId: 'a', sequence: 1, payload: 'native' } });
+      assert.equal((await seen.promise).event.payload, 'native');
+      assert.deepEqual(await callControl(descriptor, 'config', { action: 'pending', requestId: 'p', operationId: 'op' }), [{ operationId: 'op', requestId: 'question' }]);
+      const answer = { action: 'answer', requestId: 'answer', operationId: 'op', ownerRequestId: 'work', answerKey: 'wrong',
+        reply: { requestId: 'question', operationId: 'op', attemptId: 'a', providerRequestId: 'native', payload: { action: 'accept' } } };
+      await assert.rejects(callControl(descriptor, 'config', answer), { code: 'CONTROL_INTERACTION_OWNER_REQUIRED' });
+      const correct = { ...answer, requestId: 'correct', answerKey: ownerKey };
+      assert.equal((await callControl(descriptor, 'config', correct)).kind, 'accepted');
+      assert.equal((await callControl(descriptor, 'config', correct)).kind, 'accepted');
+      assert.equal(answers, 1);
+      gate.resolve();
+      assert.deepEqual(await run, { done: true });
+      assert.equal(executions, 1);
+    } finally { gate.resolve(); await server.close(); }
+  }));

@@ -126,7 +126,7 @@ export async function openRuntime(options, onStoreOpen) {
     const trace = async operationId => operationTrace(await inspect(operationId), { secrets: secretValues });
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel,
       trace,
-      subscribe: diagnostics.subscribe, subscribeActivity, pendingInteractions: interactions.pending,
+      subscribe: diagnostics.subscribe, subscribeExecution: (/** @type {import('../core/ports.js').ActivityScope} */ scope, /** @type {import('../application/events.js').EventListener} */ listener) => diagnostics.subscribe(listener, scope), subscribeActivity, pendingInteractions: interactions.pending,
       respondInteraction: interactions.respond, configurationRef, close });
     return { api, coordinator, permissions, interactions, configurationRef, directory, catalog, close };
   } catch (error) {

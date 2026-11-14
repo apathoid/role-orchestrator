@@ -9,6 +9,7 @@ import { callControl, openControl, readDescriptor } from '../hosts/local-control
 import { runCli } from '../hosts/cli.js';
 import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
 import { cliConfiguration } from './cli-config.js';
+import { controlStreams } from '../hosts/control-streams.js';
 import { openRuntime } from './runtime.js';
 
 const cwd = process.cwd();
@@ -116,7 +117,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
                 ]);
                 return dispatchCommand(ready.api, command, accepted);
               } finally { timer.abort(); }
-            }, invocation.launch).catch(error => {
+            }, invocation.launch, controlStreams(() => runtime?.api)).catch(error => {
               if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
               process.stderr.write('CONTROL_UNAVAILABLE: local socket transport unavailable; this process retains writer ownership\n');
               return undefined;

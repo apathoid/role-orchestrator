@@ -26,15 +26,13 @@ export async function dispatchCommand(api, command, accepted) {
     const submission = await api.submit({
       schemaVersion: 1, requestId, text, attachments: [], userConstraints: [],
       configurationRef: api.configurationRef, ...(cwd && { workspaceContext: { cwd } }),
-    });
-    accepted?.(submission.operation.operationId);
+    }, accepted);
     return submission.completion;
   }
   if (!operationId) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
   if (action === 'resume') {
     if (text !== undefined && !text.trim()) throw new HostError('INVALID_ARGUMENT', 'Follow-up text is empty');
-    const submission = await api.resume(operationId, text === undefined ? undefined : { requestId, text, questionId });
-    accepted?.(submission.operation.operationId);
+    const submission = await api.resume(operationId, text === undefined ? undefined : { requestId, text, questionId }, accepted);
     return submission.completion;
   }
   if (action === 'cancel') return api.cancel(operationId, cancellationSource);
