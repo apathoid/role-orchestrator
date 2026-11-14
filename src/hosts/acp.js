@@ -60,6 +60,26 @@ export function serveAcp(api, directory, stream) {
   let initialized = false;
   /** @type {ClientCapabilities} */
   let capabilities = {};
+  // Capture the declaration at the wire boundary before the SDK normalizes it.
+  // This is not negotiation or authority; only the accepted initialize is retained.
+  /** @type {unknown} */
+  let rawCapabilities;
+  /** @type {Map<unknown, unknown>} */
+  const declarations = new Map();
+  /** @type {TransformStream<import('@agentclientprotocol/sdk').AnyMessage, import('@agentclientprotocol/sdk').AnyMessage>} */
+  const capture = new TransformStream({
+    transform(message, controller) {
+      if (!initialized && message && typeof message === 'object' && 'method' in message &&
+          message.method === a.initialize && 'id' in message && 'params' in message) {
+        const params = message.params;
+        if (params && typeof params === 'object' && 'clientCapabilities' in params) {
+          if (declarations.size >= 8) declarations.delete(declarations.keys().next().value);
+          declarations.set(message.id, structuredClone(params.clientCapabilities));
+        }
+      }
+      controller.enqueue(message);
+    },
+  });
 
   /** @param {string} sessionId */
   function sessionPath(sessionId) {
@@ -115,11 +135,13 @@ export function serveAcp(api, directory, stream) {
   }
 
   const app = agent()
-    .onRequest(a.initialize, ({ params }) => {
+    .onRequest(a.initialize, ({ params, requestId }) => {
       if (initialized) throw invalid('ACP connection is already initialized');
       if (params.protocolVersion !== PROTOCOL_VERSION) throw invalid('Unsupported ACP protocol version', { supported: PROTOCOL_VERSION });
       initialized = true;
       capabilities = params.clientCapabilities ?? {};
+      rawCapabilities = declarations.get(requestId);
+      declarations.clear();
       return {
         protocolVersion: PROTOCOL_VERSION, agentInfo: { name: 'role-orchestrator', version: '0.1.0-dev.0' },
         agentCapabilities: { loadSession: true, promptCapabilities: { image: false, audio: false, embeddedContext: false } },
@@ -253,7 +275,7 @@ export function serveAcp(api, directory, stream) {
     .onNotification(a.session.cancel, ({ params }) => cancel(params.sessionId));
 
   /** @type {AgentConnection} */
-  const connection = app.connect(stream);
+  const connection = app.connect({ writable: stream.writable, readable: stream.readable.pipeThrough(capture) });
   return {
     connection,
     async drain() {
@@ -266,7 +288,7 @@ export function serveAcp(api, directory, stream) {
         if (session.operations.includes(operationId)) {
           const turn = turns.get(sessionId);
           if (turn?.operationId === operationId && turn.cancelled) return undefined;
-          return { sessionId, client: connection.client, signal: connection.signal, capabilities };
+          return { sessionId, client: connection.client, signal: connection.signal, capabilities, rawCapabilities };
         }
       }
     },

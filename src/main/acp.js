@@ -13,9 +13,9 @@ import { openRuntime } from './runtime.js';
 /** @param {string[]} args */
 export async function runAcpStdio(args) {
   try {
-    const { values } = parseArgs({ args, options: { config: { type: 'string' }, help: { type: 'boolean' }, 'relay-client-tools': { type: 'boolean' } } });
+    const { values } = parseArgs({ args, options: { config: { type: 'string' }, help: { type: 'boolean' }, 'relay-client-tools': { type: 'boolean' }, 'relay-client-extension': { type: 'string', multiple: true } } });
     if (values.help) {
-      process.stdout.write('Usage: role-orchestrator acp [--config FILE] [--relay-client-tools]\n');
+      process.stdout.write('Usage: role-orchestrator acp [--config FILE] [--relay-client-tools] [--relay-client-extension METHOD]\n');
       return 0;
     }
     // In this executable mode stdout is reserved for protocol frames.
@@ -23,10 +23,13 @@ export async function runAcpStdio(args) {
     const options = await cliConfiguration(values.config && resolve(values.config));
     /** @type {ReturnType<typeof serveAcp> | undefined} */
     let host;
-    const relay = createAcpRelay(id => host?.route(id));
+    const relay = createAcpRelay(id => host?.route(id), values['relay-client-extension']);
     const runtime = await openRuntime({
       ...options, permissions: { handleRequest: relay.handleRequest },
-      acp: values['relay-client-tools'] ? relay : undefined,
+      acp: {
+        ...(values['relay-client-tools'] && { bridge: relay.bridge, bridgeCapabilities: relay.bridgeCapabilities }),
+        ...(values['relay-client-extension']?.length && { extensionRelay: relay.extensionRelay }),
+      },
     });
     /** @type {Awaited<ReturnType<typeof openControl>> | undefined} */
     let owner;

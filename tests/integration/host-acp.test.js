@@ -380,3 +380,44 @@ test('explicit ACP terminal release detaches ownership and its abort listener', 
   assert.deepEqual(calls, [[c.terminal.create, 'external'], [c.terminal.release, 'external']]);
   await assert.rejects(relay.bridge[c.terminal.output]({ sessionId: 'inner', terminalId: 'terminal' }, scope), /Unknown terminal/);
 });
+
+
+test('C13 ACP extension routing is explicitly enabled, session scoped and preserves opaque payload', { timeout: 12_000 }, () =>
+  withOwnedRun('C13-acp-extension', async cwd => {
+    const config = await fixture(cwd, {
+      providers: { test: { adapter: 'acp', launch: { command: process.execPath,
+        args: [fileURLToPath(new URL('../fixtures/acp-contract-agent.js', import.meta.url)), 'host-extension'] } } }, plugins: [],
+    });
+    const capabilities = { fs: { readTextFile: true }, terminal: true, _meta: {
+      roleOrchestratorExtensions: { requests: ['_ro/echo', '_ro/unknown', 'session/new'], notifications: ['_ro/notice'] },
+      unrelated: { opaque: [1, false] },
+    } };
+    for (const enabled of [false, true]) {
+      const notices = [], requests = [];
+      const host = launch(cwd, config, app => app.onRequest('*', ({ method, params }) => {
+        assert.equal(method, '_ro/echo');
+        requests.push(params);
+        return { answer: params.objective };
+      }).onNotification('*', ({ method, params }) => {
+        if (method === '_ro/notice') notices.push(params);
+      }), enabled ? ['--relay-client-extension', '_ro/echo', '--relay-client-extension', '_ro/notice'] : []);
+      try {
+        await host.agent.request(a.initialize, { protocolVersion: PROTOCOL_VERSION, clientCapabilities: capabilities });
+        const { sessionId: one } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
+        const { sessionId: two } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
+        await Promise.all([prompt(host.agent, one, 'one'), prompt(host.agent, two, 'two')]);
+        const answer = id => host.messages.filter(x => x.sessionId === id && x.update.sessionUpdate === 'agent_message_chunk').at(-1).update.content.text;
+        assert.equal(answer(one), enabled ? 'one' : 'unavailable');
+        assert.equal(answer(two), enabled ? 'two' : 'unavailable');
+        assert.equal(requests.length, enabled ? 2 : 0);
+        assert.equal(notices.length, enabled ? 2 : 0);
+        if (enabled) {
+          assert.deepEqual(new Set(requests.map(x => x.sessionId)), new Set([one, two]));
+          for (const request of requests) {
+            assert.deepEqual(request.nested, { sessionId: 'opaque', arbitrary: [1, null] });
+            assert.deepEqual(notices.find(x => x.sessionId === request.sessionId), request);
+          }
+        }
+      } finally { await host.close(); }
+    }
+  }));

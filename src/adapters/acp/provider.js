@@ -16,6 +16,9 @@ import { attachmentBlocks, configureReasoning, configureSession, modelOption } f
 /** @import {ProviderConfig} from '../../application/configuration/decode-config.js' */
 /** @typedef {{attemptId: string, operationId: string, authorityRef: string, signal: AbortSignal, lifecycleSignal: AbortSignal}} ToolScope */
 /** @typedef {Partial<{[M in keyof ClientRequestParamsByMethod]: (params: ClientRequestParamsByMethod[M], scope: ToolScope) => Promise<ClientRequestResponsesByMethod[M]>}>} Bridge */
+/** @typedef {{capabilities: (operationId: string) => {requests: string[], notifications: string[]},
+ * request: (method: string, params: Record<string, unknown>, scope: ToolScope) => Promise<unknown>,
+ * notify: (method: string, params: Record<string, unknown>, scope: ToolScope) => Promise<void>}} ExtensionRelay */
 /** @typedef {{attemptId: string, stop: AbortController, result: Promise<ProviderResult>}} Call */
 /** @typedef {{profile: Profile, call?: Call, closing?: Promise<void>}} Session */
 
@@ -38,12 +41,12 @@ function resultFor(invocation, code, terminal = 'failed', certainty = 'not_sent'
  * One process and one native session per invocation. The local handle is allocated
  * before dispatch, but the agent is started only when invocation cwd is available.
  * @param {{providerId: string, configuration: ProviderConfig, defaultCwd?: string, environment?: NodeJS.ProcessEnv,
- *   resolveAttachment?: ResolveAttachment, bridge?: Bridge,
+ *   resolveAttachment?: ResolveAttachment, bridge?: Bridge, extensionRelay?: ExtensionRelay,
  *   bridgeCapabilities?: (operationId: string) => {terminal?: boolean, fs?: {readTextFile?: boolean, writeTextFile?: boolean}}}} options
  * @returns {ProviderPort}
  */
 export function createAcpProvider({ providerId, configuration, defaultCwd = process.cwd(), environment = process.env,
-  resolveAttachment, bridge: suppliedBridge, bridgeCapabilities }) {
+  resolveAttachment, bridge: suppliedBridge, bridgeCapabilities, extensionRelay }) {
   const bridge = { ...suppliedBridge };
   const configuredFs = { readTextFile: !!bridge['fs/read_text_file'], writeTextFile: !!bridge['fs/write_text_file'] };
   const terminalMethods = /** @type {const} */ (['terminal/create', 'terminal/output', 'terminal/release', 'terminal/wait_for_exit', 'terminal/kill']);
@@ -122,6 +125,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     const supported = new Set(['input.text', 'output.decision', 'cancel']);
     if (resolveAttachment) supported.add('input.image');
     const clientCapabilities = bridgeCapabilities?.(invocation.operationId);
+    const extensions = extensionRelay?.capabilities(invocation.operationId);
+    const extensionMethods = { requests: new Set(extensions?.requests ?? []), notifications: new Set(extensions?.notifications ?? []) };
     const terminal = configuredTerminal && (!bridgeCapabilities || clientCapabilities?.terminal === true);
     const fsCapabilities = {
       readTextFile: configuredFs.readTextFile && (!bridgeCapabilities || clientCapabilities?.fs?.readTextFile === true),
@@ -266,6 +271,20 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       };
     }
 
+    /** @param {unknown} params @param {AbortSignal} requestSignal */
+    function extensionScope(params, requestSignal) {
+      if (!active || toolSignal.aborted || !sessionId || !params || typeof params !== 'object' || Array.isArray(params) ||
+          !('sessionId' in params) || params.sessionId !== sessionId || invocation.isActive?.() === false) {
+        throw RequestError.requestCancelled();
+      }
+      const scopeSignal = AbortSignal.any([toolSignal, requestSignal]);
+      scopeSignal.throwIfAborted();
+      return { input: /** @type {Record<string, unknown>} */ (params), scope: {
+        attemptId: invocation.attemptId, operationId: invocation.operationId, authorityRef: invocation.authorityRef,
+        signal: scopeSignal, lifecycleSignal: toolSignal,
+      } };
+    }
+
     const m = methods.client;
     const a = methods.agent;
     /** @type {NodeJS.Timeout | undefined} */
@@ -322,12 +341,33 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         .onRequest(m.terminal.release, forward(m.terminal.release, terminal))
         .onRequest(m.terminal.waitForExit, forward(m.terminal.waitForExit, terminal))
         .onRequest(m.terminal.kill, forward(m.terminal.kill, terminal));
+      if (extensionRelay) {
+        app.onRequest('*', async ({ method, params, signal: requestSignal }) => {
+          if (!method.startsWith('_') || !extensionMethods.requests.has(method)) throw RequestError.methodNotFound(method);
+          const { input, scope } = extensionScope(params, requestSignal);
+          const response = await extensionRelay.request(method, input, scope);
+          if (scope.signal.aborted || invocation.isActive?.() === false) throw RequestError.requestCancelled();
+          return response;
+        });
+        app.onNotification('*', async ({ method, params }) => {
+          // SDK wildcard notifications can also see known session/update events.
+          if (!method.startsWith('_') || !extensionMethods.notifications.has(method)) return;
+          try {
+            const { input, scope } = extensionScope(params, toolSignal);
+            await extensionRelay.notify(method, input, scope);
+          } catch { /* Notifications have no response. No retry or false ACK. */ }
+        });
+      }
       connection = app.connect(ndJsonStream(Writable.toWeb(owner.pipes.stdin), Readable.toWeb(owner.pipes.stdout),
         { maxMessageBytes: maxOutputBytes }));
       const agent = connection.agent;
       /** @type {InitializeResponse} */
       const initialized = await agent.request(a.initialize, {
-        protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: fsCapabilities, terminal },
+        protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: fsCapabilities, terminal,
+          ...(extensions && (extensions.requests.length || extensions.notifications.length) && {
+            _meta: { roleOrchestratorExtensions: extensions },
+          }),
+        },
       }, { cancellationSignal: signal, stopWaitingOnCancel: true });
       if (initialized.protocolVersion !== PROTOCOL_VERSION) return resultFor(invocation, 'PROTOCOL_ERROR');
       const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities, resolveAttachment, AbortSignal.any([signal, connection.signal]));

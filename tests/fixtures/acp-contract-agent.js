@@ -173,6 +173,28 @@ agent()
       await message('result','skills delivered');
       return {stopReason:'end_turn'};
     }
+    if (scenario === 'host-extension') {
+      const advertised = clientCapabilities?._meta?.roleOrchestratorExtensions;
+      assert.equal(clientCapabilities?.fs?.readTextFile ?? false, false);
+      assert.equal(clientCapabilities?.terminal ?? false, false);
+      assert.equal(clientCapabilities?._meta?.unrelated, undefined);
+      let text = 'unavailable';
+      if (advertised?.requests.includes('_ro/echo')) {
+        assert.deepEqual(advertised, { requests: ['_ro/echo'], notifications: ['_ro/notice'] });
+        await assert.rejects(client.request('_ro/unknown', { sessionId }), error => error.code === -32601);
+        await assert.rejects(client.request('_ro/echo', { sessionId: 'wrong' }), error => error.code === -32800);
+        const payload = { sessionId, nested: { sessionId: 'opaque', arbitrary: [1, null] }, objective };
+        await client.notify('_ro/notice', payload);
+        const reply = await client.request('_ro/echo', payload);
+        text = reply.answer;
+      } else {
+        await assert.rejects(client.request('_ro/echo', { sessionId }), error => error.code === -32601);
+      }
+      await message('result', JSON.stringify({ schemaVersion: 1, operationId, decisionId: 'extension-decision', contextCursor: 0,
+        additions: [], cancellations: [], finalAssessment: { author: profileId, overall: 'complete', requirements: [],
+          observationRefs: [], findingRefs: [], unresolvedQuestions: [], answer: text } }));
+      return { stopReason: 'end_turn' };
+    }
     if (scenario === 'host-relay') {
       if (objective === 'slow-relay') {
         await writeFile('relay-ready', '');
