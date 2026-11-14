@@ -341,3 +341,17 @@ Synthetic wire events prove adapter and Host coordination only, not real LLM com
 | ACP intentional close identity vs genuine stream errors, first teardown and cancellation/deadline, invalid Decision and partial evidence | `acp-provider.test.js` actual SDK fixture, `cli-process.test.js` real subprocess and injected cleanup EPERM | **PASS (synthetic)** |
 
 **OBSERVED:** [CI 43468204790](https://github.com/apathoid/role-orchestrator/actions/runs/43468204790), job 132032898957, implementation SHA `699237ecfb41990bf9875d5625ee956a7d04354a`: full npm test 408/408 (4 foundation, 25 core, 67 contracts, 308 integration, 4 acceptance), zero failed/skipped/cancelled; all specification/checkJs/import, package/removal/clean install, Nix flake/build/install/NixOS evaluation, release evidence and unchanged lock-file checks SUCCESS. F0 SDK close identity observed on the existing synthetic ACP subprocess fixture. Native integration and comparative quality/performance remain **UNVERIFIED** (F4; see [STATUS](../docs/roadmap/STATUS.md)); no real model or real Zed/NixOS runtime acceptance claimed.
+
+## C13 — Interaction and activity engineering acceptance
+
+| ID | Требования | Сценарий и обязательное наблюдение | Уровень / владелец |
+|---|---|---|---|
+| A55 | R11,R18,R21,R22 | Optional bound activity, equal/missing native IDs, no subscriber/slow/throwing, identical model context/journal/dispatch: `tests/integration/activity.test.js` | C/I C13.1,.3,.6 |
+| A56 | R08,R18,R19,R23 | Actual SDK raw/negotiated capability, explicit extension route, scoped request/reply/notification, wrong owner, permissions/FS: `tests/contracts/acp-extension-probe.test.js`, `tests/integration/host-acp.test.js` | C/I C13.2 |
+| A57 | R11,R18,R21 | Actual ACP/CLI subprocess native events before terminal, unchanged observations/output, no inferred audience/finding: `tests/contracts/acp-provider.test.js`, `tests/integration/codex-provider.test.js` | C/I C13.3 |
+| A58 | R08,R14,R16,R19,R28 | Live native input, manual/handler ownership, correlation, duplicate/late/invalid reply, deadline, cancel, standard ACP form: `tests/integration/interactions.test.js`, `tests/integration/host-acp.test.js` | I C13.4 |
+| A59 | R21,R22,R23,R26 | Count/byte bounded delivery, gap, sink isolation, oversized activity, local owner token/scope/answer binding and same result: `tests/integration/delivery.test.js`, `tests/integration/local-control.test.js` | I C13.5 |
+| A60 | R01,R03,R09,R10,R13,R16,R18,R31 | Parallel workers, non-Git changed file, deterministic no/fast/slow/throwing comparison, actual counts and fixture metrics, all prior mandatory suites; `tests/integration/activity.test.js`, existing delegation/recovery/context/skills/reasoning/permissions tests | I/E C13.6 |
+| A61 | R13,R18,R19,R27,R30,R31 | Two actual executors/client, comparable before/after task/model/effort/budgets, native activity/interaction/clarification/continuation/cancel/relay/skills, real usage/latency and completeness; unavailable channels UNVERIFIED | N C13.7 |
+
+C13.0–.5 fixture and CI evidence is recorded in [STATUS](../docs/roadmap/STATUS.md). C13.6 current full CI and C13.7 native/comparative remain separately tracked there. No fixture or provider installation is native acceptance.

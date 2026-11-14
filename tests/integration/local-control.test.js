@@ -251,3 +251,37 @@ test('live control delivers scoped notices and requires the work answer binding'
       assert.equal(executions, 1);
     } finally { gate.resolve(); await server.close(); }
   }));
+
+test('observer disconnect and unread socket do not cancel work or prevent owner shutdown', {timeout: 5000, skip: localSocketCheck}, () =>
+  withOwnedRun('C13-observer', async directory => {
+    const gate = Promise.withResolvers(), started = Promise.withResolvers(), observerReady = Promise.withResolvers();
+    const listeners = new Map();
+    const server = await openControl(directory, 'config', async (_command, accepted) => {
+      accepted('op'); started.resolve(); await gate.promise; return {done:true};
+    }, undefined, {
+      subscribe(operationId, listener) {
+        listeners.set(operationId, listener); observerReady.resolve();
+        return () => listeners.delete(operationId);
+      },
+      pending: () => [], respond: () => assert.fail('observer cannot answer'),
+    });
+    let socket;
+    try {
+      const descriptor = await readDescriptor(directory);
+      const work = callControl(descriptor, 'config', {action:'run',requestId:'work',text:'task'});
+      await started.promise;
+      socket = createConnection(descriptor.path);
+      await once(socket, 'connect');
+      socket.write(JSON.stringify({version:1,token:descriptor.token,requestId:'obs',action:'subscribe',operationId:'op',
+        payload:{configurationRef:'config'}})+'\n');
+      await observerReady.promise;
+      assert.ok(listeners.has('op'));
+      socket.pause();
+      const unconsumed = listeners.get('op')({channel:'activity',event:{kind:'reasoning',payload:'x'.repeat(1024*1024)}});
+      gate.resolve();
+      assert.deepEqual(await work, {done:true});
+      await server.close();
+      await unconsumed;
+      assert.equal(listeners.size,0);
+    } finally { socket?.destroy(); gate.resolve(); await server.close(); }
+  }));

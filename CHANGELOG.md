@@ -65,3 +65,11 @@
 - У `workMap` не показывается `nextCursor` после последней страницы; нулевой прогресс помечается `budget`.
 - Для `ContextPort.fetch({offset,maxBytes?})` введён независимый per-call byte ceiling, ограничивающий весь chunk envelope. В Controller крупный base64 payload может быть без потери данных уменьшен до фактического свободного бюджета с пересчитанным `nextOffset`. MCP ограничивает конкретный fetch собственной транспортной границей, не увеличивая `fetchMaxBytes` или другие defaults.
 - Local StateStore может выдавать диапазоны из одного ограниченного в памяти SHA‑256-verified образа, проверяя метаданные backing-файла перед повторным использованием; избегаются повторные полные дисковые чтения при длинной последовательности страниц, сохраняются integrity/retention/cancel semantics. Нового persistent store или Host runtime не добавлено.
+
+### C13 — Interaction protocols and model activity (feature branch)
+
+- Optional invocation-bound provider activity, bounded scoped subscriptions and delivery gaps; native ACP reasoning/plan/tool and Codex JSONL item events independent of final output.
+- Raw ACP capability declarations separated from negotiated routes and authority; explicit per-method extension relay, existing client-tools/permissions preserved.
+- Optional native input broker with correlated manual/handler owner, deadline/cancel and standard ACP session form elicitation where available.
+- Bounded execution notice delivery and existing local control v1 scoped stream/pending/answer routes; no new model calls, replay, writer or scheduler.
+- Native model/client quality and performance remain UNVERIFIED unless actual native evidence is recorded; see STATUS.
