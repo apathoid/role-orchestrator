@@ -27,7 +27,7 @@ export function cliOwner(terminal) {
   }
   /** @param {PendingInput} entry @param {AbortSignal} signal @returns {Promise<InputResult>} */
   async function ask(entry, signal) {
-    const owner = entry.request.operationId && owners.get(entry.request.operationId);
+    const owner = entry.request.operationId ? owners.get(entry.request.operationId) : undefined;
     if (!owner?.interactive || (entry.kind === 'input' && !supportedForm(entry.request))) return {kind:'unavailable'};
     if (!owner.remote) return terminal.ask(entry,signal);
     if (signal.aborted) return {kind:'cancelled'};

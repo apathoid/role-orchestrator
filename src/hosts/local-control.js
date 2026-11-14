@@ -170,7 +170,7 @@ export async function openControl(directory, configurationRef, execute, launch, 
         const current = requests.get(requestId);
         if (current) {
           current.operationId = id;
-          if (streams?.ownerAccepted && !streams.ownerAccepted(id,requestId,payload.interactive === 'yes')) {
+          if (clients.size === 0 || (streams?.ownerAccepted && !streams.ownerAccepted(id,requestId,payload.interactive === 'yes'))) {
             current.answerKey = undefined; answerKey = undefined;
           }
         }

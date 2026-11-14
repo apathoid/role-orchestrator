@@ -69,7 +69,7 @@ export function parseCli(argv, cwd) {
     questionId: typeof values.question === 'string' ? values.question : undefined,
   };
   return {
-    kind: /** @type {const} */ ('command'), command, format, output, presentation,
+    kind: /** @type {const} */ ('command'), command, format, output, presentation: /** @type {import('./presentation.js').PresentationMode | undefined} */ (presentation),
     stdin: values.stdin === true || (commandName === 'run' && command.text === undefined),
     config: typeof values.config === 'string' ? resolve(cwd, values.config) : undefined,
     launch: {
