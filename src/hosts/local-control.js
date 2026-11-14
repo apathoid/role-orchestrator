@@ -141,7 +141,10 @@ export async function openControl(directory, configurationRef, execute, launch, 
       if (!streams || !operationId) throw new HostError('CONTROL_STREAM_UNAVAILABLE', 'Pending inspection unavailable');
       return streams.pending(operationId);
     }
-    const fingerprint = JSON.stringify([action, operationId, payload]);
+    // A presentation subscription is not a new execution request. Retain the
+    // original input owner/capabilities on retries, regardless of the new view.
+    const {stream: _stream, interactive: _interactive, ...executionPayload} = payload;
+    const fingerprint = JSON.stringify([action, operationId, executionPayload]);
     let entry = requests.get(requestId);
     if (entry && entry.fingerprint !== fingerprint) throw new HostError('IDENTITY_CONFLICT', 'Request id reused');
     if (stopping || (closing && !entry && (action === 'run' || action === 'resume'))) {

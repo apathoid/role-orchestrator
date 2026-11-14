@@ -285,3 +285,25 @@ test('observer disconnect and unread socket do not cancel work or prevent owner 
       assert.equal(listeners.size,0);
     } finally { socket?.destroy(); gate.resolve(); await server.close(); }
   }));
+
+test('C14 view changes on a repeated work request do not change request identity or owner', {skip:localSocketCheck},()=>withOwnedRun('C14-control-view',async directory=>{
+  const gate=Promise.withResolvers(), ready=Promise.withResolvers(), attached=Promise.withResolvers();
+  let count=0, registrations=0;
+  const server=await openControl(directory,'config',async(_command,accepted)=>{
+    count++;accepted('op');ready.resolve();await gate.promise;return {done:true};
+  },undefined,{
+    subscribe:()=>()=>{},pending:()=>[],respond:()=>assert.fail('unexpected answer'),
+    ownerAccepted:()=>{registrations++;return true;},
+  });
+  try {
+    const descriptor=await readDescriptor(directory);
+    const command={action:'run',requestId:'same',text:'task'};
+    const first=callControl(descriptor,'config',command);
+    await ready.promise;
+    const second=callControl(descriptor,'config',command,(id,key)=>attached.resolve({id,key}),undefined,{notice:async()=>{},interactive:true});
+    assert.deepEqual(await attached.promise,{id:'op',key:undefined});
+    gate.resolve();
+    assert.deepEqual(await Promise.all([first,second]),[{done:true},{done:true}]);
+    assert.equal(count,1);assert.equal(registrations,1);
+  }finally{gate.resolve();await server.close();}
+}));

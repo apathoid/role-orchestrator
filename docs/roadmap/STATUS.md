@@ -354,3 +354,5 @@ C14.1 [CI 43650366601](https://github.com/apathoid/role-orchestrator/actions/run
 ### C14.4 — reliability and compatibility
 
 Added A62–A66 to the existing matrix, preserved exact A01–A66 contiguous validation, README/examples and normative client limitations, actual Linux PTY direct permission/form and attached owner fixture, EOF/cancel/unsupported and no fake thinking tests. CI executes all existing checks and new PTY step; no skip/waiver. Full exact-SHA verification pending. Native model/graphical acceptance not inferred from PTY or SDK fixture.
+
+C14.2/.3 corrected [CI 43650838518](https://github.com/apathoid/role-orchestrator/actions/runs/43650838518) at `7d0a1681`: full root suite 430/430 (4+25+69+328+4) and specification/type/package/removal PASS, Nix step cancelled by subsequent push, not full CI acceptance. C14.4 review follow-up: stream/interactive are delivery preferences, not execution request identity; original owner retained on retries, tested with actual socket. Terminal authoritative snapshot now one bounded write with omitted-record notice, stderr write error guard; no unbounded final finding burst. Await exact corrected full CI.

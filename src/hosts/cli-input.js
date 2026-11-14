@@ -54,8 +54,12 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @type {import('node:readline').Interface | undefined} */
   let rl;
   let eof = false;
+  let outputBroken = false;
+  const broken = () => { outputBroken = true; };
+  output.on('error',broken);
   /** @param {string} text */
   function print(text) {
+    if (outputBroken || ('destroyed' in output && output.destroyed)) return Promise.resolve();
     if (rl && interactive && 'isTTY' in output && output.isTTY) { clearLine(output, 0); cursorTo(output, 0); }
     return new Promise(resolve => {
       try { output.write(terminalText(text) + '\n', () => resolve(undefined)); }
@@ -99,7 +103,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @param {PendingInput} entry @param {AbortSignal} signal @returns {Promise<InputResult>} */
   async function ask(entry, signal) {
     if (signal.aborted) return {kind:'cancelled'};
-    if (!interactive || eof || (entry.kind === 'input' && !supportedForm(entry.request))) {
+    if (!interactive || eof || outputBroken || (entry.kind === 'input' && !supportedForm(entry.request))) {
       void print(entry.kind === 'permission' ? 'Permission unavailable for ' + JSON.stringify(entry.request.resource) : 'Interaction unavailable: unsupported form or input');
       return {kind:'unavailable'};
     }
@@ -126,6 +130,8 @@ export function createCliInput(input, output, interactive, interrupt) {
   return { ask, print, close() {
     for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     stopReader();
+    // Leave the error guard on this terminal stream through outstanding writes;
+    // the CLI process owns its lifetime, not the presentation consumer.
   }};
 }
 

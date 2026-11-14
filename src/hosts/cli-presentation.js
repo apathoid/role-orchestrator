@@ -34,11 +34,22 @@ export function cliPresentation(mode, print) {
       if (!mode || closed || !value || typeof value !== 'object' || !('events' in value) || !('attempts' in value)) return;
       const state = /** @type {Operation} */ (value);
       // Current authoritative snapshot, not reconstructed lost activity.
+      // Terminal snapshot is a single bounded display write; inspect remains
+      // authoritative if a slow consumer missed too many recorded findings.
+      const maximum = 1024 * 1024;
+      const summary = formatOperation(state,mode);
+      const parts = [Buffer.byteLength(summary) <= maximum / 2 ? summary : formatOperation(state,'compact') + '\n[Detailed snapshot omitted; inspect current operation]'];
+      let bytes = Buffer.byteLength(parts[0]), omitted = 0;
       for (const event of state.events) for (const finding of formatRecordedFindings(event,mode)) {
-        if (!seen.has(finding.id)) { seen.add(finding.id); void print(finding.text); }
+        if (seen.has(finding.id)) continue;
+        seen.add(finding.id);
+        const size = Buffer.byteLength(finding.text) + 1;
+        if (parts.length >= 127 || bytes + size > maximum - 256) { omitted++; continue; }
+        parts.push(finding.text); bytes += size;
       }
-      void print(formatOperation(state,mode));
+      if (omitted) parts.push('[Recorded snapshot] ' + omitted + ' findings omitted; inspect current operation');
       closed = true;
+      void print(parts.join('\n'));
     },
     close() { closed = true; },
   };
