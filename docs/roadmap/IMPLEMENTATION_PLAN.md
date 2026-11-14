@@ -4,6 +4,32 @@
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
+## C13 / C14 — Interactive protocols and client UX (новая ветка)
+
+**Текущая работа:** `feature/interactive-ux`, ответвлена от master merge PR #2 (`50cffa4f0ab4151871beb36529be27e33f2c1d11`). Следующий шаг исключительно по [STATUS](STATUS.md). Два последовательных инженерных кластера, не runtime workflow; реализация на этой ветке, master не изменять без отдельного поручения.
+
+| Шаг | Обязательный результат |
+|---|---|
+| [C13.0](C13_INTERACTION_PROTOCOLS.md#c130--baseline-карта-возможностей-и-проверяемые-решения) | Actual baseline, SDK/transport matrix, доступные F4 baseline probes |
+| C13.1 | Минимальный Model Activity Stream, независимый от execution |
+| C13.2 | Достоверные capabilities, generic ACP relay в adapter/Host |
+| C13.3 | Native activity без изменения result parser / evidence |
+| C13.4 | Correlated interaction, authority, timeout, prompt lifetime |
+| C13.5 | Bounded delivery, local control, redaction |
+| C13.6 | Полная автоматизированная регрессия, архитектурный audit, docs |
+| C13.7 | Native/comparative acceptance или явный UNVERIFIED, handoff |
+| [C14.0](C14_CLIENT_UX.md#c140--ux-baseline-и-transport-mapping) | UX mapping, точные flags/defaults, проверка C13 contract |
+| C14.1 | Общая минимальная presentation mapping без семантической интерпретации |
+| C14.2 | Интерактивный CLI, TTY/headless, existing owner endpoint |
+| C14.3 | Графические ACP-клиенты через стандартный протокол |
+| C14.4 | Полная регрессия, packaging, docs и UX compatibility |
+| C14.5 | Реальный CLI/ACP и comparative quality/performance либо UNVERIFIED |
+| C14.6 | Финальная передача с независимыми статусами готовности |
+
+**Детальные задания:** [C13 Interaction & Model Activity Protocols](C13_INTERACTION_PROTOCOLS.md) и [C14 CLI & Graphical Client UX](C14_CLIENT_UX.md). C13 полезен без renderer, C14 только потребитель. Сохранять model-first, provider/workflow/environment-agnostic, native tools/skills/scripts, existing permission, Decision/Outcome, evidence, one scheduler/lifecycle. Без OS/FS/host isolation, жёстких проверок идентичности workspace/model, обязательного reporting, реконструкции пропущенных событий, новых модельных ходов или host semantic logic. Техническая correlation/authority остаётся scoped к живым запросам и ресурсам. Active-time accounting условно и вне обязательного scope. Live public messages/findings только при подтверждённом отдельном канале; fallback native thinking и accepted findings. Не откладывать независимые Workers из-за UI/transport.
+
+C12R.10R F4 и прежние native obligations **не закрыты**: попытка baseline probes в C13.0, доступные повторные comparative probes в C13.7/C14.5; unavailable остаётся UNVERIFIED без блокировки engineering implementation. При material regression исправить до handoff, не считать native readiness по fixture CI. Каждый шаг отдельным коммитом, status/evidence в STATUS, матрица одна. До C14 требуется C13 engineering regression verified. 
+
 ## C12R — корректирующий этап и приёмка
 
 **Актуальный следующий шаг определяется [STATUS](STATUS.md).** Единый детальный план: [C12R — стабилизация](C12R_STABILIZATION.md). C12R устраняет подтверждённые дефекты нативной эксплуатации до окончательной приёмки C12; это корректирующий инженерный этап, не новый runtime workflow.
