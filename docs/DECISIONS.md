@@ -1,0 +1,74 @@
+# Архитектурные решения и компромиссы
+
+| ID | Решение и проблема | Альтернатива / почему не выбрана | Цена и предел |
+|---|---|---|---|
+| D01 | Один модельный цикл вместо обязательного workflow; разные задачи требуют разных действий | Host routing по словам и фиксированным стадиям снижает свободу и дублирует reasoning | Модель может выбрать неудачный метод; помогают прозрачные критерии, контекст и выбранные проверки |
+| D02 | Provider-owned tools и permissions | Собственный Host file runtime потребовал бы контроля эффектов и конфликтов за пределами scope | Нельзя гарантировать отсутствие записи непрозрачным исполнителем; гарантии честно делегированы |
+| D03 | Никакой обязательной VCS | Git как основа session identity исключает обычные директории и смешивает execution state с проектом | VCS-проверки модель делает по задаче, metadata могут быть неполными |
+| D04 | Findings как контекст, модельная применимость | Глобальные freshness gates создают ложные остановки и не доказывают содержательную правильность | Модель может не заметить устаревание; сохранять происхождение/неопределённость, допускать targeted проверки |
+| D05 | Atomic operation snapshot, один writer на state directory | Распределённый event sourcing/leases добавляют независимые источники истины и сложность | Нет HA/multi-host writer; single process поддерживает несколько параллельных calls |
+| D06 | Не повторять автоматически неизвестный effectful attempt | At-least-once replay может дублировать необратимые действия; exactly-once без поддержки исполнителя не обещается | Возможен partial/unresolved; независимое продолжение разрешено |
+| D07 | Diagnostic events с первого core, отделены от state | Позднее добавление логов теряет причинную корреляцию; лог как state делает rotation опасным | Небольшая стоимость событий; bounded sink может терять детали с явной отметкой |
+| D08 | Доверенные explicit plugins | Автозагрузка кода из проекта даёт неявное расширение полномочий | Установка требует явной конфигурации; plugin имеет права процесса и не изолирован |
+| D09 | Одна роль не означает отдельную модель | Обязательные specialists повышают стоимость без доказанного выигрыша | Controller выбирает делегирование по задаче без обязательного поля обоснования; Host не оценивает семантическую причину |
+| D10 | До C12.0 — отдельный удаляемый `development/` harness; принято заменить распределением по назначению согласно D16 | Физическая сепарация помогла выявлять скрытые зависимости, но не требуется при проверке import graph и установленного пакета | Историческое решение сохраняется; после C12.0 tests и tooling остаются в исходном Git, а не в runtime-пакете |
+| D11 | JavaScript ESM + JSDoc/checkJs, Node 24, один пакет | Полный TypeScript потребовал бы транспиляцию; для портов достаточно проверяемых JS-контрактов | TypeScript — только checker: до C12.0 в development, затем в корневом dev tooling; не runtime. Внешние входы требуют runtime validation |
+| D12 | Подробный план по слоям, но проверяемые контракты важнее списка классов | Полная предварительная фиксация внутренних функций скрывает неизвестные свойства SDK | Локальные детали могут уточняться с записью основания; нельзя менять product invariants ради удобства |
+| D13 | Nix flake — постоянный способ разработки, воспроизводимой сборки и установки | Только npm не покрывает требование Nix/NixOS | Нужны flake.lock, npm lock/hash и проверки native dependencies; это не sandbox runtime и не VCS-зависимость core |
+| D14 | До C12.0 — тонкий CI и удаляемый development harness; после C12.0 — обязательные корневые проверки (D16) | Старый conditional skip был совместим с удалением harness, но мог скрыть отсутствие regression | Требуется root npm/Nix/CI, без пропуска обязательных suites; native недоступность явно UNVERIFIED |
+
+## D15 — Адаптивный reasoning effort (реализовано, regression verified; native UNVERIFIED)
+
+Параметр нового модельного вызова расширяет существующие Profile/Action/Decision/Invocation/Attempt, не создаёт второго scheduler. Пользователь задаёт mapping общих имён в native values; Host проверяет выбор, adapter передаёт параметр. Конфигурация остаётся v1: отсутствие поля означает native.
+
+Controller может явно продолжить самостоятельно и выбрать effort следующего хода без внешнего события. Специальные ограничения циклической смены уровня отложены до реальных наблюдений; обычные технические бюджеты остаются. Альтернатива «только worker effort» вынуждала бы делегирование ради настройки; требование внешнего события ограничивало бы полезное рассуждение на прежних данных.
+
+Цена: больше вариантов модельного выбора и отсутствие гарантии оптимального расхода. Неподдерживаемый собственный effort показывается пользователю без скрытого fallback; это сохраняет явный выбор ценой возможного ручного продолжения. Acknowledgment остаётся атрибутированной информацией, не gate. Контракт и ограничения: [reasoning effort](REASONING_EFFORT.md).
+
+Решение пересматривается только по конкретной потребности и доказательству, с обновлением затронутых контрактов и проверок. Увеличение числа переключателей, confidence thresholds, state machines и approval prompts само по себе не является повышением надёжности.
+
+## D16 — Постоянная структура и сохранение инженерных знаний (реализована в C12.0)
+
+D10/D14 — исторические решения, заменённые D16 при C12.0. Старый каталог доступен в истории Git, не является действующим источником. D11 сохраняет JavaScript ESM/JSDoc как независимый runtime-контракт.
+
+D10/D14 решали реальную задачу: production не должен зависеть от тестов, временных отчётов, инженерных проверок и coding-agent prompts. `development/` обеспечивал эту границу физической сепарацией, но одновременно обособил активный план, тесты и опыт разработки. В C12.0 утверждён переход к размещению **по назначению**, при котором независимость продукта защищают архитектура зависимостей, npm/Nix packaging и проверка установленного экземпляра.
+
+Целевое состояние: `tests/`, `scripts/`, `.agents/`, `docs/`, `docs/roadmap/` (активный план и STATUS), корневые `AGENTS.md`, `CHANGELOG.md`, `CONTRIBUTING.md`. Git хранит историю кластеров и отчётов; текущие продуктовые знания — в предметных docs, причины решений — в DECISIONS/ADR, продуктовые вехи — в CHANGELOG. Матрица R/A остаётся продуктовой; критерии миграции M01–M04 отдельно инженерные, не создают фиктивного runtime функционала.
+
+Ранее отвергнутые Host isolation, обязательный Git/VCS consistency, fixed workflows, второй scheduler, автоматический replay unknown effects или Host judgment findings **не возвращаются** при переносе. Сохранены model-first, provider-owned tools, permissions, provenance, mutable workspace и отдельная native-приёмка. Исходный `development/` удалён после переноса текущих знаний, тестов и CI. Независимость установленного продукта проверяется `check:removal`, npm pack и Nix/CI; исходные тесты сохраняются в Git.
+
+## Обязательные границы утверждений
+
+Host способен гарантировать собственный порядок dispatch, уникальность id, соблюдение ресурса, который измеряет, и связь доверенного permission response с попыткой. Он не гарантирует корректность reasoning, поведение произвольного кода внутри провайдера или неизменность среды.
+
+Отказ от файлового enforcement не разрешает модели игнорировать задачу и ограничения пользователя. Если нужна более сильная гарантия, выбирается соответствующий исполнитель/существующая инфраструктура пользователя; scope Role Orchestrator не расширяется автоматически.
+
+## D17 — Стабилизация технической координации C12R
+
+Локальный отказ Controller не является отменой ранее принятых независимых Actions. Сохраняются исходные admissions, зависимости, cancellation, authority и общий budget; существующее резервирование обслуживает технически готовые запросы FIFO без семантического приоритета. Альтернативы — глобальная остановка, автоматический fallback и отдельный scheduler — теряют полезную работу или дублируют модельные решения. Цена: ожидание доступных slots и сохранение pending/unknown evidence; незанятый ресурс нельзя объявлять свободным до подтверждённого detachment. Durable recovery использует тот же ledger и не повторяет неизвестный эффект.
+
+Выбранный skill материализуется в один структурированный источник (доверенный inline либо loader) и включается в фактически отправленный Invocation и его request identity. Controller получает metadata, Worker — только выбранный skill. Локальный запрет native subagents не превращается в Host keyword gate. Альтернатива — объединить весь текст skills или всегда предпочитать loader — смешивает scope/версии и ухудшает identity. Неполнота отмечается явно; модель выбирает продолжение. Не меняется native discovery самого Controller.
+
+Не вводить prompt compaction, дополнительный semantic workflow или обязательный quality score. Доказанные дефекты исправлены технически; дальнейшее изменение Controller instructions, effort или координационной стратегии оправдано только реальным comparative evidence, а не числом тестов/Workers. См. [execution](EXECUTION.md), [context and recovery](CONTEXT_AND_RECOVERY.md), [extensions](EXTENSIONS.md), [roadmap STATUS](roadmap/STATUS.md).
+
+
+## D18 — C12R.9: доставка исходной истории вместо Host-компактизации
+
+Решение: сохранить единственный Operation journal/ContextPort как source of truth, удалить доказанные duplicate **inline copies** по совпадающей технической идентичности и bytes, разделить бюджеты Controller/handoff/fetch/capture/skills/tools, отказаться от 128-record cap, дать модели компактную derived карту и добровольный `nextController.contextRequest` без MCP. Это позволяет не повторять expensive Workers при потере старой информации и не вводит parallel state/index, host importance ranking, mandatory reasoning turns, model-authored knowledge store или запрет provider-native tools. Отказ от более тяжёлого Host compaction обусловлен отсутствием доказанного native выигрыша; его нельзя незаметно включить позднее. Влияние на нативную качественную работу и стоимость должно оцениваться на настоящих моделях отдельно от PASS синтетических контрактных тестов.
+
+
+### D19 — C12R.9 review: техническая адресуемость без индекса и семантической сортировки
+
+Выбор: дедуплицировать только явно коррелированное финальное сообщение ProviderPort (и доказанные byte-identical provider observations), оставив оригиналы в journal. При ограничении prompt host показывает полные технические counts и omissions; ранее принятые Decisions позволяют модели выбрать `workCursor` или позиционный `ref`. Для последовательного чтения большого сохранённого тела используется byte-offset `ContextPort.fetch` с base64, SHA‑256/retention и действующим scoped authority; те же данные доступны через MCP и `nextController` без обязательных дополнительных toolkits. Никакого индексированного журнала, semantic ranking, Host-generated summary, нового filesystem runtime, фиксированного review workflow или автоматического retry unknown effect не требуется. Альтернатива простого увеличения 256 КиБ до 512 КиБ не гарантирует историю без потерь и оставлена только для native comparison.
+
+### D20 — Бюджет ответа принадлежит получателю, но доступ к истории остаётся модельным
+
+Технический `fetchMaxBytes` — общий верхний предел ContextPort, а MCP/Controller налагают независимый per-call output envelope budget; это не алгоритм relevance ranking и не изменение конфигурации под роль. Если следующий байтовый фрагмент не помещается, сохранить его byte-accurate offset важнее, чем передать необрабатываемую часть. Производная workMap-пагинация не предлагает пустую следующую страницу. StateStore может оптимизировать повторное чтение SHA-верифицированного artifаct временным кэшем, проверяя версию backing-файла и retention при каждом чтении; произвольные внешние StateStore сохраняют старый full-read fallback. Не создаётся второй persistent registry/index, automatic fetch или принудительный дополнительный turn.
+
+### D21 — Stable workMap traversal without freezing lifecycle
+
+`workCursor` is a `{revision,index}` position in a journal-prefix membership, not an offset in the moving live array. First Attempt inherits the accepted Action's admission position and admission-array order; later attempts retain their reservation order. The initial Controller is excluded using the same historical journal prefix. Current lifecycle/outcomes/refs remain live; `liveTotal` exposes new work, a fresh cursor 0 includes it. No persisted pagination snapshot, knowledge index, mandatory reconciliation or additional Controller turn. A legacy nonzero numeric cursor can still be decoded in v1 persisted Decisions but explicitly yields invalid_cursor: interpreting it on a different live array is unsafe. Accepted-only disposition is derived from existing execution events; rejected admission of a repeated proposal is not execution rejection. Deferred is not terminal. This preserves model ownership of retrieval, strategy and retry decisions.
+
+### D22 — Stable history directory without a second index
+
+The moving numeric offset in ContextPort.list could repeat or skip pages across new Controller invocations. Use the existing journal-prefix revision/index principle independently of workMap and positional fetch. Derive membership from the original prefix; late observations can update source metadata for the same ref without shifting other event-local positions. Ambiguous legacy output positions cannot select a different late body. Keep the exact structured page when applying recipient byte limits; advance by the delivered count only, and preserve end/error/budget in technical coverage. No persistent pagination state, new store, semantic ordering, required retrieval, Worker blocking or changed default budgets. A fresh cursor 0 includes new records; legacy nonzero numeric offsets explicitly reject rather than guess. Model chooses whether to retrieve, continue or finish.
