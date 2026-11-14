@@ -59,7 +59,7 @@ for (const id of requirements) {
   assert.ok(new RegExp('^\\| ' + id + ' \\| A\\d+', 'm').test(matrix), 'Missing R->A traceability row: ' + id);
 }
 const scenarios = [...matrix.matchAll(/^\| (A\d+) \|/gm)].map(m => m[1]);
-assert.equal(scenarios.length, 54, 'A01-A54 must be present');
+assert.deepEqual(scenarios, Array.from({length: 61}, (_, i) => 'A' + String(i + 1).padStart(2, '0')), 'A01-A61 must be present and contiguous');
 assert.equal(scenarios.length, new Set(scenarios).size, 'Duplicate acceptance identifiers');
 const migration = [...matrix.matchAll(/^\| (M\d+) \|/gm)].map(m => m[1]);
 assert.deepEqual(migration, ['M01','M02','M03','M04']);
