@@ -36,7 +36,9 @@ test('C13 baseline: pinned ACP SDK subprocess supports raw extensions and typed 
     assert.deepEqual(reply.result, { echo: payload });
     assert.deepEqual(reply.advertised._meta, meta);
     assert.equal(reply.advertised.terminal, false);
-    assert.deepEqual(notices, [{ method: '_ro/notice', params: payload }]);
+    assert.deepEqual(notices.filter(x => x.method === '_ro/notice'), [{ method: '_ro/notice', params: payload }]);
+    // SDK 2.4.0 may dispatch a typed notification to the wildcard observer too.
+    assert.ok(notices.every(x => x.method === '_ro/notice' || x.method === c.session.update));
     assert.deepEqual(updates.map(x => x.update.sessionUpdate), ['agent_thought_chunk', 'plan']);
     assert.ok(updates.every(x => x.sessionId === sessionId));
     assert.equal(updates[0].update.messageId ?? undefined, undefined);
