@@ -13,6 +13,7 @@ import { defaultContextBudgets, maximumContextBudgetBytes } from './context-bund
 import { lookupAttempt } from './recovery.js';
 import { resolveRequestedReasoning, unavailableCapabilities } from './configuration/catalog.js';
 import { runActionRound } from './action-round.js';
+import { createActivityStream } from './activity.js';
 import { bindAssessmentEvidence, bindFindingEvidence, bindOutcomeEvidence, evidenceAliases, providerEvidenceRef,
   reservedEvidenceRef, scopedEvidenceAliases } from './evidence-identity.js';
 import { decodeSummaryReport, observation, receiveProviderObservation } from '../core/observation.js';
@@ -93,6 +94,7 @@ export function createOrchestrator(deps) {
       deps.invocationTimeoutMs > 2_147_483_647)) {
     throw new RangeError('invocationTimeoutMs must be an integer from 1 to 2147483647');
   }
+  const activity = createActivityStream();
   const suppliedBudgets = deps.context ?? {};
   if (suppliedBudgets.maxBytes !== undefined && suppliedBudgets.controllerMaxBytes !== undefined) {
     throw new RangeError('context.maxBytes and context.controllerMaxBytes cannot both be set');
@@ -550,6 +552,7 @@ export function createOrchestrator(deps) {
 
   function close() {
     shuttingDown.abort('shutdown');
+    activity.close();
     return closing ??= (async () => {
       await writes;
       const active = [...new Set([...running.keys(), ...workers.keys()])].filter(id =>
@@ -589,6 +592,7 @@ export function createOrchestrator(deps) {
     /** @type {Observation[]} */
     const observations = [];
     let acceptingObservations = true;
+    let acceptingActivity = true;
     let contextOpen = false;
     const toolStop = new AbortController();
     /** @type {Observation[]} */
@@ -656,6 +660,7 @@ export function createOrchestrator(deps) {
 
     /** @param {ProviderResult} reply @returns {ProviderResult | undefined} */
     function acceptReply(reply) {
+      acceptingActivity = false;
       if (!reply) return undefined;
       const parsed = decodeOutcome(reply.outcome);
       if (parsed.kind === 'rejected' || parsed.value.attemptId !== attemptId ||
@@ -894,6 +899,8 @@ export function createOrchestrator(deps) {
         contextOpen = true;
         const isActive = () => contextOpen && !signal.aborted &&
           authority.authorize(dispatched.authorityRef, selectedProfile.profileId) === 'ALLOWED';
+        const reportActivity = activity.bind({ operationId: state.operationId, attemptId,
+          profileId: selectedProfile.profileId, providerId: selectedProfile.providerId }, () => acceptingActivity && isActive());
         const contextAccess = bindContextAccess({
           state: dispatched, store, maxBytes: fetchMaxBytes, captureMaxBytes, profileId: selectedProfile.profileId, attemptId,
           selected, allowShare: allowContextShare, newId: () => ids.newId(), now: () => clock.now(), receive,
@@ -987,7 +994,7 @@ export function createOrchestrator(deps) {
             }
           }
           trace(dispatched, 'attempt.observation_invalid', 'PROTOCOL_ERROR', attemptId);
-        });
+        }, reportActivity);
         })().then(acceptReply)) };
       });
       const reply = await invocation.response;
@@ -1028,6 +1035,7 @@ export function createOrchestrator(deps) {
       // Decisions stop at abort. Facts remain attributable until the adapter
       // acknowledges detachment of this invocation's owned session.
       contextOpen = false;
+      acceptingActivity = false;
       toolStop.abort();
       acceptingObservations = signal.aborted && mayHaveSent;
       boundPermissions?.close();
@@ -1420,5 +1428,5 @@ export function createOrchestrator(deps) {
     return inspect(operationId);
   }
 
-  return { submit, resume, inspect, inspectFinding, findRequest, cancel, close };
+  return { submit, resume, inspect, inspectFinding, findRequest, cancel, subscribeActivity: activity.subscribe, close };
 }

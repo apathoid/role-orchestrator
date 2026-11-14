@@ -51,9 +51,9 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
         if (open) await open(signal);
         return { sessionId: 'session-' + ++sessionSequence };
       },
-      async invoke(session, invocation, observe) {
+      async invoke(session, invocation, observe, activity) {
         invocations.push(invocation);
-        try { return await respond(invocation, invocations.length, observe); }
+        try { return await respond(invocation, invocations.length, observe, activity); }
         catch (error) { respondErrors.push(error); throw error; }
       },
       async cancel(session, attemptId) { cancellations.push(attemptId); await cancel?.(); },

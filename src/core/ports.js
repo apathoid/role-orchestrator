@@ -20,6 +20,15 @@
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
  *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>}} Invocation
+ * @typedef {{kind: 'reasoning' | 'user_message' | 'tool' | 'plan' | 'finding', payload: unknown,
+ *   nativeId?: string, nativeKind?: string}} ProviderActivity
+ * @typedef {(item: ProviderActivity) => void} ActivityCallback
+ * @typedef {ProviderActivity & {operationId: string, attemptId: string, profileId: string, providerId: string,
+ *   source: 'provider_activity', sequence: number}} ActivityEvent
+ * @typedef {{operationId: string, attemptId?: string}} ActivityScope
+ * @typedef {ActivityEvent | {kind: 'gap', operationId: string, attemptId?: string, droppedCount: number,
+ *   reason: 'overflow', sequenceRange?: {first: number, last: number}}} ActivityNotice
+ * @typedef {(event: ActivityNotice) => void | Promise<void>} ActivityListener
  * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
  *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected',
  *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth'}} ProviderResult
@@ -29,7 +38,7 @@
  *   supportsReasoningSelection?: true,
  *   negotiatesCapabilities?: readonly string[],
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
- *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => string | undefined) => Promise<ProviderResult>,
+ *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => string | undefined, activity?: ActivityCallback) => Promise<ProviderResult>,
  *   lookupStatus?: (query: {operationId: string, attemptId: string, profile: Profile, signal: AbortSignal}) =>
  *     Promise<Pick<ProviderResult, 'outcome' | 'dispatchCertainty'> | undefined>,
  *   cancel: (session: ProviderSession, attemptId: string) => Promise<void>,

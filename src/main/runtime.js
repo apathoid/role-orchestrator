@@ -118,12 +118,12 @@ export async function openRuntime(options, onStoreOpen) {
         }
       });
     }
-    const { submit, resume, inspect, inspectFinding, findRequest, cancel } = coordinator;
+    const { submit, resume, inspect, inspectFinding, findRequest, cancel, subscribeActivity } = coordinator;
     /** @param {string} operationId */
     const trace = async operationId => operationTrace(await inspect(operationId), { secrets: secretValues });
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel,
       trace,
-      subscribe: diagnostics.subscribe, configurationRef, close });
+      subscribe: diagnostics.subscribe, subscribeActivity, configurationRef, close });
     return { api, coordinator, permissions, configurationRef, directory, catalog, close };
   } catch (error) {
     try { await extensions?.close(); }
