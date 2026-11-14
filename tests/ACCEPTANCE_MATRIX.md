@@ -355,3 +355,5 @@ Synthetic wire events prove adapter and Host coordination only, not real LLM com
 | A61 | R13,R18,R19,R27,R30,R31 | Two actual executors/client, comparable before/after task/model/effort/budgets, native activity/interaction/clarification/continuation/cancel/relay/skills, real usage/latency and completeness; unavailable channels UNVERIFIED | N C13.7 |
 
 C13.0–.5 fixture and CI evidence is recorded in [STATUS](../docs/roadmap/STATUS.md). C13.6 current full CI and C13.7 native/comparative remain separately tracked there. No fixture or provider installation is native acceptance.
+
+**C13 engineering OBSERVED:** [CI 43649941333](https://github.com/apathoid/role-orchestrator/actions/runs/43649941333) exact `01457b373cf5bd8946d04031bb7a9fc1f247d00a`, 424/424, zero failures/skips/cancellations, all mandatory checks. A55–A60 fixture/engineering PASS. A61 actual native/comparative **UNVERIFIED**, blockers and next probes in [NATIVE_ACCEPTANCE](../docs/roadmap/NATIVE_ACCEPTANCE.md#c137--actual-native-and-comparative-disposition). No F4/C12 native closure.
