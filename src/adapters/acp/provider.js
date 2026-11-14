@@ -335,7 +335,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             const reply = await Promise.race([interrupted.promise, invocation.permissions.request({
               providerRequestId: JSON.stringify([sessionId, requestId]),
               resource: 'acp-tool:' + JSON.stringify([sessionId, tool.toolCallId]), options,
-              action: { source: 'provider_reported', title: title ?? undefined, kind: kind ?? undefined,
+              action: { source: 'provider_reported', title: title ?? undefined, kind: kind ?? undefined, nativeToolCallId: tool.toolCallId,
                 locations: locations?.map(({ path, line }) => ({ path, line: line ?? undefined })),
                 details: rawInput != null || content != null ? JSON.stringify({ rawInput, content }) : undefined },
             })]);

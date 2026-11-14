@@ -4,7 +4,7 @@
 
 ## C13 / C14 — Interaction protocols and client UX (IN PROGRESS)
 
-**Следующий шаг: C14.3 — graphical ACP presentation presentation and interaction owner.** [Детальное задание C13](C13_INTERACTION_PROTOCOLS.md); [C14](C14_CLIENT_UX.md) после engineering handoff C13. [Активный план](IMPLEMENTATION_PLAN.md). Начинать реализацию на текущей ветке, не на master и не на прежней greenfield. C13 engineering handoff verified; native gaps remain open. 
+**Следующий шаг: C14.4 — compatibility and regression presentation and interaction owner.** [Детальное задание C13](C13_INTERACTION_PROTOCOLS.md); [C14](C14_CLIENT_UX.md) после engineering handoff C13. [Активный план](IMPLEMENTATION_PLAN.md). Начинать реализацию на текущей ветке, не на master и не на прежней greenfield. C13 engineering handoff verified; native gaps remain open. 
 
 - C13.0: baseline + new SDK subprocess probe OBSERVED (contract suite); C13.1: implementation complete, regression OBSERVED SUCCESS on `1ea8d210`; C13.2: implementation complete, regression OBSERVED SUCCESS on `65217cc1`; C13.3: implementation complete, regression OBSERVED SUCCESS on `1a38e6b0`; C13.4: implementation complete, regression OBSERVED SUCCESS on `a8b58679`; C13.5: implementation complete, regression OBSERVED SUCCESS on `fe93221c`; C13.6: implementation complete, full regression OBSERVED SUCCESS on `01457b37`; C13.7: recorded UNVERIFIED (no native executors/client/auth); implementation complete YES; regression verified YES; native integration UNVERIFIED; comparative quality/performance UNVERIFIED.
 - C14.0: baseline/mapping recorded; C14.1: implementation submitted, regression UNVERIFIED; C14.2–.6: NOT STARTED. C13 prerequisite satisfied (native gaps retained).
@@ -344,3 +344,7 @@ Pure `src/hosts/presentation.js`: display-only terminal control sanitization, at
 ### C14.2 — CLI presentation and live input
 
 CLI run/resume presentation flags/default, stderr renderer, authoritative recorded findings, shared terminal input owner, original permission options and supported form replies, correlated direct/attached pending input and owner-only answer. No provider/core changes. Tests added; regression pending.
+
+### C14.3 — graphical client
+
+Standard ACP native activity mapping only, prompt-scoped subscription attached before dispatch, no synthetic Controller thought; actual Controller plan only, same scoped native tool ID for update/permission/elicitation. No replay/out-of-prompt streaming assumption; operation route for background interactions unchanged. ACP mode flag, subprocess fixture for native parallel tool ID collisions/plan/final once. Regression pending.

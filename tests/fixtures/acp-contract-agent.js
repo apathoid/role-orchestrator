@@ -96,6 +96,26 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
+    if (scenario === 'host-native-ux') {
+      const host = context.find(item => item.ref === 'host:invocation-context')?.value;
+      const notify = update => client.notify(c.session.update,{sessionId,update});
+      await notify({sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'Native thought '+actionId}});
+      await notify({sessionUpdate:'plan',entries:[{content:'Native plan '+actionId,priority:'medium',status:'pending'}]});
+      await notify({sessionUpdate:'tool_call',toolCallId:'shared',title:'Native read',kind:'read',status:'in_progress'});
+      await message('progress','Ambiguous progress must not reach client');
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'shared',status:'completed'});
+      if (kind === 'delegate') {
+        await message('final','Worker result '+actionId);
+        return {stopReason:'end_turn'};
+      }
+      const decision = {schemaVersion:1,operationId,decisionId:attemptId+'-final',contextCursor:host.contextCursor,additions:[],cancellations:[]};
+      if (!host.outcomes.length) {
+        decision.additions = ['worker-a','worker-b'].map(actionId=>({kind:'delegate',actionId,profileId,objective:actionId,contextRefs:[],dependsOn:[],expectedResult:'Worker result'}));
+        decision.waitPolicy = {kind:'all_requested',targets:decision.additions.map(({actionId})=>({kind:'action',id:actionId}))};
+      } else decision.finalAssessment = {author:profileId,overall:'complete',requirements:[],observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer:'Native final once'};
+      await message('final',JSON.stringify(decision));
+      return {stopReason:'end_turn'};
+    }
     if (scenario === 'native-subagent-report') {
       assert.equal(kind, 'controller');
       const host = context.find(item => item.ref === 'host:invocation-context').value;

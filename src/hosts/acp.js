@@ -4,12 +4,14 @@ import { isAbsolute, join } from 'node:path';
 import { agent, methods, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
 import { decode, id, invalid as invalidField, optional, record } from '../core/decode.js';
 import { hostError } from './commands.js';
+import { acpActivity } from './presentation.js';
 
 /** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, StopReason} from '@agentclientprotocol/sdk' */
-/** @import {DiagnosticEvent} from '../core/diagnostics.js' */
+/** @import {ActivityListener, ActivityScope} from '../core/ports.js' */
+/** @import {PresentationMode} from './presentation.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {HostApi} from './commands.js' */
-/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribe: (listener: (event: DiagnosticEvent) => void) => () => void}} AcpApi */
+/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => () => void}} AcpApi */
 /** @typedef {{sessionId: string, cwd: string, operations: string[], requests: {requestId: string, fingerprint: string, operationId?: string}[]}} Session */
 /** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>}} Turn */
 
@@ -50,8 +52,8 @@ function operationMessage(operation) {
   }
 }
 
-/** @param {AcpApi} api @param {string} directory @param {Stream} stream */
-export function serveAcp(api, directory, stream) {
+/** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] */
+export function serveAcp(api, directory, stream, mode = 'compact') {
   /** @type {Map<string, Session>} */
   const sessions = new Map();
   /** @type {Map<string, Turn>} */
@@ -218,12 +220,10 @@ export function serveAcp(api, directory, stream) {
       /** @type {Turn} */
       const turn = { cancelled: false, settled: settled.promise };
       turns.set(sessionId, turn);
-      const unsubscribe = api.subscribe(event => {
-        if (event.operationId !== turn.operationId || event.eventName !== 'controller.requested' || connection.signal.aborted) return;
-        return client.notify(c.session.update, { sessionId, update: {
-          sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Controller invocation started\n' },
-        } });
-      });
+      let unsubscribe = () => {};
+      let subscribed = false;
+      let displaying = true;
+      const stopDisplay = () => { displaying = false; unsubscribe(); };
       try {
         if (!request) {
           request = { requestId, fingerprint };
@@ -242,6 +242,21 @@ export function serveAcp(api, directory, stream) {
           const accepted = id => {
             turn.operationId = id;
             attach(session, delivery, id);
+            if (subscribed) return;
+            subscribed = true;
+            unsubscribe = api.subscribeActivity({operationId:id}, async event => {
+              if (!displaying || turn.cancelled || connection.signal.aborted || turn.operationId !== id) return;
+              let controller = false;
+              if (event.kind === 'plan' && mode !== 'compact') {
+                const state = await api.inspect(id);
+                const attempt = state.attempts.find(attempt => attempt.attemptId === event.attemptId);
+                controller = !!attempt && attempt.actionId === attempt.attemptId;
+              }
+              const update = acpActivity(event, mode, controller);
+              if (update && displaying && !turn.cancelled && !connection.signal.aborted) {
+                await client.notify(c.session.update, {sessionId, update});
+              }
+            });
           };
           const submission = prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished')
             ? await api.resume(prior.operationId, { requestId: durableRequestId, text, workspaceContext,
@@ -259,6 +274,7 @@ export function serveAcp(api, directory, stream) {
           attach(session, request, operation.operationId);
           await save(session);
         }
+        stopDisplay();
         const answer = operationMessage(operation);
         if (answer !== undefined) await message(client, sessionId, answer);
         return { stopReason: stopReason(operation) };
@@ -267,7 +283,7 @@ export function serveAcp(api, directory, stream) {
         if (error instanceof RequestError) throw error;
         throw new RequestError(-32000, issue.message, { code: issue.code, path: issue.path });
       } finally {
-        unsubscribe();
+        stopDisplay();
         turns.delete(sessionId);
         settled.resolve(undefined);
       }

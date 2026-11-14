@@ -1,4 +1,5 @@
 import { methods, RequestError, CreateElicitationRequest } from '@agentclientprotocol/sdk';
+import { scopedNativeId } from './presentation.js';
 
 /** @import {ClientRequestMethod, ClientRequestParamsByMethod, ClientRequestResponsesByMethod, RequestPermissionResponse} from '@agentclientprotocol/sdk' */
 /** @import {PermissionHandler} from '../application/configuration/permissions.js' */
@@ -61,7 +62,7 @@ export function createAcpRelay(route, extensionMethods = []) {
       const response = /** @type {RequestPermissionResponse} */ (await client.request(c.session.requestPermission, {
         sessionId,
         toolCall: {
-          toolCallId: request.requestId,
+          toolCallId: request.action?.nativeToolCallId === undefined ? request.requestId : scopedNativeId(request.attemptId, request.action.nativeToolCallId),
           title: request.action?.title ?? request.resource,
           status: 'pending',
           locations: request.action?.locations?.map(({ path, line }) => ({ path, line })),
@@ -152,7 +153,7 @@ export function createAcpRelay(route, extensionMethods = []) {
     try {
       const response = await destination.client.request(c.elicitation.create, {
         ...params, sessionId: destination.sessionId,
-        ...(params.toolCallId && { toolCallId: JSON.stringify([request.attemptId, params.toolCallId]) }),
+        ...(params.toolCallId && { toolCallId: scopedNativeId(request.attemptId, params.toolCallId) }),
       }, { cancellationSignal: stop, stopWaitingOnCancel: true });
       if (stop.aborted || route(request.operationId)?.sessionId !== destination.sessionId) return { kind: 'cancelled' };
       return { kind: 'answered', payload: response };

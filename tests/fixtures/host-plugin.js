@@ -10,7 +10,7 @@ export function createProvider({ providerId }) {
   return {
     async describe() { return { providerId, maxConcurrency: null, capabilities: {} }; },
     async open() { return { sessionId: crypto.randomUUID() }; },
-    async invoke(_session, invocation, observe) {
+    async invoke(_session, invocation, observe, activity) {
       if (invocation.kind === 'delegate') {
         if (invocation.objective === 'quick-relay') {
           while (true) {
@@ -25,6 +25,7 @@ export function createProvider({ providerId }) {
         }), output: 'Worker completed' };
       }
       if (typeof invocation.context[0].value === 'string' && invocation.context[0].value.startsWith('hold')) {
+        activity?.({kind:'reasoning',nativeKind:'agent_thought_chunk',payload:{sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'Fixture native hold'}}});
         await new Promise(resolve => {
           if (invocation.signal.aborted) resolve();
           else invocation.signal.addEventListener('abort', resolve, { once: true });

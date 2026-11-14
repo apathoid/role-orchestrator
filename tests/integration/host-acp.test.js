@@ -344,7 +344,7 @@ test('CLI can inspect and cancel live ACP work while new prompts stay with ACP',
         const { sessionId } = await host.agent.request(a.session.new, { cwd, mcpServers: [] });
         const held = prompt(host.agent, sessionId, 'hold');
         void held.catch(() => {});
-        await host.progress;
+        assert.equal((await host.progress).update.content.text,'Fixture native hold');
         const state = join(cwd, 'state');
         const file = (await readdir(state)).find(name => /^[a-f0-9]{64}.*\.json$/u.test(name));
         const { operationId } = JSON.parse(await readFile(join(state, file), 'utf8'));
@@ -447,4 +447,29 @@ test('C13 ACP native form interaction negotiates actual client capability and ke
         assert.equal(seen.length, enabled ? 2 : 0);
       } finally { await host.close(); }
     }
+  }));
+
+test('C14 standard ACP maps only actual native thinking, tools, Controller plan and final once', {timeout:20000}, () =>
+  withOwnedRun('C14-acp-ux', async cwd => {
+    const config = await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[
+      fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url)), 'host-native-ux']}}},plugins:[]});
+    const host=launch(cwd,config,app=>app,['--presentation','detailed']);
+    try {
+      await initialize(host.agent);
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      assert.equal((await prompt(host.agent,sessionId,'native UX')).stopReason,'end_turn');
+      const updates=host.messages.filter(item=>item.sessionId===sessionId).map(item=>item.update);
+      const thoughts=updates.filter(x=>x.sessionUpdate==='agent_thought_chunk');
+      assert.ok(thoughts.length>=3);
+      assert.ok(thoughts.every(x=>x.content.text.startsWith('Native thought ')));
+      const calls=updates.filter(x=>x.sessionUpdate==='tool_call');
+      const changed=updates.filter(x=>x.sessionUpdate==='tool_call_update');
+      assert.ok(calls.length>=3);
+      assert.equal(new Set(calls.map(x=>x.toolCallId)).size,calls.length);
+      assert.deepEqual(new Set(changed.map(x=>x.toolCallId)),new Set(calls.map(x=>x.toolCallId)));
+      const plans=updates.filter(x=>x.sessionUpdate==='plan');
+      assert.ok(plans.length>=1);
+      assert.ok(plans.every(x=>x.entries.every(e=>!e.content.includes('worker-'))));
+      assert.deepEqual(updates.filter(x=>x.sessionUpdate==='agent_message_chunk').map(x=>x.content.text),['Native final once']);
+    } finally {await host.close();}
   }));
