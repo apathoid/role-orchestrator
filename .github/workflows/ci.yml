@@ -1,0 +1,86 @@
+name: Role Orchestrator checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  specification-and-nix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+        with:
+          determinate: false
+          kvm: false
+          diagnostic-endpoint: ""
+      - name: Node 24 version
+        run: nix develop --no-update-lock-file --command node --version
+      - name: Root locked npm installation
+        run: nix develop --no-update-lock-file --command npm ci --ignore-scripts --no-audit --no-fund
+      - name: Specification links, checkJs and import boundaries
+        run: nix develop --no-update-lock-file --command npm run check
+      - name: Foundation and package tests
+        run: |
+          nix develop --no-update-lock-file --command npm run test:foundation
+          nix develop --no-update-lock-file --command npm run check:package
+          nix develop --no-update-lock-file --command npm run check:removal
+      - name: Core behavior regression
+        run: nix develop --no-update-lock-file --command npm run test:core
+      - name: Provider contract regression
+        run: nix develop --no-update-lock-file --command npm run test:contracts
+      - name: Integration regression
+        run: |
+          set +e
+          nix develop --no-update-lock-file --command npm run test:integration > "$RUNNER_TEMP/orchestrator-integration.log" 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "Integration regressions failed with exit code $status; exact test failures follow:"
+            grep -E '✖|test at tests/|AssertionError|TypeError|SyntaxError|error TS|assert\.|at (file:|TestContext)' "$RUNNER_TEMP/orchestrator-integration.log" | head -n 160 | cut -c 1-500 || true
+            echo "Final integration summary:"
+            tail -n 55 "$RUNNER_TEMP/orchestrator-integration.log" | cut -c 1-500
+            exit "$status"
+          fi
+          tail -n 20 "$RUNNER_TEMP/orchestrator-integration.log"
+      - name: Acceptance regression
+        run: nix develop --no-update-lock-file --command npm run test:acceptance
+      - name: Full applicable suite from root
+        run: nix develop --no-update-lock-file --command npm test
+      - name: Nix flake and locked package
+        run: nix flake check --no-update-lock-file --print-build-logs
+      - name: Install and exercise Nix package outside checkout
+        run: nix develop --no-update-lock-file --command bash scripts/check-nix-install.sh
+      - name: Check package contents and public import
+        run: |
+          nix develop --no-update-lock-file --command npm pack --dry-run --ignore-scripts --json
+          nix develop --no-update-lock-file --command node --input-type=module -e "import('role-orchestrator')"
+      - name: Evaluate NixOS systemPackages integration
+        run: nix develop --no-update-lock-file --command bash scripts/check-nixos-evaluation.sh
+      - name: Prepare reproducible release archive and checksum
+        run: nix develop --no-update-lock-file --command node scripts/prepare-release.mjs release-artifacts
+      - name: Capture Nix store archive metadata
+        run: nix path-info --json --json-format 1 .#role-orchestrator > release-artifacts/nix-path-info.json
+      - name: Upload inspected release evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: release-artifacts/
+          if-no-files-found: error
+      - name: Native readiness (UNVERIFIED without real agents/client)
+        run: echo "Real model provider, independent ACP agent, Zed and NixOS native acceptance are UNVERIFIED in this workflow."
+      - name: Verify committed lock files unchanged
+        run: git diff --exit-code -- flake.lock package-lock.json

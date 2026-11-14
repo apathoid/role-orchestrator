@@ -1,0 +1,57 @@
+{
+  "name": "role-orchestrator",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "description": "Model-first, provider-agnostic orchestration for AI agents.",
+  "type": "module",
+  "engines": {
+    "node": "^24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apathoid/role-orchestrator.git"
+  },
+  "files": [
+    "src/",
+    "docs/PRODUCT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/CONTRACTS.md",
+    "docs/EXECUTION.md",
+    "docs/CONTEXT_AND_RECOVERY.md",
+    "docs/PROVIDERS_AND_CONFIGURATION.md",
+    "docs/REASONING_EFFORT.md",
+    "docs/DIAGNOSTICS.md",
+    "docs/DECISIONS.md",
+    "docs/NIX_AND_CI.md",
+    "docs/EXTENSIONS.md",
+    "docs/CAPABILITIES.md",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "dependencies": {
+    "@agentclientprotocol/codex-acp": "2.5.0",
+    "@agentclientprotocol/sdk": "2.4.0",
+    "ajv": "8.20.0"
+  },
+  "exports": "./src/main/index.js",
+  "bin": {
+    "role-orchestrator": "./src/main/cli.js"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "24.10.0"
+  },
+  "scripts": {
+    "check": "node scripts/check-specification.mjs && node scripts/check-javascript.mjs && npm run check:boundaries",
+    "test:foundation": "node --test tests/foundation/*.test.js",
+    "test:core": "node scripts/run-suite.mjs core",
+    "test:contracts": "node scripts/run-suite.mjs contracts",
+    "test:integration": "node scripts/run-suite.mjs integration",
+    "test:acceptance": "node scripts/run-suite.mjs acceptance",
+    "test:native": "node scripts/run-suite.mjs native",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:package": "node scripts/check-package.mjs",
+    "check:removal": "node scripts/check-package.mjs --removal",
+    "test": "npm run test:foundation && npm run test:core && npm run test:contracts && npm run test:integration && npm run test:acceptance"
+  }
+}
