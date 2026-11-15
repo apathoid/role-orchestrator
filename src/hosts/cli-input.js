@@ -104,6 +104,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @type {string|undefined} */
   let chunkSource;
   let openLine=false;
+  let atLineStart=true;
   const color=Boolean('isTTY' in output&&output.isTTY&&process.env.NO_COLOR===undefined&&process.env.TERM!=='dumb');
   /** @type {Map<string,ReturnType<typeof createTerminalSanitizer>>} */
   const sanitizers=new Map();
@@ -149,7 +150,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @param {string} text @param {PresentationTone} [tone] */
   function print(text,tone) {
     const prefix=openLine?'\n':'';
-    openLine=false;chunkSource=undefined;
+    openLine=false;chunkSource=undefined;atLineStart=true;
     return write(prefix+style(terminalText(text),tone)+'\n');
   }
   /** Local messages do not own a delivery receipt. Never recursively
@@ -157,16 +158,31 @@ export function createCliInput(input, output, interactive, interrupt) {
    * @param {string} text
    */
   function report(text) { return print(text).catch(()=>{}); }
-  /** @param {{source:string,header:string,text:string}} fragment */
+  /** @param {{source:string,header:string,text:string,indent?:string}} fragment */
   function printChunk(fragment) {
     // Readline owns its current input line. Use a technical line boundary
     // while editing instead of overwriting or buffering a native chunk.
     const changed=chunkSource!==fragment.source;
     const body=sanitizerFor(fragment.source).push(fragment.text);
-    if(rl){chunkSource=fragment.source;return write(style(terminalText(fragment.header),'thinking')+body+'\n');}
-    const text=(changed?(openLine?'\n':'')+style(terminalText(fragment.header),'thinking'):'')+body;
+    if(!fragment.indent){
+      if(rl){chunkSource=fragment.source;return write(style(terminalText(fragment.header),'thinking')+body+'\n');}
+      const text=(changed?(openLine?'\n':'')+style(terminalText(fragment.header),'thinking'):'')+body;
+      chunkSource=fragment.source;
+      if(text)openLine=!text.endsWith('\n');
+      return write(text);
+    }
+    if(!body)return Promise.resolve();
+    const boundary=changed||!!rl;
+    if(boundary)atLineStart=true;
+    let decorated='';
+    for(const ch of body){
+      if(atLineStart&&ch!=='\n')decorated+=fragment.indent;
+      decorated+=ch;atLineStart=ch==='\n';
+    }
+    const header=boundary?(openLine?'\n':'')+style(terminalText(fragment.header),'thinking'):'';
+    const text=header+style(decorated,'thinking')+(rl&&!decorated.endsWith('\n')?'\n':'');
     chunkSource=fragment.source;
-    if(text)openLine=!text.endsWith('\n');
+    openLine=!rl&&!atLineStart;
     return write(text);
   }
   function prompt() {

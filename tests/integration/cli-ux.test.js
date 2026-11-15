@@ -76,8 +76,8 @@ test('C14R.3 native adjacent chunks use one source heading, switch and permissio
   const reply=terminal.ask(permission,new AbortController().signal);
   input.write('deny\n');await reply;
   await renderer.notice(event('a','again'));terminal.close();
-  assert.match(text,/\[p\/a\] Thinking: first second\n\[p\/b\] Thinking: other fragment\n/);
-  assert.match(text,/Permission requested/);assert.match(text,/\[p\/a\] Thinking: again\n/);
+  assert.match(text,/Thinking · p\/a\n  first second\n[\s\S]*Thinking · p\/b\n  other fragment\n/);
+  assert.match(text,/Permission requested/);assert.match(text,/Thinking · p\/a\n  again\n/);
 });
 
 test('C13R.3 terminal view never replays a dropped recorded finding',async()=>{
@@ -195,4 +195,33 @@ test('C15.6 interleaved native sources retain split escape state and visual boun
   terminal.close();
   assert.match(rendered,/\[A\] first\n\[B\] second\nLifecycle\n\[A\] rest/);
   assert.doesNotMatch(rendered,/SECRET|\x1b/);
+});
+
+
+test('C15R.2 full compact transcript preserves source and text while hiding repeated tool updates',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let text='';output.on('data',b=>text+=b);
+  const terminal=createCliInput(input,output,false,()=>{});
+  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk);
+  renderer.accepted('123456789');
+  const fact={kind:'attempt.dispatched',operationId:'123456789',attemptId:'a',invocationKind:'controller',attemptOrdinal:1,profileId:'p',modelSelector:'m',reasoning:{mode:'native'}};
+  await renderer.notice({channel:'execution',event:{eventName:'attempt.dispatched',eventId:'dispatch',level:'info'},fact});
+  let sequence=0;
+  const send=(kind,payload,nativeId,nativeKind)=>renderer.notice({channel:'activity',event:{kind,operationId:'123456789',attemptId:'a',profileId:'p',providerId:'x',sequence:++sequence,payload,nativeId,nativeKind}});
+  await send('reasoning',{content:{type:'text',text:'Inspect'}},undefined,'agent_thought_chunk');
+  await send('reasoning',{content:{type:'text',text:' the commit.\nRead the diff.'}},undefined,'agent_thought_chunk');
+  await send('tool',{title:'shell',kind:'execute',status:'pending'},'x','tool_call');
+  await send('tool',{title:'git show HEAD',status:'in_progress'},'x','tool_call_update');
+  await send('tool',{title:'git show HEAD',status:'in_progress'},'x','tool_call_update');
+  await send('tool',{status:'completed'},'x','tool_call_update');
+  await send('tool',{title:'Read package.json',status:'in_progress'},'y','tool_call');
+  await send('tool',{status:'failed'},'y','tool_call_update');
+  await send('reasoning',{content:{type:'text',text:'Version only.'}},undefined,'agent_thought_chunk');
+  terminal.close();
+  assert.equal(text,[
+    'Role Orchestrator · compact · 12345678','','● Controller #1 · p','  Invocation dispatched · p · selector=m · native effort','',
+    '  Thinking · Controller #1 · p','  Inspect the commit.','  Read the diff.',
+    '  ◇ git show HEAD · in_progress','  ✓ git show HEAD · completed',
+    '  ◇ Read package.json · in_progress','  ✗ Read package.json · failed','',
+    '  Thinking · Controller #1 · p','  Version only.','',
+  ].join('\n'));
 });
