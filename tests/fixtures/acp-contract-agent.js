@@ -96,6 +96,22 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
+    if (scenario === 'c15r-transcript') {
+      const host=context.find(item=>item.ref==='host:invocation-context').value;
+      const notify=update=>client.notify(c.session.update,{sessionId,update});
+      const thought=text=>notify({sessionUpdate:'agent_thought_chunk',content:{type:'text',text}});
+      await thought('Inspect');await thought(' the commit.\nRead the diff.');
+      await notify({sessionUpdate:'tool_call',toolCallId:'shell',title:'shell',kind:'execute',status:'pending'});
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'shell',title:'git show HEAD',status:'in_progress'});
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'shell',title:'git show HEAD',status:'in_progress'});
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'shell',status:'completed'});
+      await notify({sessionUpdate:'tool_call',toolCallId:'read',title:'Read package.json',kind:'read',status:'in_progress'});
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'read',status:'failed'});
+      await thought('Version only.');
+      await message('final',JSON.stringify({schemaVersion:1,operationId,decisionId:attemptId+'-final',contextCursor:host.contextCursor,
+        additions:[],cancellations:[],finalAssessment:{author:profileId,overall:'complete',requirements:[],observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer:'Version updated.'}}));
+      return {stopReason:'end_turn'};
+    }
     if (scenario === 'host-native-ux' || scenario === 'host-chunks') {
       const host = context.find(item => item.ref === 'host:invocation-context')?.value;
       const notify = update => client.notify(c.session.update,{sessionId,update});
