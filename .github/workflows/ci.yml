@@ -21,6 +21,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
         with:
@@ -64,6 +65,8 @@ jobs:
         run: nix develop --no-update-lock-file --command npm run test:acceptance
       - name: Full applicable suite from root
         run: nix develop --no-update-lock-file --command npm test
+      - name: C15 deterministic baseline presentation comparison
+        run: nix develop --no-update-lock-file --command node scripts/c15-presentation-benchmark.mjs
       - name: Nix flake and locked package
         run: nix flake check --no-update-lock-file --print-build-logs
       - name: Install and exercise Nix package outside checkout
