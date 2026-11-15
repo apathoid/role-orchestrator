@@ -66,6 +66,7 @@ export async function pollAttachedInputs({operationId,ownerRequestId,answerKey,s
             if (currentSignal.aborted) return;
             if (response && typeof response === 'object' && 'kind' in response && response.kind === 'accepted') {
               delivery.state = 'accepted';
+              report('Interaction '+native.requestId+': reply accepted by the owning session.');
               return;
             }
             if (response && typeof response === 'object' && 'kind' in response && response.kind === 'rejected') {

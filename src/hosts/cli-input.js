@@ -1,5 +1,5 @@
 import { createInterface, clearLine, cursorTo } from 'node:readline';
-import { terminalText, createTerminalSanitizer } from './presentation.js';
+import { terminalText, createTerminalSanitizer, boundedText } from './presentation.js';
 
 /** @import {PresentationTone} from './presentation.js' */
 /** @import {PendingPermission, PermissionHandler} from '../application/configuration/permissions.js' */
@@ -25,7 +25,8 @@ export function supportedForm(request) {
 /** @param {PendingInput} entry @param {string} line @returns {InputResult | undefined} */
 function parse(entry, line) {
   if (entry.kind === 'permission') {
-    const option = entry.request.options.find(option => option.id === line);
+    const numbered=/^option ([1-9]\d*)$/.exec(line);
+    const option = numbered ? entry.request.options[Number(numbered[1])-1] : entry.request.options.find(option => option.id === line);
     return option && { kind:'answered', payload: { optionId: option.id } };
   }
   if (line === 'decline' || line === 'cancel') return { kind:'answered', payload: { action: line } };
@@ -44,6 +45,32 @@ function parse(entry, line) {
     }
     return { kind:'answered', payload: { action:'accept', content:value } };
   } catch { return; }
+}
+
+/** Display only the actual request/options, with explicit numeric selection.
+ * @param {PendingInput} entry @param {string} label
+ */
+function inputBlock(entry,label){
+  const header=label+' ['+entry.request.profileId+'/'+entry.request.attemptId+'] ';
+  if(entry.kind==='permission'){
+    const request=entry.request,action=request.action;
+    const detail=action?[action.title,action.kind,action.details,...(action.locations??[]).map(l=>l.path+(l.line!==undefined?':'+l.line:''))].filter(Boolean).join('\n  '):'';
+    return header+'Permission requested\n  Resource: '+boundedText(request.resource)+
+      (detail?'\n  '+boundedText(detail):'')+'\n'+request.options.map((option,i)=>
+        '  '+(i+1)+'. '+(option.label??option.kind)+' [id='+option.id+']'+
+        (option.scope?' · '+option.scope:'')).join('\n')+
+      '\nEnter '+label+' option NUMBER or an offered option ID.';
+  }
+  const request=entry.request,payload=object(request.payload),schema=object(payload.requestedSchema);
+  const fields=Object.entries(object(schema.properties)).map(([key,value])=>{
+    const field=object(value),required=Array.isArray(schema.required)&&schema.required.includes(key);
+    return '  '+key+' · '+String(field.type)+(required?' (required)':'')+
+      (Array.isArray(field.enum)?' · choices: '+JSON.stringify(field.enum):'')+
+      (typeof field.description==='string'?' · '+field.description:'');
+  }).join('\n');
+  return header+'Native form (deadline '+new Date(request.deadlineAt).toISOString()+')\n'+
+    (typeof payload.message==='string'?boundedText(payload.message)+'\n':'')+fields+
+    '\nEnter '+label+' JSON object, decline or cancel.';
 }
 
 /** Single terminal input owner; labels select existing pending requests, not grants.
@@ -190,9 +217,7 @@ export function createCliInput(input, output, interactive, interrupt) {
       pending.set(label,{entry,finish});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
-      void report(label + ' [' + entry.request.profileId + '/' + entry.request.attemptId + '] ' +
-        (entry.kind === 'permission' ? 'Permission requested\n' + JSON.stringify({subject:entry.request.resource, action:entry.request.action, options:entry.request.options},null,2)
-        : 'Native form (deadline ' + new Date(entry.request.deadlineAt).toISOString() + ')\n' + JSON.stringify(entry.request.payload,null,2) + '\nEnter JSON object, decline or cancel.'));
+      void print(inputBlock(entry,label),'header').catch(()=>{});
       prompt();
     });
   }

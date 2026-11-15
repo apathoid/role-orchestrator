@@ -169,3 +169,16 @@ test('C14R.5R failed actual presentation Writable leaves direct execution and fi
   }
   assert.deepEqual(await run(true),await run(false));
 });
+
+test('C15.3 numbered choices preserve native option identity and render actual form fields',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let text='';output.on('data',b=>text+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const signal=new AbortController().signal;
+  const p=terminal.ask(permission,signal), f=terminal.ask(form,signal);
+  assert.match(text,/1\. deny \[id=deny\]/);assert.match(text,/2\. allow \[id=allow\]/);
+  assert.match(text,/Which value\?/);assert.match(text,/value · string \(required\)/);
+  input.write('#p option 2\n#f {"value":"chosen"}\n');
+  assert.deepEqual(await p,{kind:'answered',payload:{optionId:'allow'}});
+  assert.deepEqual(await f,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
+  terminal.close();
+});
