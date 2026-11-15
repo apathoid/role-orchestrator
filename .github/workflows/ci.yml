@@ -67,6 +67,10 @@ jobs:
         run: nix develop --no-update-lock-file --command npm test
       - name: C15 deterministic baseline presentation comparison
         run: nix develop --no-update-lock-file --command node scripts/c15-presentation-benchmark.mjs
+      - name: C15R actual SDK transcript red/green and history comparison
+        run: |
+          nix develop --no-update-lock-file --command node scripts/c15r-transcript-probe.mjs
+          nix develop --no-update-lock-file --command node scripts/c15-presentation-benchmark.mjs --c15r
       - name: Nix flake and locked package
         run: nix flake check --no-update-lock-file --print-build-logs
       - name: Install and exercise Nix package outside checkout

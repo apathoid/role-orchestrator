@@ -136,6 +136,7 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
   let snapshot;
   /** @type {ReturnType<typeof historicalOutcomeReports>} */
   let reports=new Map();
+  let classified=false;
   /** @type {Map<string,number>} */
   const remaining=new Map(),seenBoundary=new Map();
   const seen=new Set();
@@ -158,12 +159,13 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
     if(signal?.aborted)return;
     const id=request.operationId;
     if(!id||!session.operations.includes(id))continue;
-    if(snapshot?.operationId!==id){snapshot=undefined;reports.clear();snapshot=await inspect(id);reports=historicalOutcomeReports(snapshot);}
+    if(snapshot?.operationId!==id){snapshot=undefined;reports.clear();classified=false;snapshot=await inspect(id);}
     const operation=snapshot;
     if(signal?.aborted)return;
     const durableId=operationRequestId(session.sessionId,request.requestId);
     const range=turnRange(operation,durableId);
     const inline=(request.progressDisplay??display)==='inline';
+    if(inline&&!classified){reports=historicalOutcomeReports(operation);classified=true;}
     if(range){
       seen.add(id);
       const prior=seenBoundary.get(id);
@@ -191,7 +193,7 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
     if(left===0){
       const boundary=seenBoundary.get(id);
       if(inline&&boundary!==undefined&&boundary<operation.events.length)await background(operation,boundary,operation.events.length);
-      snapshot=undefined;reports.clear();seenBoundary.delete(id);
+      snapshot=undefined;reports.clear();classified=false;seenBoundary.delete(id);
     }
   }
   for(const id of session.operations)if(!signal?.aborted&&!seen.has(id)){

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, writeFile, symlink, rm } from 'node:fs/promises';
+import { mkdir, writeFile, symlink, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { root, withOwnedRun } from './owned-run.mjs';
 
@@ -28,18 +28,26 @@ await withOwnedRun('C15R-transcript',async cwd=>{
   const old=join(cwd,'baseline');await mkdir(old);checked('tar',['-x','-C',old],{input:checked('git',['archive',baseline])});
   await symlink(join(root,'node_modules'),join(old,'node_modules'),'dir');
   const work=join(cwd,'work');await mkdir(work);
-  const before=await run(join(old,'src/main/cli.js'),work,'compact');
-  assert.equal((before.transcript.match(/Tool git show HEAD · in_progress/g)??[]).length,2);
-  assert.match(before.transcript,/Tool tool_call_update · completed/);
-  console.log('C15R_RED '+JSON.stringify(before));
-  if(process.argv.includes('--baseline-only'))return;
-  for(const mode of ['compact','detailed','debug']){
-    const after=await run(join(root,'src/main/cli.js'),work,mode);
-    assert.doesNotMatch(after.transcript,/Tool tool_call_update · completed/);
-    if(mode==='compact') {
-      assert.equal((after.transcript.match(/git show HEAD/g)??[]).length,2);
-      assert.match(after.transcript,/git show HEAD[^\n]*completed/);
+  assert.deepEqual(await readFile(join(old,'package-lock.json')),await readFile(join(root,'package-lock.json')));
+  const cases=[['baseline',join(old,'src/main/cli.js'),'compact'],
+    ...(!process.argv.includes('--baseline-only')?['compact','detailed','debug'].map(mode=>[mode,join(root,'src/main/cli.js'),mode]):[])];
+  const results=new Map(cases.map(([name])=>[name,[]]));
+  for(let round=0;round<3;round++)for(const [name,entry,mode] of cases){
+    const sample=await run(entry,work,mode);
+    if(name==='baseline'){
+      assert.equal((sample.transcript.match(/Tool git show HEAD · in_progress/g)??[]).length,2);
+      assert.match(sample.transcript,/Tool tool_call_update · completed/);
+    }else{
+      assert.doesNotMatch(sample.transcript,/Tool tool_call_update · completed/);
+      assert.match(sample.transcript,/git show HEAD[^\n]*completed/);
+      assert.match(sample.transcript,/Inspect the commit\.\n  Read the diff\./);
+      const expected=name==='debug'?3:2;
+      assert.equal((sample.transcript.match(/git show HEAD/g)??[]).length,expected);
     }
-    console.log('C15R_TRANSCRIPT '+JSON.stringify({mode,...after}));
+    if(round===0)console.log((name==='baseline'?'C15R_RED ':'C15R_TRANSCRIPT ')+JSON.stringify({mode:name,...sample}));
+    results.get(name).push(sample);
   }
+  const median=values=>[...values].sort((a,b)=>a-b)[1];
+  const report=Object.fromEntries([...results].map(([name,samples])=>[name,Object.fromEntries(['firstMs','totalMs','bytes','lines'].map(key=>[key,Math.round(median(samples.map(s=>s[key]))*100)/100]))]));
+  console.log('C15R_BENCHMARK '+JSON.stringify({baseline,current:String(checked('git',['rev-parse','HEAD'])).trim(),node:process.version,rounds:3,report}));
 });

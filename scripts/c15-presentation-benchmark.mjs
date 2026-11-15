@@ -7,7 +7,8 @@ import { Readable, Writable } from 'node:stream';
 import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
 import { root, withOwnedRun } from './owned-run.mjs';
 
-const baseline='c5c4fca422b895b1962d7c2521cb168ac50ec655';
+const corrective=process.argv.includes('--c15r');
+const baseline=corrective?'6d3da730b49dfec77bcb12cce3bbbfe007fc16fd':'c5c4fca422b895b1962d7c2521cb168ac50ec655';
 const a=methods.agent,c=methods.client;
 const median=values=>{const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.floor(sorted.length/2)];};
 const round=n=>Math.round(n*100)/100;
@@ -89,7 +90,7 @@ await withOwnedRun('C15-benchmark',async cwd=>{
     ['baseline-cli-headless',old,'cli',undefined],['current-cli-headless',root,'cli',undefined],
     ['baseline-cli-compact',old,'cli','compact'],['current-cli-compact',root,'cli','compact'],
     ['current-cli-detailed',root,'cli','detailed'],['current-cli-debug',root,'cli','debug'],
-    ['baseline-acp-no-notices',old,'acp','notices',false],['baseline-acp-notices',old,'acp','notices',true],
+    [corrective?'baseline-acp-inline':'baseline-acp-no-notices',old,'acp',corrective?'inline':'notices',false],['baseline-acp-notices',old,'acp','notices',true],
     ['current-acp-inline',root,'acp','inline',false],['current-acp-notices',root,'acp','notices',true],
   ];
   const results=new Map(cases.map(([name])=>[name,[]]));
@@ -98,11 +99,11 @@ await withOwnedRun('C15-benchmark',async cwd=>{
   for(let round=0;round<3;round++)for(const [name,source,kind,mode,capable] of cases){
     await rm(join(work,'state'),{recursive:true,force:true});await configure(kind==='acp');
     const entry=join(source,'src/main/cli.js');
-    const sample=kind==='cli'?await cli(entry,work,config,mode):await acp(entry,work,config,mode,source===root,capable);
+    const sample=kind==='cli'?await cli(entry,work,config,mode):await acp(entry,work,config,mode,source===root||corrective,capable);
     if(references.has(kind))assert.deepEqual(sample.semantic,references.get(kind),name);
     else references.set(kind,sample.semantic);
     results.get(name).push(sample);
   }
   const report=Object.fromEntries([...results].map(([name,samples])=>[name,summarize(samples)]));
-  console.log('C15_BENCHMARK '+JSON.stringify({baseline,current:String(checked('git',['rev-parse','HEAD'])).trim(),node:process.version,rounds:3,units:'ms and bytes; median',report}));
+  console.log((corrective?'C15R_HISTORY_BENCHMARK ':'C15_BENCHMARK ')+JSON.stringify({baseline,current:String(checked('git',['rev-parse','HEAD'])).trim(),node:process.version,rounds:3,units:'ms and bytes; median',report}));
 });

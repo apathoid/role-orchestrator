@@ -63,7 +63,7 @@ export function cliPresentation(mode, print, printChunk) {
           }
         }
         const text=formatActivity(event,mode,alias);
-        if(text)await print(select(event.attemptId,alias)+indent(text),event.kind==='finding'?'finding':'neutral');
+        if(text){const prefix='['+alias+'] ';await print(select(event.attemptId,alias)+indent(text.startsWith(prefix)?text.slice(prefix.length):text),event.kind==='finding'?'finding':'neutral');}
         return;
       }
       if(notice.channel==='execution'&&notice.event.eventName==='attempt.dispatched'&&notice.fact?.attemptId){
@@ -72,7 +72,7 @@ export function cliPresentation(mode, print, printChunk) {
         const route=[fact.profileId,fact.modelSelector?'selector='+fact.modelSelector:undefined,
           fact.reasoning?.mode==='selectable'?'effort='+fact.reasoning.level:fact.reasoning?.mode==='native'?'native effort':undefined].filter(Boolean).join(' · ');
         const objective=fact.objective?'\n'+indent('Objective: '+boundedText(fact.objective)):'';
-        const technical=mode==='debug'?'\n'+indent('attempt='+fact.attemptId+' event='+notice.event.eventId):'';
+        const technical=mode==='debug'?'\n'+indent('attempt='+fact.attemptId+' event='+notice.event.eventId+' seq='+notice.event.sequence+' at='+notice.event.receivedAt+' reason='+notice.event.reasonCode):'';
         await print('\n'+(fact.invocationKind==='controller'?'● ':'├─ ')+alias+'\n'+indent('Invocation dispatched'+(route?' · '+boundedText(route,480):''))+objective+technical,'header');
       }else{
         const text=notice.channel==='execution'?formatExecution(notice.event,mode,notice.fact):
@@ -97,7 +97,8 @@ export function cliPresentation(mode, print, printChunk) {
       const summary=formatOperation(state,mode);
       const text=Buffer.byteLength(summary)<=512*1024?summary:formatOperation(state,'compact')+'\n[Detailed snapshot omitted; inspect current operation]';
       closed=true;aliases.clear();tools.clear();currentSource=undefined;
-      const render=()=>{void print('\n'+text,state.status==='finished'&&state.assessment?.overall==='complete'?'success':'neutral').catch(()=>{});};
+      const tone=state.status==='finished'&&state.assessment?.overall==='complete'?'success':'neutral';
+      const render=()=>{void print('\n'+text,tone).catch(()=>{});};
       if(defer)return render;
       render();
     },

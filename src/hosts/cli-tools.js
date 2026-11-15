@@ -59,7 +59,9 @@ export function createCliTools(){
       const fields={title:payload.title,kind:payload.kind??item.type,command:payload.command??item.command,
         status:payload.status??item.status,description:payload.description};
       for(const name of /** @type {(keyof typeof fields)[]} */(Object.keys(fields))){
-        const value=fields[name];if(value===null)delete view[name];else if(typeof value==='string')view[name]=field(value);
+        const value=fields[name];
+        // ACP optional/null update fields are absent, matching existing adapter mergeToolCall.
+        if(typeof value==='string')view[name]=field(value);
       }
       if(Array.isArray(payload.locations)){
         view.location=field(payload.locations.map(location=>{const loc=object(location);return typeof loc.path==='string'?loc.path+(typeof loc.line==='number'?':'+loc.line:''):'';}).filter(Boolean).join(', '));
@@ -72,7 +74,7 @@ export function createCliTools(){
           ['shell','tool','execute','read','write','search','glob','edit'].includes(view.title.toLowerCase()));
       const duplicate=prior?.rendered===result.text;
       // Debug retains all actual delivered events; other modes omit exact no-op display updates.
-      if(mode!=='debug'&&((mode==='compact'&&genericPending)||duplicate)){
+      if(mode!=='debug'&&((mode==='compact'&&genericPending&&key!==undefined)||duplicate)){
         if(key!==undefined)retain(key,view);return;
       }
       view.rendered=result.text;

@@ -25,3 +25,12 @@ test('C15R.1 scope, gaps, late/conflicting updates, unknown IDs and bounded evic
   for(let i=0;i<150;i++)p.accept(tool({title:'large '+ 'x'.repeat(6000),status:'in_progress'},1,'a','id'+i),'compact');
   assert.match(p.accept(tool({status:'completed'},2,'a','id0'),'compact').text,/earlier details unavailable/);
 });
+
+
+test('C15R.1 null optional ACP fields do not erase earlier title; absent native identity remains visible',()=>{
+  const p=createCliTools();
+  p.accept(tool({title:'Read file',status:'in_progress'},1),'compact');
+  assert.match(p.accept(tool({title:null,status:'completed'},2),'compact').text,/Read file · completed/);
+  const anonymous={...tool({title:'shell',kind:'execute',status:'pending'}),nativeId:undefined};
+  assert.match(p.accept(anonymous,'compact').text,/shell · pending/);
+});

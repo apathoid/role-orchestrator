@@ -151,3 +151,6 @@ Late observation может предоставить тело ранее изв�
 ### ACP user transcript (C15)
 
 User-facing `session/load` follows accepted `session.requests` order, not Operation order. Exact initial Request or `operation.continued` association and optional `responseEventId` identify the historical question/assessment/status; retry returns the original response without dispatch. Durable RO facts are projected from the existing journal with recovered attribution. Background facts outside the turn boundary are explicitly attributed to their Operation; ambiguous legacy boundaries are disclosed, not guessed. Native activity and transient delivery gaps are not reconstructed. This is a user view, not model context, Observation/evidence, or a second execution journal.
+
+
+C15R history fidelity: ordinary, late and conflicting outcome reports are classified against the actual prior Attempt using the existing snapshot validation ledger and shared reducer classification. This read-only pass uses historical generation/cancellation and no current limits, provider calls or intents; exact duplicates do not create a new durable report. Classification unavailable in invalid/incomplete history is disclosed with a neutral historical outcome report, not inferred from the latest terminal state. Session request order, responseEventId and stable own message IDs remain unchanged.

@@ -7,6 +7,9 @@ import { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
+import { createOperation, applyEvent } from '../../src/core/operation.js';
+import { createLocalStateStore } from '../../src/adapters/state/local-store.js';
+import { request as coreRequest, outcome as coreOutcome } from '../fixtures/core.js';
 import { createAcpRelay } from '../../src/hosts/acp-relay.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
 
@@ -600,4 +603,71 @@ test('C15.5 ACP history preserves A B A user order and exact historical retry af
     assert.deepEqual(plain(reopened.messages.slice(before)),plain(reopened.messages.slice(0,before)));
     assert.deepEqual(reopened.messages.slice(before).filter(x=>x.update.messageId?.startsWith('ro:')).map(x=>x.update.messageId),own);
   }finally{await reopened.close();}
+}));
+
+
+test('C15R ACP native sparse updates remain unfiltered by CLI projection',{timeout:20000},()=>withOwnedRun('C15R-native-stream',async cwd=>{
+  const config=await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,
+    args:[fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url)),'c15r-transcript']}}},plugins:[]});
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    await prompt(host.agent,sessionId,'transcript');
+    const updates=host.messages.map(m=>m.update);
+    const tools=updates.filter(u=>u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update');
+    assert.equal(tools.length,6);
+    assert.equal(tools[0].toolCallId,tools[3].toolCallId);
+    assert.equal(tools[1].title,'git show HEAD');assert.equal(tools[2].title,'git show HEAD');
+    assert.equal(tools[3].title??undefined,undefined);
+    assert.equal(tools[3].status,'completed');assert.equal(tools[5].status,'failed');
+    assert.deepEqual(updates.filter(u=>u.sessionUpdate==='agent_thought_chunk').map(u=>u.content.text),['Inspect',' the commit.\nRead the diff.','Version only.']);
+    assert.equal(updates.filter(u=>u.content?.text==='Version updated.').length,1);
+    assert.ok(updates.some(u=>u.messageId?.startsWith('ro:')));
+    assert.equal(updates.filter(u=>u.sessionUpdate==='notice').length,0);
+  }finally{await host.close();}
+}));
+
+test('C15R SDK session.load preserves actual reducer report classifications and stable IDs',{timeout:20000},()=>withOwnedRun('C15R-history-sdk',async cwd=>{
+  const config=await fixture(cwd),directory=join(cwd,'state');
+  const sessionId='12345678-1234-1234-1234-123456789abc',operationId='history-op';
+  let state=createOperation(operationId,coreRequest({requestId:'acp:'+sessionId+':r'}),'authority',{maxInvocations:3,maxConcurrentInvocations:2},0);
+  const store=createLocalStateStore(directory),diagnostics=[];
+  await mkdir(directory);await store.open();
+  try{
+    assert.equal((await store.commit(operationId,null,state)).kind,'committed');
+    async function commit(eventId,kind,fields){
+      const transition=applyEvent(state,{eventId,kind,operationId,receivedAt:state.revision+1,...fields});
+      assert.equal(transition.kind,'applied',eventId);
+      assert.equal((await store.commit(operationId,state.revision,transition.state)).kind,'committed');
+      state=transition.state;diagnostics.push(transition.diagnostic);
+    }
+    for(const attemptId of ['a','b']){
+      await commit('reserve-'+attemptId,'attempt.reserved',{attemptId,actionId:attemptId});
+      await commit('dispatch-'+attemptId,'attempt.dispatched',{attemptId,route:{profileId:'primary',providerId:'test',model:'fixture',configurationRef:'test-config'}});
+    }
+    await commit('ordinary','attempt.outcome',{outcome:coreOutcome('a'),dispatchCertainty:'sent'});
+    await commit('cancel','operation.cancelled',{source:'client'});
+    await commit('late','attempt.outcome',{outcome:coreOutcome('b',{terminal:'unknown',effect:'unknown'}),dispatchCertainty:'unknown'});
+    await commit('enrich','attempt.outcome',{outcome:coreOutcome('b',{terminal:'completed',effect:'confirmed'}),dispatchCertainty:'sent',late:true});
+    await commit('conflict','attempt.outcome',{outcome:coreOutcome('b',{terminal:'failed',effect:'none'}),dispatchCertainty:'sent',late:true});
+  }finally{await store.close();}
+  await writeFile(join(directory,'client-session-'+sessionId+'.json'),JSON.stringify({sessionId,cwd,operations:[operationId],
+    requests:[{requestId:'r',fingerprint:'fixture',operationId,responseEventId:'cancel',progressDisplay:'inline'}]}));
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const load=()=>host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+    await load();const first=host.messages.map(x=>x.update);
+    for(const eventId of ['ordinary','late','enrich','conflict']){
+      const actual=diagnostics.find(d=>d.eventId===eventId);
+      const update=first.find(u=>u._meta?.roleOrchestratorSource?.eventId===eventId);
+      assert.equal(update._meta.roleOrchestratorSource.eventName,actual.eventName);
+      assert.equal(update._meta.roleOrchestratorSource.reasonCode,actual.reasonCode);
+      assert.equal(update._meta.roleOrchestratorSource.recovered,true);
+      assert.ok(update.messageId.startsWith('ro:'));
+    }
+    assert.match(first.find(u=>u._meta?.roleOrchestratorSource?.eventId==='conflict').content.text,/Outcome discrepancy/);
+    const before=host.messages.length;await load();
+    assert.deepEqual(host.messages.slice(before).map(x=>x.update),first);
+  }finally{await host.close();}
 }));

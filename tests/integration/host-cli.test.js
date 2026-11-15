@@ -30,7 +30,7 @@ test('CLI validates arguments, accepts Unicode stdin outside Git and isolates JS
       const presented = call(['run','Привет, мир 🌍','--config',config,'--format','json','--presentation',mode]);
       assert.equal(presented.status,0,presented.stderr);
       assert.equal(JSON.parse(presented.stdout).assessment.answer,assessment.answer);
-      assert.match(presented.stderr,/\[Operation .*\] complete/);
+      assert.match(presented.stderr,/✓ Operation complete\n  1 Controller attempt · 0 Worker attempts · 0 recorded findings/);
     }
     const raw = '\x1b[2JПривет 🌍\nLine\x1b]52;c;SECRET\x07\x9b31m!';
     const redirected = call(['run','tty-control','--config',config]);
