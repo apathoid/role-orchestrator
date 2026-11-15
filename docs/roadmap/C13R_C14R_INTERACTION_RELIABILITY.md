@@ -1,5 +1,7 @@
 # C13R / C14R — Interaction Reliability & Presentation Completeness
 
+Historical corrective contract: [C15](C15_PRESENTATION_EXPERIENCE.md) adds default standard inline RO progress and journal-derived user transcript; explicit standard notices retain the C14R capability gate and are not history. Earlier native/comparative obligations remain open.
+
 Corrective follow-up only, baseline `31bfc6ee3e43149a6d155aecb9e9670bb8d61424`. See [STATUS](STATUS.md) for exact execution evidence, [C13](C13_INTERACTION_PROTOCOLS.md), [C14](C14_CLIENT_UX.md), [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md), [single matrix](../../tests/ACCEPTANCE_MATRIX.md). No changes to model semantics, prompts, context, coordinator, grants, budgets, native environment or active-time accounting. No replay of unknown effects.
 
 ## C13R.0 — baseline

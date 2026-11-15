@@ -1,14 +1,14 @@
+# Changelog
+
+Публичные изменения и основные продуктовые вехи (не журнал всех коммитов). Текущий operational status и доказательства исполнения — [roadmap STATUS](docs/roadmap/STATUS.md).
+
+## Unreleased — C12–C15 integration and delivery
+
 ### C15 — Rich presentation and ACP transcript
 
 - CLI: trusted TTY color, source/route/effort labels, native streaming tools/thinking, readable permission/form blocks; unchanged machine stdout and ownership.
 - ACP: default attributed inline standard messages, explicit capability-gated notices compatibility; bounded per-turn transport and existing native widgets/permissions/forms.
 - History: exact ordered session requests and journal response boundary, historical retry, recovered durable facts without replaying native activity or adding execution state.
-
-# Changelog
-
-Публичные изменения и основные продуктовые вехи (не журнал всех коммитов). Текущий operational status и доказательства исполнения — [roadmap STATUS](docs/roadmap/STATUS.md).
-
-## Unreleased — C12 integration and delivery
 
 ### C13R/C14R — interaction reliability and presentation completeness
 

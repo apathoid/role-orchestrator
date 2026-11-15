@@ -1,5 +1,7 @@
 # C14 — CLI & Graphical Client UX
 
+**Исторический план C14.** Current presentation contract superseded where explicitly changed by [C15](C15_PRESENTATION_EXPERIENCE.md): compact native tools, default ACP inline RO facts and ordered durable user transcript. Native mapping and authority remain unchanged.
+
 **План для исполнителя.** Ветка feature/interactive-ux; prerequisite: [C13](C13_INTERACTION_PROTOCOLS.md) engineering exit (.0–.6 verified, .7 native observed or explicitly UNVERIFIED). Актуальный next step в [STATUS](STATUS.md). C14 — presentation consumers поверх C13, не второй runtime. Начать .0 после handoff, .1–.6 последовательно, каждый шаг отдельным коммитом и обновлением STATUS. Native gaps не закрываются synthetic tests.
 
 ## 0. Целевой UX и неизменяемые границы

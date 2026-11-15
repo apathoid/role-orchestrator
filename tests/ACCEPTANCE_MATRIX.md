@@ -152,37 +152,37 @@ OBSERVED: [CI #42805542909](https://github.com/apathoid/role-orchestrator/action
 
 | Требование | Сценарии | Исполненные тестовые пути / проверочные scripts | Доказанное и пробел |
 |---|---|---|---|
-| R01 | A02, A07 | `tests/core/core.test.js`; `tests/integration/host-cli.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R01 | A02, A07, A80 | `tests/core/core.test.js`; `tests/integration/host-cli.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R02 | A04, A47 | `tests/integration/orchestrator.test.js`; `tests/integration/reasoning-controller.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R03 | A05, A08, A10, A13, A14, A46, A47 | `tests/integration/delegation.test.js`; `tests/integration/reasoning-delegation.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R03 | A05, A08, A10, A13, A14, A46, A47, A80 | `tests/integration/delegation.test.js`; `tests/integration/reasoning-delegation.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R04 | A08 | `tests/integration/handoff.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R05 | A03, A09, A10, A12, A46, A51 | `tests/core/action-graph.test.js`; `tests/integration/delegation.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R06 | A11, A46 | `tests/integration/delegation.test.js`; `tests/integration/reasoning-controller.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R07 | A15 | `tests/integration/permissions.test.js`; `tests/contracts/acp-provider.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
-| R08 | A15, A16, A30, A32, A45, A53 | `tests/integration/permissions.test.js`; `tests/integration/host-acp.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
-| R09 | A17 | `tests/integration/mutable-context.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R08 | A15, A16, A30, A32, A45, A53, A79 | `tests/integration/permissions.test.js`; `tests/integration/host-acp.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
+| R09 | A17, A80 | `tests/integration/mutable-context.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R10 | A01, A07, A17 | `tests/integration/host-cli.test.js`; `tests/integration/runtime.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R11 | A29, A33, A34, A36, A50 | `tests/integration/context-quality.test.js`; `tests/integration/evidence-addressing.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R11 | A29, A33, A34, A36, A50, A80 | `tests/integration/context-quality.test.js`; `tests/integration/evidence-addressing.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R12 | A13, A33, A34 | `tests/integration/context-quality.test.js`; `tests/integration/assessment.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R13 | A04, A13, A14, A35, A50 | `tests/integration/assessment.test.js`; `tests/integration/delegation.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R14 | A19, A20 | `tests/integration/durable-dispatch.test.js`; `tests/integration/cli-process.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
+| R13 | A04, A13, A14, A35, A50, A80, A81 | `tests/integration/assessment.test.js`; `tests/integration/delegation.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R14 | A19, A20, A79 | `tests/integration/durable-dispatch.test.js`; `tests/integration/cli-process.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
 | R15 | A23, A24, A25, A26, A27, A28, A51, A52 | `tests/integration/durable-dispatch.test.js`; `tests/integration/resume.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R16 | A05, A06, A10, A21, A22, A47, A53 | `tests/integration/delegation.test.js`; `tests/integration/reasoning-controller.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R16 | A05, A06, A10, A21, A22, A47, A53, A80 | `tests/integration/delegation.test.js`; `tests/integration/reasoning-controller.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R17 | A18, A30, A44, A45, A52 | `tests/integration/configuration.test.js`; `tests/integration/reasoning-config.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R18 | A18, A20, A38, A49, A54 | `tests/contracts/provider-port.test.js`; `tests/contracts/acp-provider.test.js`; `tests/integration/codex-provider.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
-| R19 | A16, A38, A48 | `tests/integration/host-acp.test.js`; `tests/integration/host-cli.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
+| R18 | A18, A20, A38, A49, A54, A77, A78, A80, A81 | `tests/contracts/provider-port.test.js`; `tests/contracts/acp-provider.test.js`; `tests/integration/codex-provider.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
+| R19 | A16, A38, A48, A81 | `tests/integration/host-acp.test.js`; `tests/integration/host-cli.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
 | R20 | A31, A32, A39, A49 | `tests/contracts/plugin-api.test.js`; `tests/integration/extensions.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R21 | A36, A40, A53 | `tests/integration/diagnostic-export.test.js`; `tests/core/diagnostics-taxonomy.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R22 | A28, A36, A53 | `tests/integration/diagnostic-sink.test.js`; `tests/integration/durable-dispatch.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R23 | A03, A19, A20, A26, A40, A51 | `tests/integration/cli-process.test.js`; `tests/integration/local-control.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
+| R21 | A36, A40, A53, A77, A78, A79, A80 | `tests/integration/diagnostic-export.test.js`; `tests/core/diagnostics-taxonomy.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R22 | A28, A36, A53, A77 | `tests/integration/diagnostic-sink.test.js`; `tests/integration/durable-dispatch.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R23 | A03, A19, A20, A26, A40, A51, A78, A79 | `tests/integration/cli-process.test.js`; `tests/integration/local-control.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
 | R24 | A02, A05, A18, A22, A29, A39, A44, A48, A49, A50 | `tests/integration/configuration.test.js`; `tests/integration/codex-output.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
 | R25 | A01, A37, A42, A54 | `tests/foundation/foundation.test.js`; `scripts/check-package.mjs` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R26 | A12, A25, A27, A40, A48 | `tests/integration/local-store.test.js`; `tests/integration/durable-dispatch.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R27 | A35, A40 | `tests/integration/diagnostic-export.test.js`; `tests/integration/host-cli.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
+| R26 | A12, A25, A27, A40, A48, A78, A80 | `tests/integration/local-store.test.js`; `tests/integration/durable-dispatch.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R27 | A35, A40, A81 | `tests/integration/diagnostic-export.test.js`; `tests/integration/host-cli.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
 | R28 | A06, A24 | `tests/integration/resume.test.js`; `tests/integration/host-acp.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
 | R29 | A41, A53 | `scripts/check-javascript.mjs`; `tests/foundation/foundation.test.js` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
-| R30 | A42, A54 | `scripts/check-nix-install.sh`; `.github/workflows/ci.yml` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
-| R31 | A43, A54 | `.github/workflows/ci.yml`; `scripts/check-specification.mjs` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
+| R30 | A42, A54, A81 | `scripts/check-nix-install.sh`; `.github/workflows/ci.yml` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
+| R31 | A43, A54, A77, A80, A81 | `.github/workflows/ci.yml`; `scripts/check-specification.mjs` | CI automated PASS в области соответствующих сценариев; качество reasoning/новых сред не устанавливается |
 | R32 | A44, A45, A46, A49, A50, A51, A52, A53, A54 | `tests/integration/reasoning-delegation.test.js`; `tests/contracts/acp-provider.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
 | R33 | A47, A48, A50, A51, A53, A54 | `tests/integration/reasoning-controller.test.js`; `tests/integration/reasoning-failure.test.js` | CI fixture/process PASS; реальные provider/client/NixOS части UNVERIFIED |
 
@@ -402,3 +402,5 @@ C13R/C14R actual baseline and per-step evidence in [corrective roadmap](../docs/
 | A79 | R08,R14,R21,R23 | Exact session request/response boundaries, A→B→A, historical retry and repeated load, background attribution: `host-acp.test.js` | I/SDK |
 | A80 | R01,R03,R09,R11,R13,R16,R18,R21,R26,R31 | Existing full regression, mode equivalence, measured deterministic presentation comparison and bounds; package/Nix/CI | I/E |
 | A81 | R13,R18,R19,R27,R30,R31 | Real installed CLI and Zed/native model/provider, matched comparative quality/latency; explicit UNVERIFIED when unavailable | N |
+
+C15 A77–A80 engineering verification: see exact checkpoint and CI in [STATUS](../docs/roadmap/STATUS.md). A81 native model/graphical client and matched comparative acceptance UNVERIFIED; existing F4/C12/A61/A66/C13R/C14R obligations remain open.
