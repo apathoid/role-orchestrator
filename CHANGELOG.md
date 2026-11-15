@@ -6,6 +6,8 @@
 
 ### C13R/C14R — interaction reliability and presentation completeness
 
+- Final narrow review corrections C13R.4R/C14R.5R: remove arbitrary 1024-frame Codex evidence ceiling; retain the existing 1 MiB wire-byte budget and bounded latest result/error slots, preserve previously available small command observations, explicit omissions and provenance. CLI presentation confirmation now requires a successful Writable callback; errors/close/timeout remain unconfirmed, no replay or fabricated input, durable result and final stdout independent. Exact engineering CI and separate native UNVERIFIED in STATUS.
+
 - Addressed attached reply uncertainty and original work binding reconnect without redispatch or capability escalation; no automatic new answer after lost acknowledgement.
 - Bounded normal presentation drain, immediate disconnect/cancel; explicit gaps, no replay.
 - Codex incremental JSONL parse independent of raw capture; bounded execution evidence, explicit truncation/omission and latest declared result, unchanged terminal/exit checks.
