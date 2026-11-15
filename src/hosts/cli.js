@@ -2,6 +2,7 @@ import { open, link, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { terminalText } from './presentation.js';
 import { HostError, hostError, newRequestId, operationView } from './commands.js';
 
 /** @import {Command} from './commands.js' */
@@ -148,14 +149,15 @@ export async function runCli(args, io, execute) {
     if (result && typeof result === 'object' && 'request' in result && 'limits' in result && 'attempts' in result) {
       const view = operationView(/** @type {Operation} */ (result));
       if (invocation.format === 'text' && ['run', 'resume'].includes(invocation.command.action)) {
-        io.stdout.write((view.assessment?.answer ?? (view.waiting?.kind === 'question' ? view.waiting.question
+        const human = view.assessment?.answer ?? (view.waiting?.kind === 'question' ? view.waiting.question
           : view.waiting?.kind === 'technical'
             ? (view.waiting.reason.profileId ? 'Error: ' : 'Waiting: ') + view.waiting.reason.code +
               (view.waiting.reason.profileId ? ' profile=' + view.waiting.reason.profileId +
                 ' reasoningLevel=' + (view.waiting.reason.reasoningLevel ?? '(default)') +
                 ' available=' + (view.waiting.reason.availableLevels ?? []).join(',') +
                 (view.waiting.reason.reasoningCause ? ' cause=' + view.waiting.reason.reasoningCause : '') : '')
-            : view.status)) + '\n');
+            : view.status);
+        io.stdout.write(('isTTY' in io.stdout && io.stdout.isTTY ? terminalText(human) : human) + '\n');
       } else io.stdout.write(JSON.stringify(view, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     } else io.stdout.write(JSON.stringify(result, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     const failure = result && typeof result === 'object' && 'request' in result &&

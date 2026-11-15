@@ -29,7 +29,7 @@ async function tty(cwd,args,reply,expected) {
   let output='',errors='',sent=false;
   child.stdout.on('data',chunk=>{
     output+=chunk;
-    if(!sent&&output.includes('Reply (')){
+    if(reply!==undefined&&!sent&&output.includes('Reply (')){
       sent=true;
       assert.match(output,/Permission requested|Native form/);
       child.stdin.write(reply+'\n');
@@ -39,7 +39,7 @@ async function tty(cwd,args,reply,expected) {
   try {
     const [code]=await once(child,'close');
     assert.equal(code,0,output+errors);
-    assert.equal(sent,true,output);
+    assert.equal(sent,reply!==undefined,output);
     assert.match(output,expected);
     return output;
   } finally { if(child.exitCode===null) child.kill('SIGKILL');child.stdin.destroy(); }
@@ -70,4 +70,12 @@ test('C14R.3 actual PTY preserves native fragments across workers and permission
   assert.match(output,/Native thought worker-a/);assert.match(output,/Native thought worker-b/);
   assert.match(output,/continued/);assert.match(output,/Permission requested/);
   assert.match(output,/Native thought [^\r\n]+ continued/);
+}));
+
+test('C14R.5 actual PTY final answer and clarification strip terminal controls only', {timeout:25000},()=>withOwnedRun('C14R-pty-final',async cwd=>{
+  const path=await config(cwd);
+  for(const task of ['tty-control','tty-question']){
+    const output=await tty(cwd,['run',task,'--config',path],undefined,/Привет 🌍\r?\nLine!/);
+    assert.doesNotMatch(output,/\x1b\[2J|SECRET|\x9b/);
+  }
 }));

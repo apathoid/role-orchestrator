@@ -37,6 +37,10 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
       // They never enter the diagnostic sink or an independent store.
       const committed = findings?.length && [...subscribers].some(s=>s.scope?.operationId===snapshot.operationId)
         ? structuredClone(findings) : undefined;
+      if (committed) {
+        for (const finding of committed) { Object.freeze(finding.supports); Object.freeze(finding.uncertainties); Object.freeze(finding); }
+        Object.freeze(committed);
+      }
       const factBytes = committed ? Buffer.byteLength(JSON.stringify(committed)) : 0;
       for (const { scope, delivery } of subscribers) {
         if (scope && (scope.operationId !== snapshot.operationId ||

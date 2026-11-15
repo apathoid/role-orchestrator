@@ -8,8 +8,9 @@ import { eventFindings } from '../core/finding.js';
 
 /** Display only: preserve underlying payload and final answer. @param {string} text */
 export function terminalText(text) {
-  return text.replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\|$)/g, '')
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+  return text.replace(/(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c|$)/g, '')
+    .replace(/(?:\x1b[P^_X]|[\x90\x98\x9e\x9f])[\s\S]*?(?:\x1b\\|\x9c|$)/g, '')
+    .replace(/(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]/g, '')
     .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '');
 }
 

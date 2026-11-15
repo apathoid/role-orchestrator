@@ -32,6 +32,13 @@ test('CLI validates arguments, accepts Unicode stdin outside Git and isolates JS
       assert.equal(JSON.parse(presented.stdout).assessment.answer,assessment.answer);
       assert.match(presented.stderr,/\[Operation .*\] complete/);
     }
+    const raw = '\x1b[2JПривет 🌍\nLine\x1b]52;c;SECRET\x07\x9b31m!';
+    const redirected = call(['run','tty-control','--config',config]);
+    assert.equal(redirected.stdout, raw + '\n');
+    const json = call(['run','tty-control','--config',config,'--format','json']);
+    assert.equal(JSON.parse(json.stdout).assessment.answer,raw);
+    const question = call(['run','tty-question','--config',config]);
+    assert.equal(question.stdout,raw+'\n');
     const inspect = call(['inspect', operationId, '--config', config, '--format', 'json']);
     assert.equal(JSON.parse(inspect.stdout).status, 'finished');
     const trace = call(['trace', operationId, '--config', config, '--format', 'json']);

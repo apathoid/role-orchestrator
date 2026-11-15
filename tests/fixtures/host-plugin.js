@@ -33,6 +33,9 @@ export function createProvider({ providerId }) {
       }
       const latest = invocation.context.findLast(item => item.provenance?.kind === 'user')?.value ?? invocation.context[0].value;
       const original = invocation.context[0].value;
+      const unsafe = '\x1b[2JПривет 🌍\nLine\x1b]52;c;SECRET\x07\x9b31m!';
+      if (latest === 'tty-question') return final(invocation, {finalAssessment:undefined,clarification:{question:unsafe}});
+      if (latest === 'tty-control') return final(invocation, {finalAssessment:assessment({author:invocation.profile.profileId,answer:unsafe,overall:'complete'})});
       if (original === 'clarify' && latest === 'clarify') {
         return final(invocation, { finalAssessment: undefined, clarification: { question: 'What scope?' } });
       }
