@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { acpActivity, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer } from '../../src/hosts/presentation.js';
+import { acpActivity, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer, factLabel } from '../../src/hosts/presentation.js';
 
 const native = (kind, payload, extra = {}) => ({kind,payload, operationId:'op',attemptId:'a',profileId:'reviewer',providerId:'provider',sequence:1,source:'provider_activity',...extra});
 test('presentation preserves actual chunks and distinguishes tool, finding, lifecycle and gaps', () => {
@@ -60,4 +60,11 @@ test('C15.2 split terminal controls are removed without buffering reasoning',()=
   assert.equal(sanitizer.push(' end'),' end');
   sanitizer.reset();
   assert.equal(sanitizer.push('new source'),'new source');
+});
+
+
+test('C15.6 labels keep historical attempt identity and do not allow line injection',()=>{
+  const label=factLabel({invocationKind:'delegate',roleId:'role\n'+ 'x'.repeat(400),attemptOrdinal:7,profileId:'p\tfake'});
+  assert.match(label,/#7 · p fake$/);
+  assert.doesNotMatch(label,/[\n\t]/);
 });

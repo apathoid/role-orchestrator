@@ -64,14 +64,16 @@ export function createTerminalSanitizer() {
 /** @param {string} text @param {number} [limit] */
 export function boundedText(text,limit=4096){
   const safe=terminalText(text);
-  return safe.length>limit?safe.slice(0,limit)+'… [display truncated]':safe;
+  if(safe.length<=limit)return safe;
+  const end=safe.charCodeAt(limit-1)>=0xd800&&safe.charCodeAt(limit-1)<=0xdbff?limit-1:limit;
+  return safe.slice(0,end)+'… [display truncated]';
 }
 
 /** @param {ExecutionFact} fact */
 export function factLabel(fact){
-  return boundedText((fact.invocationKind==='controller'?'Controller':fact.roleId??'Worker')+
+  return (fact.invocationKind==='controller'?'Controller':boundedText(fact.roleId??'Worker',80).replace(/[\n\t]/g,' '))+
     (fact.attemptOrdinal!==undefined?' #'+fact.attemptOrdinal:'')+
-    (fact.profileId?' · '+fact.profileId:''),240);
+    (fact.profileId?' · '+boundedText(fact.profileId,120).replace(/[\n\t]/g,' '):'');
 }
 
 /** @param {unknown} value @returns {Record<string, unknown>} */
@@ -161,8 +163,10 @@ export function formatExecution(event, mode, fact) {
     (fact.modelSelector?' · selector='+boundedText(fact.modelSelector,160):'')+
     (fact.reasoning?.mode==='selectable'?' · effort='+boundedText(fact.reasoning.level,80):fact.reasoning?.mode==='native'?' · native effort':'')+
     (fact.objective?'\n  '+boundedText(fact.objective):''):'';
-  const terminal=fact&&event.eventName==='attempt.outcome'?
-    ' · '+fact.terminal+' · effect='+fact.effect:'';
+  const terminal=fact?.kind==='attempt.outcome'?
+    ' · '+fact.terminal+' · effect='+fact.effect+(fact.late?' · late report':''):
+    fact?.kind==='operation.finished'&&fact.assessmentOverall?' · '+fact.assessmentOverall:
+    fact?.kind==='operation.waiting'&&fact.waitingKind?' · '+fact.waitingKind:'';
   const reason=mode==='debug'||!['attempt.dispatched','attempt.outcome','operation.accepted','operation.finished','operation.continued'].includes(event.eventName)
     ?' · '+event.reasonCode:'';
   return terminalText('[' + identity + '] ' + title + terminal + reason + route + extra);
@@ -176,6 +180,7 @@ export function formatRecordedFindings(event, mode) {
 export function formatFindingRecords(findings,mode) {
   return findings.map(finding => ({
     id: finding.findingId,
+    author: finding.author,
     text: terminalText('[Recorded finding ' + finding.findingId + ' · ' + finding.author + '] ' + boundedText(finding.claim) +
       ' — ' + boundedText(finding.subject,1024) +
       (finding.uncertainties.length ? '\nUncertainty: ' + boundedText(finding.uncertainties.join('; '),2048) : '') +
@@ -187,7 +192,7 @@ export function formatFindingRecords(findings,mode) {
 /** @param {Operation} state @param {PresentationMode} mode */
 export function formatOperation(state, mode) {
   const terminal = state.status === 'finished' ? state.assessment?.overall ?? 'finished' : state.status;
-  const attempts = state.attempts.map(attempt => '  ' + (attempt.actionId === attempt.attemptId ? 'Controller' : attempt.actionId) +
+  const attempts = mode==='compact'?'':state.attempts.map(attempt => '  ' + (attempt.actionId === attempt.attemptId ? 'Controller' : attempt.actionId) +
     ' ' + attempt.attemptId + ' · ' + (attempt.route?.profileId ?? 'route unknown') +
     ' · ' + (attempt.outcome?.terminal ?? attempt.status) +
     (attempt.outcome ? ' · effect=' + attempt.outcome.effect : '') +
@@ -295,7 +300,7 @@ export function acpExecutionInline(event,findings,mode,fact,historical=false){
     eventId:fact?.journalEventId??event.eventId,eventName:event.eventName,reasonCode:event.reasonCode,...(historical&&{recovered:true})};
   if(text) updates.push(acpOwnMessage(text,{...source,source:fact?'journal':'execution'},source.eventId));
   for(const finding of formatFindingRecords(findings??[],displayMode)){
-    updates.push(acpOwnMessage(finding.text,{...source,source:'recorded_finding',findingId:finding.id},finding.id));
+    updates.push(acpOwnMessage(finding.text,{...source,source:'recorded_finding',findingId:finding.id,author:finding.author},finding.id));
   }
   return updates;
 }

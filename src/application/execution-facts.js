@@ -7,7 +7,8 @@
  * objective?:string, terminal?:import('../core/contracts.js').Outcome['terminal'],
  * effect?:import('../core/contracts.js').Outcome['effect'],
  * dispatchCertainty?:import('../core/operation.js').DispatchCertainty,
- * cancellation?:import('../core/contracts.js').CancellationSource
+ * cancellation?:import('../core/contracts.js').CancellationSource,
+ * late?:true, assessmentOverall?:import('../core/contracts.js').Assessment['overall'], waitingKind?:'question'|'technical'
  * }} ExecutionFact */
 
 /** Read-only technical projection of a committed transition; no state retained.
@@ -42,6 +43,8 @@ export function executionFact(state,event) {
       reasoning:route.reasoning}),
     ...(action&&{roleId:action.roleId,objective:action.objective}),
     ...(event.kind==='attempt.outcome'&&{terminal:event.outcome.terminal,effect:event.outcome.effect,
-      dispatchCertainty:event.dispatchCertainty}),
+      dispatchCertainty:event.dispatchCertainty,late:event.late}),
+    ...(event.kind==='operation.finished'&&{assessmentOverall:event.assessment.overall}),
+    ...(event.kind==='operation.waiting'&&{waitingKind:event.waiting.kind}),
   };
 }

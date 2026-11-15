@@ -182,3 +182,17 @@ test('C15.3 numbered choices preserve native option identity and render actual f
   assert.deepEqual(await f,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
   terminal.close();
 });
+
+
+test('C15.6 interleaved native sources retain split escape state and visual boundaries',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let rendered='';
+  output.on('data',chunk=>rendered+=chunk.toString());
+  const terminal=createCliInput(input,output,false,()=>{});
+  await terminal.printChunk({source:'a',header:'[A] ',text:'first\x1b]52;c;'});
+  await terminal.printChunk({source:'b',header:'[B] ',text:'second'});
+  await terminal.print('Lifecycle');
+  await terminal.printChunk({source:'a',header:'[A] ',text:'SECRET\x07rest'});
+  terminal.close();
+  assert.match(rendered,/\[A\] first\n\[B\] second\nLifecycle\n\[A\] rest/);
+  assert.doesNotMatch(rendered,/SECRET|\x1b/);
+});

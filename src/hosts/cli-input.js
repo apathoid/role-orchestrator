@@ -26,7 +26,8 @@ export function supportedForm(request) {
 function parse(entry, line) {
   if (entry.kind === 'permission') {
     const numbered=/^option ([1-9]\d*)$/.exec(line);
-    const option = numbered ? entry.request.options[Number(numbered[1])-1] : entry.request.options.find(option => option.id === line);
+    const exact=entry.request.options.find(option => option.id === line);
+    const option = exact ?? (numbered ? entry.request.options[Number(numbered[1])-1] : undefined);
     return option && { kind:'answered', payload: { optionId: option.id } };
   }
   if (line === 'decline' || line === 'cancel') return { kind:'answered', payload: { action: line } };
@@ -104,7 +105,17 @@ export function createCliInput(input, output, interactive, interrupt) {
   let chunkSource;
   let openLine=false;
   const color=Boolean('isTTY' in output&&output.isTTY&&process.env.NO_COLOR===undefined&&process.env.TERM!=='dumb');
-  const sanitizer=createTerminalSanitizer();
+  /** @type {Map<string,ReturnType<typeof createTerminalSanitizer>>} */
+  const sanitizers=new Map();
+  /** @param {string} source */
+  function sanitizerFor(source){
+    let sanitizer=sanitizers.get(source);
+    if(!sanitizer){
+      if(sanitizers.size>=128){const first=sanitizers.keys().next().value;if(first!==undefined)sanitizers.delete(first);}
+      sanitizer=createTerminalSanitizer();sanitizers.set(source,sanitizer);
+    }
+    return sanitizer;
+  }
   /** @param {string} safe @param {PresentationTone} [tone] */
   function style(safe,tone) {
     if(!color||!tone||tone==='neutral')return safe;
@@ -138,7 +149,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @param {string} text @param {PresentationTone} [tone] */
   function print(text,tone) {
     const prefix=openLine?'\n':'';
-    openLine=false;chunkSource=undefined;sanitizer.reset();
+    openLine=false;chunkSource=undefined;
     return write(prefix+style(terminalText(text),tone)+'\n');
   }
   /** Local messages do not own a delivery receipt. Never recursively
@@ -151,8 +162,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     // Readline owns its current input line. Use a technical line boundary
     // while editing instead of overwriting or buffering a native chunk.
     const changed=chunkSource!==fragment.source;
-    if(changed)sanitizer.reset();
-    const body=sanitizer.push(fragment.text);
+    const body=sanitizerFor(fragment.source).push(fragment.text);
     if(rl){chunkSource=fragment.source;return write(style(terminalText(fragment.header),'thinking')+body+'\n');}
     const text=(changed?(openLine?'\n':'')+style(terminalText(fragment.header),'thinking'):'')+body;
     chunkSource=fragment.source;
@@ -169,7 +179,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   }
   function stopReader() {
     if (pending.size || !rl) return;
-    const reader = rl; rl = undefined; reader.close();
+    const reader = rl; rl = undefined; chunkSource=undefined; reader.close();
   }
   function open() {
     if (rl) return;
@@ -203,7 +213,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     }
     const label = '#' + entry.request.requestId;
     if (pending.has(label)) return {kind:'unavailable'};
-    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;sanitizer.reset();}
+    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;}
     if(unavailable()) return {kind:'unavailable'};
     try { open(); } catch(error) { broken(error); return {kind:'unavailable'}; }
     return new Promise(resolve => {
@@ -224,7 +234,8 @@ export function createCliInput(input, output, interactive, interrupt) {
   return { ask, print, printChunk, report, close() {
     for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     stopReader();
-    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;sanitizer.reset();}
+    sanitizers.clear();
+    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;}
     // Leave the error guard on this terminal stream through outstanding writes;
     // the CLI process owns its lifetime, not the presentation consumer.
   }};

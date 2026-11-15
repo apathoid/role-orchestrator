@@ -2,11 +2,15 @@
 
 **Ветка:** `feature/interactive-ux`. **Base:** master merge PR #2, `50cffa4f0ab4151871beb36529be27e33f2c1d11`. Исторический baseline перед C12: `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 
-## C15 — Rich Presentation & ACP Transcript (PLANNED)
+## C15 — Rich Presentation & ACP Transcript (IMPLEMENTED; verification running)
 
-**Следующий шаг: C15.6**, затем C15.7 по [детальному заданию](C15_PRESENTATION_EXPERIENCE.md). Реализация на текущей ветке feature/interactive-ux; master не изменять. Baseline проектирования b302ffa41d77ce0e12fe948bd8651e53b2138a8f, последний подтверждённый engineering checkpoint b1ae0c88c54fdb99c3c39ecc01c97bf3288c329d ([CI 43691063762](https://github.com/apathoid/role-orchestrator/actions/runs/43691063762), 455/455 root + 4/4 actual Linux PTY). C15.0 baseline/mapping COMPLETE; C15.1 implementation added; regression pending; regression on planning SHA in progress; native/comparative UNVERIFIED.
+**Следующий шаг: подтвердить C15.6 CI, затем C15.7** по [детальному заданию](C15_PRESENTATION_EXPERIENCE.md). Реализация на текущей ветке feature/interactive-ux; master не изменять. Baseline проектирования b302ffa41d77ce0e12fe948bd8651e53b2138a8f, последний подтверждённый engineering checkpoint b1ae0c88c54fdb99c3c39ecc01c97bf3288c329d ([CI 43691063762](https://github.com/apathoid/role-orchestrator/actions/runs/43691063762), 455/455 root + 4/4 actual Linux PTY). C15.0–C15.6 implementation complete; full CI and comparative engineering measurements pending on the new SHA; native/comparative UNVERIFIED. Planning SHA CI 43708060116 SUCCESS.
 
 Согласовано: rich CLI streaming без live status line/REPL; ACP inline сразу default, notices explicit alternative, native client thinking/tools/plan/permissions/forms unchanged. History через existing session.requests и Operation journal, правильный порядок turns, не полный replay live activity. Не менять Coordinator event publication/dispatch ради UI; compact complete attributed RO messages. Никаких новых model calls/prompts, semantic Host policy, workflow, environment restrictions, scheduler или execution journal. Сохраняются F4/C12/C13/C14/C13R-C14R native/comparative obligations; C15 не закрывает их synthetic fixtures.
+
+### C15.6 — engineering regression and audit
+
+Hardened source labels and interleaved terminal control-sequence state, kept exact permission IDs, exposed actual assessment/waiting/late-outcome facts, avoided detailed summary assembly in compact mode. Added deterministic baseline/current CLI and ACP comparison probe and source-safety regressions; normative docs and single matrix A77–A81 updated. No Coordinator, prompts, Decision/Outcome, context/evidence, scheduler, provider/tool/skill/permission execution policy changes. Full CI and measurements to be recorded at C15.7; native obligations unchanged.
 
 ### C15.5 — chronological ACP history
 

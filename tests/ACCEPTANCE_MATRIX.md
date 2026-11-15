@@ -391,3 +391,14 @@ C13R/C14R actual baseline and per-step evidence in [corrective roadmap](../docs/
 
 
 **C13R.4R / C14R.5R final corrective engineering PASS:** [CI 43691063762](https://github.com/apathoid/role-orchestrator/actions/runs/43691063762), exact combined implementation SHA `b1ae0c88c54fdb99c3c39ecc01c97bf3288c329d`, 455/455 root + 4/4 actual Linux PTY, zero failures/skips/cancellations, all mandatory package/Nix/release/lock checks SUCCESS. Existing A69/A70/A75 coverage extended, seven new integration tests (no removed/weakened tests). C13R.4R red-only `6d323bd6` CI 43690793449 actual adapter observation count 1024 vs 1100, corrected actual adapter + Coordinator journal + attributed outputRefs + fetch/snapshot; all four activity modes equivalent; bounded tiny/large streams, exact omissions, latest terminal/result and late decline. C14R.5R actual Writable confirmation/error/close/timeout/late callback, unavailable prompt/no synthetic answer, non-rejecting local reports, direct execution/JSON and attached socket terminal result. Native/comparative A61/A66/F4/C12 remain UNVERIFIED, not substituted by fixtures. See STATUS and corrective roadmap.
+
+
+## C15 — rich presentation and transcript
+
+| ID | Requirements | Acceptance evidence | Level |
+|---|---|---|---|
+| A77 | R18,R21,R22,R31 | Scoped committed facts, trusted CLI styles, streaming source/escape boundaries, readable native tools/findings, permission/form exact choice: `presentation.test.js`, `delivery.test.js`, `cli-ux.test.js`, Linux PTY | I/PTY |
+| A78 | R18,R21,R23,R26 | ACP default attributed inline, explicit notices, native updates and independent final/interaction, bounded queues: `host-acp.test.js`, `delivery.test.js` | I/SDK |
+| A79 | R08,R14,R21,R23 | Exact session request/response boundaries, A→B→A, historical retry and repeated load, background attribution: `host-acp.test.js` | I/SDK |
+| A80 | R01,R03,R09,R11,R13,R16,R18,R21,R26,R31 | Existing full regression, mode equivalence, measured deterministic presentation comparison and bounds; package/Nix/CI | I/E |
+| A81 | R13,R18,R19,R27,R30,R31 | Real installed CLI and Zed/native model/provider, matched comparative quality/latency; explicit UNVERIFIED when unavailable | N |
