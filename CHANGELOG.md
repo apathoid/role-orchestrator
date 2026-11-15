@@ -4,6 +4,14 @@
 
 ## Unreleased — C12 integration and delivery
 
+### C13R/C14R — interaction reliability and presentation completeness
+
+- Addressed attached reply uncertainty and original work binding reconnect without redispatch or capability escalation; no automatic new answer after lost acknowledgement.
+- Bounded normal presentation drain, immediate disconnect/cancel; explicit gaps, no replay.
+- Codex incremental JSONL parse independent of raw capture; bounded execution evidence, explicit truncation/omission and latest declared result, unchanged terminal/exit checks.
+- Scoped ACP source metadata, concurrent old/new prompt interaction fixture, native thinking fragments in CLI, no repeated presentation snapshot reads, safe human TTY final/clarification.
+- Standard ACP notices for committed findings and lifecycle when negotiated; no fake native events or history. Actual SDK/subprocess/PTY engineering regression separate from real native/comparative UNVERIFIED.
+
 ### C12R.10R follow-up — evidence attribution and ACP teardown
 
 - Preserve trusted Host transport attribution in matching Outcome refs without relaxing exit/attempt identity or rewriting historical evidence.

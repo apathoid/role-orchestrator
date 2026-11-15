@@ -32,7 +32,7 @@ C12R.10R F4 и прежние native obligations **не закрыты**: поп
 
 ## C13R/C14R — corrective follow-up
 
-[Interaction Reliability & Presentation Completeness](C13R_C14R_INTERACTION_RELIABILITY.md): C13R.0–.4, C14R.1–.6, full regression/audit and native disposition. Addressed defects only, no new runtime workflow. STATUS determines next step. Existing C13/C14 verified baseline and open F4/C12/native obligations retained.
+[Interaction Reliability & Presentation Completeness](C13R_C14R_INTERACTION_RELIABILITY.md): C13R.0–.4, C14R.1–.6, full regression/audit and native disposition (A67–A76). Addressed defects only, no new runtime workflow. STATUS determines next step. Existing C13/C14 verified baseline and open F4/C12/native obligations retained.
 
 ## C12R — корректирующий этап и приёмка
 

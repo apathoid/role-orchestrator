@@ -80,3 +80,6 @@ Preserve native protocol semantics and original provider output; ambiguous agent
 ### C14 decision: thin client consumers, no reconstructed thinking
 
 Use common pure display mapping and existing C13 delivery, one terminal reader/owner, standard ACP updates with attempt-scoped native IDs. Mode does not affect execution or availability of input. No UI-specific scheduler, durable event store, proprietary ACP widget requirement or fake progress. Trade-off: absent native channels cannot be shown live; safe omission, explicit current snapshot/inspect in CLI and bounded gaps are preferable to guessing. Local control attached pending input is handler delivery, not new permission authority.
+
+### C13R/C14R — reliability and negotiated notices
+Reuse existing work request/token/answer binding for reconnect, never restart unknown work. Separate bounded normal presentation finish from immediate disconnect. Codex raw capture exhaustion is not a wire parser failure; retain bounded execution facts and latest result independently. Use pinned ACP SDK standard session.notices capability for actual committed findings/lifecycle/gap, not synthetic tool/thought or extra history. No new scheduler, native isolation, workspace gate, mandatory reporting or model semantics. [Corrective roadmap](roadmap/C13R_C14R_INTERACTION_RELIABILITY.md).

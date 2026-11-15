@@ -370,3 +370,21 @@ C13.0–.5 fixture and CI evidence is recorded in [STATUS](../docs/roadmap/STATU
 | A66 | R13,R18,R19,R27,R30,R31 | Actual native executors/model settings, real CLI terminal and Zed/graphical client, native input/tools/finding as supported, matched comparative task/quality/latency; precise UNVERIFIED per unavailable capability | N C14.5 |
 
 **C14 engineering OBSERVED:** [CI 43651158169](https://github.com/apathoid/role-orchestrator/actions/runs/43651158169), exact `42f65def24649dd28360c3ea8fc553e187206493`, 432/432 root tests plus 2/2 actual Linux PTY transport fixtures; zero failures/skips/cancellations, all mandatory checks including Nix/package/release evidence. A62–A65 engineering/fixture PASS. A66 real native model/client and comparative quality/performance **UNVERIFIED**; precise blockers and executable probes in [NATIVE_ACCEPTANCE](../docs/roadmap/NATIVE_ACCEPTANCE.md#c145--actual-native-and-comparative-disposition). No real LLM or graphical widget claim; A61/F4/C12 native obligations remain open.
+
+
+## C13R / C14R — corrective interaction and presentation acceptance
+
+| ID | Требования | Проверяемый сценарий / тесты | Уровень |
+|---|---|---|---|
+| A67 | R08,R14,R19,R23 | Reply rejection, lost-before/lost-after, timeout, parallel pending, polling failure, EOF/no automatic replay: `tests/integration/local-control.test.js` C13R.1 | I/socket |
+| A68 | R08,R14,R19,R23 | Original work binding reconnect after last owner disconnect, settled input rejected, observer/no capability escalation, no redispatch: `local-control.test.js` C13R.2, C14 view; `tests/pty/cli.test.js` attached | I/PTY |
+| A69 | R21,R22,R26,R31 | Ordered bounded normal finish, blocked/throwing/disconnected consumer, gap, no replay, final independently: `delivery.test.js`, `cli-ux.test.js`, `local-control.test.js`, `host-acp.test.js` | I |
+| A70 | R11,R18,R21,R27 | Long actual Codex subprocess beyond raw capture, result/terminal/usage/exit/evidence limits and malformed/oversized/incomplete stream, explicit late denial, no/fast/slow/throwing consumer equivalence: `codex-output.test.js`, `codex-provider.test.js`, existing process regressions | I/subprocess |
+| A71 | R18,R21,R23 | ACP anonymous/identified native source and scoped IDs, Codex item identity: `presentation.test.js`, `host-acp.test.js` C14R.1 | I/SDK |
+| A72 | R08,R14,R19,R23 | Old Worker A while new prompt B, permission/form/FS/extension request/notification and return to A: `host-acp.test.js` C14R.2 | I/SDK |
+| A73 | R21,R22 | Consecutive native text only, parallel source switch and input boundary: `cli-ux.test.js`, `tests/pty/cli.test.js` C14R.3 | I/PTY |
+| A74 | R18,R21,R22,R26,R31 | Measured repeated full snapshot cost; immutable scoped committed findings, no sink/unscoped body, bound invocation identity: `local-control.test.js`, `delivery.test.js`, `host-acp.test.js` | I |
+| A75 | R21,R22 | Human TTY final/clarification escape/control display; Unicode/newline and raw JSON/redirected stdout preserved: `tests/pty/cli.test.js`, `host-cli.test.js`, `presentation.test.js` | I/PTY |
+| A76 | R18,R21,R22,R23 | Negotiated standard ACP notices, actual lifecycle/accepted findings, no notice without capability, no load replay/new-prompt contamination: `host-acp.test.js` C14R.6 | I/SDK |
+
+C13R/C14R actual baseline and per-step evidence in [corrective roadmap](../docs/roadmap/C13R_C14R_INTERACTION_RELIABILITY.md) and [STATUS](../docs/roadmap/STATUS.md). A67–A76 engineering fixture acceptance only. Exact current full CI required. A61/A66 and F4/C12 real model/client and comparative obligations remain UNVERIFIED; see [NATIVE_ACCEPTANCE](../docs/roadmap/NATIVE_ACCEPTANCE.md).

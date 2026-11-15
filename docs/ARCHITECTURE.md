@@ -86,3 +86,6 @@ The existing Coordinator binds optional ProviderPort activity and native input i
 ### C14 — presentation consumers
 
 CLI и ACP читают C13 ActivityStream/Execution Events и authoritative operation snapshot. Renderer не участвует в orchestration, context, evidence, model selection, scheduling или outcome. Один terminal input owner на foreground work request; attached peer использует существующий local-control binding и pending delivery registry, не новый execution lifecycle. Prompt-scoped ACP subscription не меняет operation lifetime/route: background permission/form остаются возможны, если существующий route/client поддерживает их. Не объявлять отсутствующий native channel доступным.
+
+### C13R/C14R — corrective presentation boundary
+Normal consumer finish is a bounded transport drain after execution, not coordinator work. Committed finding records can flow to scoped subscribers directly from existing journal commit, without a separate state/index or diagnostic sink body. Native activity source metadata and interaction identity use the existing attempt/operation correlation; standard ACP notices are capability-gated presentation, not history or model context. See [corrective roadmap](roadmap/C13R_C14R_INTERACTION_RELIABILITY.md).

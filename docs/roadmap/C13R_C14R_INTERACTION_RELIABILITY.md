@@ -20,3 +20,31 @@ GitHub compare of review SHA and feature/interactive-ux: identical. CI [43651466
 | C14R.6 | SUPPORTED omission; independent standard notice channel UNVERIFIED | inspect pinned SDK, actual probe; no synthetic events, optional extension only if negotiated and useful; otherwise explicit limitation |
 
 Separate commits and STATUS checkpoints. Engineering exit: full current SHA CI, address findings or document evidence for no change, matrix updated, native/comparative probes or exact UNVERIFIED. No merge.
+
+
+## Implementation checkpoints
+
+| Step | Commit(s) | Addressed regression and disposition |
+|---|---|---|
+| C13R.0 | `1b5be0fe` | Exact review baseline CI; source-supported defects, no later baseline changes |
+| C13R.1 | `1db12a56`, audit follow-up | Actual socket reply accepted/rejected, pre-send failure, accepted/lost ack, timeout, parallel pending, polling failure, EOF without automatic retry. Pending disappearance never implies acceptance. |
+| C13R.2 | `c25dd539`, audit follow-up | Socket disconnect/old key reconnect/new request, old reply rejected, observer denied key, presentation vs interactive capability separate. Existing live work binding only, no dispatch/replay. |
+| C13R.3 | `3196b1eb`, audit follow-up | Bounded delivery finish vs immediate close; ordered queued completion, pending gap, blocked/throwing consumer, no reconstruction, final independent. ACP/CLI/socket tests. |
+| C13R.4 | `4540b1dd`, `7f8231c3`, audit follow-up | Actual long Codex subprocess with >1 MiB reasoning/tool events and terminal result, malformed/oversize/incomplete/missing terminal/nonzero exit regressions retained. Raw capture independent; bounded execution facts and latest declared result/error slots; explicit omitted evidence and declined command count. |
+| C14R.1 | `b86f5e86` | Standard ACP _meta source, no invented anonymous messageId; scoped native IDs, Codex item ID, actual SDK/golden tests. |
+| C14R.2 | `1e83005b` | Actual SDK A clarification/old Worker and B prompt concurrently, permission/form/FS/extension request+notification, B result and return to A; typed permission/form source metadata. Opaque extension contracts unchanged. |
+| C14R.3 | `67b60358` | Golden adjacent native text fragments and actual Linux PTY parallel Worker+permission. No semantic grouping/aggregation. |
+| C14R.4 | `0c4e1502` | Measured representative fixture and removed repeated full presentation reads. Existing bound action/kind and committed finding records; no persisted UI index. |
+| C14R.5 | `97be9d4d` | Actual PTY final/clarification controls removed; redirected/JSON original text preserved. |
+| C14R.6 | `f80faa1f` | Standard SDK 2.4.0 session/update notice negotiated by client session.notices. Actual capability on/off and accepted finding/lifecycle/load/new prompt. No custom extension or new message history. |
+| Audit | `79e9bb7a`, `09b2babe` | Callback failure unconfirmed; no terminal replay; original input binding independent from mode, input-only CLI, EOF no retry, immediate ACP display stop; late declined evidence and slow/fast modes. |
+
+**C14R.4 measured OBSERVED**: CI [43687881957](https://github.com/apathoid/role-orchestrator/actions/runs/43687881957), integration/root suite at `0c4e1502`, 32 full inspect calls / 35,138,688 serialized bytes vs 3,276 bytes of committed finding facts; heap delta 71,628,968 bytes, wall 728.74 ms (single synthetic fixture run; heap GC-dependent, not native model measurement). Replaced per-plan inspect with bound invocation kind; per-finding inspect with committed immutable records delivered only to scoped subscribers, not diagnostics sink or unscoped subscriber. No model context changes.
+
+**C14R.6 transport finding**: pinned SDK v2.4.0 generated SessionUpdate union includes notice with title/description/severity/_meta. ClientCapabilities.session.notices is opt-in; notices explicitly not history. Use that standard route only on active prompt and only if declared. Typed request and update metadata preserves source; raw extension payloads remain opaque (session mapping only). No assumption about GUI rendering or out-of-prompt support. For clients without notices, accepted finding/lifecycle/gap remain available in CLI or explicit inspect, not fake native events. Explicit native public/live-finding channel still unverified.
+
+**Limits**: 250 ms presentation-only finish; existing 128 / 1 MiB delivery bounds; 256 KiB Codex wire frame, 1 MiB raw stdout, 64 KiB stderr unchanged; bounded evidence prefix 1 MiB / 1024 frames and latest declared result/error slots. Evidence omission is explicit and does not claim completeness. No new provider/operation deadlines or slot accounting. No automatic answer replay/new reply after uncertain delivery; reconnect same live owner/request binding at most once, no restore of already settled input. No UI-driven model invocations.
+
+**CI:** implementation checkpoint `f80faa1f1c87ada0079289407f94068691f475dc` [43688137847](https://github.com/apathoid/role-orchestrator/actions/runs/43688137847) full SUCCESS (445 root + 4 PTY, all mandatory checks). Subsequent audit changes must pass their own exact-SHA CI. See STATUS for final acceptance.
+
+**Native/comparative**: unchanged UNVERIFIED, no real model/client available in local environment. See [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md#c13rc14r--corrective-native-and-comparative-probes). F4/C12/A61/A66 remain open. No master merge.
