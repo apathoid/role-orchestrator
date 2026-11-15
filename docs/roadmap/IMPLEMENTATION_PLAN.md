@@ -4,6 +4,23 @@
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
+## C15 — Rich Presentation & ACP Transcript (текущий этап)
+
+[Детальное задание C15](C15_PRESENTATION_EXPERIENCE.md). Ветка feature/interactive-ux, prerequisite C13/C14/C13R/C14R engineering handoff выполнен; native/comparative obligations остаются открыты. Следующий шаг исключительно по [STATUS](STATUS.md).
+
+| Шаг | Обязательный результат |
+|---|---|
+| C15.0 | Baseline, actual sources, transport mapping и acceptance contract |
+| C15.1 | Minimal scoped presentation facts, historical route/source identity |
+| C15.2 | Rich CLI streaming, safe styles, grouping, tools/findings/final |
+| C15.3 | CLI interaction UX, existing single input owner, no live status line |
+| C15.4 | Standard ACP inline progress default, native client widgets unchanged |
+| C15.5 | Chronological ACP transcript history via session.requests and journal |
+| C15.6 | Full regression, resource bounds, architecture audit, CI |
+| C15.7 | Actual CLI/Zed native/comparative acceptance or explicit UNVERIFIED, handoff |
+
+Presentation-only; no model prompt/Decision/context/evidence/dispatch/scheduler changes, no Host semantic inference, no native tools/skills/environment restriction, no second execution journal. Inline is default immediately; explicit notices compatibility; preserve dynamic native plan. No live status line/REPL. History is user presentation, not model context. Native unavailable does not block engineering; existing F4/C12/C13/C14 obligations remain. No merge without separate instruction.
+
 ## C13 / C14 — Interactive protocols and client UX (новая ветка)
 
 **Инженерный handoff завершён; реальные native/comparative обязательства открыты (см. STATUS). Ветка:** `feature/interactive-ux`, ответвлена от master merge PR #2 (`50cffa4f0ab4151871beb36529be27e33f2c1d11`). Следующий шаг исключительно по [STATUS](STATUS.md). Два последовательных инженерных кластера, не runtime workflow; реализация на этой ветке, master не изменять без отдельного поручения.
