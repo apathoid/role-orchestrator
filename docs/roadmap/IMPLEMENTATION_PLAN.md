@@ -4,7 +4,7 @@
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
-## C15R — Presentation Quality & Fidelity (текущий этап)
+## C15R — Presentation Quality & Fidelity (engineering complete; native re-acceptance)
 
 [Детальное задание C15R](C15R_PRESENTATION_QUALITY.md). Review baseline `0aee345c9833ec741b6cd8e622c39c1c7c6b88ce`; C15 engineering PASS, compact visual acceptance NOT ACCEPTED. Ветка feature/interactive-ux. Следующий шаг исключительно по [STATUS](STATUS.md).
 
@@ -17,7 +17,7 @@
 | C15R.4 | ACP history outcome classification/provenance fidelity, existing journal |
 | C15R.5 | Full regression/CI, measured overhead, native re-acceptance or explicit UNVERIFIED; separate changed diagnosis |
 
-No model prompt/Decision/context/evidence/routing/scheduling/permission/native tool/skill changes; no second lifecycle, journal or virtual environment. Native ACP mapping and inline default unchanged. A82–A86 planned; C15R does not close earlier native obligations. Logical commits and STATUS per checkpoint; no merge master.
+No model prompt/Decision/context/evidence/routing/scheduling/permission/native tool/skill changes; no second lifecycle, journal or virtual environment. Native ACP mapping and inline default unchanged. A82–A85 engineering PASS, A86 native/comparative UNVERIFIED; exact SHA/CI in STATUS. C15R does not close earlier native obligations. Logical commits and STATUS per checkpoint; no merge master.
 
 ## C15 — Rich Presentation & ACP Transcript (исторический engineering handoff)
 

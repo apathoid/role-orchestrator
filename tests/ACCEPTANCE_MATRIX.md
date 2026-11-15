@@ -406,7 +406,7 @@ C13R/C14R actual baseline and per-step evidence in [corrective roadmap](../docs/
 C15 A77–A80 engineering verification: see exact checkpoint and CI in [STATUS](../docs/roadmap/STATUS.md). A81 native model/graphical client and matched comparative acceptance UNVERIFIED; existing F4/C12/A61/A66/C13R/C14R obligations remain open.
 
 
-## C15R — presentation quality and fidelity (PLANNED)
+## C15R — presentation quality and fidelity (engineering PASS / native UNVERIFIED)
 
 | ID | Requirements | Acceptance criteria / expected evidence | Level |
 |---|---|---|---|
@@ -416,4 +416,4 @@ C15 A77–A80 engineering verification: see exact checkpoint and CI in [STATUS](
 | A85 | R18,R21,R22,R23,R26,R31 | Live/history outcome report classification (ordinary/late/discrepancy/duplicate, explicit fallback when not recorded), stable IDs and exact A→B→A/old retry/boundaries; bounded resources, full execution equivalence, full CI and baseline measurements | I/SDK/E |
 | A86 | R18,R19,R26,R31 | Installed native CLI visual re-acceptance and real ACP client, matched real task/model/usage/latency and separate changed skill diagnosis; unavailable explicitly UNVERIFIED | N |
 
-C15R A82–A86 NOT RUN / PLANNED. See [C15R](../docs/roadmap/C15R_PRESENTATION_QUALITY.md) and [STATUS](../docs/roadmap/STATUS.md). Earlier A77–A80 exact-SHA CI evidence retained; A81 and F4/C12/C13/C14/C13R/C14R native/comparative obligations remain open.
+C15R A82–A85 engineering PASS: [CI 43713292671](https://github.com/apathoid/role-orchestrator/actions/runs/43713292671), exact implementation `9c09318f729b20fa989e1d4c6474a7eea7c0eff5`, 476/476 root + 7/7 actual Linux PTY, full mandatory Nix/package/release and red/green/matched fixture benchmarks PASS. A86 real native/visual/comparative UNVERIFIED; [actual transcripts and measurements](../docs/roadmap/C15R_TRANSCRIPT_EVIDENCE.md). See [C15R](../docs/roadmap/C15R_PRESENTATION_QUALITY.md) and [STATUS](../docs/roadmap/STATUS.md). Earlier A77–A80 exact-SHA CI evidence retained; A81 and F4/C12/C13/C14/C13R/C14R native/comparative obligations remain open.
