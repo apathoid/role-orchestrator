@@ -1,10 +1,25 @@
 # Активный план реализации и приёмки
 
-**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A81 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
+**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A86 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
-## C15 — Rich Presentation & ACP Transcript (текущий этап)
+## C15R — Presentation Quality & Fidelity (текущий этап)
+
+[Детальное задание C15R](C15R_PRESENTATION_QUALITY.md). Review baseline `0aee345c9833ec741b6cd8e622c39c1c7c6b88ce`; C15 engineering PASS, compact visual acceptance NOT ACCEPTED. Ветка feature/interactive-ux. Следующий шаг исключительно по [STATUS](STATUS.md).
+
+| Шаг | Обязательный результат |
+|---|---|
+| C15R.0 | Baseline, red native-tool fixture, full transcript contract |
+| C15R.1 | Bounded CLI tool identity projection, sparse updates and distinct modes |
+| C15R.2 | Rich append-only source/Thinking/tool/finding/interaction blocks, actual PTY |
+| C15R.3 | Authoritative answer first on shared human terminal, truthful counts/summary |
+| C15R.4 | ACP history outcome classification/provenance fidelity, existing journal |
+| C15R.5 | Full regression/CI, measured overhead, native re-acceptance or explicit UNVERIFIED; separate changed diagnosis |
+
+No model prompt/Decision/context/evidence/routing/scheduling/permission/native tool/skill changes; no second lifecycle, journal or virtual environment. Native ACP mapping and inline default unchanged. A82–A86 planned; C15R does not close earlier native obligations. Logical commits and STATUS per checkpoint; no merge master.
+
+## C15 — Rich Presentation & ACP Transcript (исторический engineering handoff)
 
 [Детальное задание C15](C15_PRESENTATION_EXPERIENCE.md). Ветка feature/interactive-ux, prerequisite C13/C14/C13R/C14R engineering handoff выполнен; native/comparative obligations остаются открыты. Следующий шаг исключительно по [STATUS](STATUS.md).
 
