@@ -146,7 +146,7 @@ const lifecycleLabels={
   'interaction.resolved':'Interaction resolved'
 };
 const lifecycle = new Set(['operation.accepted', 'attempt.dispatched', 'attempt.outcome',
-  'attempt.cancel_requested', 'operation.cancelled', 'operation.waiting', 'operation.finished',
+  'attempt.cancel_requested', 'operation.cancelled', 'action.cancelled', 'operation.waiting', 'operation.finished',
   'operation.continued', 'operation.recovered', 'controller.invalid_proposal', 'action.rejected', 'action.deferred',
   'permission.requested', 'permission.resolved', 'permission.expired', 'interaction.requested', 'interaction.resolved']);
 
@@ -170,7 +170,7 @@ export function formatExecution(event, mode, fact) {
     fact?.cancellation&&['attempt.cancel_requested','operation.cancelled','action.cancelled'].includes(fact.kind)?' · source='+fact.cancellation:
     fact?.kind==='operation.finished'&&fact.assessmentOverall?' · '+fact.assessmentOverall:
     fact?.kind==='operation.waiting'&&fact.waitingKind?' · '+fact.waitingKind:'';
-  const reason=mode==='debug'||!['attempt.dispatched','attempt.outcome','attempt.late_outcome','attempt.outcome_discrepancy','operation.accepted','operation.finished','operation.continued'].includes(event.eventName)
+  const reason=mode==='debug'||!['attempt.dispatched','attempt.outcome','operation.accepted','operation.finished','operation.continued'].includes(event.eventName)
     ?' · '+event.reasonCode:'';
   return terminalText('[' + identity + '] ' + title + terminal + reason + route + extra);
 }
