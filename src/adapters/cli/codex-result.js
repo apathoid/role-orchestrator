@@ -103,7 +103,7 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
     }
   }
 
-  if(execution.omitted) publish({ref:'codex-evidence-limit',kind:'provider_report',sourceId:attemptId,completeness:'truncated',
+  if(execution.omitted) publish({ref:'codex-evidence-limit',kind:'host_transport',sourceId:attemptId,completeness:'truncated',
     value:{reason:'EVIDENCE_LIMIT',omittedFrames:execution.omitted,firstOmittedLine:execution.firstOmittedLine,retainedBytes:execution.retainedBytes}});
   const processRef = publish({
     ref: 'codex-process', sourceId: attemptId, completeness: 'complete',

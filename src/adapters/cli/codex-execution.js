@@ -15,19 +15,23 @@ export function createCodexExecution() {
   const maxEvidenceBytes=1024*1024, maxEvidenceFrames=1024;
   /** @type {Frame[]} */
   const evidence=[];
-  let bytes=0, omitted=0, firstOmittedLine=0;
+  let bytes=0, omitted=0;
+  /** @type {number[]} */
+  const firstOmitted=[];
   let sent=false, invalidSequence=false;
   /** @type {'turn.completed'|'turn.failed'|undefined} */
   let terminal;
   /** @type {Frame|undefined} */
-  let message, providerError;
+  let message;
+  /** @type {Frame|undefined} */
+  let providerError;
   /** @type {Outcome['usage']} */
   const usage={inputTokens:null,outputTokens:null,cost:null};
   /** @param {Frame} frame @param {number} size */
   function retain(frame,size) {
     if(evidence.length < maxEvidenceFrames && bytes+size<=maxEvidenceBytes) {
       evidence.push(frame); bytes+=size;
-    } else { if (!omitted) firstOmittedLine=frame.line; omitted++; }
+    } else { if (firstOmitted.length<3) firstOmitted.push(frame.line); omitted++; }
   }
   return {
     /** @param {number} line @param {CodexEnvelope} event @param {number} size */
@@ -56,9 +60,11 @@ export function createCodexExecution() {
     },
     finish() {
       const frames=[...evidence];
-      for(const extra of [message,providerError])if(extra&&!frames.includes(extra))frames.push(extra);
+      const recovered=new Set();
+      for(const extra of [message,providerError])if(extra&&!frames.includes(extra)){frames.push(extra);recovered.add(extra.line);}
       frames.sort((a,b)=>a.line-b.line);
-      return {frames,sent,terminal,invalidSequence,usage,message,omitted,firstOmittedLine,retainedBytes:bytes};
+      return {frames,sent,terminal,invalidSequence,usage,message,omitted:omitted-recovered.size,
+        firstOmittedLine:firstOmitted.find(line=>!recovered.has(line))??0,retainedBytes:bytes};
     }
   };
 }
