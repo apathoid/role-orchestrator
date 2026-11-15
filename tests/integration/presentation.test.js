@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { acpActivity, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer, factLabel } from '../../src/hosts/presentation.js';
+import { acpActivity, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer, factLabel, formatOperation } from '../../src/hosts/presentation.js';
 
 const native = (kind, payload, extra = {}) => ({kind,payload, operationId:'op',attemptId:'a',profileId:'reviewer',providerId:'provider',sequence:1,source:'provider_activity',...extra});
 test('presentation preserves actual chunks and distinguishes tool, finding, lifecycle and gaps', () => {
@@ -77,4 +77,17 @@ test('C15.6 late and conflicting outcome reports never imply accepted terminal s
   assert.match(formatExecution({...event,eventName:'attempt.late_outcome',level:'info'},'compact',{...fact,late:true}),/Late outcome recorded.*late report/);
   assert.match(formatExecution({...event,eventName:'controller.invalid_proposal',reasonCode:'INVALID_PROPOSAL'},'compact',
     {...fact,kind:'controller.invalid_proposal',invalidPath:'/additions/0/profileId',expected:'a non-empty string'}),/\/additions\/0\/profileId expected a non-empty string/);
+});
+
+
+test('C15R.3 summary distinguishes attempts, distinct actions, dispatch and charged budget',()=>{
+  const usage={inputTokens:null,outputTokens:null,cost:null};
+  const state={operationId:'op',status:'finished',assessment:{overall:'partial',unresolvedQuestions:['q']},limits:{maxInvocations:5},events:[],
+    attempts:[{attemptId:'a',actionId:'a',status:'terminal',dispatchedAt:1,dispatchCertainty:'sent',outcome:{terminal:'completed',effect:'none',usage}},
+      {attemptId:'b1',actionId:'b',status:'terminal',dispatchedAt:2,dispatchCertainty:'unknown',outcome:{terminal:'unknown',effect:'unknown',usage}},
+      {attemptId:'b2',actionId:'b',status:'terminal',dispatchCertainty:'not_sent',outcome:{terminal:'cancelled',effect:'none',usage}}]};
+  const compact=formatOperation(state,'compact'),detail=formatOperation(state,'detailed');
+  assert.match(compact,/Operation partial/);assert.match(compact,/1 Controller attempt · 2 Worker attempts \(1 distinct Action\)/);
+  assert.match(compact,/Unknown effects\/outcomes remain/);assert.match(detail,/dispatch records 2\/3 · budget charged 2\/5/);
+  assert.doesNotMatch(compact,/invocations 3/);
 });

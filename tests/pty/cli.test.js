@@ -90,9 +90,28 @@ test('C15 actual PTY trusted colors, native lifecycle and NO_COLOR plain fallbac
   assert.match(colored,/\x1b\[1;36mRole Orchestrator/);
   assert.match(colored,/Invocation dispatched/);
   assert.match(colored,/Recorded finding/);
-  assert.match(colored,/\x1b\[32m\[Operation/);
+  assert.match(colored,/\x1b\[32m\s*✓ Operation complete/);
+  assert.ok(colored.indexOf('Notice final')<colored.indexOf('✓ Operation complete'));
   const plain=await tty(cwd,args,undefined,/Notice final/,{...env,NO_COLOR:'1'});
   assert.match(plain,/Role Orchestrator/);
   assert.match(plain,/Recorded finding/);
   assert.doesNotMatch(plain,/\x1b\[[0-9;]*m/);
+}));
+
+
+test('C15R actual PTY full transcript tool correlation and final before summary',{timeout:25000},()=>withOwnedRun('C15R-pty-transcript',async cwd=>{
+  const path=await config(cwd,true,'c15r-transcript');
+  const env={...process.env,TERM:'xterm-256color',NO_COLOR:'1'};
+  const output=(await tty(cwd,['run','transcript','--config',path,'--presentation','compact'],undefined,/Version updated\./,env)).replace(/\r\n/g,'\n');
+  assert.match(output,/● Controller #1 · primary/);
+  assert.match(output,/Thinking · Controller #1 · primary\n  Inspect the commit\.\n  Read the diff\./);
+  assert.equal((output.match(/git show HEAD/g)??[]).length,2);
+  assert.match(output,/◇ git show HEAD · in_progress\n  ✓ git show HEAD · completed/);
+  assert.match(output,/◇ Read package\.json · in_progress\n  ✗ Read package\.json · failed/);
+  assert.match(output,/Thinking · Controller #1 · primary\n  Version only\./);
+  assert.doesNotMatch(output,/tool_call_update · completed/);
+  assert.equal((output.match(/Version updated\./g)??[]).length,1);
+  assert.ok(output.indexOf('Version updated.')<output.indexOf('✓ Operation complete'));
+  assert.match(output,/1 Controller attempt · 0 Worker attempts · 0 recorded findings/);
+  console.log('C15R_PTY '+JSON.stringify(output));
 }));

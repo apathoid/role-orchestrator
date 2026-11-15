@@ -128,8 +128,9 @@ async function readInput(input) {
  * @param {string[]} args
  * @param {{cwd: string, stdin: NodeJS.ReadableStream, stdout: NodeJS.WritableStream, stderr: NodeJS.WritableStream}} io
  * @param {(invocation: CliInvocation) => Promise<unknown>} execute
+ * @param {()=>void} [afterHuman] optional presentation callback after authoritative stdout write
  */
-export async function runCli(args, io, execute) {
+export async function runCli(args, io, execute, afterHuman) {
   try {
     const invocation = parseCli(args, io.cwd);
     if (invocation.kind === 'help') {
@@ -157,7 +158,9 @@ export async function runCli(args, io, execute) {
                 ' available=' + (view.waiting.reason.availableLevels ?? []).join(',') +
                 (view.waiting.reason.reasoningCause ? ' cause=' + view.waiting.reason.reasoningCause : '') : '')
             : view.status);
-        io.stdout.write(('isTTY' in io.stdout && io.stdout.isTTY ? terminalText(human) : human) + '\n');
+        const text=('isTTY' in io.stdout && io.stdout.isTTY ? terminalText(human) : human)+'\n';
+        if(afterHuman)io.stdout.write(text,error=>{if(!error)afterHuman();});
+        else io.stdout.write(text);
       } else io.stdout.write(JSON.stringify(view, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     } else io.stdout.write(JSON.stringify(result, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     const failure = result && typeof result === 'object' && 'request' in result &&

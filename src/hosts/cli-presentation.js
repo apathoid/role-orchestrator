@@ -88,14 +88,16 @@ export function cliPresentation(mode, print, printChunk) {
         }
       }
     },
-    /** @param {unknown} value */
-    finish(value) {
+    /** @param {unknown} value @param {boolean} [defer] */
+    finish(value,defer=false) {
       if(!mode||closed||!value||typeof value!=='object'||!('events' in value)||!('attempts' in value))return;
       const state=/** @type {Operation} */(value);
       const summary=formatOperation(state,mode);
       const text=Buffer.byteLength(summary)<=512*1024?summary:formatOperation(state,'compact')+'\n[Detailed snapshot omitted; inspect current operation]';
       closed=true;aliases.clear();tools.clear();currentSource=undefined;
-      void print('\n'+text,state.status==='finished'&&state.assessment?.overall==='complete'?'success':'neutral').catch(()=>{});
+      const render=()=>{void print('\n'+text,state.status==='finished'&&state.assessment?.overall==='complete'?'success':'neutral').catch(()=>{});};
+      if(defer)return render;
+      render();
     },
     close(){closed=true;aliases.clear();tools.clear();currentSource=undefined;},
   };

@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { access, stat } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { constants, fstatSync } from 'node:fs';
 import { delimiter, isAbsolute, resolve } from 'node:path';
 import { createCliInput } from '../hosts/cli-input.js';
 import { pollAttachedInputs } from '../hosts/attached-input.js';
@@ -16,6 +16,12 @@ import { controlStreams } from '../hosts/control-streams.js';
 import { openRuntime } from './runtime.js';
 
 const cwd = process.cwd();
+/** @type {(()=>void)|undefined} */
+let deferredSummary;
+function sharedTerminal(){
+  if(!process.stdout.isTTY||!process.stderr.isTTY)return false;
+  try{const a=fstatSync(1),b=fstatSync(2);return a.dev===b.dev&&a.ino===b.ino&&a.rdev===b.rdev;}catch{return false;}
+}
 
 /**
  * A static launch-path hint, not a promise that spawn will succeed.
@@ -80,6 +86,9 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
     const clients = cliOwner(input);
     const mode = invocation.presentation ?? (interactive && invocation.format === 'text' && ['run','resume'].includes(invocation.command.action) ? 'compact' : undefined);
     const renderer = cliPresentation(mode,input.print,input.printChunk);
+    const deferSummary=invocation.format==='text'&&['run','resume'].includes(invocation.command.action)&&!invocation.output&&sharedTerminal();
+    /** @param {unknown} result */
+    const finishPresentation=result=>{deferredSummary=renderer.finish(result,deferSummary);};
     try {
       const configurationRef = 'config:' + createHash('sha256').update(configuration).digest('hex');
       /** @param {(id: string) => Promise<unknown>} cancel */
@@ -117,7 +126,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
                   signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.report,
                   call:(command,signal)=>callControl(descriptor,configurationRef,command,undefined,undefined,{signal})});
               }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice) : undefined,onGap:count=>{void input.report('[Delivery gap] '+count+' notices not confirmed at finish');}} : undefined);
-              if (result !== undefined) { renderer.finish(result); return result; }
+              if (result !== undefined) { finishPresentation(result); return result; }
               if (registered) throw new HostError('CONTROL_RESPONSE_LOST','Original live owner unavailable; work was not replayed');
               break;
             } catch(error) {
@@ -180,7 +189,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             });
             const omitted = await subscription.finish?.() ?? 0;
             if (omitted) void input.report('[Delivery gap] '+omitted+' notices not confirmed at finish');
-            renderer.finish(result);
+            finishPresentation(result);
             return result;
           } finally { detach(); }
         } catch (error) {
@@ -196,4 +205,4 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
         await delay(25);
       }
     } finally { renderer.close(); input.close(); process.removeListener('SIGINT', interrupt); }
-  });
+  },()=>deferredSummary?.());

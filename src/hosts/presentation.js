@@ -1,3 +1,4 @@
+import { resourceSnapshot } from '../core/operation.js';
 import { eventFindings } from '../core/finding.js';
 
 /** @import {ActivityNotice, ActivityEvent} from '../core/ports.js' */
@@ -194,19 +195,28 @@ export function formatFindingRecords(findings,mode) {
 
 /** @param {Operation} state @param {PresentationMode} mode */
 export function formatOperation(state, mode) {
-  const terminal = state.status === 'finished' ? state.assessment?.overall ?? 'finished' : state.status;
-  const attempts = mode==='compact'?'':state.attempts.map(attempt => '  ' + (attempt.actionId === attempt.attemptId ? 'Controller' : attempt.actionId) +
-    ' ' + attempt.attemptId + ' · ' + (attempt.route?.profileId ?? 'route unknown') +
-    ' · ' + (attempt.outcome?.terminal ?? attempt.status) +
-    (attempt.outcome ? ' · effect=' + attempt.outcome.effect : '') +
-    (attempt.cancellation ? ' · cancellation=' + attempt.cancellation : '')).join('\n');
-  return terminalText('[Operation ' + state.operationId + '] ' + terminal +
-    (state.waiting?.kind === 'technical' ? ' · ' + state.waiting.reason.code : '') +
-    ' · invocations ' + state.attempts.length + '/' + state.limits.maxInvocations +
-    ' · workers '+state.attempts.filter(a=>a.actionId!==a.attemptId).length+
-    ' · recorded findings '+state.events.reduce((count,event)=>count+(eventFindings(event)?.length??0),0)+
-    (state.attempts.some(a=>a.outcome?.effect==='unknown'||a.outcome?.terminal==='unknown')?' · unknown effects/outcomes':'') +
-    (mode === 'compact' || !attempts ? '' : '\n' + attempts));
+  const terminal=state.status==='finished'?state.assessment?.overall??'finished':state.status;
+  const controllers=state.attempts.filter(a=>a.actionId===a.attemptId).length;
+  const workers=state.attempts.filter(a=>a.actionId!==a.attemptId);
+  const unique=new Set(workers.map(a=>a.actionId)).size;
+  const dispatched=state.attempts.filter(a=>a.dispatchedAt!==undefined).length;
+  const charged=resourceSnapshot(state).charged;
+  const findings=state.events.reduce((count,event)=>count+(eventFindings(event)?.length??0),0);
+  const unknown=state.attempts.some(a=>a.outcome?.effect==='unknown'||a.outcome?.terminal==='unknown');
+  const heading=terminal==='complete'?'✓ Operation complete':terminal==='cancelled'?'■ Operation cancelled':'◇ Operation '+terminal;
+  const status=(state.cancellation?' · source='+state.cancellation:'')+
+    (state.waiting?.kind==='technical'?' · '+state.waiting.reason.code:'');
+  const count=controllers+' Controller attempt'+(controllers===1?'':'s')+' · '+workers.length+' Worker attempt'+(workers.length===1?'':'s')+
+    (workers.length?' ('+unique+' distinct Action'+(unique===1?'':'s')+')':'')+' · '+findings+' recorded finding'+(findings===1?'':'s');
+  const details=mode==='compact'?'':'\n  Operation '+state.operationId+
+    ' · dispatch records '+dispatched+'/'+state.attempts.length+' · budget charged '+charged+'/'+state.limits.maxInvocations+
+    '\n'+state.attempts.map(attempt=>'  '+(attempt.actionId===attempt.attemptId?'Controller':attempt.actionId)+
+      ' '+attempt.attemptId+' · '+(attempt.route?.profileId??'route unknown')+
+      ' · '+(attempt.outcome?.terminal??attempt.status)+' · dispatch='+attempt.dispatchCertainty+
+      (attempt.outcome?' · effect='+attempt.outcome.effect:'')+(attempt.cancellation?' · cancellation='+attempt.cancellation:'')).join('\n');
+  const unresolved=state.assessment?.unresolvedQuestions?.length??0;
+  return terminalText(heading+status+'\n  '+count+(unknown?'\n  Unknown effects/outcomes remain.':'')+
+    (unresolved?'\n  '+unresolved+' unresolved question'+(unresolved===1?'':'s')+'.':'')+details);
 }
 
 /** Same mapping for tool updates and permission/elicitation references. @param {string} attemptId @param {string} nativeId */
