@@ -57,15 +57,35 @@ export function createCliInput(input, output, interactive, interrupt) {
   let outputBroken = false;
   const broken = () => { outputBroken = true; };
   output.on('error',broken);
+  /** @type {string|undefined} */
+  let chunkSource;
+  let openLine=false;
   /** @param {string} text */
-  function print(text) {
+  function write(text) {
     if (outputBroken || ('destroyed' in output && output.destroyed)) return Promise.resolve();
     if (rl && interactive && 'isTTY' in output && output.isTTY) { clearLine(output, 0); cursorTo(output, 0); }
     return new Promise(resolve => {
-      try { output.write(terminalText(text) + '\n', () => resolve(undefined)); }
+      try { output.write(terminalText(text), () => resolve(undefined)); }
       catch { resolve(undefined); }
       if (rl) rl.prompt(true);
     });
+  }
+  /** @param {string} text */
+  function print(text) {
+    const prefix=openLine?'\n':'';
+    openLine=false;chunkSource=undefined;
+    return write(prefix+text+'\n');
+  }
+  /** @param {{source:string,header:string,text:string}} fragment */
+  function printChunk(fragment) {
+    // Readline owns its current input line. Use a technical line boundary
+    // while editing instead of overwriting or buffering a native chunk.
+    if(rl)return print(fragment.header+fragment.text);
+    const changed=chunkSource!==fragment.source;
+    const text=(changed?(openLine?'\n':'')+fragment.header:'')+fragment.text;
+    chunkSource=fragment.source;
+    openLine=!text.endsWith('\n');
+    return write(text);
   }
   function prompt() {
     if (pending.size) {
@@ -109,6 +129,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     }
     const label = '#' + entry.request.requestId;
     if (pending.has(label)) return {kind:'unavailable'};
+    if(openLine){void write('\n');openLine=false;chunkSource=undefined;}
     open();
     return new Promise(resolve => {
       /** @param {InputResult} result */
@@ -127,9 +148,10 @@ export function createCliInput(input, output, interactive, interrupt) {
       prompt();
     });
   }
-  return { ask, print, close() {
+  return { ask, print, printChunk, close() {
     for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     stopReader();
+    if(openLine){void write('\n');openLine=false;chunkSource=undefined;}
     // Leave the error guard on this terminal stream through outstanding writes;
     // the CLI process owns its lifetime, not the presentation consumer.
   }};

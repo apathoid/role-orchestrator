@@ -13,11 +13,11 @@ const entry=fileURLToPath(new URL('../../src/main/cli.js',import.meta.url));
 const fixture=fileURLToPath(new URL('../fixtures/host-plugin.js',import.meta.url));
 const agent=fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url));
 const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
-async function config(cwd,acp=false) {
+async function config(cwd,acp=false,scenario='host-elicitation') {
   const path=join(cwd,'config.json');
   await writeFile(path,JSON.stringify({schemaVersion:1,controllerProfile:'primary',
     profiles:{primary:{provider:'test',model:'fixture'}},
-    providers:{test:acp?{adapter:'acp',launch:{command:process.execPath,args:[agent,'host-elicitation']}}:{adapter:'host-fixture'}},
+    providers:{test:acp?{adapter:'acp',launch:{command:process.execPath,args:[agent,scenario]}}:{adapter:'host-fixture'}},
     storage:{directory:'state'},plugins:acp?[]:[{id:'host-fixture',module:fixture}]}));
   return path;
 }
@@ -62,4 +62,12 @@ test('actual PTY attached CLI answers its own permission, not the writer stdin',
     await tty(cwd,['run','permission','--config',path,'--presentation','debug'],'deny',/(?:\r?\n)deny\r?\n/);
     assert.equal(owner.exitCode,null,'peer answer must not cancel the independent writer operation');
   } finally { owner.kill('SIGINT');await closed; }
+}));
+
+test('C14R.3 actual PTY preserves native fragments across workers and permission', {timeout:25000},()=>withOwnedRun('C14R-pty-chunks',async cwd=>{
+  const path=await config(cwd,true,'host-chunks');
+  const output=await tty(cwd,['run','chunks','--config',path,'--presentation','compact'],'deny',/Native final once/);
+  assert.match(output,/Native thought worker-a/);assert.match(output,/Native thought worker-b/);
+  assert.match(output,/continued/);assert.match(output,/Permission requested/);
+  assert.match(output,/Native thought [^\r\n]+ continued/);
 }));

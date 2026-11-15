@@ -96,15 +96,20 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
-    if (scenario === 'host-native-ux') {
+    if (scenario === 'host-native-ux' || scenario === 'host-chunks') {
       const host = context.find(item => item.ref === 'host:invocation-context')?.value;
       const notify = update => client.notify(c.session.update,{sessionId,update});
       await notify({sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'Native thought '+actionId}});
+      if(scenario==='host-chunks') await notify({sessionUpdate:'agent_thought_chunk',content:{type:'text',text:' continued'}});
       await notify({sessionUpdate:'plan',entries:[{content:'Native plan '+actionId,priority:'medium',status:'pending'}]});
       await notify({sessionUpdate:'tool_call',toolCallId:'shared',title:'Native read',kind:'read',status:'in_progress'});
       await message('progress','Ambiguous progress must not reach client');
       await notify({sessionUpdate:'tool_call_update',toolCallId:'shared',status:'completed'});
       if (kind === 'delegate') {
+        if(scenario==='host-chunks'&&actionId==='worker-a'){
+          const reply=await client.request(c.session.requestPermission,{sessionId,toolCall:{toolCallId:'shared',title:'Native read'},options:[{optionId:'deny',name:'Deny',kind:'reject_once'}]});
+          assert.equal(reply.outcome.optionId,'deny');
+        }
         await message('final','Worker result '+actionId);
         return {stopReason:'end_turn'};
       }

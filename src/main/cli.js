@@ -79,7 +79,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
     const input = createCliInput(process.stdin,process.stderr,interactive,interrupt);
     const clients = cliOwner(input);
     const mode = invocation.presentation ?? (interactive && invocation.format === 'text' && ['run','resume'].includes(invocation.command.action) ? 'compact' : undefined);
-    const renderer = cliPresentation(mode,input.print);
+    const renderer = cliPresentation(mode,input.print,input.printChunk);
     try {
       const configurationRef = 'config:' + createHash('sha256').update(configuration).digest('hex');
       /** @param {(id: string) => Promise<unknown>} cancel */

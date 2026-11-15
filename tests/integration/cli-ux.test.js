@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { createCliInput } from '../../src/hosts/cli-input.js';
+import { cliPresentation } from '../../src/hosts/cli-presentation.js';
 import { cliOwner } from '../../src/hosts/cli-owner.js';
 import { parseCli } from '../../src/hosts/cli.js';
 
@@ -57,4 +58,18 @@ test('C14 input EOF, abort, unsupported form and non-interactive input settle ex
   const noTTY=createCliInput(new PassThrough(),output,false,()=>{});
   assert.deepEqual(await noTTY.ask(permission,new AbortController().signal),{kind:'unavailable'});
   noTTY.close();
+});
+
+test('C14R.3 native adjacent chunks use one source heading, switch and permission break the line',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let text='';output.on('data',b=>text+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk);
+  const event=(attemptId,text)=>({channel:'activity',event:{kind:'reasoning',nativeKind:'agent_thought_chunk',operationId:'op',attemptId,profileId:'p',providerId:'x',sequence:1,payload:{content:{type:'text',text}}}});
+  await renderer.notice(event('a','first'));await renderer.notice(event('a',' second'));
+  await renderer.notice(event('b','other'));await renderer.notice(event('b',' fragment'));
+  const reply=terminal.ask(permission,new AbortController().signal);
+  input.write('deny\n');await reply;
+  await renderer.notice(event('a','again'));terminal.close();
+  assert.match(text,/\[p\/a\] Thinking: first second\n\[p\/b\] Thinking: other fragment\n/);
+  assert.match(text,/Permission requested/);assert.match(text,/\[p\/a\] Thinking: again\n/);
 });

@@ -21,7 +21,7 @@ function object(value) {
 /** @param {unknown} value */
 const string = value => typeof value === 'string' ? value : undefined;
 /** @param {ActivityEvent} event */
-function nativeText(event) {
+export function nativeText(event) {
   const payload = object(event.payload);
   if (typeof event.payload === 'string') return event.payload;
   const content = object(payload.content), item = object(payload.item);
@@ -58,6 +58,15 @@ export function formatActivity(event, mode) {
     }
   }
   return body === undefined ? undefined : terminalText(prefix + body);
+}
+
+/** Only native streamed text fragments, not repeated snapshots. @param {ActivityNotice} event @param {PresentationMode} mode */
+export function thinkingFragment(event,mode) {
+  if(event.kind!=='reasoning'||event.nativeKind!=='agent_thought_chunk')return;
+  const text=nativeText(event);
+  if(text===undefined)return;
+  return {source:JSON.stringify([event.operationId,event.attemptId,event.nativeId??null]),
+    header:'['+event.profileId+'/'+event.attemptId+'] Thinking'+(mode==='debug'?' ('+event.providerId+')':'')+': ',text};
 }
 
 const lifecycle = new Set(['operation.accepted', 'attempt.dispatched', 'attempt.outcome',

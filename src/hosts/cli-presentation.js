@@ -1,10 +1,10 @@
-import { formatActivity, formatExecution, formatOperation, formatRecordedFindings } from './presentation.js';
+import { formatActivity, formatExecution, formatOperation, formatRecordedFindings, thinkingFragment } from './presentation.js';
 /** @import {ControlNotice} from './local-control.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {PresentationMode} from './presentation.js' */
 
-/** @param {PresentationMode | undefined} mode @param {(text:string)=>Promise<unknown>} print */
-export function cliPresentation(mode, print) {
+/** @param {PresentationMode | undefined} mode @param {(text:string)=>Promise<unknown>} print @param {(fragment:{source:string,header:string,text:string})=>Promise<unknown>} [printChunk] */
+export function cliPresentation(mode, print, printChunk) {
   const seen = new Set();
   let closed = false;
   /** @param {Operation} state @param {string} [eventId] */
@@ -21,6 +21,10 @@ export function cliPresentation(mode, print) {
     /** @param {ControlNotice} notice @param {(id:string)=>Promise<Operation>} [inspect] */
     async notice(notice,inspect) {
       if (!mode || closed) return;
+      if(notice.channel==='activity'&&printChunk){
+        const fragment=thinkingFragment(notice.event,mode);
+        if(fragment){await printChunk(fragment);return;}
+      }
       const text = notice.channel === 'activity' ? formatActivity(notice.event,mode)
         : notice.channel === 'execution' ? formatExecution(notice.event,mode) : '[Delivery gap] ' + notice.droppedCount + ' notices dropped';
       if (text) await print(text);
