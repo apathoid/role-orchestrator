@@ -7,6 +7,9 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { cliOwner } from '../../src/hosts/cli-owner.js';
+import { createCliInput } from '../../src/hosts/cli-input.js';
+import { PassThrough } from 'node:stream';
 import { pollAttachedInputs } from '../../src/hosts/attached-input.js';
 import { callControl, openControl, readDescriptor } from '../../src/hosts/local-control.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
@@ -354,3 +357,39 @@ test('C13R.1 polling failure is explicit and detaches pending input',async()=>{
     call:async()=>{throw Error('connection lost');},ask:async()=>assert.fail('no input'),print:async x=>notices.push(x)});
   assert.match(notices.join(' '),/polling stopped.*pending reply state unknown/);
 });
+
+test('C13R.2 original binding reconnects future input without granting a duplicate observer ownership', {timeout:10000,skip:localSocketCheck},()=>withOwnedRun('C13R-reconnect',async directory=>{
+  const gate=Promise.withResolvers(), ready=Promise.withResolvers(), detached=Promise.withResolvers();
+  const cli=cliOwner(createCliInput(new PassThrough(),new PassThrough(),false,()=>{}));
+  let calls=0, registrations=0;
+  const server=await openControl(directory,'config',async(_command,accepted)=>{calls++;accepted('op');await gate.promise;return {done:true};},undefined,{
+    subscribe:()=>()=>{},pending:cli.pending,respond:cli.respond,
+    ownerAccepted:(id,requestId,interactive)=>{registrations++;return cli.accept(id,requestId,true,interactive);},
+    ownerDetached:(id,requestId)=>{cli.detach(id,requestId);detached.resolve();}
+  });
+  const firstStop=new AbortController();
+  try {
+    const descriptor=await readDescriptor(directory), command={action:'run',requestId:'work',text:'task'};
+    const first=callControl(descriptor,'config',command,(id,key)=>ready.resolve({id,key}),undefined,{interactive:true,signal:firstStop.signal});
+    const lost=assert.rejects(first,{code:'CONTROL_RESPONSE_LOST'});
+    const {key}=await ready.promise;assert.ok(key);assert.equal(cli.available('op'),true);
+    const old={kind:'input',nativeKind:'form',requestId:'old',providerRequestId:'old-native',operationId:'op',attemptId:'a',profileId:'p',deadlineAt:Date.now()+10000,payload:{mode:'form',requestedSchema:{type:'object',properties:{value:{type:'string'}}}}};
+    const signal=new AbortController().signal;
+    const oldReply=cli.handleInteraction(old,signal);
+    const observerReady=Promise.withResolvers();
+    const observer=callControl(descriptor,'config',command,(id,key)=>observerReady.resolve(key),undefined,{interactive:true});
+    assert.equal(await observerReady.promise,undefined);
+    firstStop.abort();await lost;await detached.promise;
+    assert.equal((await oldReply).kind,'unavailable');assert.equal(cli.available('op'),false);
+    const restored=Promise.withResolvers();
+    const reconnect=callControl(descriptor,'config',command,(id,key)=>restored.resolve(key),undefined,{reconnectKey:key,interactive:false});
+    assert.equal(await restored.promise,key);assert.equal(cli.available('op'),true);assert.equal(registrations,2);
+    const next={...old,requestId:'next',providerRequestId:'next-native'};
+    const reply=cli.handleInteraction(next,signal);
+    const answer={action:'answer',operationId:'op',requestId:'answer',ownerRequestId:'work',answerKey:key,reply:{requestId:'next',operationId:'op',attemptId:'a',providerRequestId:'next-native',payload:{kind:'answered',payload:{action:'accept',content:{value:'yes'}}}}};
+    assert.equal((await callControl(descriptor,'config',answer)).kind,'accepted');
+    assert.equal((await reply).kind,'answered');
+    assert.equal((await callControl(descriptor,'config',{...answer,requestId:'old-answer',reply:{...answer.reply,requestId:'old',providerRequestId:'old-native'}})).kind,'rejected');
+    gate.resolve();await Promise.all([observer,reconnect]);assert.equal(calls,1);
+  }finally{firstStop.abort();gate.resolve();await server.close();}
+}));

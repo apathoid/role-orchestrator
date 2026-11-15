@@ -96,21 +96,39 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
           const cancel = onAccepted(id => callControl(descriptor, configurationRef, {
             action: 'cancel', operationId: id, requestId: randomUUID(), cancellationSource: 'client',
           }));
-          const watch = new AbortController();
-          /** @type {Promise<void> | undefined} */
-          let polling;
-          /** @param {string} id */
-          const inspect = async id => /** @type {import('../core/operation.js').Operation} */ (await callControl(descriptor,configurationRef,{action:'inspect',operationId:id,requestId:randomUUID()},undefined,undefined,{signal:watch.signal}));
-          try {
-            const result = await callControl(descriptor, configurationRef, invocation.command, (id,key) => {
-              cancel(id);
-              if (!interactive || !key || polling) return;
-              polling = pollAttachedInputs({operationId:id,ownerRequestId:invocation.command.requestId,answerKey:key,
-                signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.print,
-                call:(command,signal)=>callControl(descriptor,configurationRef,command,undefined,undefined,{signal})});
-            }, invocation.launch, startsWork && (mode || interactive) ? {interactive,notice:mode ? notice=>renderer.notice(notice,inspect) : undefined} : undefined);
-            if (result !== undefined) { renderer.finish(result); return result; }
-          } finally { watch.abort(); await polling; }
+          /** @type {string | undefined} */
+          let reconnectKey;
+          let registered = false;
+          for (let connection = 0; connection < 2; connection++) {
+            const watch = new AbortController();
+            /** @type {Promise<void> | undefined} */
+            let polling;
+            /** @param {string} id */
+            const inspect = async id => /** @type {import('../core/operation.js').Operation} */ (await callControl(descriptor,configurationRef,{action:'inspect',operationId:id,requestId:randomUUID()},undefined,undefined,{signal:watch.signal}));
+            try {
+              const result = await callControl(descriptor, configurationRef, invocation.command, (id,key) => {
+                if (!registered) { registered = true; cancel(id); }
+                if (!interactive) return;
+                if (!key) {
+                  void input.print('Interaction ownership unavailable for '+id+'; observing existing work only.');
+                  return;
+                }
+                reconnectKey = key;
+                if (polling) return;
+                polling = pollAttachedInputs({operationId:id,ownerRequestId:invocation.command.requestId,answerKey:key,
+                  signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.print,
+                  call:(command,signal)=>callControl(descriptor,configurationRef,command,undefined,undefined,{signal})});
+              }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice,inspect) : undefined} : undefined);
+              if (result !== undefined) { renderer.finish(result); return result; }
+              if (registered) throw new HostError('CONTROL_RESPONSE_LOST','Original live owner unavailable; work was not replayed');
+              break;
+            } catch(error) {
+              if (connection !== 0 || !reconnectKey || stop.signal.aborted || hostError(error).code !== 'CONTROL_RESPONSE_LOST') throw error;
+              const current = await readDescriptor(stateDirectory);
+              if (current?.token !== descriptor.token || current.path !== descriptor.path) throw error;
+              void input.print('Control connection lost; reconnecting the original work binding without replay.');
+            } finally { watch.abort(); await polling; }
+          }
         }
 
         /** @type {Awaited<ReturnType<typeof openControl>> | undefined} */
