@@ -277,22 +277,22 @@ export function acpOwnMessage(text,source,identity){
     _meta:{roleOrchestratorSource:source}};
 }
 
-/** @param {string} operationId @param {string} requestId @param {boolean} continuing @param {ProgressDisplay} display @returns {SessionUpdate} */
-export function acpAccepted(operationId,requestId,continuing,display){
+/** @param {string} operationId @param {string} requestId @param {boolean} continuing @param {ProgressDisplay} display @param {boolean} [historical] @returns {SessionUpdate} */
+export function acpAccepted(operationId,requestId,continuing,display,historical=false){
   const title=continuing?'Request continued':'Operation accepted';
-  const source={source:'request',operationId,requestId,eventName:continuing?'operation.continued':'operation.accepted'};
+  const source={source:'request',operationId,requestId,eventName:continuing?'operation.continued':'operation.accepted',...(historical&&{recovered:true})};
   return display==='inline'?acpOwnMessage(title+' · '+operationId,source,requestId):
     {sessionUpdate:'notice',title,severity:'info',_meta:{roleOrchestratorSource:source}};
 }
 
-/** @param {DiagnosticEvent} event @param {readonly import('../core/finding.js').Finding[]|undefined} findings @param {PresentationMode} mode @param {ExecutionFact} [fact] @returns {SessionUpdate[]} */
-export function acpExecutionInline(event,findings,mode,fact){
+/** @param {DiagnosticEvent} event @param {readonly import('../core/finding.js').Finding[]|undefined} findings @param {PresentationMode} mode @param {ExecutionFact} [fact] @param {boolean} [historical] @returns {SessionUpdate[]} */
+export function acpExecutionInline(event,findings,mode,fact,historical=false){
   /** @type {SessionUpdate[]} */
   const updates=[];
   const displayMode=mode==='debug'?'detailed':mode;
   const text=formatExecution(event,displayMode,fact);
   const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,
-    eventId:fact?.journalEventId??event.eventId,eventName:event.eventName,reasonCode:event.reasonCode};
+    eventId:fact?.journalEventId??event.eventId,eventName:event.eventName,reasonCode:event.reasonCode,...(historical&&{recovered:true})};
   if(text) updates.push(acpOwnMessage(text,{...source,source:fact?'journal':'execution'},source.eventId));
   for(const finding of formatFindingRecords(findings??[],displayMode)){
     updates.push(acpOwnMessage(finding.text,{...source,source:'recorded_finding',findingId:finding.id},finding.id));

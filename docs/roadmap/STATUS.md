@@ -4,9 +4,13 @@
 
 ## C15 — Rich Presentation & ACP Transcript (PLANNED)
 
-**Следующий шаг: C15.5**, затем последовательно C15.6–C15.7 по [детальному заданию](C15_PRESENTATION_EXPERIENCE.md). Реализация на текущей ветке feature/interactive-ux; master не изменять. Baseline проектирования b302ffa41d77ce0e12fe948bd8651e53b2138a8f, последний подтверждённый engineering checkpoint b1ae0c88c54fdb99c3c39ecc01c97bf3288c329d ([CI 43691063762](https://github.com/apathoid/role-orchestrator/actions/runs/43691063762), 455/455 root + 4/4 actual Linux PTY). C15.0 baseline/mapping COMPLETE; C15.1 implementation added; regression pending; regression on planning SHA in progress; native/comparative UNVERIFIED.
+**Следующий шаг: C15.6**, затем C15.7 по [детальному заданию](C15_PRESENTATION_EXPERIENCE.md). Реализация на текущей ветке feature/interactive-ux; master не изменять. Baseline проектирования b302ffa41d77ce0e12fe948bd8651e53b2138a8f, последний подтверждённый engineering checkpoint b1ae0c88c54fdb99c3c39ecc01c97bf3288c329d ([CI 43691063762](https://github.com/apathoid/role-orchestrator/actions/runs/43691063762), 455/455 root + 4/4 actual Linux PTY). C15.0 baseline/mapping COMPLETE; C15.1 implementation added; regression pending; regression on planning SHA in progress; native/comparative UNVERIFIED.
 
 Согласовано: rich CLI streaming без live status line/REPL; ACP inline сразу default, notices explicit alternative, native client thinking/tools/plan/permissions/forms unchanged. History через existing session.requests и Operation journal, правильный порядок turns, не полный replay live activity. Не менять Coordinator event publication/dispatch ради UI; compact complete attributed RO messages. Никаких новых model calls/prompts, semantic Host policy, workflow, environment restrictions, scheduler или execution journal. Сохраняются F4/C12/C13/C14/C13R-C14R native/comparative obligations; C15 не закрывает их synthetic fixtures.
+
+### C15.5 — chronological ACP history
+
+Implementation: session.requests ordered turns; exact durable initial/continuation association and responseEventId recorded at actual completion; old records only recover unique historical response, disclose ambiguous/missing boundary. Retry of older request returns its historical response, never latest Operation answer or new invocation. Existing journal streamed with recovered attribution; background facts outside response boundaries explicitly marked, native transient activity not replayed. Per-load snapshot reuse/release, no execution journal or context change; response metadata persistence best effort after completion. Added SDK subprocess A→B→A, retry and repeated load test. Restored executable mode of CLI (connector tree edit had changed it); full CI pending.
 
 ### C15.4 — ACP default inline progress
 

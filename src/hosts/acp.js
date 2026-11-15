@@ -4,24 +4,22 @@ import { isAbsolute, join } from 'node:path';
 import { agent, methods, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
 import { decode, id, invalid as invalidField, optional, record } from '../core/decode.js';
 import { hostError } from './commands.js';
-import { acpActivity, acpExecutionNotices, acpExecutionInline, acpAccepted, acpProgressGap } from './presentation.js';
+import { acpActivity, acpExecutionNotices, acpExecutionInline, acpAccepted, acpProgressGap, acpOwnMessage } from './presentation.js';
 
+import { operationRequestId, operationReply, responseBoundary, historicalReply, replayHistory, turnRange } from './acp-history.js';
 import { createBoundedDelivery } from '../application/delivery.js';
 
-/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, StopReason, SessionUpdate} from '@agentclientprotocol/sdk' */
+/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, SessionUpdate} from '@agentclientprotocol/sdk' */
 /** @import {ActivityListener, ActivityScope} from '../core/ports.js' */
 /** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
-/** @import {Operation} from '../core/operation.js' */
+/** @import {Session} from './acp-history.js' */
 /** @import {HostApi} from './commands.js' */
 /** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
-/** @typedef {{sessionId: string, cwd: string, operations: string[], requests: {requestId: string, fingerprint: string, operationId?: string}[]}} Session */
 /** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>, stopDisplay?:()=>void}} Turn */
 
 const a = methods.agent;
 const c = methods.client;
 
-/** @param {string} sessionId @param {string} requestId */
-const operationRequestId = (sessionId, requestId) => 'acp:' + sessionId + ':' + requestId;
 const turnOptions = record({
   requestId: optional(id), continueOperationId: optional(id), supersedeOperationId: optional(id),
   newOperation: optional((value, path) => typeof value === 'boolean' ? value : invalidField(path, 'a boolean')),
@@ -29,30 +27,6 @@ const turnOptions = record({
 
 /** @param {string} message @param {unknown} [data] */
 const invalid = (message, data) => new RequestError(-32602, message, data);
-
-/** @param {Operation} operation @returns {StopReason} */
-function stopReason(operation) {
-  if (operation.status === 'cancelled') return 'cancelled';
-  if (operation.waiting?.kind === 'technical') {
-    return operation.waiting.reason.code === 'RESOURCE_LIMIT' ? 'max_turn_requests' : 'refusal';
-  }
-  return 'end_turn';
-}
-
-/** @param {Operation} operation */
-function operationMessage(operation) {
-  if (operation.status === 'finished') return operation.assessment?.answer;
-  if (operation.waiting?.kind === 'question') return operation.waiting.question;
-  if (operation.waiting?.kind === 'technical') {
-    const reason = operation.waiting.reason;
-    return reason.profileId
-      ? 'Error: ' + reason.code + ' operation=' + operation.operationId +
-        ' profile=' + reason.profileId + ' reasoningLevel=' + (reason.reasoningLevel ?? '(default)') +
-        ' available=' + (reason.availableLevels ?? []).join(',') +
-        (reason.reasoningCause ? ' cause=' + reason.reasoningCause : '')
-      : 'Waiting: ' + reason.code;
-  }
-}
 
 /** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] @param {ProgressDisplay} [progressDisplay] */
 export function serveAcp(api, directory, stream, mode = 'compact', progressDisplay = 'inline') {
@@ -110,17 +84,20 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
     if (servers.length) throw invalid('Client-supplied MCP servers are unavailable');
   }
 
-  /** @param {AgentContext} client @param {string} sessionId @param {string} text @param {boolean} [user] */
-  async function message(client, sessionId, text, user = false) {
+  /** @param {AgentContext} client @param {string} sessionId @param {SessionUpdate} update */
+  async function sendUpdate(client,sessionId,update) {
     if (connection.signal.aborted) return;
     try {
       await client.notify(c.session.update, {
-        sessionId, update: { sessionUpdate: user ? 'user_message_chunk' : 'agent_message_chunk', content: { type: 'text', text } },
+        sessionId, update,
       });
     } catch (error) {
       if (!connection.signal.aborted) throw error;
     }
   }
+
+  /** @param {AgentContext} client @param {string} sessionId @param {string} text */
+  const message=(client,sessionId,text)=>sendUpdate(client,sessionId,{sessionUpdate:'agent_message_chunk',content:{type:'text',text}});
 
   /** @param {string} sessionId @param {'client' | 'superseded'} [source] */
   async function cancel(sessionId, source = /** @type {const} */ ('client')) {
@@ -171,24 +148,16 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         if (session.sessionId !== sessionId || !Array.isArray(session.operations) ||
             !session.operations.every(id => typeof id === 'string')) throw invalid('Invalid stored session');
         session.requests ??= [];
+        if(!Array.isArray(session.requests)||session.requests.some(request=>!request||typeof request.requestId!=='string'||typeof request.fingerprint!=='string'||
+          (request.operationId!==undefined&&!session.operations.includes(request.operationId))))throw invalid('Invalid stored session requests');
         for (const request of session.requests) {
           if (request.operationId) continue;
           const operation = await api.findRequest(operationRequestId(sessionId, request.requestId));
-          if (operation) attach(session, request, operation.operationId);
+          if (operation&&turnRange(operation,operationRequestId(sessionId,request.requestId))) attach(session, request, operation.operationId);
         }
         session.cwd = cwd;
         await save(session);
-        for (const operationId of session.operations) {
-          const operation = await api.inspect(operationId);
-          await message(client, sessionId, operation.request.text, true);
-          for (const event of operation.events) {
-            if (event.kind === 'operation.continued') await message(client, sessionId, event.input.text, true);
-            if (event.kind === 'operation.finished') await message(client, sessionId, event.assessment.answer);
-            if (event.kind === 'operation.waiting' && event.waiting.kind === 'question') {
-              await message(client, sessionId, event.waiting.question);
-            }
-          }
-        }
+        await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay);
         sessions.set(sessionId, session);
         return {};
       } finally { loading.delete(sessionId); }
@@ -244,6 +213,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
           await save(session);
         }
         let operation = await api.findRequest(durableRequestId);
+        const duplicate=operation!==undefined;
         if (!operation) {
           const last = session.operations.at(-1);
           if (continueOperationId && !session.operations.includes(continueOperationId)) throw invalid('Operation belongs to another session');
@@ -256,6 +226,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
           const accepted = id => {
             turn.operationId = id;
             attach(session, delivery, id);
+            delivery.progressDisplay=progressDisplay;
             if (subscribed||!displaying||turn.cancelled||connection.signal.aborted) return;
             subscribed = true;
             const canDisplay=()=>displaying&&!turn.cancelled&&!connection.signal.aborted&&turn.operationId===id&&turns.get(sessionId)===turn;
@@ -294,6 +265,15 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
           // Retain ownership of a submitted operation even if the session journal write fails.
           await save(session).finally(() => submission.completion.then(() => {}, () => {}));
           operation = await submission.completion;
+          const boundary=responseBoundary(operation,durableRequestId);
+          if(boundary!==undefined){
+            delivery.responseEventId=boundary;
+            try{await save(session);}catch{
+              const update=acpOwnMessage('Historical response boundary could not be persisted; recovery may be incomplete',
+                {source:'history',operationId:operation.operationId,requestId:durableRequestId});
+              if(displaying&&!connection.signal.aborted&&progressDisplay==='inline')void client.notify(c.session.update,{sessionId,update}).catch(()=>{});
+            }
+          }
         } else {
           attach(session, request, operation.operationId);
           await save(session);
@@ -309,9 +289,15 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
           }
         }
         stopDisplay();
-        const answer = operationMessage(operation);
-        if (answer !== undefined) await message(client, sessionId, answer);
-        return { stopReason: stopReason(operation) };
+        const recovered=duplicate?historicalReply(operation,durableRequestId,request.responseEventId):undefined;
+        if(duplicate&&!recovered){
+          await sendUpdate(client,sessionId,acpOwnMessage('Historical response boundary unavailable; original work was not replayed',
+            {source:'history',operationId:operation.operationId,requestId:durableRequestId},durableRequestId));
+          return {stopReason:'refusal'};
+        }
+        const reply=recovered?.reply??operationReply(operation);
+        if (reply.text !== undefined) await message(client, sessionId, reply.text);
+        return { stopReason: reply.stopReason };
       } catch (error) {
         const issue = hostError(error);
         if (error instanceof RequestError) throw error;

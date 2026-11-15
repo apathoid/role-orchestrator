@@ -1,0 +1,185 @@
+import { journalReasonCode } from '../core/operation.js';
+import { eventFindings } from '../core/finding.js';
+import { executionFact } from '../application/execution-facts.js';
+import { acpAccepted, acpExecutionInline, acpOwnMessage } from './presentation.js';
+
+/** @import {Event, Operation} from '../core/operation.js' */
+/** @import {SessionUpdate, StopReason} from '@agentclientprotocol/sdk' */
+/** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
+/** @typedef {{requestId:string,fingerprint:string,operationId?:string,responseEventId?:string,progressDisplay?:ProgressDisplay}} SessionRequest */
+/** @typedef {{sessionId:string,cwd:string,operations:string[],requests:SessionRequest[]}} Session */
+/** @typedef {Pick<Operation,'operationId'|'status'|'waiting'|'assessment'>} ReplyState */
+/** @typedef {{text?:string,stopReason:StopReason}} Reply */
+
+/** @param {string} sessionId @param {string} requestId */
+export const operationRequestId=(sessionId,requestId)=>'acp:'+sessionId+':'+requestId;
+
+/** Same authoritative response mapping for live and exact historical boundaries.
+ * @param {ReplyState} operation @returns {Reply}
+ */
+export function operationReply(operation){
+  if(operation.status==='cancelled')return {stopReason:'cancelled'};
+  if(operation.status==='finished')return {stopReason:'end_turn',text:operation.assessment?.answer};
+  if(operation.waiting?.kind==='question')return {stopReason:'end_turn',text:operation.waiting.question};
+  if(operation.waiting?.kind==='technical'){
+    const reason=operation.waiting.reason;
+    return {stopReason:reason.code==='RESOURCE_LIMIT'?'max_turn_requests':'refusal',text:reason.profileId?
+      'Error: '+reason.code+' operation='+operation.operationId+' profile='+reason.profileId+
+        ' reasoningLevel='+(reason.reasoningLevel??'(default)')+' available='+(reason.availableLevels??[]).join(',')+
+        (reason.reasoningCause?' cause='+reason.reasoningCause:''):
+      'Waiting: '+reason.code};
+  }
+  return {stopReason:'end_turn'};
+}
+
+/** Exact initial/continued request association, never Operation membership alone.
+ * @param {Operation} operation @param {string} durableId
+ */
+export function turnRange(operation,durableId){
+  const events=operation.events;
+  let start=0,text=operation.request.text,continuing=false;
+  if(operation.request.requestId!==durableId){
+    const index=events.findIndex(event=>event.kind==='operation.continued'&&event.input.requestId===durableId);
+    if(index<0)return;
+    const event=events[index];
+    if(event.kind!=='operation.continued')return;
+    start=index+1;text=event.input.text;continuing=true;
+  }
+  const next=events.findIndex((event,index)=>index>=start&&event.kind==='operation.continued');
+  return {start,end:next<0?events.length:next,text,continuing};
+}
+
+/** @param {Event} event @returns {Reply|undefined} */
+function eventReply(event){
+  if(event.kind==='operation.finished')return operationReply({operationId:event.operationId,status:'finished',assessment:event.assessment});
+  if(event.kind==='operation.waiting')return operationReply({operationId:event.operationId,status:'waiting',waiting:event.waiting});
+  if(event.kind==='operation.cancelled')return operationReply({operationId:event.operationId,status:'cancelled'});
+}
+
+/** Capture only the response actually returned by this completed submission.
+ * @param {Operation} operation @param {string} durableId
+ */
+export function responseBoundary(operation,durableId){
+  const range=turnRange(operation,durableId);
+  if(!range||range.end!==operation.events.length)return;
+  const kind=operation.status==='finished'?'operation.finished':operation.status==='waiting'?'operation.waiting':
+    operation.status==='cancelled'?'operation.cancelled':undefined;
+  if(!kind)return;
+  for(let i=range.end-1;i>=range.start;i--){
+    const event=operation.events[i];
+    if(event.kind===kind)return event.eventId;
+  }
+}
+
+/** Older records can recover a response only if exactly one durable candidate exists.
+ * @param {Operation} operation @param {string} durableId @param {string} [responseEventId]
+ */
+export function historicalReply(operation,durableId,responseEventId){
+  const range=turnRange(operation,durableId);
+  if(!range)return;
+  /** @type {{index:number,reply:Reply}|undefined} */
+  let candidate;
+  for(let i=range.start;i<range.end;i++){
+    const event=operation.events[i],reply=eventReply(event);
+    if(responseEventId!==undefined){
+      if(event.eventId===responseEventId&&reply)return {index:i,reply};
+      continue;
+    }
+    if(reply){
+      if(candidate)return;
+      candidate={index:i,reply};
+    }
+  }
+  return candidate;
+}
+
+/** Stream user/answer text below the ACP frame limit without changing text.
+ * @param {string} text @param {boolean} user @param {(update:SessionUpdate)=>Promise<void>} emit
+ */
+async function replayText(text,user,emit){
+  const size=64*1024;
+  for(let offset=0;offset<text.length||offset===0;){
+    let end=Math.min(offset+size,text.length);
+    if(end<text.length&&text.charCodeAt(end-1)>=0xd800&&text.charCodeAt(end-1)<=0xdbff)end--;
+    await emit({sessionUpdate:user?'user_message_chunk':'agent_message_chunk',content:{type:'text',text:text.slice(offset,end)}});
+    if(end===text.length)break;
+    offset=end;
+  }
+}
+
+/** @param {Operation} operation @param {number} index @param {PresentationMode} mode */
+function journalUpdates(operation,index,mode){
+  const event=operation.events[index],fact=executionFact(operation,event);
+  if(event.kind==='operation.continued')return [];
+  // Presentation projection only: no DiagnosticPort emission or replay.
+  return acpExecutionInline({schemaVersion:1,eventId:event.eventId,operationId:operation.operationId,
+    receivedAt:event.receivedAt,sequence:index+1,component:'core',level:event.kind==='controller.invalid_proposal'?'warn':'info',
+    eventName:event.kind,reasonCode:journalReasonCode(event),attemptId:fact.attemptId,actionId:fact.actionId},
+    eventFindings(event),mode,fact,true);
+}
+
+/** Chronological session turns; snapshots are reused only within this load and
+ * released at their last associated request. No copied journal or replayed tools.
+ * @param {Session} session @param {(id:string)=>Promise<Operation>} inspect
+ * @param {(update:SessionUpdate)=>Promise<void>} emit @param {PresentationMode} mode
+ * @param {ProgressDisplay} display
+ */
+export async function replayHistory(session,inspect,emit,mode,display){
+  /** @type {Map<string,Operation>} */
+  const snapshots=new Map();
+  /** @type {Map<string,number>} */
+  const remaining=new Map(),seenBoundary=new Map();
+  const seen=new Set();
+  for(const request of session.requests)if(request.operationId)remaining.set(request.operationId,(remaining.get(request.operationId)??0)+1);
+  /** @param {Operation} operation @param {number} from @param {number} to */
+  async function background(operation,from,to){
+    let heading=false;
+    for(let index=from;index<to;index++){
+      for(const update of journalUpdates(operation,index,mode)){
+        if(!heading){
+          heading=true;
+          await emit(acpOwnMessage('Recovered Operation '+operation.operationId+' · facts outside the recorded response boundary',
+            {source:'history',operationId:operation.operationId,recovered:true},'background:'+operation.events[from]?.eventId));
+        }
+        await emit(update);
+      }
+    }
+  }
+  for(const request of session.requests){
+    const id=request.operationId;
+    if(!id||!session.operations.includes(id))continue;
+    let operation=snapshots.get(id);
+    if(!operation){operation=await inspect(id);snapshots.set(id,operation);}
+    const durableId=operationRequestId(session.sessionId,request.requestId);
+    const range=turnRange(operation,durableId);
+    const inline=(request.progressDisplay??display)==='inline';
+    if(range){
+      seen.add(id);
+      const prior=seenBoundary.get(id);
+      if(inline&&prior!==undefined&&prior<range.start-(range.continuing?1:0))await background(operation,prior,range.start-(range.continuing?1:0));
+      await replayText(range.text,true,emit);
+      if(inline)await emit(acpAccepted(id,durableId,range.continuing,'inline',true));
+      const response=historicalReply(operation,durableId,request.responseEventId);
+      const end=response?response.index+1:range.end;
+      if(inline)for(let i=range.start;i<end;i++)for(const update of journalUpdates(operation,i,mode))await emit(update);
+      if(response){
+        if(response.reply.text!==undefined)await replayText(response.reply.text,false,emit);
+      }else{
+        await emit(acpOwnMessage('Historical response boundary unavailable; no answer inferred for this request',
+          {source:'history',operationId:id,requestId:durableId,recovered:true},durableId));
+      }
+      seenBoundary.set(id,end);
+    }
+    const left=(remaining.get(id)??1)-1;
+    remaining.set(id,left);
+    if(left===0){
+      const boundary=seenBoundary.get(id);
+      if(inline&&boundary!==undefined&&boundary<operation.events.length)await background(operation,boundary,operation.events.length);
+      snapshots.delete(id);seenBoundary.delete(id);
+    }
+  }
+  for(const id of session.operations)if(!seen.has(id)){
+    await emit(acpOwnMessage('Recovered Operation '+id+' · user turn association unavailable',
+      {source:'history',operationId:id,recovered:true},'missing-turns'));
+  }
+}

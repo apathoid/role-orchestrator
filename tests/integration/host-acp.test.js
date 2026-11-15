@@ -80,7 +80,7 @@ test('external ACP v1 serves separate non-Git sessions, progress, cancellation a
     try {
       await initialize(reopened.agent);
       await reopened.agent.request(a.session.load, { sessionId, cwd, mcpServers: [] });
-      assert.deepEqual(reopened.messages.map(message => message.update.content?.text), ['Привет', 'Ответ: Привет']);
+      assert.deepEqual(reopened.messages.filter(message=>!message.update._meta?.roleOrchestratorSource).map(message => message.update.content?.text), ['Привет', 'Ответ: Привет']);
     } finally { await reopened.close(); }
   }));
 
@@ -568,4 +568,36 @@ test('C15.4 standard ACP inline default emits compact attributed facts, native f
       assert.equal(updates.filter(x=>x.content?.text==='Notice final').length,1);
     }finally{await host.close();}
   }
+}));
+
+test('C15.5 ACP history preserves A B A user order and exact historical retry after continuation', {timeout:20000},()=>withOwnedRun('C15-history',async cwd=>{
+  const config=await fixture(cwd);
+  const host=launch(cwd,config);
+  let sessionId,operationA;
+  try{
+    await initialize(host.agent);
+    ({sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]}));
+    const first={roleOrchestrator:{requestId:'r1'}};
+    await prompt(host.agent,sessionId,'clarify',first);
+    operationA=host.messages.find(x=>x.update._meta?.roleOrchestratorSource?.eventName==='operation.accepted').update._meta.roleOrchestratorSource.operationId;
+    assert.equal(host.messages.at(-1).update.content.text,'What scope?');
+    await prompt(host.agent,sessionId,'B',{roleOrchestrator:{requestId:'b',newOperation:true}});
+    await prompt(host.agent,sessionId,'scope',{roleOrchestrator:{requestId:'r2',continueOperationId:operationA}});
+    assert.equal(host.messages.at(-1).update.content.text,'Ответ: scope');
+    await prompt(host.agent,sessionId,'clarify',first);
+    assert.equal(host.messages.at(-1).update.content.text,'What scope?');
+  }finally{await host.close();}
+  const reopened=launch(cwd,config);
+  try{
+    await initialize(reopened.agent);
+    await reopened.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+    const plain=messages=>messages.filter(x=>!x.update._meta?.roleOrchestratorSource).map(x=>x.update.content?.text);
+    assert.deepEqual(plain(reopened.messages),['clarify','What scope?','B','Ответ: B','scope','Ответ: scope']);
+    const own=reopened.messages.filter(x=>x.update.messageId?.startsWith('ro:')).map(x=>x.update.messageId);
+    assert.ok(own.length>3);
+    const before=reopened.messages.length;
+    await reopened.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+    assert.deepEqual(plain(reopened.messages.slice(before)),plain(reopened.messages.slice(0,before)));
+    assert.deepEqual(reopened.messages.slice(before).filter(x=>x.update.messageId?.startsWith('ro:')).map(x=>x.update.messageId),own);
+  }finally{await reopened.close();}
 }));
