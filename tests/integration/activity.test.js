@@ -4,6 +4,9 @@ import { setImmediate as tick } from 'node:timers/promises';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
+import { createEventStream } from '../../src/application/events.js';
+import { cliPresentation } from '../../src/hosts/cli-presentation.js';
+import { acpActivity, acpExecutionInline, acpExecutionNotices } from '../../src/hosts/presentation.js';
 import { createActivityStream } from '../../src/application/activity.js';
 import { final, setup } from '../fixtures/application.js';
 import { request } from '../fixtures/core.js';
@@ -168,3 +171,73 @@ test('C13 delivery consumers preserve parallel execution and mutable workspace u
     const baseline = await run('none');
     for (const mode of ['fast','slow','throwing']) assert.deepEqual(await run(mode), baseline);
   }));
+
+
+test('C15.6 actual committed fact and native renderer modes preserve full deterministic execution', {timeout:20000}, async t=>{
+  async function run(mode){
+    const stream=createEventStream(),gate=Promise.withResolvers();
+    const start=performance.now();let firstMs,rendered=0,bytes=0;
+    async function write(value){
+      firstMs??=performance.now()-start;
+      rendered++;bytes+=Buffer.byteLength(typeof value==='string'?value:JSON.stringify(value));
+      if(mode==='throwing')throw Error('fixture renderer failure');
+      if(mode==='slow')await gate.promise;
+    }
+    const cli=mode.startsWith('cli-')?cliPresentation(mode.slice(4),write,write):undefined;
+    const {api,invocations,events}=setup({
+      maxInvocations:4,maxConcurrentInvocations:1,committedDiagnostic:stream.emit,
+      respond(invocation,count,observe,activity){
+        for(let i=0;i<160;i++){
+          activity({kind:'reasoning',nativeKind:'agent_thought_chunk',nativeId:'same',
+            payload:{sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'x'.repeat(4096)}}});
+          if(i%10===0)activity({kind:'tool',nativeKind:'tool_call',nativeId:'tool-'+i,
+            payload:{sessionUpdate:'tool_call',toolCallId:'tool-'+i,title:'Read '+i,status:'completed'}});
+        }
+        if(count===1)return final(invocation,{finalAssessment:undefined,
+          additions:['a','b'].map(actionId=>({actionId,kind:'delegate',profileId:'primary',
+            objective:'Inspect '+actionId+' '+ 'x'.repeat(8192),expectedResult:'Read fixture',contextRefs:['request-1'],dependsOn:[]})),
+          waitPolicy:{kind:'all_requested',targets:['a','b'].map(id=>({kind:'action',id}))}});
+        if(invocation.kind==='controller')return final(invocation);
+        const ref=observe({ref:'fixture-'+invocation.actionId,kind:'provider_report',sourceId:'fixture',
+          completeness:'complete',value:'observed '+invocation.actionId});
+        const response=final(invocation);
+        response.output='worker result '+invocation.actionId;
+        response.outcome.outputRefs=[{ref,kind:'output',source:'provider_reported'}];
+        response.findings=[{findingId:'f-'+invocation.actionId,author:invocation.profile.profileId,
+          claim:'Model claim '+ 'y'.repeat(8192),subject:'fixture',supports:[ref],uncertainties:['fixture uncertainty']}];
+        return response;
+      },
+    });
+    let execution,activity;
+    try{
+      const submission=await api.submit(request(),id=>{
+        if(mode==='headless')return;
+        cli?.accepted(id);
+        execution=stream.subscribe(async(event,findings,fact)=>{
+          if(cli)return cli.notice({channel:'execution',event,findings,fact});
+          for(const update of mode==='notices'?acpExecutionNotices(event,findings,'detailed',fact):acpExecutionInline(event,findings,'compact',fact))await write(update);
+        },{operationId:id});
+        activity=api.subscribeActivity({operationId:id},async event=>{
+          if(cli)return cli.notice({channel:'activity',event});
+          const update=acpActivity(event,'detailed',event.invocationKind==='controller');
+          if(update)await write(update);
+        });
+        if(mode==='disconnected'){execution();activity();}
+      });
+      const state=await submission.completion,completionMs=performance.now()-start;
+      gate.resolve();
+      await Promise.all([execution?.finish?.(),activity?.finish?.()]);
+      cli?.finish(state);
+      assert.equal(state.status,'finished');
+      assert.equal(invocations.length,4);
+      assert.equal(state.events.filter(e=>e.kind==='attempt.outcome').length,4);
+      assert.equal(state.events.flatMap(e=>e.findings??[]).length,2);
+      if(!['headless','disconnected'].includes(mode))assert.ok(rendered>0);
+      t.diagnostic('C15_MODES '+JSON.stringify({mode,firstMs,completionMs,rendered,bytes}));
+      return {state,events,invocations:invocations.map(({signal,isActive,contextAccess,externalTools,permissions,interactions,...stable})=>stable)};
+    }finally{gate.resolve();execution?.();activity?.();cli?.close();stream.close();await api.close();}
+  }
+  const expected=await run('headless');
+  for(const mode of ['cli-compact','cli-detailed','cli-debug','inline','notices','slow','throwing','disconnected'])
+    assert.deepEqual(await run(mode),expected,mode);
+});

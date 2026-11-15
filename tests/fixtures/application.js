@@ -13,7 +13,7 @@ export function final(invocation, overrides = {}) {
   };
 }
 
-export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, provider: injectedProvider, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, catalog, extraCatalog = [], capabilities = {}, authority, permissions, tools, lookupStatus, providerFor, supportsIdempotency, approveRetry, emit,
+export function setup({ respond = invocation => final(invocation), open, cancel, close, store: injectedStore, provider: injectedProvider, maxInvocations = 3, maxConcurrentInvocations = 1, schedule, catalog, extraCatalog = [], capabilities = {}, authority, permissions, tools, lookupStatus, providerFor, supportsIdempotency, approveRetry, emit, committedDiagnostic,
   now = () => 100, context, allowContextShare, configurationRef = 'test-config', idPrefix = 'id-', profile = { profileId: 'primary', providerId: 'fixture', model: 'fake' } } = {}) {
   const states = new Map();
   const invocations = [];
@@ -39,6 +39,7 @@ export function setup({ respond = invocation => final(invocation), open, cancel,
       reference: 'fixture-authority', origin: 'user', profileIds: [profile.profileId],
     }), configurationRef, context, allowContextShare, permissions, tools, providerFor, approveRetry,
     diagnostics: { emit(event) { events.push(event); return emit?.(event); }, flush() {} },
+    ...(committedDiagnostic&&{committedDiagnostic(event,findings,fact){events.push(event);committedDiagnostic(event,findings,fact);}}),
     clock: { now, monotonicNow: now },
     ids: { newId: () => idPrefix + ++sequence },
     limits: { maxInvocations, maxConcurrentInvocations },

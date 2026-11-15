@@ -10,7 +10,7 @@
 
 ### C15.6 — engineering regression and audit
 
-Hardened source labels and interleaved terminal control-sequence state, kept exact permission IDs, exposed actual assessment/waiting/late-outcome facts, avoided detailed summary assembly in compact mode. Added deterministic baseline/current CLI and ACP comparison probe, source-safety and actual color/no-color PTY regressions; bounded history to one full snapshot and stop on disconnect, test legacy ambiguity, background attribution and repeated large Unicode history; normative docs and single matrix A77–A81 updated. No Coordinator, prompts, Decision/Outcome, context/evidence, scheduler, provider/tool/skill/permission execution policy changes. Full CI and measurements to be recorded at C15.7; native obligations unchanged.
+Hardened source labels and interleaved terminal control-sequence state, kept exact permission IDs, exposed actual assessment/waiting/late-outcome facts, avoided detailed summary assembly in compact mode. Added deterministic baseline/current CLI and ACP comparison probe, source-safety and actual color/no-color PTY regressions; bounded history to one full snapshot and stop on disconnect, test legacy ambiguity, background attribution and repeated large Unicode history; full deterministic state/diagnostic/Invocation comparison through actual committed and native presentation mappings across headless, CLI modes, ACP modes and slow/throwing/disconnected consumers; normative docs and single matrix A77–A81 updated. No Coordinator, prompts, Decision/Outcome, context/evidence, scheduler, provider/tool/skill/permission execution policy changes. Full CI and measurements to be recorded at C15.7; native obligations unchanged.
 
 ### C15.5 — chronological ACP history
 
