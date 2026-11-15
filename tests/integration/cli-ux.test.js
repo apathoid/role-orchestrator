@@ -198,32 +198,41 @@ test('C15.6 interleaved native sources retain split escape state and visual boun
 });
 
 
-test('C15R.2 full compact transcript preserves source and text while hiding repeated tool updates',async()=>{
-  const input=new PassThrough(),output=new PassThrough();let text='';output.on('data',b=>text+=b);
-  const terminal=createCliInput(input,output,false,()=>{});
-  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk);
-  renderer.accepted('123456789');
-  const fact={kind:'attempt.dispatched',operationId:'123456789',attemptId:'a',invocationKind:'controller',attemptOrdinal:1,profileId:'p',modelSelector:'m',reasoning:{mode:'native'}};
-  await renderer.notice({channel:'execution',event:{eventName:'attempt.dispatched',eventId:'dispatch',level:'info'},fact});
-  let sequence=0;
-  const send=(kind,payload,nativeId,nativeKind)=>renderer.notice({channel:'activity',event:{kind,operationId:'123456789',attemptId:'a',profileId:'p',providerId:'x',sequence:++sequence,payload,nativeId,nativeKind}});
-  await send('reasoning',{content:{type:'text',text:'Inspect'}},undefined,'agent_thought_chunk');
-  await send('reasoning',{content:{type:'text',text:' the commit.\nRead the diff.'}},undefined,'agent_thought_chunk');
-  await send('tool',{title:'shell',kind:'execute',status:'pending'},'x','tool_call');
-  await send('tool',{title:'git show HEAD',status:'in_progress'},'x','tool_call_update');
-  await send('tool',{title:'git show HEAD',status:'in_progress'},'x','tool_call_update');
-  await send('tool',{status:'completed'},'x','tool_call_update');
-  await send('tool',{title:'Read package.json',status:'in_progress'},'y','tool_call');
-  await send('tool',{status:'failed'},'y','tool_call_update');
-  await send('reasoning',{content:{type:'text',text:'Version only.'}},undefined,'agent_thought_chunk');
-  terminal.close();
-  assert.equal(text,[
-    'Role Orchestrator · compact · 12345678','','● Controller #1 · p','  Invocation dispatched · selector=m · native effort','',
-    '  Thinking · Controller #1 · p','  Inspect the commit.','  Read the diff.',
-    '  ◇ git show HEAD · in_progress','  ✓ git show HEAD · completed',
-    '  ◇ Read package.json · in_progress','  ✗ Read package.json · failed','',
-    '  Thinking · Controller #1 · p','  Version only.','',
-  ].join('\n'));
+test('C15R.2 full compact, detailed and debug transcripts preserve text and actual tool transitions',async()=>{
+  for(const mode of ['compact','detailed','debug']){
+    const input=new PassThrough(),output=new PassThrough();let text='';output.on('data',b=>text+=b);
+    const terminal=createCliInput(input,output,false,()=>{});
+    const renderer=cliPresentation(mode,terminal.print,terminal.printChunk,terminal.resetPresentation);
+    renderer.accepted('123456789');
+    const fact={kind:'attempt.dispatched',operationId:'123456789',attemptId:'a',invocationKind:'controller',attemptOrdinal:1,profileId:'p',modelSelector:'m',reasoning:{mode:'native'}};
+    await renderer.notice({channel:'execution',event:{eventName:'attempt.dispatched',eventId:'dispatch',level:'info',sequence:1,receivedAt:0,reasonCode:'DISPATCH_STARTED'},fact});
+    let sequence=0;
+    const send=(kind,payload,nativeId,nativeKind)=>renderer.notice({channel:'activity',event:{kind,operationId:'123456789',attemptId:'a',profileId:'p',providerId:'x',sequence:++sequence,payload,nativeId,nativeKind}});
+    await send('reasoning',{content:{type:'text',text:'Inspect'}},undefined,'agent_thought_chunk');
+    await send('reasoning',{content:{type:'text',text:' the commit.\nRead the diff.'}},undefined,'agent_thought_chunk');
+    await send('tool',{title:'shell',kind:'execute',status:'pending'},'x','tool_call');
+    await send('tool',{title:'git show HEAD',status:'in_progress'},'x','tool_call_update');
+    await send('tool',{title:'git show HEAD',status:'in_progress'},'x','tool_call_update');
+    await send('tool',{status:'completed'},'x','tool_call_update');
+    await send('tool',{title:'Read package.json',status:'in_progress'},'y','tool_call');
+    await send('tool',{status:'failed'},'y','tool_call_update');
+    await send('reasoning',{content:{type:'text',text:'Version only.'}},undefined,'agent_thought_chunk');
+    terminal.close();
+    const debug=mode==='debug',heading='  Thinking · Controller #1 · p'+(debug?' [x agent_thought_chunk]':'');
+    const row=(text,kind,id,seq)=>'  '+text+(debug?' ['+kind+' '+id+' seq='+seq+']':'');
+    assert.equal(text,[
+      'Role Orchestrator · '+mode+' · '+(debug?'Operation 123456789':'12345678'),'','● Controller #1 · p','  Invocation dispatched · selector=m · native effort',
+      ...(debug?['  attempt=a event=dispatch seq=1 at=0 reason=DISPATCH_STARTED']:[]),'',
+      heading,'  Inspect the commit.','  Read the diff.',
+      ...(mode!=='compact'?[row('◇ shell · pending','tool_call','x',3)]:[]),
+      row('◇ git show HEAD · in_progress','tool_call_update','x',4),
+      ...(debug?[row('◇ git show HEAD · in_progress','tool_call_update','x',5)]:[]),
+      row('✓ git show HEAD · completed','tool_call_update','x',6),
+      row('◇ Read package.json · in_progress','tool_call','y',7),
+      row('✗ Read package.json · failed','tool_call_update','y',8),'',
+      heading,'  Version only.','',
+    ].join('\n'),mode);
+  }
 });
 
 

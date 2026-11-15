@@ -97,6 +97,7 @@ agent()
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
     if (scenario === 'c15r-transcript') {
+      if(objective==='hold'){await writeFile('c15r-hold-ready','');await stop.promise;return {stopReason:'cancelled'};}
       const host=context.find(item=>item.ref==='host:invocation-context').value;
       const notify=update=>client.notify(c.session.update,{sessionId,update});
       const thought=text=>notify({sessionUpdate:'agent_thought_chunk',content:{type:'text',text}});
