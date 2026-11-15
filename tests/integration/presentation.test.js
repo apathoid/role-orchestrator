@@ -27,11 +27,26 @@ test('ACP mapping uses actual native standard fields and scoped IDs without synt
   const plan = native('plan',{sessionUpdate:'plan',entries:[{content:'Native plan',priority:'medium',status:'pending'}]});
   assert.equal(acpActivity(plan,'detailed',false),undefined);
   assert.equal(acpActivity(plan,'compact',true),undefined);
-  assert.deepEqual(acpActivity(plan,'detailed',true),plan.payload);
+  assert.deepEqual(acpActivity(plan,'detailed',true).entries,plan.payload.entries);
   const thought = native('reasoning',{sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'original'}});
-  assert.deepEqual(acpActivity(thought,'compact',false),thought.payload);
+  assert.deepEqual(acpActivity(thought,'compact',false).content,thought.payload.content);
   assert.equal(acpActivity(native('reasoning',{type:'item.updated',item:{type:'reasoning',text:'snapshot'}},{nativeKind:'item.updated'}),'compact',true),undefined);
   assert.equal(acpActivity(native('reasoning',{type:'item.completed',item:{type:'reasoning',text:'summary'}},{nativeKind:'item.completed'}),'compact',true).content.text,'summary');
   assert.equal(acpActivity(native('finding',{claim:'model claim'}),'debug',true),undefined);
   assert.equal(acpActivity({kind:'gap',operationId:'op',droppedCount:1,reason:'overflow'},'debug',true),undefined);
+});
+
+test('C14R.1 anonymous ACP thought keeps trusted attempt metadata without inventing message boundaries',()=>{
+  const chunk={sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'fragment'},_meta:{native:'unchanged',roleOrchestratorSource:{attemptId:'forged'}}};
+  const a=native('reasoning',chunk), b={...a,attemptId:'b'};
+  const mapped=[a,b,a].map(x=>acpActivity(x,'compact',false));
+  assert.deepEqual(mapped.map(x=>x._meta.roleOrchestratorSource.attemptId),['a','b','a']);
+  assert.ok(mapped.every(x=>x.messageId===undefined&&x._meta.native==='unchanged'));
+  assert.equal(chunk._meta.roleOrchestratorSource.attemptId,'forged');
+  const identified={...a,payload:{...chunk,messageId:'shared'},nativeId:'shared'};
+  assert.equal(acpActivity(identified,'compact',false).messageId,scopedNativeId('a','shared'));
+  assert.equal(acpActivity({...identified,attemptId:'b'},'compact',false).messageId,scopedNativeId('b','shared'));
+  const codex=native('reasoning',{type:'item.completed',item:{id:'item',type:'reasoning',text:'summary'}},{nativeId:'item',nativeKind:'item.completed'});
+  assert.equal(acpActivity(codex,'compact',false).messageId,scopedNativeId('a','item'));
+  assert.equal(acpActivity(codex,'compact',false)._meta.roleOrchestratorSource.nativeId,'item');
 });

@@ -463,6 +463,8 @@ test('C14 standard ACP maps only actual native thinking, tools, Controller plan 
       const thoughts=updates.filter(x=>x.sessionUpdate==='agent_thought_chunk');
       assert.ok(thoughts.length>=3);
       assert.ok(thoughts.every(x=>x.content.text.startsWith('Native thought ')));
+      assert.ok(thoughts.every(x=>x.messageId==null&&x._meta.roleOrchestratorSource.operationId));
+      assert.ok(new Set(thoughts.map(x=>x._meta.roleOrchestratorSource.attemptId)).size>=3);
       const calls=updates.filter(x=>x.sessionUpdate==='tool_call');
       const changed=updates.filter(x=>x.sessionUpdate==='tool_call_update');
       assert.ok(calls.length>=3);

@@ -113,21 +113,27 @@ export function acpActivity(event, mode, controller) {
   if (event.kind === 'gap' || !event.payload || typeof event.payload !== 'object') return;
   const payload = object(event.payload);
   const update = /** @type {SessionUpdate} */ (event.payload);
+  const _meta = { ...object(payload._meta), roleOrchestratorSource: {
+    operationId:event.operationId,attemptId:event.attemptId,profileId:event.profileId,providerId:event.providerId,
+    sequence:event.sequence, ...(event.nativeId !== undefined && {nativeId:event.nativeId}),
+    ...(event.nativeKind !== undefined && {nativeKind:event.nativeKind}), source:event.source,
+  } };
   if (event.kind === 'reasoning') {
     if (payload.sessionUpdate === 'agent_thought_chunk' && update.sessionUpdate === 'agent_thought_chunk') {
-      return { ...update, ...(update.messageId == null ? {} : { messageId: scopedNativeId(event.attemptId, update.messageId) }) };
+      return { ...update, _meta, ...(update.messageId == null ? {} : { messageId: scopedNativeId(event.attemptId, update.messageId) }) };
     }
     if (event.nativeKind === 'item.completed' && object(payload.item).type === 'reasoning') {
       const text = nativeText(event);
-      if (text !== undefined) return { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text } };
+      if (text !== undefined) return { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text }, _meta,
+        ...(event.nativeId !== undefined && {messageId:scopedNativeId(event.attemptId,event.nativeId)}) };
     }
   }
   if (event.kind === 'user_message' && payload.sessionUpdate === 'agent_message_chunk' && update.sessionUpdate === 'agent_message_chunk') {
-    return { ...update, ...(update.messageId == null ? {} : { messageId: scopedNativeId(event.attemptId, update.messageId) }) };
+    return { ...update, _meta, ...(update.messageId == null ? {} : { messageId: scopedNativeId(event.attemptId, update.messageId) }) };
   }
   if (event.kind === 'tool' && (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') &&
       typeof update.toolCallId === 'string') {
-    return { ...update, toolCallId: scopedNativeId(event.attemptId, update.toolCallId) };
+    return { ...update, _meta, toolCallId: scopedNativeId(event.attemptId, update.toolCallId) };
   }
-  if (event.kind === 'plan' && mode !== 'compact' && controller && update.sessionUpdate === 'plan') return update;
+  if (event.kind === 'plan' && mode !== 'compact' && controller && update.sessionUpdate === 'plan') return { ...update,_meta };
 }
