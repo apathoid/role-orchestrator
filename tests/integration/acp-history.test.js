@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createOperation, applyEvent } from '../../src/core/operation.js';
+import { historicalOutcomeReports } from '../../src/core/snapshot.js';
+import { request, outcome } from '../fixtures/core.js';
 import { replayHistory, historicalReply, responseBoundary, operationRequestId } from '../../src/hosts/acp-history.js';
 
 const id=r=>operationRequestId('session',r);
@@ -63,4 +66,46 @@ test('C15.6 large repeated history streams exact Unicode, stops on disconnect an
   const stop=new AbortController();let reads=0,emitted=0;
   await replayHistory(session,async()=>{reads++;return A;},async()=>{emitted++;stop.abort();},'compact','inline',stop.signal);
   assert.equal(emitted,1);assert.equal(reads,1);
+});
+
+
+test('C15R.4 historical classifications match actual applied ordinary, late and conflicting reports',async()=>{
+  let state=createOperation('A',request({requestId:id('r')}),'authority',{maxInvocations:4,maxConcurrentInvocations:2},0);
+  const diagnostics=[];
+  const commit=(eventId,kind,fields)=>{
+    const transition=applyEvent(state,event('A',eventId,kind,fields));
+    assert.equal(transition.kind,'applied',eventId);
+    state=transition.state;diagnostics.push(transition.diagnostic);
+  };
+  const reserve=attemptId=>{
+    commit('reserve-'+attemptId,'attempt.reserved',{attemptId,actionId:attemptId});
+    commit('dispatch-'+attemptId,'attempt.dispatched',{attemptId,route:{profileId:'p',providerId:'fixture',model:'m',configurationRef:'test-config'}});
+  };
+  reserve('a');reserve('b');
+  commit('ordinary','attempt.outcome',{outcome:outcome('a'),dispatchCertainty:'sent'});
+  commit('cancel','operation.cancelled',{source:'client'});
+  commit('late','attempt.outcome',{outcome:outcome('b',{terminal:'unknown',effect:'unknown'}),dispatchCertainty:'unknown'});
+  commit('enrich','attempt.outcome',{outcome:outcome('b',{terminal:'completed',effect:'confirmed'}),dispatchCertainty:'sent',late:true});
+  commit('conflict','attempt.outcome',{outcome:outcome('b',{terminal:'failed',effect:'none'}),dispatchCertainty:'sent',late:true});
+  const duplicate=applyEvent(state,event('A','duplicate','attempt.outcome',{outcome:outcome('b',{terminal:'completed',effect:'confirmed'}),dispatchCertainty:'sent',late:true}));
+  assert.equal(duplicate.kind,'duplicate');
+  const reports=historicalOutcomeReports(state);
+  for(const name of ['ordinary','late','enrich','conflict']){
+    const d=diagnostics.find(item=>item.eventId===name);
+    assert.deepEqual(reports.get(name),{eventName:d.eventName,reasonCode:d.reasonCode});
+  }
+  assert.equal(reports.get('conflict').eventName,'attempt.outcome_discrepancy');
+  const session={sessionId:'session',cwd:'/tmp',operations:['A'],requests:[entry('r','A','cancel')]};
+  const updates=[];
+  await replayHistory(session,async()=>state,async u=>updates.push(u),'compact','inline');
+  for(const name of ['ordinary','late','enrich','conflict']){
+    const u=updates.find(item=>item._meta?.roleOrchestratorSource?.eventId===name);
+    assert.equal(u._meta.roleOrchestratorSource.eventName,reports.get(name).eventName);
+    assert.equal(u._meta.roleOrchestratorSource.reasonCode,reports.get(name).reasonCode);
+    assert.equal(u._meta.roleOrchestratorSource.recovered,true);
+  }
+  assert.match(updates.find(u=>u._meta?.roleOrchestratorSource?.eventId==='conflict').content.text,/Outcome discrepancy/);
+  const legacy={...state,revision:state.revision+1};const fallback=[];
+  await replayHistory(session,async()=>legacy,async u=>fallback.push(u),'compact','inline');
+  assert.match(fallback.find(u=>u._meta?.roleOrchestratorSource?.eventId==='ordinary').content.text,/Historical outcome report/);
 });

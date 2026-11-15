@@ -137,7 +137,7 @@ export function thinkingFragment(event,mode,sourceLabel) {
 /** @type {Record<string,string>} */
 const lifecycleLabels={
   'operation.accepted':'Operation accepted','attempt.dispatched':'Invocation dispatched',
-  'attempt.outcome':'Outcome recorded','attempt.late_outcome':'Late outcome recorded','attempt.outcome_discrepancy':'Outcome discrepancy','attempt.cancel_requested':'Cancellation requested',
+  'attempt.outcome':'Outcome recorded','attempt.late_outcome':'Late outcome recorded','attempt.outcome_discrepancy':'Outcome discrepancy','attempt.historical_outcome_report':'Historical outcome report (classification not recorded)','attempt.cancel_requested':'Cancellation requested',
   'operation.cancelled':'Operation cancelled','action.cancelled':'Action cancelled','operation.waiting':'Operation waiting',
   'operation.finished':'Assessment recorded','operation.continued':'Request continued',
   'operation.recovered':'Operation recovered','controller.invalid_proposal':'Invalid model proposal',

@@ -11,7 +11,9 @@ export function cliPresentation(mode, print, printChunk) {
   /** @type {Map<string,string>} */
   const aliases=new Map();
   /** @type {string|undefined} */
-  let acceptedId,currentSource;
+  let acceptedId;
+  /** @type {string|undefined} */
+  let currentSource;
   /** @param {string} id @param {string} label */
   function select(id,label){
     if(currentSource===id)return '';

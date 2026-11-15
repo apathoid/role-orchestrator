@@ -1,3 +1,4 @@
+import { historicalOutcomeReports } from '../core/snapshot.js';
 import { journalReasonCode } from '../core/operation.js';
 import { eventFindings } from '../core/finding.js';
 import { executionFact } from '../application/execution-facts.js';
@@ -107,14 +108,18 @@ async function replayText(text,user,emit,signal){
   }
 }
 
-/** @param {Operation} operation @param {number} index @param {PresentationMode} mode */
-function journalUpdates(operation,index,mode){
+/** @param {Operation} operation @param {number} index @param {PresentationMode} mode @param {ReturnType<typeof historicalOutcomeReports>} reports */
+function journalUpdates(operation,index,mode,reports){
   const event=operation.events[index],fact=executionFact(operation,event);
   if(event.kind==='operation.continued')return [];
+  // Classification comes from the validated historical prefix, never today's terminal state.
+  const report=event.kind==='attempt.outcome'?reports.get(event.eventId):undefined;
+  const eventName=event.kind==='attempt.outcome'?(report?.eventName??'attempt.historical_outcome_report'):event.kind;
+  const reasonCode=event.kind==='attempt.outcome'?(report?.reasonCode??'CLASSIFICATION_NOT_RECORDED'):journalReasonCode(event);
   // Presentation projection only: no DiagnosticPort emission or replay.
   return acpExecutionInline({schemaVersion:1,eventId:event.eventId,operationId:operation.operationId,
-    receivedAt:event.receivedAt,sequence:index+1,component:'core',level:event.kind==='controller.invalid_proposal'?'warn':'info',
-    eventName:event.kind,reasonCode:journalReasonCode(event),attemptId:fact.attemptId,actionId:fact.actionId},
+    receivedAt:event.receivedAt,sequence:index+1,component:'core',level:eventName==='controller.invalid_proposal'||eventName==='attempt.outcome_discrepancy'?'warn':'info',
+    eventName,reasonCode,attemptId:fact.attemptId,actionId:fact.actionId},
     eventFindings(event),mode,fact,true);
 }
 
@@ -129,6 +134,8 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
   // A revisit reads the append-only journal again; recorded response IDs remain exact.
   /** @type {Operation|undefined} */
   let snapshot;
+  /** @type {ReturnType<typeof historicalOutcomeReports>} */
+  let reports=new Map();
   /** @type {Map<string,number>} */
   const remaining=new Map(),seenBoundary=new Map();
   const seen=new Set();
@@ -137,7 +144,7 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
   async function background(operation,from,to){
     let heading=false;
     for(let index=from;!signal?.aborted&&index<to;index++){
-      for(const update of journalUpdates(operation,index,mode)){
+      for(const update of journalUpdates(operation,index,mode,reports)){
         if(!heading){
           heading=true;
           await emit(acpOwnMessage('Recovered Operation '+operation.operationId+' · facts outside the recorded response boundary',
@@ -151,7 +158,7 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
     if(signal?.aborted)return;
     const id=request.operationId;
     if(!id||!session.operations.includes(id))continue;
-    if(snapshot?.operationId!==id){snapshot=undefined;snapshot=await inspect(id);}
+    if(snapshot?.operationId!==id){snapshot=undefined;reports.clear();snapshot=await inspect(id);reports=historicalOutcomeReports(snapshot);}
     const operation=snapshot;
     if(signal?.aborted)return;
     const durableId=operationRequestId(session.sessionId,request.requestId);
@@ -166,7 +173,7 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
       if(inline)await emit(acpAccepted(id,durableId,range.continuing,'inline',true));
       const response=historicalReply(operation,durableId,request.responseEventId);
       const end=response?response.index+1:range.end;
-      if(inline)for(let i=range.start;!signal?.aborted&&i<end;i++)for(const update of journalUpdates(operation,i,mode)){
+      if(inline)for(let i=range.start;!signal?.aborted&&i<end;i++)for(const update of journalUpdates(operation,i,mode,reports)){
         if(signal?.aborted)return;
         await emit(update);
       }
@@ -184,7 +191,7 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
     if(left===0){
       const boundary=seenBoundary.get(id);
       if(inline&&boundary!==undefined&&boundary<operation.events.length)await background(operation,boundary,operation.events.length);
-      snapshot=undefined;seenBoundary.delete(id);
+      snapshot=undefined;reports.clear();seenBoundary.delete(id);
     }
   }
   for(const id of session.operations)if(!signal?.aborted&&!seen.has(id)){
