@@ -1,4 +1,4 @@
-import { formatActivity, formatExecution, formatOperation, formatRecordedFindings, thinkingFragment } from './presentation.js';
+import { formatActivity, formatExecution, formatOperation, formatRecordedFindings, formatFindingRecords, thinkingFragment } from './presentation.js';
 /** @import {ControlNotice} from './local-control.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {PresentationMode} from './presentation.js' */
@@ -7,19 +7,9 @@ import { formatActivity, formatExecution, formatOperation, formatRecordedFinding
 export function cliPresentation(mode, print, printChunk) {
   const seen = new Set();
   let closed = false;
-  /** @param {Operation} state @param {string} [eventId] */
-  async function findings(state,eventId) {
-    if (!mode || closed) return;
-    for (const event of state.events) {
-      if (eventId && event.eventId !== eventId) continue;
-      for (const finding of formatRecordedFindings(event,mode)) {
-        if (!seen.has(finding.id)) { seen.add(finding.id); await print(finding.text); }
-      }
-    }
-  }
   return {
-    /** @param {ControlNotice} notice @param {(id:string)=>Promise<Operation>} [inspect] */
-    async notice(notice,inspect) {
+    /** @param {ControlNotice} notice */
+    async notice(notice) {
       if (!mode || closed) return;
       if(notice.channel==='activity'&&printChunk){
         const fragment=thinkingFragment(notice.event,mode);
@@ -28,9 +18,11 @@ export function cliPresentation(mode, print, printChunk) {
       const text = notice.channel === 'activity' ? formatActivity(notice.event,mode)
         : notice.channel === 'execution' ? formatExecution(notice.event,mode) : '[Delivery gap] ' + notice.droppedCount + ' notices dropped';
       if (text) await print(text);
-      if (notice.channel === 'execution' && inspect && notice.event.operationId &&
-          ['attempt.outcome','controller.responded'].includes(notice.event.eventName)) {
-        await findings(await inspect(notice.event.operationId),notice.event.eventId);
+      if(notice.channel==='execution'&&notice.findings&&!closed) {
+        for(const finding of formatFindingRecords(notice.findings,mode)){
+          if(closed)break;
+          if(!seen.has(finding.id)){seen.add(finding.id);await print(finding.text);}
+        }
       }
     },
     /** @param {unknown} value */

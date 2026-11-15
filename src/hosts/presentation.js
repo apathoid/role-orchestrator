@@ -86,7 +86,11 @@ export function formatExecution(event, mode) {
 
 /** @param {Event} event @param {PresentationMode} mode */
 export function formatRecordedFindings(event, mode) {
-  return (eventFindings(event) ?? []).map(finding => ({
+  return formatFindingRecords(eventFindings(event)??[],mode);
+}
+/** @param {readonly import('../core/finding.js').Finding[]} findings @param {PresentationMode} mode */
+export function formatFindingRecords(findings,mode) {
+  return findings.map(finding => ({
     id: finding.findingId,
     text: terminalText('[Recorded finding ' + finding.findingId + ' · ' + finding.author + '] ' + finding.claim +
       ' — ' + finding.subject +
@@ -124,7 +128,7 @@ export function acpActivity(event, mode, controller) {
   const update = /** @type {SessionUpdate} */ (event.payload);
   const _meta = { ...object(payload._meta), roleOrchestratorSource: {
     operationId:event.operationId,attemptId:event.attemptId,profileId:event.profileId,providerId:event.providerId,
-    sequence:event.sequence, ...(event.nativeId !== undefined && {nativeId:event.nativeId}),
+    sequence:event.sequence, ...(event.actionId!==undefined&&{actionId:event.actionId}), ...(event.invocationKind!==undefined&&{invocationKind:event.invocationKind}), ...(event.nativeId !== undefined && {nativeId:event.nativeId}),
     ...(event.nativeKind !== undefined && {nativeKind:event.nativeKind}), source:event.source,
   } };
   if (event.kind === 'reasoning') {

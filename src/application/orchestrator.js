@@ -1,4 +1,4 @@
-import { admitFindings, checkAssessment, evidenceRefs, findings, recordObservationRefs } from '../core/finding.js';
+import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
@@ -38,7 +38,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
  *     captureMaxBytes?: number, skillInstructionsMaxBytes?: number, toolOutputMaxBytes?: number}, allowContextShare?: ContextShare,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
  *   approveRetry?: RetryApproval, tools?: import('../core/ports.js').ToolPort,
- *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, interactions?: InteractionPort, configurationRef: string,
+ *   diagnostics?: DiagnosticPort, committedDiagnostic?:(diagnostic:DiagnosticEvent,findings:readonly import('../core/finding.js').Finding[])=>void, authority: AuthorityPort, permissions?: PermissionPort, interactions?: InteractionPort, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
  * } & (Execution & {resolveExecution?: undefined} | {resolveExecution: ResolveExecution})} Dependencies
  * @typedef {{operation: Operation, completion: Promise<Operation>}} Submission
@@ -223,7 +223,11 @@ export function createOrchestrator(deps) {
       const retry = await commit(result.state, observed.revision, attemptId);
       if (retry) throw retry.error;
     }
-    if (result.kind === 'applied') emitDiagnostic(diagnostics, result.diagnostic);
+    if (result.kind === 'applied') {
+      if(deps.committedDiagnostic) {
+        try {deps.committedDiagnostic(result.diagnostic,eventFindings(event)??[]);} catch { /* Presentation cannot change commit. */ }
+      } else emitDiagnostic(diagnostics, result.diagnostic);
+    }
     return result.state;
   }
 
@@ -905,7 +909,7 @@ export function createOrchestrator(deps) {
         boundInteractions = interactions?.bind({ operationId: state.operationId, attemptId, profileId: selectedProfile.profileId,
           signal, isActive, deadline, clock, schedule, report: (event, reason) => trace(dispatched, event, reason, attemptId) });
         const reportActivity = activity.bind({ operationId: state.operationId, attemptId,
-          profileId: selectedProfile.profileId, providerId: selectedProfile.providerId }, () => acceptingActivity && isActive());
+          profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, actionId:context.actionId, invocationKind:context.kind }, () => acceptingActivity && isActive());
         const contextAccess = bindContextAccess({
           state: dispatched, store, maxBytes: fetchMaxBytes, captureMaxBytes, profileId: selectedProfile.profileId, attemptId,
           selected, allowShare: allowContextShare, newId: () => ids.newId(), now: () => clock.now(), receive,

@@ -61,13 +61,14 @@ export function createActivityStream() {
       } });
     },
     /**
-     * @param {{operationId: string, attemptId: string, profileId: string, providerId: string}} source
+     * @param {{operationId: string, attemptId: string, profileId: string, providerId: string, actionId?:string, invocationKind?:'controller'|'delegate'}} source
      * @param {() => boolean} isActive
      * @returns {ActivityCallback}
      */
     bind(source, isActive) {
       const identity = { operationId: source.operationId, attemptId: source.attemptId,
-        profileId: source.profileId, providerId: source.providerId };
+        profileId: source.profileId, providerId: source.providerId,
+        ...(source.actionId!==undefined&&{actionId:source.actionId}),...(source.invocationKind!==undefined&&{invocationKind:source.invocationKind}) };
       let sequence = 0;
       return item => {
         try {

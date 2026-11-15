@@ -393,3 +393,20 @@ test('C13R.2 original binding reconnects future input without granting a duplica
     gate.resolve();await Promise.all([observer,reconnect]);assert.equal(calls,1);
   }finally{firstStop.abort();gate.resolve();await server.close();}
 }));
+
+test('C14R.4 measured representative full snapshot transport cost versus committed finding facts', {timeout:15000,skip:localSocketCheck},()=>withOwnedRun('C14R-snapshot-cost',async directory=>{
+  const findings=Array.from({length:64},(_,i)=>({findingId:'f'+i,author:'p',claim:'claim '+i,subject:'file',supports:[],uncertainties:[]}));
+  const snapshot={operationId:'op',events:Array.from({length:256},(_,i)=>({eventId:'e'+i,kind:'attempt.outcome',observations:[{value:'x'.repeat(4096)}],findings:[findings[i%64]]})),attempts:Array.from({length:64},(_,i)=>({attemptId:'a'+i}))};
+  let reads=0,bytes=0;
+  const server=await openControl(directory,'config',async()=>{reads++;const copy=structuredClone(snapshot);bytes+=Buffer.byteLength(JSON.stringify(copy));return copy;});
+  const before=process.memoryUsage().heapUsed,started=performance.now();
+  try{
+    const descriptor=await readDescriptor(directory);
+    for(let i=0;i<32;i++)await callControl(descriptor,'config',{action:'inspect',operationId:'op',requestId:'read-'+i});
+    const factBytes=findings.slice(0,32).reduce((n,f)=>n+Buffer.byteLength(JSON.stringify([f])),0);
+    assert.equal(reads,32);assert.ok(bytes>32*1024*1024);assert.ok(factBytes<bytes/100);
+    // The old read-only cache retains these full snapshots; heap delta is
+    // GC-dependent, serialized retained volume is the deterministic metric.
+    console.log('C14R.4 snapshot metrics',JSON.stringify({reads,serializedSnapshotBytes:bytes,committedFactBytes:factBytes,heapDelta:process.memoryUsage().heapUsed-before,wallMs:performance.now()-started}));
+  }finally{await server.close();}
+}));

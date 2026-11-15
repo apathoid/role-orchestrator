@@ -7,7 +7,7 @@ export function controlStreams(api) {
       const current = api();
       if (!current) return () => {};
       const activity = current.subscribeActivity({ operationId }, event => listener({ channel: 'activity', event }));
-      const execution = current.subscribeExecution({ operationId }, event => listener({ channel: 'execution', event }));
+      const execution = current.subscribeExecution({ operationId }, (event,findings) => listener({ channel: 'execution', event,findings }));
       return Object.assign(() => { activity(); execution(); }, { finish: async () => {
         const counts = await Promise.all([activity.finish(),execution.finish()]);
         return counts[0]+counts[1];

@@ -67,3 +67,17 @@ test('C13R.3 activity subscription finish delivers completion before terminal vi
   const finish=sub.finish();gate.resolve();assert.equal(await finish,0);
   seen.push('final');assert.deepEqual(seen,['start','completed','last','final']);stream.close();
 });
+
+test('C14R.4 scoped execution carries committed findings without diagnostic sink or unscoped body',async()=>{
+  const sink=[],unscoped=[],scoped=[];
+  const stream=createEventStream({emit:e=>sink.push(e),flush(){}});
+  stream.subscribe((event,findings)=>unscoped.push({event,findings}));
+  const sub=stream.subscribe((event,findings)=>scoped.push({event,findings}),{operationId:'op'});
+  const finding={findingId:'f',author:'p',claim:'model finding',subject:'file',supports:[],uncertainties:[]};
+  stream.emit({schemaVersion:1,eventId:'e',receivedAt:1,sequence:1,level:'info',component:'core',eventName:'attempt.outcome',reasonCode:'COMPLETED',operationId:'op'},[finding]);
+  finding.claim='mutated';await sub.finish();await tick();
+  assert.equal(scoped[0].findings[0].claim,'model finding');
+  assert.equal(unscoped[0].findings,undefined);
+  assert.equal(JSON.stringify(sink).includes('model finding'),false);
+  stream.close();
+});

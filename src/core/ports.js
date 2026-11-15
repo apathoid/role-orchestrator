@@ -24,7 +24,7 @@
  *   nativeId?: string, nativeKind?: string}} ProviderActivity
  * @typedef {(item: ProviderActivity) => void} ActivityCallback
  * @typedef {ProviderActivity & {operationId: string, attemptId: string, profileId: string, providerId: string,
- *   source: 'provider_activity', sequence: number}} ActivityEvent
+ *   source: 'provider_activity', sequence: number, actionId?:string, invocationKind?:'controller'|'delegate'}} ActivityEvent
  * @typedef {{operationId: string, attemptId?: string}} ActivityScope
  * @typedef {ActivityEvent | {kind: 'gap', operationId: string, attemptId?: string, droppedCount: number,
  *   reason: 'overflow', sequenceRange?: {first: number, last: number}}} ActivityNotice

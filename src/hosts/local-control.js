@@ -12,7 +12,7 @@ import { HostError, hostError } from './commands.js';
 /** @typedef {{path: string, token: string, pid: number}} Descriptor */
 /** @typedef {{controllerProfile?: string, preferredSkills?: string[]}} LaunchOverrides */
 /** @typedef {(command: Command, accepted: (operationId: string) => void) => Promise<unknown>} Execute */
-/** @typedef {{channel: 'activity', event: import('../core/ports.js').ActivityNotice} | {channel: 'execution', event: import('../core/diagnostics.js').DiagnosticEvent} | {channel: 'gap', droppedCount: number, reason: 'overflow' | 'finish_timeout'}} ControlNotice */
+/** @typedef {{channel: 'activity', event: import('../core/ports.js').ActivityNotice} | {channel: 'execution', event: import('../core/diagnostics.js').DiagnosticEvent, findings?:readonly import('../core/finding.js').Finding[]} | {channel: 'gap', droppedCount: number, reason: 'overflow' | 'finish_timeout'}} ControlNotice */
 /** @typedef {{subscribe: (operationId: string, listener: (notice: ControlNotice) => Promise<void>) => (() => void) & {finish?:()=>Promise<number>},
  * pending: (operationId: string) => unknown,
  * respond: (reply: import('../core/ports.js').InteractionReply) => unknown,

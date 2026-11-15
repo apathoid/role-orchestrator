@@ -103,7 +103,7 @@ export async function openRuntime(options, onStoreOpen) {
     const interactions = createInteractionBroker({ ...options.interactions, ids });
     const coordinator = createOrchestrator({
       store, resolveExecution, providerFor: registry.providerFor,
-      clock, ids, authority, permissions, interactions: options.interactions ? interactions : undefined, configurationRef, diagnostics, tools: registry.tools,
+      clock, ids, authority, permissions, interactions: options.interactions ? interactions : undefined, configurationRef, diagnostics, committedDiagnostic:diagnostics.emit, tools: registry.tools,
       context: base.context, limits: {
         maxInvocations: base.resources.maxInvocationsPerOperation,
         maxConcurrentInvocations: base.resources.maxConcurrentInvocations,

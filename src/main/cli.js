@@ -103,8 +103,6 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             const watch = new AbortController();
             /** @type {Promise<void> | undefined} */
             let polling;
-            /** @param {string} id */
-            const inspect = async id => /** @type {import('../core/operation.js').Operation} */ (await callControl(descriptor,configurationRef,{action:'inspect',operationId:id,requestId:randomUUID()},undefined,undefined,{signal:watch.signal}));
             try {
               const result = await callControl(descriptor, configurationRef, invocation.command, (id,key) => {
                 if (!registered) { registered = true; cancel(id); }
@@ -118,7 +116,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
                 polling = pollAttachedInputs({operationId:id,ownerRequestId:invocation.command.requestId,answerKey:key,
                   signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.print,
                   call:(command,signal)=>callControl(descriptor,configurationRef,command,undefined,undefined,{signal})});
-              }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice,inspect) : undefined,onGap:count=>{void input.print('[Delivery gap] '+count+' notices not confirmed at finish');}} : undefined);
+              }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice) : undefined,onGap:count=>{void input.print('[Delivery gap] '+count+' notices not confirmed at finish');}} : undefined);
               if (result !== undefined) { renderer.finish(result); return result; }
               if (registered) throw new HostError('CONTROL_RESPONSE_LOST','Original live owner unavailable; work was not replayed');
               break;
@@ -176,7 +174,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
               if (!startsWork) return;
               clients.accept(id,invocation.command.requestId,false,interactive);
               const streams = controlStreams(()=>api);
-              subscription = mode ? streams.subscribe(id,notice=>renderer.notice(notice,api.inspect)) : ()=>{};
+              subscription = mode ? streams.subscribe(id,notice=>renderer.notice(notice)) : ()=>{};
               detach = ()=>{subscription();clients.detach(id,invocation.command.requestId);};
             });
             const omitted = await subscription.finish?.() ?? 0;

@@ -247,13 +247,7 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
             subscribed = true;
             unsubscribe = api.subscribeActivity({operationId:id}, async event => {
               if (!displaying || turn.cancelled || connection.signal.aborted || turn.operationId !== id) return;
-              let controller = false;
-              if (event.kind === 'plan' && mode !== 'compact') {
-                const state = await api.inspect(id);
-                const attempt = state.attempts.find(attempt => attempt.attemptId === event.attemptId);
-                controller = !!attempt && attempt.actionId === attempt.attemptId;
-              }
-              const update = acpActivity(event, mode, controller);
+              const update = acpActivity(event, mode, event.kind!=='gap'&&event.invocationKind==='controller');
               if (update && displaying && !turn.cancelled && !connection.signal.aborted) {
                 await client.notify(c.session.update, {sessionId, update});
               }
