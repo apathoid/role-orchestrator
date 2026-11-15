@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { pollAttachedInputs } from '../../src/hosts/attached-input.js';
 import { callControl, openControl, readDescriptor } from '../../src/hosts/local-control.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
 
@@ -307,3 +308,49 @@ test('C14 view changes on a repeated work request do not change request identity
     assert.equal(count,1);assert.equal(registrations,1);
   }finally{gate.resolve();await server.close();}
 }));
+
+test('C13R.1 attached replies reconcile rejected/lost responses via actual control sockets', {timeout:10000,skip:localSocketCheck},()=>withOwnedRun('C13R-reply',async directory=>{
+  const gate=Promise.withResolvers(), ready=Promise.withResolvers(), stop=new AbortController();
+  const requests=['reject','before','after','timeout'].map(id=>({kind:'input',request:{requestId:id,operationId:'op',attemptId:'a-'+id,providerRequestId:'native-'+id}}));
+  const pending=new Map(requests.map(x=>[x.request.requestId,x]));
+  const asks=new Map(), deliveries=new Map(), notices=[];
+  let dispatches=0;
+  const server=await openControl(directory,'config',async(_command,accepted)=>{dispatches++;accepted('op');await gate.promise;return {done:true};},undefined,{
+    subscribe:()=>()=>{},pending:()=>[...pending.values()],
+    respond(reply){const id=reply.requestId;const n=(deliveries.get(id)??0)+1;deliveries.set(id,n);
+      if(id==='reject'&&n===1)return {kind:'rejected',code:'INVALID'};
+      pending.delete(id);return {kind:'accepted'};
+    }
+  });
+  try {
+    const descriptor=await readDescriptor(directory);
+    const work=callControl(descriptor,'config',{action:'run',requestId:'work',text:'task'},(id,key)=>ready.resolve({id,key}),undefined,{interactive:true});
+    const {id,key}=await ready.promise;
+    const watch=pollAttachedInputs({operationId:id,ownerRequestId:'work',answerKey:key,signal:stop.signal,intervalMs:5,
+      ask:async entry=>{const id=entry.request.requestId;asks.set(id,(asks.get(id)??0)+1);return {kind:'answered',payload:{action:'accept'}};},
+      print:async message=>{notices.push(message);},
+      call:async(command,signal)=>{
+        if(command.action==='answer'){
+          const id=command.reply.requestId;
+          if(id==='before'&&asks.get(id)===1)return callControl({...descriptor,path:descriptor.path+'-absent'},'config',command,undefined,undefined,{signal});
+          if(id==='timeout'){pending.delete(id);throw Error('lost');}
+          const result=await callControl(descriptor,'config',command,undefined,undefined,{signal});
+          if(id==='after')throw Error('ack lost');
+          return result;
+        }
+        return callControl(descriptor,'config',command,undefined,undefined,{signal});
+      }
+    });
+    for(let i=0;pending.size||!notices.some(x=>x.includes('no longer pending'));i++){assert.ok(i<400);await delay(10);}
+    stop.abort();await watch;gate.resolve();await work;
+    assert.deepEqual(Object.fromEntries(asks),{reject:2,before:2,after:1,timeout:1});
+    assert.equal(deliveries.get('after'),1);assert.equal(deliveries.get('before'),1);assert.equal(dispatches,1);
+    assert.ok(notices.some(x=>x.includes('reply rejected')));
+  }finally{stop.abort();gate.resolve();await server.close();}
+}));
+test('C13R.1 polling failure is explicit and detaches pending input',async()=>{
+  const notices=[];
+  await pollAttachedInputs({operationId:'op',ownerRequestId:'work',answerKey:'key',signal:new AbortController().signal,
+    call:async()=>{throw Error('connection lost');},ask:async()=>assert.fail('no input'),print:async x=>notices.push(x)});
+  assert.match(notices.join(' '),/polling stopped.*pending reply state unknown/);
+});

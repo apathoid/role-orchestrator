@@ -5,6 +5,7 @@ import { access, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, isAbsolute, resolve } from 'node:path';
 import { createCliInput } from '../hosts/cli-input.js';
+import { pollAttachedInputs } from '../hosts/attached-input.js';
 import { cliOwner } from '../hosts/cli-owner.js';
 import { cliPresentation } from '../hosts/cli-presentation.js';
 import { callControl, openControl, readDescriptor } from '../hosts/local-control.js';
@@ -104,31 +105,9 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             const result = await callControl(descriptor, configurationRef, invocation.command, (id,key) => {
               cancel(id);
               if (!interactive || !key || polling) return;
-              polling = (async () => {
-                /** @type {Map<string,AbortController>} */
-                const shown = new Map();
-                try {
-                  while (!watch.signal.aborted) {
-                    const list = await callControl(descriptor,configurationRef,{action:'pending',operationId:id,requestId:randomUUID()},undefined,undefined,{signal:watch.signal});
-                    if (!Array.isArray(list)) break;
-                    const current = new Set(list.map(item=>item.request?.requestId));
-                    for (const [requestId,controller] of shown) if (!current.has(requestId)) { controller.abort(); shown.delete(requestId); }
-                    for (const entry of /** @type {import('../hosts/cli-input.js').PendingInput[]} */ (list)) {
-                      const request = entry.request;
-                      if (!request || request.operationId !== id || shown.has(request.requestId)) continue;
-                      const controller = new AbortController(); shown.set(request.requestId,controller);
-                      const signal = AbortSignal.any([watch.signal,controller.signal,stop.signal]);
-                      void input.ask(entry,signal).then(payload => {
-                        if (signal.aborted) return;
-                        return callControl(descriptor,configurationRef,{action:'answer',operationId:id,requestId:randomUUID(),
-                          ownerRequestId:invocation.command.requestId,answerKey:key,reply:{requestId:request.requestId,operationId:id,
-                            attemptId:request.attemptId,providerRequestId:request.providerRequestId,payload}},undefined,undefined,{signal});
-                      }).catch(()=>{});
-                    }
-                    await delay(100,undefined,{signal:watch.signal});
-                  }
-                } finally { for (const controller of shown.values()) controller.abort(); }
-              })().catch(()=>{});
+              polling = pollAttachedInputs({operationId:id,ownerRequestId:invocation.command.requestId,answerKey:key,
+                signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.print,
+                call:(command,signal)=>callControl(descriptor,configurationRef,command,undefined,undefined,{signal})});
             }, invocation.launch, startsWork && (mode || interactive) ? {interactive,notice:mode ? notice=>renderer.notice(notice,inspect) : undefined} : undefined);
             if (result !== undefined) { renderer.finish(result); return result; }
           } finally { watch.abort(); await polling; }
