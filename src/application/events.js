@@ -5,8 +5,9 @@ import { createBoundedDelivery } from './delivery.js';
 /** @import {DiagnosticEvent, DiagnosticPort} from '../core/diagnostics.js' */
 /** @import {ActivityScope} from '../core/ports.js' */
 /** @import {Finding} from '../core/finding.js' */
-/** @typedef {{event:DiagnosticEvent,findings?:readonly Finding[]}} ExecutionNotice */
-/** @typedef {(event: DiagnosticEvent, findings?:readonly Finding[]) => void | Promise<void>} EventListener */
+/** @import {ExecutionFact} from './execution-facts.js' */
+/** @typedef {{event:DiagnosticEvent,findings?:readonly Finding[],fact?:ExecutionFact}} ExecutionNotice */
+/** @typedef {(event: DiagnosticEvent, findings?:readonly Finding[],fact?:ExecutionFact) => void | Promise<void>} EventListener */
 
 /** @param {DiagnosticEvent | undefined} prior @param {DiagnosticEvent} dropped @returns {DiagnosticEvent} */
 function gapFor(prior, dropped) {
@@ -25,8 +26,8 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
   /** @type {Set<{scope?: ActivityScope, delivery: ReturnType<typeof createBoundedDelivery<ExecutionNotice, ExecutionNotice>>}>} */
   const subscribers = new Set();
   let closed = false;
-  /** @param {DiagnosticEvent} event @param {readonly Finding[]} [findings] */
-  function emit(event,findings) {
+  /** @param {DiagnosticEvent} event @param {readonly Finding[]} [findings] @param {()=>ExecutionFact} [projectFact] */
+  function emit(event,findings,projectFact) {
       if (closed) return;
       const safe = /** @type {DiagnosticEvent} */ (redactDiagnostic(event, redaction));
       const snapshot = Object.freeze({ ...safe, details: safe.details && Object.freeze({ ...safe.details }) });
@@ -35,17 +36,21 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
       const bytes = Buffer.byteLength(JSON.stringify(snapshot));
       // The scoped delivery view may carry the already committed model facts.
       // They never enter the diagnostic sink or an independent store.
-      const committed = findings?.length && [...subscribers].some(s=>s.scope?.operationId===snapshot.operationId)
-        ? structuredClone(findings) : undefined;
+      const scoped=[...subscribers].some(s=>s.scope?.operationId===snapshot.operationId &&
+        (s.scope.attemptId===undefined||s.scope.attemptId===snapshot.attemptId));
+      const committed = findings?.length && scoped ? structuredClone(findings) : undefined;
+      const fact = scoped && projectFact ? structuredClone(projectFact()) : undefined;
+      if(fact){if(fact.reasoning)Object.freeze(fact.reasoning);Object.freeze(fact);}
       if (committed) {
         for (const finding of committed) { Object.freeze(finding.supports); Object.freeze(finding.uncertainties); Object.freeze(finding); }
         Object.freeze(committed);
       }
-      const factBytes = committed ? Buffer.byteLength(JSON.stringify(committed)) : 0;
+      const factBytes = (committed ? Buffer.byteLength(JSON.stringify(committed)) : 0) +
+        (fact ? Buffer.byteLength(JSON.stringify(fact)) : 0);
       for (const { scope, delivery } of subscribers) {
         if (scope && (scope.operationId !== snapshot.operationId ||
             (scope.attemptId !== undefined && scope.attemptId !== snapshot.attemptId))) continue;
-        delivery.enqueue({event:snapshot,...(scope&&committed&&{findings:committed})},bytes+(scope?factBytes:0));
+        delivery.enqueue({event:snapshot,...(scope&&committed&&{findings:committed}),...(scope&&fact&&{fact})},bytes+(scope?factBytes:0));
       }
   }
   return {
@@ -55,7 +60,7 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
     subscribe(listener, scope) {
       if (closed) throw new Error('Event stream is closed');
       if (typeof listener !== 'function') throw new TypeError('Event listener must be a function');
-      const subscription = { scope: scope && { ...scope }, delivery: createBoundedDelivery(/** @param {ExecutionNotice} notice */ notice=>listener(notice.event,notice.findings),
+      const subscription = { scope: scope && { ...scope }, delivery: createBoundedDelivery(/** @param {ExecutionNotice} notice */ notice=>listener(notice.event,notice.findings,notice.fact),
         (prior,dropped)=>({event:gapFor(prior?.event,dropped.event)})) };
       subscribers.add(subscription);
       return Object.assign(() => { subscription.delivery.close(); subscribers.delete(subscription); }, { finish: () => {

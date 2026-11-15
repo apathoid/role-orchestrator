@@ -1,3 +1,4 @@
+import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
@@ -38,7 +39,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
  *     captureMaxBytes?: number, skillInstructionsMaxBytes?: number, toolOutputMaxBytes?: number}, allowContextShare?: ContextShare,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
  *   approveRetry?: RetryApproval, tools?: import('../core/ports.js').ToolPort,
- *   diagnostics?: DiagnosticPort, committedDiagnostic?:(diagnostic:DiagnosticEvent,findings:readonly import('../core/finding.js').Finding[])=>void, authority: AuthorityPort, permissions?: PermissionPort, interactions?: InteractionPort, configurationRef: string,
+ *   diagnostics?: DiagnosticPort, committedDiagnostic?:(diagnostic:DiagnosticEvent,findings:readonly import('../core/finding.js').Finding[],fact?:()=>import('./execution-facts.js').ExecutionFact)=>void, authority: AuthorityPort, permissions?: PermissionPort, interactions?: InteractionPort, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
  * } & (Execution & {resolveExecution?: undefined} | {resolveExecution: ResolveExecution})} Dependencies
  * @typedef {{operation: Operation, completion: Promise<Operation>}} Submission
@@ -225,7 +226,7 @@ export function createOrchestrator(deps) {
     }
     if (result.kind === 'applied') {
       if(deps.committedDiagnostic) {
-        try {deps.committedDiagnostic(result.diagnostic,eventFindings(event)??[]);} catch { /* Presentation cannot change commit. */ }
+        try {deps.committedDiagnostic(result.diagnostic,eventFindings(event)??[],()=>executionFact(result.state,event));} catch { /* Presentation cannot change commit. */ }
       } else emitDiagnostic(diagnostics, result.diagnostic);
     }
     return result.state;

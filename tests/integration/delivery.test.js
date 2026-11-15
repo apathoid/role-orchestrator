@@ -87,3 +87,27 @@ test('C13R.3 failed consumer callbacks are unconfirmed, not successful delivery'
   delivery.enqueue(1,1);delivery.enqueue(2,1);
   assert.equal(await delivery.finish(),2);
 });
+
+test('C15.1 committed execution facts are scoped, lazy and excluded from diagnostics',async()=>{
+  const sink=[],seen=[],unscoped=[];
+  const stream=createEventStream({emit:event=>sink.push(event),flush:()=>{}});
+  const event={schemaVersion:1,eventId:'event-fact',receivedAt:1,sequence:1,level:'info',component:'core',
+    eventName:'attempt.dispatched',reasonCode:'DISPATCH_STARTED',operationId:'op',attemptId:'a'};
+  let projections=0;
+  const project=()=>{projections++;return {journalEventId:'event-fact',operationId:'op',kind:'attempt.dispatched',
+    attemptId:'a',attemptOrdinal:2,invocationKind:'delegate',objective:'private model objective',
+    profileId:'historical',modelSelector:'selector',reasoning:{mode:'selectable',level:'high',nativeValue:'high',selectionSource:'model'}};};
+  const all=stream.subscribe((_event,_findings,fact)=>unscoped.push(fact));
+  stream.emit(event,undefined,project);
+  assert.equal(projections,0);
+  const scoped=stream.subscribe((_event,_findings,fact)=>seen.push(fact),{operationId:'op'});
+  stream.emit(event,undefined,project);
+  assert.equal(projections,1);
+  await scoped.finish();await all.finish();
+  assert.equal(seen[0].objective,'private model objective');
+  assert.equal(seen[0].attemptOrdinal,2);
+  assert.ok(Object.isFrozen(seen[0]));assert.ok(Object.isFrozen(seen[0].reasoning));
+  assert.deepEqual(unscoped,[undefined,undefined]);
+  assert.ok(sink.every(item=>!JSON.stringify(item).includes('private model objective')));
+  stream.close();
+});

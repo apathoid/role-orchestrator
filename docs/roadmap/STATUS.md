@@ -4,9 +4,13 @@
 
 ## C15 — Rich Presentation & ACP Transcript (PLANNED)
 
-**Следующий шаг: C15.1**, затем последовательно C15.2–C15.7 по [детальному заданию](C15_PRESENTATION_EXPERIENCE.md). Реализация на текущей ветке feature/interactive-ux; master не изменять. Baseline проектирования b302ffa41d77ce0e12fe948bd8651e53b2138a8f, последний подтверждённый engineering checkpoint b1ae0c88c54fdb99c3c39ecc01c97bf3288c329d ([CI 43691063762](https://github.com/apathoid/role-orchestrator/actions/runs/43691063762), 455/455 root + 4/4 actual Linux PTY). C15.0 baseline/mapping COMPLETE; runtime implementation pending C15.1; regression on planning SHA in progress; native/comparative UNVERIFIED.
+**Следующий шаг: C15.2**, затем последовательно C15.3–C15.7 по [детальному заданию](C15_PRESENTATION_EXPERIENCE.md). Реализация на текущей ветке feature/interactive-ux; master не изменять. Baseline проектирования b302ffa41d77ce0e12fe948bd8651e53b2138a8f, последний подтверждённый engineering checkpoint b1ae0c88c54fdb99c3c39ecc01c97bf3288c329d ([CI 43691063762](https://github.com/apathoid/role-orchestrator/actions/runs/43691063762), 455/455 root + 4/4 actual Linux PTY). C15.0 baseline/mapping COMPLETE; C15.1 implementation added; regression pending; regression on planning SHA in progress; native/comparative UNVERIFIED.
 
 Согласовано: rich CLI streaming без live status line/REPL; ACP inline сразу default, notices explicit alternative, native client thinking/tools/plan/permissions/forms unchanged. History через existing session.requests и Operation journal, правильный порядок turns, не полный replay live activity. Не менять Coordinator event publication/dispatch ради UI; compact complete attributed RO messages. Никаких новых model calls/prompts, semantic Host policy, workflow, environment restrictions, scheduler или execution journal. Сохраняются F4/C12/C13/C14/C13R-C14R native/comparative obligations; C15 не закрывает их synthetic fixtures.
+
+### C15.1 — scoped committed facts
+
+Implementation: lazy immutable technical projection from the committed Event and Operation, historical attempt route and accepted Action objective/role; scoped bounded delivery only, existing diagnostic sink unchanged. Attempt ordinal is presentation identity only; selector/selected effort are not provider-confirmed actual. Local-control carries the same projection. Regression test for scoped/lazy delivery and diagnostic isolation added; full CI pending.
 
 ### C15.0 — baseline and presentation mapping
 
