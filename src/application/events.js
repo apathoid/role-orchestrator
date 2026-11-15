@@ -36,7 +36,7 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
       const bytes = Buffer.byteLength(JSON.stringify(snapshot));
       // The scoped delivery view may carry the already committed model facts.
       // They never enter the diagnostic sink or an independent store.
-      const scoped=[...subscribers].some(s=>s.scope?.operationId===snapshot.operationId &&
+      const scoped=[...subscribers].some(s=>s.scope!==undefined && s.scope.operationId===snapshot.operationId &&
         (s.scope.attemptId===undefined||s.scope.attemptId===snapshot.attemptId));
       const committed = findings?.length && scoped ? structuredClone(findings) : undefined;
       const fact = scoped && projectFact ? structuredClone(projectFact()) : undefined;
