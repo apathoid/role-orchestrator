@@ -151,3 +151,30 @@ export function acpActivity(event, mode, controller) {
   }
   if (event.kind === 'plan' && mode !== 'compact' && controller && update.sessionUpdate === 'plan') return { ...update,_meta };
 }
+
+/** Standard ACP notices are presentation only, never session history.
+ * @param {DiagnosticEvent} event @param {readonly import('../core/finding.js').Finding[]|undefined} findings @param {PresentationMode} mode
+ * @returns {SessionUpdate[]}
+ */
+export function acpExecutionNotices(event,findings,mode) {
+  /** @type {SessionUpdate[]} */
+  const notices=[];
+  const title=formatExecution(event,mode);
+  const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,eventId:event.eventId,sequence:event.sequence};
+  if(title) notices.push({sessionUpdate:'notice',title,severity:event.level==='error'?'error':event.level==='warn'?'warning':'info',
+    _meta:{roleOrchestratorSource:{...source,source:'execution',eventName:event.eventName,reasonCode:event.reasonCode}}});
+  for(const finding of findings??[]) notices.push({sessionUpdate:'notice',severity:'info',
+    title:'Recorded finding '+finding.findingId+' · '+finding.author,
+    description:finding.claim+' — '+finding.subject+
+      (finding.uncertainties.length?'\nUncertainty: '+finding.uncertainties.join('; '):'')+
+      (mode!=='compact'&&finding.supports.length?'\nSupports: '+finding.supports.join(', '):'')+
+      (finding.supersedes?'\nSupersedes: '+finding.supersedes:''),
+    _meta:{roleOrchestratorSource:{...source,source:'recorded_finding',findingId:finding.findingId,author:finding.author}}});
+  return notices;
+}
+
+/** @param {string} operationId @param {number} count @param {string} reason @param {string} [attemptId] @returns {SessionUpdate} */
+export function acpDeliveryGap(operationId,count,reason,attemptId) {
+  return {sessionUpdate:'notice',severity:'warning',title:'Presentation gap',description:count+' notices not delivered ('+reason+')',
+    _meta:{roleOrchestratorSource:{source:'delivery',operationId,attemptId,droppedCount:count,reason}}};
+}

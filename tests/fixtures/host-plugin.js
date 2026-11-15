@@ -22,7 +22,7 @@ export function createProvider({ providerId }) {
           completeness: 'complete', value: 'Worker completed' });
         return { dispatchCertainty: 'sent', outcome: outcome(invocation.attemptId, {
           outputRefs: [{ ref, source: 'model_claim', kind: 'output' }],
-        }), output: 'Worker completed' };
+        }), output: 'Worker completed', ...(invocation.objective==='notice-worker' && {findings:[{findingId:'notice-finding',author:invocation.profile.profileId,claim:'Model-authored notice',subject:'fixture',supports:[ref],uncertainties:['fixture uncertainty']} ]}) };
       }
       if (typeof invocation.context[0].value === 'string' && invocation.context[0].value.startsWith('hold')) {
         activity?.({kind:'reasoning',nativeKind:'agent_thought_chunk',payload:{sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'Fixture native hold'}}});
@@ -50,13 +50,13 @@ export function createProvider({ providerId }) {
         return final(invocation, { finalAssessment: undefined, additions: actions,
           waitPolicy: { kind: 'next_completion', targets: actions.map(({ actionId }) => ({ kind: 'action', id: actionId })) } });
       }
-      if (latest === 'delegate' && !invocation.context.some(item => item.value === 'Worker completed')) {
+      if ((latest === 'delegate'||latest==='notice-delegate') && !invocation.context.some(item => item.value === 'Worker completed')) {
         return final(invocation, { finalAssessment: undefined, additions: [{
-          kind: 'delegate', actionId: 'delegated', profileId: invocation.profile.profileId, objective: 'Do the work',
+          kind: 'delegate', actionId: 'delegated', profileId: invocation.profile.profileId, objective: latest==='notice-delegate'?'notice-worker':'Do the work',
           expectedResult: 'Worker result', contextRefs: [], dependsOn: [],
         }], waitPolicy: { kind: 'all_requested', targets: [{ kind: 'action', id: 'delegated' }] } });
       }
-      let answer = latest === 'cwd' ? invocation.workspaceContext?.cwd : latest === 'delegate' ? 'Delegated result' : 'Ответ: ' + latest;
+      let answer = latest === 'cwd' ? invocation.workspaceContext?.cwd : latest === 'delegate' ? 'Delegated result' : latest==='notice-delegate'?'Notice final': 'Ответ: ' + latest;
       if (latest === 'settings') answer = JSON.stringify([invocation.profile.profileId, invocation.timeoutMs]);
       if (latest === 'permission') {
         const permission = await invocation.permissions.request({

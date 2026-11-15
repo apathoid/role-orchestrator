@@ -4,14 +4,14 @@ import { isAbsolute, join } from 'node:path';
 import { agent, methods, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
 import { decode, id, invalid as invalidField, optional, record } from '../core/decode.js';
 import { hostError } from './commands.js';
-import { acpActivity } from './presentation.js';
+import { acpActivity, acpExecutionNotices, acpDeliveryGap } from './presentation.js';
 
 /** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, StopReason} from '@agentclientprotocol/sdk' */
 /** @import {ActivityListener, ActivityScope} from '../core/ports.js' */
 /** @import {PresentationMode} from './presentation.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {HostApi} from './commands.js' */
-/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}}} AcpApi */
+/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
 /** @typedef {{sessionId: string, cwd: string, operations: string[], requests: {requestId: string, fingerprint: string, operationId?: string}[]}} Session */
 /** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>}} Turn */
 
@@ -222,9 +222,12 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
       turns.set(sessionId, turn);
       /** @type {(() => void) & {finish?:()=>Promise<number>}} */
       let unsubscribe = () => {};
+      /** @type {(() => void) & {finish?:()=>Promise<number>}} */
+      let unsubscribeExecution = () => {};
+      const notices = capabilities.session?.notices != null;
       let subscribed = false;
       let displaying = true;
-      const stopDisplay = () => { displaying = false; unsubscribe(); };
+      const stopDisplay = () => { displaying = false; unsubscribe(); unsubscribeExecution(); };
       try {
         if (!request) {
           request = { requestId, fingerprint };
@@ -247,9 +250,15 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
             subscribed = true;
             unsubscribe = api.subscribeActivity({operationId:id}, async event => {
               if (!displaying || turn.cancelled || connection.signal.aborted || turn.operationId !== id) return;
-              const update = acpActivity(event, mode, event.kind!=='gap'&&event.invocationKind==='controller');
+              const update = event.kind==='gap' && notices ? acpDeliveryGap(id,event.droppedCount,event.reason,event.attemptId) : acpActivity(event, mode, event.kind!=='gap'&&event.invocationKind==='controller');
               if (update && displaying && !turn.cancelled && !connection.signal.aborted) {
                 await client.notify(c.session.update, {sessionId, update});
+              }
+            });
+            if (notices && api.subscribeExecution) unsubscribeExecution=api.subscribeExecution({operationId:id},async(event,findings)=>{
+              for(const update of acpExecutionNotices(event,findings,mode)){
+                if(!displaying||turn.cancelled||connection.signal.aborted||turn.operationId!==id) return;
+                await client.notify(c.session.update,{sessionId,update});
               }
             });
           };
@@ -269,7 +278,14 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
           attach(session, request, operation.operationId);
           await save(session);
         }
-        if (!turn.cancelled && !connection.signal.aborted) await unsubscribe.finish?.();
+        if (!turn.cancelled && !connection.signal.aborted) {
+          const [activityLost,executionLost]=await Promise.all([unsubscribe.finish?.(),unsubscribeExecution.finish?.()]);
+          const lost=(activityLost??0)+(executionLost??0);
+          if(lost&&notices&&!turn.cancelled&&!connection.signal.aborted){
+            // Enqueue on the existing transport before final; never wait for an extra renderer acknowledgement.
+            void client.notify(c.session.update,{sessionId,update:acpDeliveryGap(operation.operationId,lost,'finish_timeout')}).catch(()=>{});
+          }
+        }
         stopDisplay();
         const answer = operationMessage(operation);
         if (answer !== undefined) await message(client, sessionId, answer);

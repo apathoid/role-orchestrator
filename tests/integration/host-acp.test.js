@@ -516,3 +516,33 @@ test('C14R.2 background old operation requests during new prompt stay correlated
     assert.equal(host.messages.at(-1).update.content.text,'Ответ: resume A');
   }finally{release.resolve();await host.close();}
 }));
+
+test('C14R.6 negotiated standard notices show committed findings and lifecycle without history replay', {timeout:20000},()=>withOwnedRun('C14R-notices',async cwd=>{
+  const config=await fixture(cwd);
+  for(const enabled of [false,true]){
+    const host=launch(cwd,config,app=>app,['--presentation','detailed']);
+    try{
+      await host.agent.request(a.initialize,{protocolVersion:PROTOCOL_VERSION,clientCapabilities:enabled?{session:{notices:{}}}:{}});
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      await prompt(host.agent,sessionId,'notice-delegate');
+      const updates=host.messages.map(x=>x.update);
+      const notices=updates.filter(x=>x.sessionUpdate==='notice');
+      assert.deepEqual(updates.filter(x=>x.sessionUpdate==='agent_message_chunk').map(x=>x.content.text),['Notice final']);
+      if(enabled){
+        assert.ok(notices.some(x=>x._meta.roleOrchestratorSource.eventName==='attempt.dispatched'));
+        assert.ok(notices.some(x=>x._meta.roleOrchestratorSource.eventName==='attempt.outcome'));
+        const finding=notices.find(x=>x._meta.roleOrchestratorSource.findingId==='notice-finding');
+        assert.ok(finding);assert.match(finding.description,/Model-authored notice/);assert.match(finding.description,/fixture uncertainty/);
+        assert.equal(finding._meta.roleOrchestratorSource.source,'recorded_finding');
+        assert.ok(finding._meta.roleOrchestratorSource.operationId);
+      }else assert.equal(notices.length,0);
+      const before=host.messages.length;
+      await host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+      assert.ok(host.messages.slice(before).every(x=>x.update.sessionUpdate!=='notice'));
+      const next=host.messages.length;
+      await prompt(host.agent,sessionId,'another',{roleOrchestrator:{newOperation:true}});
+      assert.ok(host.messages.slice(next).every(x=>x.update._meta?.roleOrchestratorSource?.findingId!=='notice-finding'));
+      assert.equal(host.messages.at(-1).update.content.text,'Ответ: another');
+    }finally{await host.close();}
+  }
+}));
