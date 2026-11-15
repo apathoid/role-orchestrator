@@ -13,7 +13,7 @@ import { acpActivity, acpExecutionNotices, acpDeliveryGap } from './presentation
 /** @import {HostApi} from './commands.js' */
 /** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
 /** @typedef {{sessionId: string, cwd: string, operations: string[], requests: {requestId: string, fingerprint: string, operationId?: string}[]}} Session */
-/** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>}} Turn */
+/** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>, stopDisplay?:()=>void}} Turn */
 
 const a = methods.agent;
 const c = methods.client;
@@ -125,6 +125,7 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
     const turn = turns.get(sessionId);
     if (!turn) return;
     turn.cancelled = true;
+    turn.stopDisplay?.();
     if (turn.operationId) await api.cancel(turn.operationId, source).catch(error => {
       if (hostError(error).code !== 'INVALID_PROPOSAL') throw error;
     });
@@ -228,6 +229,8 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
       let subscribed = false;
       let displaying = true;
       const stopDisplay = () => { displaying = false; unsubscribe(); unsubscribeExecution(); };
+      turn.stopDisplay=stopDisplay;
+      connection.signal.addEventListener('abort',stopDisplay,{once:true});
       try {
         if (!request) {
           request = { requestId, fingerprint };
@@ -246,7 +249,7 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
           const accepted = id => {
             turn.operationId = id;
             attach(session, delivery, id);
-            if (subscribed) return;
+            if (subscribed||!displaying||turn.cancelled||connection.signal.aborted) return;
             subscribed = true;
             unsubscribe = api.subscribeActivity({operationId:id}, async event => {
               if (!displaying || turn.cancelled || connection.signal.aborted || turn.operationId !== id) return;
@@ -296,6 +299,7 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
         throw new RequestError(-32000, issue.message, { code: issue.code, path: issue.path });
       } finally {
         stopDisplay();
+        connection.signal.removeEventListener('abort',stopDisplay);
         turns.delete(sessionId);
         settled.resolve(undefined);
       }

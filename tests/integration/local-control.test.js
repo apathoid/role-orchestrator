@@ -350,7 +350,7 @@ test('C13R.1 attached replies reconcile rejected/lost responses via actual contr
     stop.abort();await watch;gate.resolve();await work;
     assert.deepEqual(Object.fromEntries(asks),{reject:2,before:2,after:1,timeout:1});
     assert.equal(deliveries.get('after'),1);assert.equal(deliveries.get('before'),1);assert.equal(dispatches,1);
-    assert.ok(notices.some(x=>x.includes('reply rejected')));
+    assert.ok(notices.some(x=>x.includes('rejected (INVALID)')));
   }finally{stop.abort();gate.resolve();await server.close();}
 }));
 test('C13R.1 polling failure is explicit and detaches pending input',async()=>{
@@ -411,4 +411,25 @@ test('C14R.4 measured representative full snapshot transport cost versus committ
     // GC-dependent, serialized retained volume is the deterministic metric.
     console.log('C14R.4 snapshot metrics',JSON.stringify({reads,serializedSnapshotBytes:bytes,committedFactBytes:factBytes,heapDelta:process.memoryUsage().heapUsed-before,wallMs:performance.now()-started}));
   }finally{await server.close();}
+}));
+
+test('C13R.1 unavailable input after uncertain reply does not send automatic new answer', {timeout:5000,skip:localSocketCheck},()=>withOwnedRun('C13R-eof',async directory=>{
+  const gate=Promise.withResolvers(),ready=Promise.withResolvers(),stop=new AbortController();
+  let asks=0,answers=0;
+  const entry={kind:'input',request:{requestId:'q',operationId:'op',attemptId:'a',providerRequestId:'native'}};
+  const server=await openControl(directory,'config',async(_cmd,accepted)=>{accepted('op');await gate.promise;return {done:true};},undefined,{
+    subscribe:()=>()=>{},pending:()=>[entry],respond:()=>{answers++;return {kind:'rejected',code:'INVALID'};}
+  });
+  try{
+    const descriptor=await readDescriptor(directory);
+    const work=callControl(descriptor,'config',{action:'run',requestId:'w',text:'task'},(id,key)=>ready.resolve({id,key}),undefined,{interactive:true});
+    const {id,key}=await ready.promise;
+    const reported=Promise.withResolvers();
+    const polling=pollAttachedInputs({operationId:id,ownerRequestId:'w',answerKey:key,signal:stop.signal,intervalMs:5,
+      ask:async()=>++asks===1?{kind:'answered',payload:{action:'accept'}}:{kind:'unavailable'},
+      print:async message=>{if(message.includes('no new explicit reply'))reported.resolve();},
+      call:(command,signal)=>callControl(descriptor,'config',command,undefined,undefined,{signal})});
+    await reported.promise;await delay(30);assert.equal(asks,2);assert.equal(answers,1);
+    stop.abort();await polling;gate.resolve();await work;
+  }finally{stop.abort();gate.resolve();await server.close();}
 }));

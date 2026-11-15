@@ -91,15 +91,15 @@ export async function openControl(directory, configurationRef, execute, launch, 
       try { raw = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { /* Rejected below. */ }
       const requestId = raw && typeof raw === 'object' && 'requestId' in raw && typeof raw.requestId === 'string'
         ? raw.requestId : undefined;
+      async function finishView() {
+        const subscription = subscriptions.get(socket);
+        const omitted = await subscription?.finish?.() ?? 0;
+        subscription?.();
+        if (omitted) send(socket,{requestId,notice:{channel:'gap',droppedCount:omitted,reason:'finish_unconfirmed'}});
+      }
       const response = run(raw, socket).then(
-        async outcome => {
-          const subscription = subscriptions.get(socket);
-          const omitted = await subscription?.finish?.() ?? 0;
-          subscription?.();
-          if (omitted) send(socket,{requestId,notice:{channel:'gap',droppedCount:omitted,reason:'finish_unconfirmed'}});
-          send(socket, { requestId, outcome }, true);
-        },
-        error => send(socket, { requestId, error: hostError(error) }, true),
+        async outcome => { await finishView(); send(socket, { requestId, outcome }, true); },
+        async error => { await finishView(); send(socket, { requestId, error: hostError(error) }, true); },
       );
       if (!observers.has(socket)) active.add(response);
       void response.finally(() => active.delete(response)).catch(() => {});
@@ -173,7 +173,7 @@ export async function openControl(directory, configurationRef, execute, launch, 
       const ownerClients = new Set([socket]);
       const views = new Set(payload.stream === 'live' ? [socket] : []);
       const interactive = payload.interactive === 'yes';
-      const answerKey = interactive && payload.stream === 'live' && (action === 'run' || action === 'resume') ? randomUUID() : undefined;
+      const answerKey = interactive && (action === 'run' || action === 'resume') ? randomUUID() : undefined;
       const result = Promise.resolve().then(() => {
         if (action === 'answer') {
           const owner = payload.ownerRequestId && requests.get(payload.ownerRequestId);
@@ -302,7 +302,7 @@ export function callControl(descriptor, configurationRef, command, accepted, lau
       const answer = action === 'answer' ? command : undefined;
       send(socket, { version, token: descriptor.token, requestId, action, operationId,
         payload: { text: work.text, cwd: work.cwd, questionId: work.questionId, configurationRef, cancellationSource: work.cancellationSource, launch,
-          stream: (live?.notice || live?.interactive) && action !== 'subscribe' ? 'live' : undefined,
+          stream: live?.notice && action !== 'subscribe' ? 'live' : undefined,
           interactive: live?.interactive ? 'yes' : undefined, reconnectKey: live?.reconnectKey,
           ownerRequestId: answer?.ownerRequestId, answerKey: answer?.answerKey, reply: answer?.reply } });
     });
@@ -323,7 +323,7 @@ export function callControl(descriptor, configurationRef, command, accepted, lau
           buffer = buffer.slice(newline + 1);
           if (message.requestId !== command.requestId) throw new Error('Correlation mismatch');
           if (typeof message.accepted === 'string') accepted?.(message.accepted, message.answerKey);
-          else if (message.notice && delivery) delivery.enqueue(message.notice, Buffer.byteLength(JSON.stringify(message.notice)));
+          else if (message.notice) delivery?.enqueue(message.notice, Buffer.byteLength(JSON.stringify(message.notice)));
           else {
             if (!message.error && !Object.hasOwn(message, 'outcome')) throw new Error('Missing outcome');
             terminalReceived = true;

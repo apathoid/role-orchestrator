@@ -506,7 +506,7 @@ test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result
       emit('item.updated',{item:{id:'tool',type:'command_execution',aggregated_output:'y'.repeat(4096)}});
     }
     for(let i=0;i<400;i++)emit('item.completed',{item:{id:'cmd-'+i,type:'command_execution',command:'fixture',aggregated_output:'z'.repeat(4096),status:'completed',exit_code:0}});
-    emit('item.completed',{item:{id:'late-deny',type:'command_execution',command:'fixture',status:'declined'}});
+    emit('item.completed',{item:{id:'late-deny',type:'command_execution',command:'fixture',aggregated_output:'z'.repeat(8192),status:'declined'}});
     message('intermediate','first');message('final result','last');complete();
   `);
   const invoke=async activity=>{
@@ -526,4 +526,16 @@ test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result
   const baseline=await invoke(undefined);let count=0;
   const withActivity=await invoke(()=>{count++;throw Error('consumer');});
   assert.equal(count,1201);assert.deepEqual(withActivity,baseline);
+  const {createActivityStream}=await import('../../src/application/activity.js');
+  for(const slow of [false,true]){
+    const stream=createActivityStream(),gate=Promise.withResolvers(),seen=[];
+    const sub=stream.subscribe({operationId:'op'},async event=>{seen.push(event);if(slow)await gate.promise;});
+    const emit=stream.bind({operationId:'op',attemptId:'attempt',profileId:profile.profileId,providerId:profile.providerId},()=>true);
+    try{
+      assert.deepEqual(await invoke(emit),baseline);
+      const omitted=await sub.finish();
+      if(slow)assert.ok(omitted>0);
+      assert.ok(seen.length>0);
+    }finally{gate.resolve();stream.close();}
+  }
 });

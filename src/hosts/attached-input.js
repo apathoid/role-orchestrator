@@ -4,7 +4,7 @@ import { hostError } from './commands.js';
 
 /** @import {ControlCommand} from './local-control.js' */
 /** @import {PendingInput, InputResult} from './cli-input.js' */
-/** @typedef {{controller:AbortController, state:'input'|'sending'|'accepted'|'uncertain'|'rejected', answerId?:string}} Delivery */
+/** @typedef {{controller:AbortController, state:'input'|'sending'|'accepted'|'uncertain'|'rejected'|'unavailable', answerId?:string}} Delivery */
 
 /**
  * Local input delivery only. No replay of work or automatic new answer.
@@ -53,6 +53,11 @@ export async function pollAttachedInputs({operationId,ownerRequestId,answerKey,s
           try {
             const payload = await ask(entry,currentSignal);
             if (currentSignal.aborted) return;
+            if(prior && payload.kind!=='answered') {
+              delivery.state='unavailable';
+              report('Interaction '+native.requestId+': no new explicit reply; previous delivery remains unconfirmed.');
+              return;
+            }
             delivery.state = 'sending';
             const answerId = delivery.answerId = randomUUID();
             const response = await request({action:'answer',operationId,requestId:answerId,
@@ -65,10 +70,10 @@ export async function pollAttachedInputs({operationId,ownerRequestId,answerKey,s
             }
             if (response && typeof response === 'object' && 'kind' in response && response.kind === 'rejected') {
               delivery.state = 'rejected';
-              report('Interaction '+native.requestId+': reply rejected ('+('code' in response ? String(response.code) : 'UNKNOWN')+').');
+              report('Interaction '+native.requestId+': reply '+answerId+' rejected ('+('code' in response ? String(response.code) : 'UNKNOWN')+').');
             } else {
               delivery.state = 'uncertain';
-              report('Interaction '+native.requestId+': reply delivery unconfirmed; checking pending state.');
+              report('Interaction '+native.requestId+': reply '+answerId+' delivery unconfirmed; checking pending state.');
             }
           } catch (error) {
             if (currentSignal.aborted) return;

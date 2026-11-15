@@ -60,6 +60,7 @@ test('actual PTY attached CLI answers its own permission, not the writer stdin',
       assert.ok(i<500,'writer did not start');await delay(10);
     }
     await tty(cwd,['run','permission','--config',path,'--presentation','debug'],'deny',/(?:\r?\n)deny\r?\n/);
+    await tty(cwd,['run','permission','--config',path,'--format','json'],'deny',/"answer":"deny"/);
     assert.equal(owner.exitCode,null,'peer answer must not cancel the independent writer operation');
   } finally { owner.kill('SIGINT');await closed; }
 }));
