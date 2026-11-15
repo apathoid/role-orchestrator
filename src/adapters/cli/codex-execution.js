@@ -15,7 +15,7 @@ export function createCodexExecution() {
   const maxEvidenceBytes=1024*1024, maxEvidenceFrames=1024;
   /** @type {Frame[]} */
   const evidence=[];
-  let bytes=0, omitted=0;
+  let bytes=0, omitted=0, omittedDeclines=0;
   /** @type {number[]} */
   const firstOmitted=[];
   let sent=false, invalidSequence=false;
@@ -30,8 +30,8 @@ export function createCodexExecution() {
   /** @param {Frame} frame @param {number} size */
   function retain(frame,size) {
     if(evidence.length < maxEvidenceFrames && bytes+size<=maxEvidenceBytes) {
-      evidence.push(frame); bytes+=size;
-    } else { if (firstOmitted.length<3) firstOmitted.push(frame.line); omitted++; }
+      evidence.push(frame); bytes+=size; return true;
+    } else { if (firstOmitted.length<3) firstOmitted.push(frame.line); omitted++; return false; }
   }
   return {
     /** @param {number} line @param {CodexEnvelope} event @param {number} size */
@@ -56,7 +56,9 @@ export function createCodexExecution() {
       if(item.type==='agent_message') {
         if(typeof item.text!=='string'){invalidSequence=true;return;}
         message=frame;retain(frame,size);
-      } else if(item.type==='command_execution'||(item.type==='error'&&typeof item.message==='string')) retain(frame,size);
+      } else if(item.type==='command_execution'||(item.type==='error'&&typeof item.message==='string')) {
+        if(!retain(frame,size)&&item.type==='command_execution'&&item.status==='declined') omittedDeclines++;
+      }
     },
     finish() {
       const frames=[...evidence];
@@ -64,7 +66,7 @@ export function createCodexExecution() {
       for(const extra of [message,providerError])if(extra&&!frames.includes(extra)){frames.push(extra);recovered.add(extra.line);}
       frames.sort((a,b)=>a.line-b.line);
       return {frames,sent,terminal,invalidSequence,usage,message,omitted:omitted-recovered.size,
-        firstOmittedLine:firstOmitted.find(line=>!recovered.has(line))??0,retainedBytes:bytes};
+        firstOmittedLine:firstOmitted.find(line=>!recovered.has(line))??0,retainedBytes:bytes,omittedDeclines};
     }
   };
 }

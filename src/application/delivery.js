@@ -13,11 +13,11 @@ export function createBoundedDelivery(listener, gapFor) {
   const queue = [];
   /** @type {G | undefined} */
   let gap;
-  let bytes = 0, inFlight = 0, running = false, closed = false, finishing = false, dropped = 0, flightCount = 0;
+  let bytes = 0, inFlight = 0, running = false, closed = false, finishing = false, dropped = 0, flightCount = 0, failed = 0;
   const drained = Promise.withResolvers();
   /** @type {Promise<number> | undefined} */
   let finishResult;
-  function remaining() { return queue.length + dropped + flightCount; }
+  function remaining() { return queue.length + dropped + flightCount + failed; }
   function close() {
     if (closed) return;
     closed = true;
@@ -39,7 +39,7 @@ export function createBoundedDelivery(listener, gapFor) {
         flightCount = entry ? 1 : dropped;
         if (!entry) { gap = undefined; dropped = 0; }
         inFlight = 1;
-        try { await listener(notice); } catch { /* Best effort, independent of execution. */ }
+        try { await listener(notice); } catch { failed += flightCount; /* Best effort, independent of execution. */ }
         inFlight = 0; flightCount = 0;
         if (entry && !closed) bytes -= entry.bytes;
       }
@@ -64,7 +64,7 @@ export function createBoundedDelivery(listener, gapFor) {
     close,
     /** Stop accepting new notices, allow the queued prefix/gap to drain.
      * The caller is a presentation transport, never the execution coordinator.
-     * Returns the number of notices not confirmed delivered by the deadline.
+     * Returns the number of notices not confirmed delivered (callback failure or finish deadline).
      * @param {number} [timeoutMs]
      */
     finish(timeoutMs = 250) {

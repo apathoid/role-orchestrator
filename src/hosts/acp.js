@@ -283,7 +283,7 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
           const lost=(activityLost??0)+(executionLost??0);
           if(lost&&notices&&!turn.cancelled&&!connection.signal.aborted){
             // Enqueue on the existing transport before final; never wait for an extra renderer acknowledgement.
-            void client.notify(c.session.update,{sessionId,update:acpDeliveryGap(operation.operationId,lost,'finish_timeout')}).catch(()=>{});
+            void client.notify(c.session.update,{sessionId,update:acpDeliveryGap(operation.operationId,lost,'finish_unconfirmed')}).catch(()=>{});
           }
         }
         stopDisplay();

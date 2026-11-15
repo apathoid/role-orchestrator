@@ -238,7 +238,7 @@ test('live control delivers scoped notices and requires the work answer binding'
     try {
       const descriptor = await readDescriptor(directory);
       const run = callControl(descriptor, 'config', { action: 'run', requestId: 'work', text: 'task' },
-        (_id, key) => { ownerKey = key; }, undefined, { notice: seen.resolve });
+        (_id, key) => { ownerKey = key; }, undefined, { notice: seen.resolve, interactive:true });
       await started.promise;
       await listeners.get('op')({ channel: 'activity', event: { kind: 'reasoning', operationId: 'op', attemptId: 'a', sequence: 1, payload: 'native' } });
       assert.equal((await seen.promise).event.payload, 'native');
@@ -302,8 +302,10 @@ test('C14 view changes on a repeated work request do not change request identity
   try {
     const descriptor=await readDescriptor(directory);
     const command={action:'run',requestId:'same',text:'task'};
-    const first=callControl(descriptor,'config',command);
+    const firstAccepted=Promise.withResolvers();
+    const first=callControl(descriptor,'config',command,(id,key)=>firstAccepted.resolve({id,key}),undefined,{notice:async()=>{}});
     await ready.promise;
+    assert.deepEqual(await firstAccepted.promise,{id:'op',key:undefined});
     const second=callControl(descriptor,'config',command,(id,key)=>attached.resolve({id,key}),undefined,{notice:async()=>{},interactive:true});
     assert.deepEqual(await attached.promise,{id:'op',key:undefined});
     gate.resolve();

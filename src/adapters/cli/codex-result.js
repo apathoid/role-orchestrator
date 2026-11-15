@@ -103,8 +103,11 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
     }
   }
 
-  if(execution.omitted) publish({ref:'codex-evidence-limit',kind:'host_transport',sourceId:attemptId,completeness:'truncated',
-    value:{reason:'EVIDENCE_LIMIT',omittedFrames:execution.omitted,firstOmittedLine:execution.firstOmittedLine,retainedBytes:execution.retainedBytes}});
+  if(execution.omitted) {
+    const omission=publish({ref:'codex-evidence-limit',kind:'host_transport',sourceId:attemptId,completeness:'truncated',
+    value:{reason:'EVIDENCE_LIMIT',omittedFrames:execution.omitted,firstOmittedLine:execution.firstOmittedLine,retainedBytes:execution.retainedBytes,omittedDeclinedCommands:execution.omittedDeclines}});
+    if(execution.omittedDeclines) permissionDiagnostics.push({code:'PERMISSION_DENIED',ref:omission});
+  }
   const processRef = publish({
     ref: 'codex-process', sourceId: attemptId, completeness: 'complete',
     ...(process.exitCode === null ? { kind: 'host_transport' } : { kind: 'agent_exit', exitCode: process.exitCode }),

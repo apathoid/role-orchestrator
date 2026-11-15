@@ -506,6 +506,7 @@ test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result
       emit('item.updated',{item:{id:'tool',type:'command_execution',aggregated_output:'y'.repeat(4096)}});
     }
     for(let i=0;i<400;i++)emit('item.completed',{item:{id:'cmd-'+i,type:'command_execution',command:'fixture',aggregated_output:'z'.repeat(4096),status:'completed',exit_code:0}});
+    emit('item.completed',{item:{id:'late-deny',type:'command_execution',command:'fixture',status:'declined'}});
     message('intermediate','first');message('final result','last');complete();
   `);
   const invoke=async activity=>{
@@ -516,12 +517,13 @@ test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result
       const process=observations.find(x=>x.ref==='codex-process');
       assert.equal(process.value.stdoutCapture.truncated,true);assert.ok(process.value.stdoutCapture.receivedBytes>1024*1024);
       assert.ok(process.value.diagnostics.some(x=>x.reason==='STDOUT_LIMIT'&&x.code==='OUTPUT_TRUNCATED'));
-      assert.ok(observations.some(x=>x.ref==='codex-evidence-limit'&&x.completeness==='truncated'));
+      assert.ok(observations.some(x=>x.ref==='codex-evidence-limit'&&x.completeness==='truncated'&&x.value.omittedDeclinedCommands===1));
+      assert.ok(result.outcome.diagnostics.some(x=>x.code==='PERMISSION_DENIED'&&x.ref==='codex-evidence-limit'));
       assert.ok(observations.some(x=>x.sourceId==='last'&&x.value==='final result'));
       return {result,observations};
     }finally{await provider.close(session);}
   };
   const baseline=await invoke(undefined);let count=0;
   const withActivity=await invoke(()=>{count++;throw Error('consumer');});
-  assert.equal(count,1200);assert.deepEqual(withActivity,baseline);
+  assert.equal(count,1201);assert.deepEqual(withActivity,baseline);
 });

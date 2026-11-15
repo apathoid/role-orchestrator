@@ -1,11 +1,10 @@
-import { formatActivity, formatExecution, formatOperation, formatRecordedFindings, formatFindingRecords, thinkingFragment } from './presentation.js';
+import { formatActivity, formatExecution, formatOperation, formatFindingRecords, thinkingFragment } from './presentation.js';
 /** @import {ControlNotice} from './local-control.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {PresentationMode} from './presentation.js' */
 
 /** @param {PresentationMode | undefined} mode @param {(text:string)=>Promise<unknown>} print @param {(fragment:{source:string,header:string,text:string})=>Promise<unknown>} [printChunk] */
 export function cliPresentation(mode, print, printChunk) {
-  const seen = new Set();
   let closed = false;
   return {
     /** @param {ControlNotice} notice */
@@ -21,7 +20,7 @@ export function cliPresentation(mode, print, printChunk) {
       if(notice.channel==='execution'&&notice.findings&&!closed) {
         for(const finding of formatFindingRecords(notice.findings,mode)){
           if(closed)break;
-          if(!seen.has(finding.id)){seen.add(finding.id);await print(finding.text);}
+          await print(finding.text);
         }
       }
     },
@@ -29,23 +28,12 @@ export function cliPresentation(mode, print, printChunk) {
     finish(value) {
       if (!mode || closed || !value || typeof value !== 'object' || !('events' in value) || !('attempts' in value)) return;
       const state = /** @type {Operation} */ (value);
-      // Current authoritative snapshot, not reconstructed lost activity.
-      // Terminal snapshot is a single bounded display write; inspect remains
-      // authoritative if a slow consumer missed too many recorded findings.
-      const maximum = 1024 * 1024;
+      // The terminal view is current status, not a replay of omitted notices.
+      // Recorded findings remain available via explicit inspect.
       const summary = formatOperation(state,mode);
-      const parts = [Buffer.byteLength(summary) <= maximum / 2 ? summary : formatOperation(state,'compact') + '\n[Detailed snapshot omitted; inspect current operation]'];
-      let bytes = Buffer.byteLength(parts[0]), omitted = 0;
-      for (const event of state.events) for (const finding of formatRecordedFindings(event,mode)) {
-        if (seen.has(finding.id)) continue;
-        seen.add(finding.id);
-        const size = Buffer.byteLength(finding.text) + 1;
-        if (parts.length >= 127 || bytes + size > maximum - 256) { omitted++; continue; }
-        parts.push(finding.text); bytes += size;
-      }
-      if (omitted) parts.push('[Recorded snapshot] ' + omitted + ' findings omitted; inspect current operation');
+      const text=Buffer.byteLength(summary)<=512*1024?summary:formatOperation(state,'compact')+'\n[Detailed snapshot omitted; inspect current operation]';
       closed = true;
-      void print(parts.join('\n'));
+      void print(text);
     },
     close() { closed = true; },
   };

@@ -81,3 +81,9 @@ test('C14R.4 scoped execution carries committed findings without diagnostic sink
   assert.equal(JSON.stringify(sink).includes('model finding'),false);
   stream.close();
 });
+
+test('C13R.3 failed consumer callbacks are unconfirmed, not successful delivery',async()=>{
+  const delivery=createBoundedDelivery(async()=>{throw Error('transport closed');},()=>({gap:1}));
+  delivery.enqueue(1,1);delivery.enqueue(2,1);
+  assert.equal(await delivery.finish(),2);
+});

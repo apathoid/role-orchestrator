@@ -12,7 +12,7 @@ import { HostError, hostError } from './commands.js';
 /** @typedef {{path: string, token: string, pid: number}} Descriptor */
 /** @typedef {{controllerProfile?: string, preferredSkills?: string[]}} LaunchOverrides */
 /** @typedef {(command: Command, accepted: (operationId: string) => void) => Promise<unknown>} Execute */
-/** @typedef {{channel: 'activity', event: import('../core/ports.js').ActivityNotice} | {channel: 'execution', event: import('../core/diagnostics.js').DiagnosticEvent, findings?:readonly import('../core/finding.js').Finding[]} | {channel: 'gap', droppedCount: number, reason: 'overflow' | 'finish_timeout'}} ControlNotice */
+/** @typedef {{channel: 'activity', event: import('../core/ports.js').ActivityNotice} | {channel: 'execution', event: import('../core/diagnostics.js').DiagnosticEvent, findings?:readonly import('../core/finding.js').Finding[]} | {channel: 'gap', droppedCount: number, reason: 'overflow' | 'finish_unconfirmed'}} ControlNotice */
 /** @typedef {{subscribe: (operationId: string, listener: (notice: ControlNotice) => Promise<void>) => (() => void) & {finish?:()=>Promise<number>},
  * pending: (operationId: string) => unknown,
  * respond: (reply: import('../core/ports.js').InteractionReply) => unknown,
@@ -96,7 +96,7 @@ export async function openControl(directory, configurationRef, execute, launch, 
           const subscription = subscriptions.get(socket);
           const omitted = await subscription?.finish?.() ?? 0;
           subscription?.();
-          if (omitted) send(socket,{requestId,notice:{channel:'gap',droppedCount:omitted,reason:'finish_timeout'}});
+          if (omitted) send(socket,{requestId,notice:{channel:'gap',droppedCount:omitted,reason:'finish_unconfirmed'}});
           send(socket, { requestId, outcome }, true);
         },
         error => send(socket, { requestId, error: hostError(error) }, true),
@@ -173,7 +173,7 @@ export async function openControl(directory, configurationRef, execute, launch, 
       const ownerClients = new Set([socket]);
       const views = new Set(payload.stream === 'live' ? [socket] : []);
       const interactive = payload.interactive === 'yes';
-      let answerKey = payload.stream === 'live' && (action === 'run' || action === 'resume') ? randomUUID() : undefined;
+      const answerKey = interactive && payload.stream === 'live' && (action === 'run' || action === 'resume') ? randomUUID() : undefined;
       const result = Promise.resolve().then(() => {
         if (action === 'answer') {
           const owner = payload.ownerRequestId && requests.get(payload.ownerRequestId);
@@ -307,6 +307,7 @@ export function callControl(descriptor, configurationRef, command, accepted, lau
           ownerRequestId: answer?.ownerRequestId, answerKey: answer?.answerKey, reply: answer?.reply } });
     });
     socket.once('error', error => {
+      if (terminalReceived) return;
       if (!sent && ('code' in error) && ['ENOENT', 'ECONNREFUSED', 'EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(String(error.code))) resolve(undefined);
       else if (sent) lost();
       else reject(error);

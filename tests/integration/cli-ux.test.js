@@ -73,3 +73,13 @@ test('C14R.3 native adjacent chunks use one source heading, switch and permissio
   assert.match(text,/\[p\/a\] Thinking: first second\n\[p\/b\] Thinking: other fragment\n/);
   assert.match(text,/Permission requested/);assert.match(text,/\[p\/a\] Thinking: again\n/);
 });
+
+test('C13R.3 terminal view never replays a dropped recorded finding',async()=>{
+  const out=[];
+  const renderer=cliPresentation('compact',async text=>{out.push(text);});
+  await renderer.notice({channel:'gap',droppedCount:1,reason:'overflow'});
+  renderer.finish({operationId:'op',status:'finished',assessment:{overall:'complete'},attempts:[],limits:{maxInvocations:4},events:[
+    {kind:'attempt.outcome',findings:[{findingId:'f',author:'p',claim:'omitted claim',subject:'file',supports:[],uncertainties:[]}]}
+  ]});
+  assert.match(out.join('\n'),/Delivery gap/);assert.doesNotMatch(out.join('\n'),/omitted claim/);
+});

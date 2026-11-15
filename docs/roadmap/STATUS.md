@@ -400,3 +400,5 @@ C14R.4 implementation submitted: representative socket fixture measures 32 full 
 - C14R.5: human text stdout TTY sanitization final answer/clarification; JSON and redirected stdout byte-preserving; actual PTY + redirected tests. Also freeze committed presentation findings before shared delivery (C14R.4 follow-up). CI pending.
 
 - C14R.6: pinned SDK 2.4.0 standard SessionUpdate notice, only client-advertised session.notices; scoped execution delivery contains committed model findings + actual lifecycle; gap notice where negotiated; no history replay or fake tool/thought. Actual SDK subprocess capability/no-capability/load/new-prompt test. CI pending, actual Zed UNVERIFIED.
+
+- Corrective audit follow-up: failed callbacks counted as unconfirmed rather than successful delivery; terminal CLI displays current status only (no replay of omitted findings); headless work receives no answer key, interactive capability stays original; omitted late Codex declined tool commands retain explicit bounded permission-denial evidence. Additional regression tests; exact final CI pending.
