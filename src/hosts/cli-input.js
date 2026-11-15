@@ -247,7 +247,7 @@ export function createCliInput(input, output, interactive, interrupt) {
       prompt();
     });
   }
-  return { ask, print, printChunk, report, close() {
+  return { ask, print, printChunk, report, resetPresentation(){sanitizers.clear();chunkSource=undefined;atLineStart=true;}, close() {
     for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     stopReader();
     sanitizers.clear();

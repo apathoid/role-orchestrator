@@ -8,7 +8,7 @@
 
 - CLI: bounded native tool identity/sparse updates, compact/detailed/debug distinction, append-only source/Thinking blocks, truthful summary after authoritative response on shared TTY.
 - ACP: journal-derived ordinary/late/discrepancy classification with explicit unavailable fallback; native widgets, inline default and explicit notices unchanged.
-- Full transcript/SDK/PTTY regressions and baseline measurements; native visual and skill diagnosis remain separate.
+- Full transcript/SDK/PTY regressions and baseline measurements; native visual and skill diagnosis remain separate.
 
 
 ### C15 — Rich presentation and ACP transcript

@@ -4,8 +4,8 @@ import { formatActivity, formatExecution, formatOperation, formatFindingRecords,
 /** @import {Operation} from '../core/operation.js' */
 /** @import {PresentationMode, PresentationTone} from './presentation.js' */
 
-/** @param {PresentationMode | undefined} mode @param {(text:string,tone?:PresentationTone)=>Promise<unknown>} print @param {(fragment:{source:string,header:string,text:string,indent?:string})=>Promise<unknown>} [printChunk] */
-export function cliPresentation(mode, print, printChunk) {
+/** @param {PresentationMode | undefined} mode @param {(text:string,tone?:PresentationTone)=>Promise<unknown>} print @param {(fragment:{source:string,header:string,text:string,indent?:string})=>Promise<unknown>} [printChunk] @param {()=>void} [resetChunks] */
+export function cliPresentation(mode, print, printChunk, resetChunks) {
   let closed=false;
   const tools=createCliTools();
   /** @type {Map<string,string>} */
@@ -36,8 +36,9 @@ export function cliPresentation(mode, print, printChunk) {
         aliases.set(notice.fact.attemptId,factLabel(notice.fact));
       }
       if(notice.channel==='gap'||(notice.channel==='activity'&&notice.event.kind==='gap')||(notice.channel==='execution'&&notice.event.eventName==='delivery.gap')){
-        tools.clear();currentSource=undefined;
+        tools.clear();currentSource=undefined;resetChunks?.();
       }
+      if(notice.channel==='execution'&&notice.event.eventName==='operation.cancelled')tools.clear();
       if(notice.channel==='activity'&&notice.event.kind!=='gap'){
         const event=notice.event;
         const alias=aliases.get(event.attemptId)??boundedText(event.profileId+'/'+event.attemptId,240).replace(/[\n\t]/g,' ');
@@ -51,7 +52,8 @@ export function cliPresentation(mode, print, printChunk) {
           if(fragment){
             // Input owner also restarts the header after a prompt or a non-text boundary.
             const heading=select(event.attemptId,alias);
-            await printChunk({...fragment,header:heading+'\n  Thinking · '+alias+'\n',indent:'  '});
+            const technical=mode==='debug'?' ['+boundedText(event.providerId,80)+' '+boundedText(event.nativeKind??'',80)+(event.nativeId?' id='+boundedText(event.nativeId,120):'')+']':'';
+            await printChunk({...fragment,header:heading+'\n  Thinking · '+alias+technical+'\n',indent:'  '});
             return;
           }
         }
@@ -69,7 +71,7 @@ export function cliPresentation(mode, print, printChunk) {
       if(notice.channel==='execution'&&notice.event.eventName==='attempt.dispatched'&&notice.fact?.attemptId){
         const fact=notice.fact,alias=factLabel(fact);
         currentSource=fact.attemptId;
-        const route=[fact.profileId,fact.modelSelector?'selector='+fact.modelSelector:undefined,
+        const route=[fact.modelSelector?'selector='+fact.modelSelector:undefined,
           fact.reasoning?.mode==='selectable'?'effort='+fact.reasoning.level:fact.reasoning?.mode==='native'?'native effort':undefined].filter(Boolean).join(' · ');
         const objective=fact.objective?'\n'+indent('Objective: '+boundedText(fact.objective)):'';
         const technical=mode==='debug'?'\n'+indent('attempt='+fact.attemptId+' event='+notice.event.eventId+' seq='+notice.event.sequence+' at='+notice.event.receivedAt+' reason='+notice.event.reasonCode):'';
@@ -78,8 +80,19 @@ export function cliPresentation(mode, print, printChunk) {
         const text=notice.channel==='execution'?formatExecution(notice.event,mode,notice.fact):
           notice.channel==='activity'?formatActivity(notice.event,mode):'[Delivery gap] '+notice.droppedCount+' notices dropped';
         if(text){
-          currentSource=undefined;
-          await print('\n'+text,notice.channel==='execution'&&(notice.event.level==='error'||notice.event.level==='warn')?'error':notice.channel==='execution'?'neutral':'error');
+          const fact=notice.channel==='execution'?notice.fact:undefined;
+          const event=notice.channel==='execution'?notice.event:undefined;
+          if(mode==='compact'&&fact&&event?.eventName==='attempt.outcome'&&fact.attemptId){
+            const alias=factLabel(fact);
+            await print(select(fact.attemptId,alias)+indent('◇ Outcome reported · '+fact.terminal+' · effect='+fact.effect),
+              fact.terminal==='failed'||fact.terminal==='unknown'?'error':'neutral');
+          }else if(mode==='compact'&&fact?.kind==='operation.finished'){
+            currentSource=undefined;
+            await print('\n◇ Assessment recorded · '+(fact.assessmentOverall??'status unknown'),'neutral');
+          }else{
+            currentSource=undefined;
+            await print('\n'+text,notice.channel==='execution'&&(notice.event.level==='error'||notice.event.level==='warn')?'error':notice.channel==='execution'?'neutral':'error');
+          }
         }
       }
       if(notice.channel==='execution'&&notice.findings&&!closed){

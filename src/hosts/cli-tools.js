@@ -2,7 +2,7 @@ import { boundedText } from './presentation.js';
 
 /** @import {ActivityEvent} from '../core/ports.js' */
 /** @import {PresentationMode, PresentationTone} from './presentation.js' */
-/** @typedef {{title?:string,kind?:string,command?:string,status?:string,location?:string,description?:string,sequence:number,rendered?:string}} ToolView */
+/** @typedef {{title?:string,kind?:string,command?:string,status?:string,location?:string,description?:string,completionReported?:boolean,sequence:number,rendered?:string}} ToolView */
 /** @typedef {{text:string,tone:PresentationTone}} ToolLine */
 const maxEntries=128,maxBytes=256*1024;
 /** @param {unknown} value @returns {Record<string,unknown>} */
@@ -19,9 +19,9 @@ function label(view){
 }
 /** @param {ToolView} view @param {PresentationMode} mode @param {ActivityEvent} event @param {string} [note] @returns {ToolLine} */
 function line(view,mode,event,note){
-  const status=view.status,ok=status==='completed',failed=status==='failed';
+  const status=view.status,ok=status==='completed'&&!view.completionReported,failed=status==='failed'&&!view.completionReported;
   const mark=ok?'✓':failed?'✗':'◇';
-  const text=(note?'! ':mark+' ')+label(view)+(status?' · '+status:'')+
+  const text=(note?'! ':mark+' ')+label(view)+(view.completionReported?' · item completion reported (status not supplied'+(status?'; last status='+status:'')+')':status?' · '+status:'')+
     (mode!=='compact'&&view.location?' · '+view.location:'')+
     (mode!=='compact'&&view.description?' · '+view.description:'')+
     (note?' · '+note:'')+
@@ -66,8 +66,10 @@ export function createCliTools(){
       if(Array.isArray(payload.locations)){
         view.location=field(payload.locations.map(location=>{const loc=object(location);return typeof loc.path==='string'?loc.path+(typeof loc.line==='number'?':'+loc.line:''):'';}).filter(Boolean).join(', '));
       }
+      if(event.nativeKind==='item.completed'&&typeof fields.status!=='string')view.completionReported=true;
+      else if(typeof fields.status==='string')delete view.completionReported;
       if(prior&&event.sequence<prior.sequence)return line(view,mode,event,'out-of-order report');
-      if(prior&&terminal(prior.status)&&view.status!==prior.status)return line(view,mode,event,'conflicting status report');
+      if(prior&&((terminal(prior.status)&&view.status!==prior.status)||(prior.completionReported&&typeof fields.status==='string'&&!terminal(view.status))))return line(view,mode,event,'conflicting status report');
       const result=line(view,mode,event);
       const genericPending=view.status==='pending'&&!view.command&&!view.location&&
         (!view.title||view.title.toLowerCase()===view.kind?.toLowerCase()||

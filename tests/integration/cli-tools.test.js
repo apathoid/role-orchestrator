@@ -34,3 +34,16 @@ test('C15R.1 null optional ACP fields do not erase earlier title; absent native 
   const anonymous={...tool({title:'shell',kind:'execute',status:'pending'}),nativeId:undefined};
   assert.match(p.accept(anonymous,'compact').text,/shell · pending/);
 });
+
+
+test('C15R Codex item completion without status is displayed as report, not fabricated success',()=>{
+  const p=createCliTools();
+  const initial={...tool({item:{type:'command_execution',command:'git status',status:'in_progress'}},1),nativeKind:'item.started'};
+  assert.match(p.accept(initial,'compact').text,/command_execution · git status · in_progress/);
+  const completion={...initial,sequence:2,nativeKind:'item.completed',payload:{item:{type:'command_execution'}}};
+  const line=p.accept(completion,'compact');
+  assert.match(line.text,/git status · item completion reported \(status not supplied; last status=in_progress\)/);
+  assert.doesNotMatch(line.text,/^✓/);
+  assert.equal(p.accept({...completion,sequence:3},'compact'),undefined);
+  assert.match(p.accept({...initial,sequence:4},'compact').text,/conflicting status report/);
+});

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -21,10 +21,11 @@ async function config(cwd,acp=false,scenario='host-elicitation') {
     storage:{directory:'state'},plugins:acp?[]:[{id:'host-fixture',module:fixture}]}));
   return path;
 }
-async function tty(cwd,args,reply,expected,env=process.env) {
+async function tty(cwd,args,reply,expected,env=process.env,columns) {
   // util-linux script allocates an actual PTY; this is a transport fixture,
   // not a real model or graphical client acceptance.
-  const child=spawn('script',['-qefc',[process.execPath,entry,...args].map(quote).join(' '),'/dev/null'],
+  const command=(columns?'stty cols '+columns+'; exec ':'')+[process.execPath,entry,...args].map(quote).join(' ');
+  const child=spawn('script',['-qefc',command,'/dev/null'],
     {cwd,env,stdio:['pipe','pipe','pipe'],signal:AbortSignal.timeout(12000)});
   let output='',errors='',sent=false;
   child.stdout.on('data',chunk=>{
@@ -99,19 +100,45 @@ test('C15 actual PTY trusted colors, native lifecycle and NO_COLOR plain fallbac
 }));
 
 
-test('C15R actual PTY full transcript tool correlation and final before summary',{timeout:25000},()=>withOwnedRun('C15R-pty-transcript',async cwd=>{
-  const path=await config(cwd,true,'c15r-transcript');
-  const env={...process.env,TERM:'xterm-256color',NO_COLOR:'1'};
-  const output=(await tty(cwd,['run','transcript','--config',path,'--presentation','compact'],undefined,/Version updated\./,env)).replace(/\r\n/g,'\n');
-  assert.match(output,/● Controller #1 · primary/);
-  assert.match(output,/Thinking · Controller #1 · primary\n  Inspect the commit\.\n  Read the diff\./);
+function assertTranscript(output,profile){
+  assert.match(output,new RegExp('● Controller #1 · '+profile));
+  assert.match(output,new RegExp('Thinking · Controller #1 · '+profile+'\\n  Inspect the commit\\.\\n  Read the diff\\.'));
   assert.equal((output.match(/git show HEAD/g)??[]).length,2);
   assert.match(output,/◇ git show HEAD · in_progress\n  ✓ git show HEAD · completed/);
   assert.match(output,/◇ Read package\.json · in_progress\n  ✗ Read package\.json · failed/);
-  assert.match(output,/Thinking · Controller #1 · primary\n  Version only\./);
+  assert.match(output,new RegExp('Thinking · Controller #1 · '+profile+'\\n  Version only\\.'));
   assert.doesNotMatch(output,/tool_call_update · completed/);
   assert.equal((output.match(/Version updated\./g)??[]).length,1);
   assert.ok(output.indexOf('Version updated.')<output.indexOf('✓ Operation complete'));
   assert.match(output,/1 Controller attempt · 0 Worker attempts · 0 recorded findings/);
+}
+
+test('C15R actual PTY full transcript tool correlation and final before summary',{timeout:25000},()=>withOwnedRun('C15R-pty-transcript',async cwd=>{
+  const path=await config(cwd,true,'c15r-transcript');
+  const env={...process.env,TERM:'xterm-256color',NO_COLOR:'1'};
+  const args=['run','transcript','--config',path,'--presentation','compact'];
+  const output=(await tty(cwd,args,undefined,/Version updated\./,env,48)).replace(/\r\n/g,'\n');
+  assertTranscript(output,'primary');
   console.log('C15R_PTY '+JSON.stringify(output));
+  delete env.NO_COLOR;
+  const colored=await tty(cwd,args,undefined,/Version updated\./,env,48);
+  assert.match(colored,/\x1b\[2;3m/);assert.match(colored,/\x1b\[32m/);assert.match(colored,/\x1b\[1;31m/);
+  assertTranscript(colored.replace(/\x1b\[[0-9;]*m/g,'').replace(/\r\n/g,'\n'),'primary');
+  console.log('C15R_PTY_COLOR '+JSON.stringify(colored));
+}));
+
+test('C15R actual attached PTY uses same rich native transcript while owner remains independent',{timeout:25000},()=>withOwnedRun('C15R-pty-attached',async cwd=>{
+  const path=await config(cwd),settings=JSON.parse(await readFile(path,'utf8'));
+  settings.profiles.native={provider:'native',model:'fixture'};
+  settings.providers.native={adapter:'acp',launch:{command:process.execPath,args:[agent,'c15r-transcript']}};
+  await writeFile(path,JSON.stringify(settings));
+  const owner=spawn(process.execPath,[entry,'run','hold','--config',path,'--format','json'],{cwd,stdio:['ignore','pipe','pipe']});
+  owner.stdout.resume();owner.stderr.resume();
+  const closed=once(owner,'close');
+  try{
+    for(let i=0;!await readDescriptor(join(cwd,'state'));i++){assert.ok(i<500);await delay(10);}
+    const output=(await tty(cwd,['run','transcript','--config',path,'--profile','native','--presentation','compact'],undefined,/Version updated\./,{...process.env,NO_COLOR:'1',TERM:'xterm-256color'},52)).replace(/\r\n/g,'\n');
+    assertTranscript(output,'native');assert.equal(owner.exitCode,null);
+    console.log('C15R_PTY_ATTACHED '+JSON.stringify(output));
+  }finally{owner.kill('SIGINT');await closed;}
 }));

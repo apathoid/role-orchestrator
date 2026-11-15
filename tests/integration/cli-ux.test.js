@@ -218,10 +218,24 @@ test('C15R.2 full compact transcript preserves source and text while hiding repe
   await send('reasoning',{content:{type:'text',text:'Version only.'}},undefined,'agent_thought_chunk');
   terminal.close();
   assert.equal(text,[
-    'Role Orchestrator · compact · 12345678','','● Controller #1 · p','  Invocation dispatched · p · selector=m · native effort','',
+    'Role Orchestrator · compact · 12345678','','● Controller #1 · p','  Invocation dispatched · selector=m · native effort','',
     '  Thinking · Controller #1 · p','  Inspect the commit.','  Read the diff.',
     '  ◇ git show HEAD · in_progress','  ✓ git show HEAD · completed',
     '  ◇ Read package.json · in_progress','  ✗ Read package.json · failed','',
     '  Thinking · Controller #1 · p','  Version only.','',
   ].join('\n'));
+});
+
+
+test('C15R.2 gap resets native text continuation without swallowing subsequent text',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let text='';output.on('data',b=>text+=b);
+  const terminal=createCliInput(input,output,false,()=>{});
+  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk,terminal.resetPresentation);
+  const event=body=>({channel:'activity',event:{kind:'reasoning',nativeKind:'agent_thought_chunk',operationId:'op',attemptId:'a',profileId:'p',providerId:'x',sequence:1,payload:{content:{type:'text',text:body}}}});
+  await renderer.notice(event('before\x1b]52;c;'));
+  await renderer.notice({channel:'activity',event:{kind:'gap',operationId:'op',attemptId:'a',droppedCount:1,reason:'overflow'}});
+  await renderer.notice(event('after gap'));
+  terminal.close();
+  assert.match(text,/before[\s\S]*Activity gap[\s\S]*after gap/);
+  assert.doesNotMatch(text,/\x1b/);
 });
