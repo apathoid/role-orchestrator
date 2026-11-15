@@ -543,6 +543,7 @@ test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result
 
 test('C13R.4R small subprocess evidence survives journal, output refs and context retrieval',linux,async()=>{
   const count=1100;
+  async function run(mode){
   const {api}=codexSetup(`
     if(invocation.kind==='delegate'){
       let bytes=0;
@@ -559,8 +560,15 @@ test('C13R.4R small subprocess evidence survives journal, output refs and contex
     }
     complete();
   `);
+  const gate=Promise.withResolvers();let subscription;
   try{
-    const state=await (await api.submit(request())).completion;
+    const state=await (await api.submit(request(),id=>{
+      if(mode!=='none')subscription=api.subscribeActivity({operationId:id},()=>{
+        if(mode==='slow')return gate.promise;
+        if(mode==='throwing')throw Error('presentation');
+      });
+    })).completion;
+    gate.resolve();await subscription?.finish();
     assert.equal(state.status,'finished');
     const worker=state.attempts.find(x=>x.actionId==='many');
     const receipt=state.events.find(x=>x.kind==='attempt.outcome'&&x.outcome.attemptId===worker.attemptId);
@@ -585,5 +593,9 @@ test('C13R.4R small subprocess evidence survives journal, output refs and contex
     assert.deepEqual(fetched.item.provenance.exit,{kind:'tool_exit',code:9});
     const restored=decodeSnapshot(encodeSnapshot(state));
     assert.equal(restored.kind,'accepted');
-  }finally{await api.close();}
+    return {outcome:receipt.outcome,observations:receipt.observations};
+  }finally{gate.resolve();await api.close();}
+  }
+  const baseline=await run('none');
+  for(const mode of ['fast','slow','throwing'])assert.deepEqual(await run(mode),baseline);
 });

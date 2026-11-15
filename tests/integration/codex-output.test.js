@@ -143,3 +143,35 @@ test('the process adapter preserves JSONL events, partial output and the indepen
   assert.deepEqual(result.diagnostics, [diagnostic('INCOMPLETE_FRAME', 2)]);
   assert.equal(await owned.close(), result);
 });
+
+
+test('C13R.4R byte-derived execution retention bound for tiny and large frames',()=>{
+  const max=1024*1024;
+  for(const [event,count] of [
+    [{type:'error'},80000],
+    [{type:'item.completed',item:{id:'large',type:'command_execution',aggregated_output:'x'.repeat(65536)}},40]
+  ]){
+    const capture=createCodexOutputCapture(),bytes=frame(event);
+    const size=bytes.length-1, retained=Math.floor(max/size);
+    capture.write('stdout',frame({type:'turn.started'}));
+    for(let i=0;i<count;i++)capture.write('stdout',bytes);
+    const final={type:'item.completed',item:{id:'last',type:'agent_message',text:'final'}};
+    capture.write('stdout',frame(final));
+    capture.write('stdout',frame({type:'turn.completed',usage:{input_tokens:1,output_tokens:2}}));
+    const result=capture.finish(),facts=result.execution;
+    const extraError=event.type==='error'?1:0;
+    assert.equal(facts.frames.filter(x=>x.event.type===event.type&&x.event.item?.id!=='last').length,retained+extraError);
+    assert.equal(facts.omitted,count-retained-extraError);
+    assert.equal(facts.firstOmittedLine,retained+2);
+    assert.ok(facts.retainedBytes<=max);
+    assert.ok(facts.frames.length<=Math.floor(max/16)+2);
+    assert.equal(facts.message.event.item.text,'final');
+    assert.equal(facts.terminal,'turn.completed');
+    assert.equal(facts.invalidSequence,false);
+    assert.deepEqual(facts.usage,{inputTokens:1,outputTokens:2,cost:null});
+    assert.equal(result.stdout.bytes.length,max);
+    assert.equal(result.stdout.truncated,true);
+    assert.ok(result.diagnostics.every(x=>x.code==='OUTPUT_TRUNCATED'));
+    assert.equal(result.diagnostics.find(x=>x.reason==='EVIDENCE_LIMIT').count,facts.omitted);
+  }
+});

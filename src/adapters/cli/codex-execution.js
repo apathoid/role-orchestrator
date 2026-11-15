@@ -12,7 +12,10 @@ export const integer = value => typeof value === 'number' && Number.isSafeIntege
  * result selection regardless of intermediate reasoning/tool volume.
  */
 export function createCodexExecution() {
-  const maxEvidenceBytes=1024*1024, maxEvidenceFrames=1024;
+  // Each retained frame is a validated nonempty JSON envelope. Its wire
+  // bytes also bound the number of objects (minimum envelope: 16 bytes).
+  // Do not introduce a lower count ceiling than the historical raw capture.
+  const maxEvidenceBytes=1024*1024;
   /** @type {Frame[]} */
   const evidence=[];
   let bytes=0, omitted=0, omittedDeclines=0;
@@ -29,7 +32,7 @@ export function createCodexExecution() {
   const usage={inputTokens:null,outputTokens:null,cost:null};
   /** @param {Frame} frame @param {number} size */
   function retain(frame,size) {
-    if(evidence.length < maxEvidenceFrames && bytes+size<=maxEvidenceBytes) {
+    if(bytes+size<=maxEvidenceBytes) {
       evidence.push(frame); bytes+=size; return true;
     } else { if (firstOmitted.length<3) firstOmitted.push(frame.line); omitted++; return false; }
   }
