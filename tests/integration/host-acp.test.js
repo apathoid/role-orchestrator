@@ -476,3 +476,43 @@ test('C14 standard ACP maps only actual native thinking, tools, Controller plan 
       assert.deepEqual(updates.filter(x=>x.sessionUpdate==='agent_message_chunk').map(x=>x.content.text),['Native final once']);
     } finally {await host.close();}
   }));
+
+test('C14R.2 background old operation requests during new prompt stay correlated and return to A', {timeout:15000},()=>withOwnedRun('C14R-old-new',async cwd=>{
+  const config=await fixture(cwd,{profiles:{primary:{provider:'test',model:'fixture'},relay:{provider:'nested',model:'fixture'}},
+    providers:{test:{adapter:'host-fixture'},nested:{adapter:'acp',launch:{command:process.execPath,args:[fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url)),'host-relay-concurrent']}}},
+    resources:{invocationTimeoutMs:8000}});
+  const entered=Promise.withResolvers(),release=Promise.withResolvers(),permissions=[],forms=[],extensions=[],notices=[],reads=[];
+  const host=launch(cwd,config,app=>app.onRequest(c.session.requestPermission,async({params})=>{
+    permissions.push(params);
+    if(params.toolCall.title==='fixture:read'){entered.resolve();await release.promise;return {outcome:{outcome:'selected',optionId:'deny'}};}
+    assert.equal(params.toolCall.title,'slow-relay');return {outcome:{outcome:'selected',optionId:'allow'}};
+  }).onRequest(c.elicitation.create,({params})=>{forms.push(params);return {action:'accept',content:{value:'old-form'}};})
+  .onRequest(c.fs.readTextFile,({params})=>{reads.push(params);return {content:'old-file'};})
+  .onRequest('*',({method,params})=>{assert.equal(method,'_ro/echo');extensions.push(params);return {answer:'old-extension'};})
+  .onNotification('*',({method,params})=>{if(method==='_ro/notice')notices.push(params);}),
+  ['--relay-client-tools','--relay-client-extension','_ro/echo','--relay-client-extension','_ro/notice']);
+  try{
+    await host.agent.request(a.initialize,{protocolVersion:PROTOCOL_VERSION,clientCapabilities:{fs:{readTextFile:true},elicitation:{form:{}},
+      _meta:{roleOrchestratorExtensions:{requests:['_ro/echo'],notifications:['_ro/notice']}}}});
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    await prompt(host.agent,sessionId,'relay-clarify');assert.equal(host.messages.at(-1).update.content.text,'While the worker runs?');
+    const b=prompt(host.agent,sessionId,'permission',{roleOrchestrator:{newOperation:true}});
+    await entered.promise;await writeFile(join(cwd,'relay-go'),'');
+    let result;
+    for(let i=0;i<400&&result===undefined;i++){
+      result=await readFile(join(cwd,'relay-result'),'utf8').catch(e=>{if(e.code!=='ENOENT')throw e;});
+      if(result===undefined)await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    assert.equal(result,'allow:old-file:old-form:old-extension');
+    assert.equal(permissions.length,2);const [newer,older]=permissions.map(x=>x._meta.roleOrchestratorSource);
+    assert.notEqual(newer.operationId,older.operationId);
+    assert.equal(forms[0]._meta.roleOrchestratorSource.operationId,older.operationId);
+    assert.equal(forms[0]._meta.roleOrchestratorSource.attemptId,older.attemptId);
+    assert.equal(forms[0].toolCallId,permissions[1].toolCall.toolCallId);
+    assert.deepEqual(extensions,notices);assert.equal(extensions[0].sessionId,sessionId);assert.equal(reads[0].sessionId,sessionId);
+    assert.deepEqual(extensions[0].nested,{sessionId:'opaque'});
+    release.resolve();await b;assert.equal(host.messages.at(-1).update.content.text,'deny');
+    await prompt(host.agent,sessionId,'resume A',{roleOrchestrator:{continueOperationId:older.operationId}});
+    assert.equal(host.messages.at(-1).update.content.text,'Ответ: resume A');
+  }finally{release.resolve();await host.close();}
+}));

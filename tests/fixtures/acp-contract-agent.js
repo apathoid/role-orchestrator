@@ -245,7 +245,7 @@ agent()
           observationRefs: [], findingRefs: [], unresolvedQuestions: [], answer: text } }));
       return { stopReason: 'end_turn' };
     }
-    if (scenario === 'host-relay') {
+    if (scenario === 'host-relay' || scenario === 'host-relay-concurrent') {
       if (objective === 'slow-relay') {
         await writeFile('relay-ready', '');
         while (true) {
@@ -261,6 +261,14 @@ agent()
       if (clientCapabilities?.fs?.readTextFile && text === 'allow') {
         const result = await client.request(c.fs.readTextFile, { sessionId, path: '/example' });
         text += ':' + result.content;
+      }
+      if(scenario==='host-relay-concurrent'){
+        const form=await client.request(c.elicitation.create,{sessionId,mode:'form',toolCallId:'shared-native-id',
+          message:'Old worker form',requestedSchema:{type:'object',properties:{value:{type:'string'}},required:['value']}});
+        assert.equal(form.action,'accept');text+=':'+form.content.value;
+        const payload={sessionId,objective,nested:{sessionId:'opaque'}};
+        await client.notify('_ro/notice',payload);
+        const ext=await client.request('_ro/echo',payload);text+=':'+ext.answer;
       }
       assert.equal(Boolean(clientCapabilities?.terminal), false);
       if (objective === 'slow-relay') await writeFile('relay-result', text);

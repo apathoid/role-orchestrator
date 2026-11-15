@@ -61,6 +61,7 @@ export function createAcpRelay(route, extensionMethods = []) {
     try {
       const response = /** @type {RequestPermissionResponse} */ (await client.request(c.session.requestPermission, {
         sessionId,
+        _meta: {roleOrchestratorSource:{operationId:request.operationId,attemptId:request.attemptId,profileId:request.profileId,requestId:request.requestId}},
         toolCall: {
           toolCallId: request.action?.nativeToolCallId === undefined ? request.requestId : scopedNativeId(request.attemptId, request.action.nativeToolCallId),
           title: request.action?.title ?? request.resource,
@@ -153,6 +154,7 @@ export function createAcpRelay(route, extensionMethods = []) {
     try {
       const response = await destination.client.request(c.elicitation.create, {
         ...params, sessionId: destination.sessionId,
+        _meta: {...params._meta,roleOrchestratorSource:{operationId:request.operationId,attemptId:request.attemptId,profileId:request.profileId,requestId:request.requestId}},
         ...(params.toolCallId && { toolCallId: scopedNativeId(request.attemptId, params.toolCallId) }),
       }, { cancellationSignal: stop, stopWaitingOnCancel: true });
       if (stop.aborted || route(request.operationId)?.sessionId !== destination.sessionId) return { kind: 'cancelled' };
