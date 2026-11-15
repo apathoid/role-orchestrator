@@ -30,6 +30,10 @@
 
 C12R.10R F4 и прежние native obligations **не закрыты**: попытка baseline probes в C13.0, доступные повторные comparative probes в C13.7/C14.5; unavailable остаётся UNVERIFIED без блокировки engineering implementation. При material regression исправить до handoff, не считать native readiness по fixture CI. Каждый шаг отдельным коммитом, status/evidence в STATUS, матрица одна. До C14 требуется C13 engineering regression verified. 
 
+## C13R/C14R — corrective follow-up
+
+[Interaction Reliability & Presentation Completeness](C13R_C14R_INTERACTION_RELIABILITY.md): C13R.0–.4, C14R.1–.6, full regression/audit and native disposition. Addressed defects only, no new runtime workflow. STATUS determines next step. Existing C13/C14 verified baseline and open F4/C12/native obligations retained.
+
 ## C12R — корректирующий этап и приёмка
 
 **Актуальный следующий шаг определяется [STATUS](STATUS.md).** Единый детальный план: [C12R — стабилизация](C12R_STABILIZATION.md). C12R устраняет подтверждённые дефекты нативной эксплуатации до окончательной приёмки C12; это корректирующий инженерный этап, не новый runtime workflow.
