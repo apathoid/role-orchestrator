@@ -539,3 +539,51 @@ test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result
     }finally{gate.resolve();stream.close();}
   }
 });
+
+
+test('C13R.4R small subprocess evidence survives journal, output refs and context retrieval',linux,async()=>{
+  const count=1100;
+  const {api}=codexSetup(`
+    if(invocation.kind==='delegate'){
+      let bytes=0;
+      for(let i=0;i<${count};i++){
+        const event={type:'item.completed',item:{id:'small-'+i,type:'command_execution',command:'fixture '+i,
+          aggregated_output:'result '+i,status:i===${count}-1?'failed':'completed',exit_code:i===${count}-1?9:0}};
+        bytes+=Buffer.byteLength(JSON.stringify(event)+'\\n');console.log(JSON.stringify(event));
+      }
+      assert.ok(bytes<1024*1024-4096);message('worker final','last');
+    }else if(!host.outcomes.length){
+      message(JSON.stringify(decision({additions:[{actionId:'many',kind:'delegate',objective:'many results',profileId:'primary',contextRefs:[],dependsOn:[],expectedResult:'facts'}],waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'many'}]}})));
+    }else{
+      message(JSON.stringify(decision({finalAssessment:assessment({answer:'done'})})));
+    }
+    complete();
+  `);
+  try{
+    const state=await (await api.submit(request())).completion;
+    assert.equal(state.status,'finished');
+    const worker=state.attempts.find(x=>x.actionId==='many');
+    const receipt=state.events.find(x=>x.kind==='attempt.outcome'&&x.outcome.attemptId===worker.attemptId);
+    assert.equal(receipt.outcome.terminal,'completed');
+    assert.deepEqual(receipt.outcome.usage,{inputTokens:12,outputTokens:0,cost:null});
+    const tools=receipt.observations.filter(x=>x.provenance?.kind==='provider_tool');
+    assert.equal(tools.length,count,'all small command events fit the historical raw capture budget');
+    const last=tools.at(-1);
+    assert.equal(last.provenance.sourceId,'small-1099');
+    assert.deepEqual(last.provenance.exit,{kind:'tool_exit',code:9});
+    assert.equal(last.value.output,'result 1099');
+    assert.ok(tools.every(x=>x.completeness==='complete'&&x.source==='provider_reported'));
+    const refs=new Map(receipt.outcome.outputRefs.map(x=>[x.ref,x]));
+    assert.ok(tools.every(x=>refs.get(x.ref)?.kind==='tool_exit'&&refs.get(x.ref)?.source==='provider_reported'));
+    assert.equal(receipt.observations.some(x=>x.providerRef==='codex-evidence-limit'),false);
+    assert.equal(receipt.observations.find(x=>x.providerRef==='codex-process').value.stdoutCapture,undefined);
+    const {bindContextAccess}=await import('../../src/application/context-access.js');
+    const port=bindContextAccess({state,store:{},maxBytes:65536,profileId:'primary',attemptId:'read',isActive:()=>true,
+      newId:()=> 'unused',now:()=>100,receive:()=>{}});
+    const fetched=await port.fetch(last.ref);
+    assert.equal(fetched.kind,'available');assert.equal(fetched.item.value.output,'result 1099');
+    assert.deepEqual(fetched.item.provenance.exit,{kind:'tool_exit',code:9});
+    const restored=decodeSnapshot(encodeSnapshot(state));
+    assert.equal(restored.kind,'accepted');
+  }finally{await api.close();}
+});
