@@ -1,3 +1,4 @@
+import { createCliTools } from './cli-tools.js';
 import { formatActivity, formatExecution, formatOperation, formatFindingRecords, thinkingFragment, factLabel } from './presentation.js';
 /** @import {ControlNotice} from './local-control.js' */
 /** @import {Operation} from '../core/operation.js' */
@@ -6,6 +7,7 @@ import { formatActivity, formatExecution, formatOperation, formatFindingRecords,
 /** @param {PresentationMode | undefined} mode @param {(text:string,tone?:PresentationTone)=>Promise<unknown>} print @param {(fragment:{source:string,header:string,text:string})=>Promise<unknown>} [printChunk] */
 export function cliPresentation(mode, print, printChunk) {
   let closed = false;
+  const tools=createCliTools();
   /** @type {Map<string,string>} */
   const aliases=new Map();
   /** @type {string|undefined} */
@@ -23,7 +25,13 @@ export function cliPresentation(mode, print, printChunk) {
         if(aliases.size>=128&&!aliases.has(notice.fact.attemptId)){const first=aliases.keys().next().value;if(first!==undefined)aliases.delete(first);}
         aliases.set(notice.fact.attemptId,factLabel(notice.fact));
       }
+      if(notice.channel==='gap'||(notice.channel==='activity'&&notice.event.kind==='gap')||(notice.channel==='execution'&&notice.event.eventName==='delivery.gap'))tools.clear();
       const alias=notice.channel==='activity'&&notice.event.kind!=='gap'?aliases.get(notice.event.attemptId):undefined;
+      if(notice.channel==='activity'&&notice.event.kind==='tool'){
+        const line=tools.accept(notice.event,mode);
+        if(line)await print('['+(alias??notice.event.profileId+'/'+notice.event.attemptId)+'] '+line.text,line.tone);
+        return;
+      }
       if(notice.channel==='activity'&&printChunk){
         const fragment=thinkingFragment(notice.event,mode,alias);
         if(fragment){await printChunk(fragment);return;}
@@ -48,9 +56,9 @@ export function cliPresentation(mode, print, printChunk) {
       const summary = formatOperation(state,mode);
       const text=Buffer.byteLength(summary)<=512*1024?summary:formatOperation(state,'compact')+'\n[Detailed snapshot omitted; inspect current operation]';
       closed = true;
-      aliases.clear();
+      aliases.clear();tools.clear();
       void print(text,state.status==='finished'&&state.assessment?.overall==='complete'?'success':'neutral').catch(()=>{});
     },
-    close() { closed = true; aliases.clear(); },
+    close() { closed = true; aliases.clear();tools.clear(); },
   };
 }
