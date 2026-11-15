@@ -498,3 +498,30 @@ test('C13 Codex JSONL activity arrives before exit and never alters execution fr
     } finally { await provider.close(handle); }
   });
 });
+
+test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result capture',linux,async()=>{
+  const {provider}=codexSetup(`
+    for(let i=0;i<400;i++){
+      emit('item.completed',{item:{id:'thought-'+i,type:'reasoning',text:'x'.repeat(4096)}});
+      emit('item.updated',{item:{id:'tool',type:'command_execution',aggregated_output:'y'.repeat(4096)}});
+    }
+    for(let i=0;i<400;i++)emit('item.completed',{item:{id:'cmd-'+i,type:'command_execution',command:'fixture',aggregated_output:'z'.repeat(4096),status:'completed',exit_code:0}});
+    message('intermediate','first');message('final result','last');complete();
+  `);
+  const invoke=async activity=>{
+    const signal=new AbortController().signal,session=await provider.open(profile,signal),observations=[];
+    try{
+      const result=await provider.invoke(session,{attemptId:'attempt',operationId:'op',actionId:'worker',kind:'delegate',objective:'test',profile,instructions:[],context:[],userConstraints:[],authorityRef:'grant',timeoutMs:5000,signal},x=>{observations.push(x);return x.ref;},activity);
+      assert.equal(result.outcome.terminal,'completed');assert.equal(result.output,'final result');assert.deepEqual(result.outcome.usage,{inputTokens:12,outputTokens:0,cost:null});
+      const process=observations.find(x=>x.ref==='codex-process');
+      assert.equal(process.value.stdoutCapture.truncated,true);assert.ok(process.value.stdoutCapture.receivedBytes>1024*1024);
+      assert.ok(process.value.diagnostics.some(x=>x.reason==='STDOUT_LIMIT'&&x.code==='OUTPUT_TRUNCATED'));
+      assert.ok(observations.some(x=>x.ref==='codex-evidence-limit'&&x.completeness==='truncated'));
+      assert.ok(observations.some(x=>x.sourceId==='last'&&x.value==='final result'));
+      return {result,observations};
+    }finally{await provider.close(session);}
+  };
+  const baseline=await invoke(undefined);let count=0;
+  const withActivity=await invoke(()=>{count++;throw Error('consumer');});
+  assert.equal(count,1200);assert.deepEqual(withActivity,baseline);
+});
