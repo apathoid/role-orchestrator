@@ -14,13 +14,15 @@ import { openRuntime } from './runtime.js';
 /** @param {string[]} args */
 export async function runAcpStdio(args) {
   try {
-    const { values } = parseArgs({ args, options: { config: { type: 'string' }, help: { type: 'boolean' }, presentation: { type: 'string' }, 'relay-client-tools': { type: 'boolean' }, 'relay-client-extension': { type: 'string', multiple: true } } });
+    const { values } = parseArgs({ args, options: { config: { type: 'string' }, help: { type: 'boolean' }, presentation: { type: 'string' }, 'progress-display': { type: 'string' }, 'relay-client-tools': { type: 'boolean' }, 'relay-client-extension': { type: 'string', multiple: true } } });
     if (values.help) {
-      process.stdout.write('Usage: role-orchestrator acp [--config FILE] [--relay-client-tools] [--relay-client-extension METHOD] [--presentation compact|detailed|debug]\n');
+      process.stdout.write('Usage: role-orchestrator acp [--config FILE] [--relay-client-tools] [--relay-client-extension METHOD] [--presentation compact|detailed|debug] [--progress-display inline|notices]\n');
       return 0;
     }
     const mode = values.presentation ?? 'compact';
     if (mode !== 'compact' && mode !== 'detailed' && mode !== 'debug') throw new HostError('INVALID_ARGUMENT','Expected --presentation compact, detailed or debug');
+    const progressDisplay=values['progress-display']??'inline';
+    if(progressDisplay!=='inline'&&progressDisplay!=='notices')throw new HostError('INVALID_ARGUMENT','Expected --progress-display inline or notices');
     // In this executable mode stdout is reserved for protocol frames.
     globalThis.console = new Console({ stdout: process.stderr, stderr: process.stderr });
     const options = await cliConfiguration(values.config && resolve(values.config));
@@ -55,7 +57,7 @@ export async function runAcpStdio(args) {
         return undefined;
       });
       host = serveAcp(runtime.api, runtime.directory,
-        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: 1024 * 1024 }), mode);
+        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: 1024 * 1024 }), mode, progressDisplay);
       const { connection } = host;
       const interrupt = () => {
         connection.close();

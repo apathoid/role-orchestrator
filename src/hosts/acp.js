@@ -4,11 +4,13 @@ import { isAbsolute, join } from 'node:path';
 import { agent, methods, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
 import { decode, id, invalid as invalidField, optional, record } from '../core/decode.js';
 import { hostError } from './commands.js';
-import { acpActivity, acpExecutionNotices, acpDeliveryGap } from './presentation.js';
+import { acpActivity, acpExecutionNotices, acpExecutionInline, acpAccepted, acpProgressGap } from './presentation.js';
 
-/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, StopReason} from '@agentclientprotocol/sdk' */
+import { createBoundedDelivery } from '../application/delivery.js';
+
+/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, StopReason, SessionUpdate} from '@agentclientprotocol/sdk' */
 /** @import {ActivityListener, ActivityScope} from '../core/ports.js' */
-/** @import {PresentationMode} from './presentation.js' */
+/** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {HostApi} from './commands.js' */
 /** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
@@ -52,8 +54,8 @@ function operationMessage(operation) {
   }
 }
 
-/** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] */
-export function serveAcp(api, directory, stream, mode = 'compact') {
+/** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] @param {ProgressDisplay} [progressDisplay] */
+export function serveAcp(api, directory, stream, mode = 'compact', progressDisplay = 'inline') {
   /** @type {Map<string, Session>} */
   const sessions = new Map();
   /** @type {Map<string, Turn>} */
@@ -226,9 +228,13 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
       /** @type {(() => void) & {finish?:()=>Promise<number>}} */
       let unsubscribeExecution = () => {};
       const notices = capabilities.session?.notices != null;
+      const ownProgress=progressDisplay==='inline'||notices;
+      /** @typedef {{update?:SessionUpdate,count?:number}} TransportItem */
+      /** @type {ReturnType<typeof createBoundedDelivery<TransportItem,TransportItem>>|undefined} */
+      let transport;
       let subscribed = false;
       let displaying = true;
-      const stopDisplay = () => { displaying = false; unsubscribe(); unsubscribeExecution(); };
+      const stopDisplay = () => { displaying = false; unsubscribe(); unsubscribeExecution(); transport?.close(); };
       turn.stopDisplay=stopDisplay;
       connection.signal.addEventListener('abort',stopDisplay,{once:true});
       try {
@@ -245,24 +251,35 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
           const prior = target && await api.inspect(target);
           const workspaceContext = { cwd: session.cwd };
           const delivery = request;
+          const continuing=Boolean(prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished'));
           /** @param {string} id */
           const accepted = id => {
             turn.operationId = id;
             attach(session, delivery, id);
             if (subscribed||!displaying||turn.cancelled||connection.signal.aborted) return;
             subscribed = true;
-            unsubscribe = api.subscribeActivity({operationId:id}, async event => {
-              if (!displaying || turn.cancelled || connection.signal.aborted || turn.operationId !== id) return;
-              const update = event.kind==='gap' && notices ? acpDeliveryGap(id,event.droppedCount,event.reason,event.attemptId) : acpActivity(event, mode, event.kind!=='gap'&&event.invocationKind==='controller');
-              if (update && displaying && !turn.cancelled && !connection.signal.aborted) {
-                await client.notify(c.session.update, {sessionId, update});
-              }
+            const canDisplay=()=>displaying&&!turn.cancelled&&!connection.signal.aborted&&turn.operationId===id&&turns.get(sessionId)===turn;
+            // One bounded transport consumer for native and own presentation.
+            // Producers never await the renderer; only the owning turn drains it.
+            transport=createBoundedDelivery(/** @param {TransportItem} item */ async item=>{
+              if(item.update&&canDisplay())await client.notify(c.session.update,{sessionId,update:item.update});
+            },(prior,_dropped)=>{
+              const count=(prior?.count??0)+1;
+              return {count,update:acpProgressGap(id,count,'overflow',progressDisplay,notices)};
             });
-            if (notices && api.subscribeExecution) unsubscribeExecution=api.subscribeExecution({operationId:id},async(event,findings)=>{
-              for(const update of acpExecutionNotices(event,findings,mode)){
-                if(!displaying||turn.cancelled||connection.signal.aborted||turn.operationId!==id) return;
-                await client.notify(c.session.update,{sessionId,update});
-              }
+            /** @param {SessionUpdate|undefined} update */
+            const enqueue=update=>{
+              if(update&&canDisplay())transport?.enqueue({update},Buffer.byteLength(JSON.stringify({sessionId,update}))+128);
+            };
+            if(ownProgress)enqueue(acpAccepted(id,durableRequestId,continuing,progressDisplay));
+            unsubscribe = api.subscribeActivity({operationId:id}, event => {
+              if (!canDisplay()) return;
+              enqueue(event.kind==='gap'?acpProgressGap(id,event.droppedCount,event.reason,progressDisplay,notices,event.attemptId):
+                acpActivity(event,mode,event.invocationKind==='controller'));
+            });
+            if (ownProgress && api.subscribeExecution) unsubscribeExecution=api.subscribeExecution({operationId:id},(event,findings,fact)=>{
+              if(!canDisplay())return;
+              for(const update of progressDisplay==='inline'?acpExecutionInline(event,findings,mode,fact):acpExecutionNotices(event,findings,mode,fact))enqueue(update);
             });
           };
           const submission = prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished')
@@ -283,10 +300,12 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
         }
         if (!turn.cancelled && !connection.signal.aborted) {
           const [activityLost,executionLost]=await Promise.all([unsubscribe.finish?.(),unsubscribeExecution.finish?.()]);
-          const lost=(activityLost??0)+(executionLost??0);
-          if(lost&&notices&&!turn.cancelled&&!connection.signal.aborted){
+          const transportLost=await transport?.finish()??0;
+          const lost=(activityLost??0)+(executionLost??0)+transportLost;
+          if(lost&&ownProgress&&!turn.cancelled&&!connection.signal.aborted){
             // Enqueue on the existing transport before final; never wait for an extra renderer acknowledgement.
-            void client.notify(c.session.update,{sessionId,update:acpDeliveryGap(operation.operationId,lost,'finish_unconfirmed')}).catch(()=>{});
+            const update=acpProgressGap(operation.operationId,lost,'finish_unconfirmed',progressDisplay,notices);
+            if(update)void client.notify(c.session.update,{sessionId,update}).catch(()=>{});
           }
         }
         stopDisplay();

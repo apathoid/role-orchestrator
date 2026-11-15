@@ -6,6 +6,7 @@ import { eventFindings } from '../core/finding.js';
 /** @import {SessionUpdate} from '@agentclientprotocol/sdk' */
 /** @import {ExecutionFact} from '../application/execution-facts.js' */
 /** @typedef {'compact' | 'detailed' | 'debug'} PresentationMode */
+/** @typedef {'inline'|'notices'} ProgressDisplay */
 /** @typedef {'header'|'thinking'|'tool'|'finding'|'error'|'success'|'neutral'} PresentationTone */
 
 /** Display only: preserve underlying payload and final answer. @param {string} text */
@@ -238,13 +239,13 @@ export function acpActivity(event, mode, controller) {
 }
 
 /** Standard ACP notices are presentation only, never session history.
- * @param {DiagnosticEvent} event @param {readonly import('../core/finding.js').Finding[]|undefined} findings @param {PresentationMode} mode
+ * @param {DiagnosticEvent} event @param {readonly import('../core/finding.js').Finding[]|undefined} findings @param {PresentationMode} mode @param {ExecutionFact} [fact]
  * @returns {SessionUpdate[]}
  */
-export function acpExecutionNotices(event,findings,mode) {
+export function acpExecutionNotices(event,findings,mode,fact) {
   /** @type {SessionUpdate[]} */
   const notices=[];
-  const title=formatExecution(event,mode);
+  const title=formatExecution(event,mode,fact);
   const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,eventId:event.eventId,sequence:event.sequence};
   if(title) notices.push({sessionUpdate:'notice',title,severity:event.level==='error'?'error':event.level==='warn'?'warning':'info',
     _meta:{roleOrchestratorSource:{...source,source:'execution',eventName:event.eventName,reasonCode:event.reasonCode}}});
@@ -262,4 +263,46 @@ export function acpExecutionNotices(event,findings,mode) {
 export function acpDeliveryGap(operationId,count,reason,attemptId) {
   return {sessionUpdate:'notice',severity:'warning',title:'Presentation gap',description:count+' notices not delivered ('+reason+')',
     _meta:{roleOrchestratorSource:{source:'delivery',operationId,attemptId,droppedCount:count,reason}}};
+}
+
+/** Visible attribution and complete boundaries even for clients which merge chunks.
+ * Source metadata is presentation provenance, never authority.
+ * @param {string} text @param {Record<string,unknown>} source @param {string} [identity]
+ * @returns {SessionUpdate}
+ */
+export function acpOwnMessage(text,source,identity){
+  const safe=boundedText(text,16000).replace(/[\\\x60*_{}\[\]()<>#!|~]/g,'\\$&').replace(/\n/g,'\n  ');
+  return {sessionUpdate:'agent_message_chunk',content:{type:'text',text:'\n\nRO · '+safe+'\n\n'},
+    ...(identity!==undefined&&{messageId:'ro:'+JSON.stringify([source.operationId,source.source,identity])}),
+    _meta:{roleOrchestratorSource:source}};
+}
+
+/** @param {string} operationId @param {string} requestId @param {boolean} continuing @param {ProgressDisplay} display @returns {SessionUpdate} */
+export function acpAccepted(operationId,requestId,continuing,display){
+  const title=continuing?'Request continued':'Operation accepted';
+  const source={source:'request',operationId,requestId,eventName:continuing?'operation.continued':'operation.accepted'};
+  return display==='inline'?acpOwnMessage(title+' · '+operationId,source,requestId):
+    {sessionUpdate:'notice',title,severity:'info',_meta:{roleOrchestratorSource:source}};
+}
+
+/** @param {DiagnosticEvent} event @param {readonly import('../core/finding.js').Finding[]|undefined} findings @param {PresentationMode} mode @param {ExecutionFact} [fact] @returns {SessionUpdate[]} */
+export function acpExecutionInline(event,findings,mode,fact){
+  /** @type {SessionUpdate[]} */
+  const updates=[];
+  const displayMode=mode==='debug'?'detailed':mode;
+  const text=formatExecution(event,displayMode,fact);
+  const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,
+    eventId:fact?.journalEventId??event.eventId,eventName:event.eventName,reasonCode:event.reasonCode};
+  if(text) updates.push(acpOwnMessage(text,{...source,source:fact?'journal':'execution'},source.eventId));
+  for(const finding of formatFindingRecords(findings??[],displayMode)){
+    updates.push(acpOwnMessage(finding.text,{...source,source:'recorded_finding',findingId:finding.id},finding.id));
+  }
+  return updates;
+}
+
+/** @param {string} operationId @param {number} count @param {string} reason @param {ProgressDisplay} display @param {boolean} notices @param {string} [attemptId] @returns {SessionUpdate|undefined} */
+export function acpProgressGap(operationId,count,reason,display,notices,attemptId){
+  if(display==='notices')return notices?acpDeliveryGap(operationId,count,reason,attemptId):undefined;
+  return acpOwnMessage('Presentation gap · '+count+' updates '+(reason==='overflow'?'dropped':'not confirmed')+' ('+reason+')',
+    {source:'delivery',operationId,attemptId,droppedCount:count,reason});
 }

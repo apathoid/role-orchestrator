@@ -473,7 +473,7 @@ test('C14 standard ACP maps only actual native thinking, tools, Controller plan 
       const plans=updates.filter(x=>x.sessionUpdate==='plan');
       assert.ok(plans.length>=1);
       assert.ok(plans.every(x=>x.entries.every(e=>!e.content.includes('worker-'))));
-      assert.deepEqual(updates.filter(x=>x.sessionUpdate==='agent_message_chunk').map(x=>x.content.text),['Native final once']);
+      assert.deepEqual(updates.filter(x=>x.sessionUpdate==='agent_message_chunk'&&!x._meta?.roleOrchestratorSource).map(x=>x.content.text),['Native final once']);
     } finally {await host.close();}
   }));
 
@@ -520,7 +520,7 @@ test('C14R.2 background old operation requests during new prompt stay correlated
 test('C14R.6 negotiated standard notices show committed findings and lifecycle without history replay', {timeout:20000},()=>withOwnedRun('C14R-notices',async cwd=>{
   const config=await fixture(cwd);
   for(const enabled of [false,true]){
-    const host=launch(cwd,config,app=>app,['--presentation','detailed']);
+    const host=launch(cwd,config,app=>app,['--presentation','detailed','--progress-display','notices']);
     try{
       await host.agent.request(a.initialize,{protocolVersion:PROTOCOL_VERSION,clientCapabilities:enabled?{session:{notices:{}}}:{}});
       const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
@@ -543,6 +543,29 @@ test('C14R.6 negotiated standard notices show committed findings and lifecycle w
       await prompt(host.agent,sessionId,'another',{roleOrchestrator:{newOperation:true}});
       assert.ok(host.messages.slice(next).every(x=>x.update._meta?.roleOrchestratorSource?.findingId!=='notice-finding'));
       assert.equal(host.messages.at(-1).update.content.text,'Ответ: another');
+    }finally{await host.close();}
+  }
+}));
+
+test('C15.4 standard ACP inline default emits compact attributed facts, native final once and no notices', {timeout:20000},()=>withOwnedRun('C15-inline',async cwd=>{
+  const config=await fixture(cwd);
+  for(const enabled of [false,true]){
+    const host=launch(cwd,config);
+    try{
+      await host.agent.request(a.initialize,{protocolVersion:PROTOCOL_VERSION,clientCapabilities:enabled?{session:{notices:{}}}:{}});
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      await prompt(host.agent,sessionId,'notice-delegate');
+      const updates=host.messages.map(x=>x.update);
+      const own=updates.filter(x=>x.sessionUpdate==='agent_message_chunk'&&x.messageId?.startsWith('ro:'));
+      assert.ok(own.length>=4);
+      assert.ok(own.every(x=>x.content.text.includes('RO ·')&&x._meta.roleOrchestratorSource.operationId));
+      assert.equal(own[0]._meta.roleOrchestratorSource.eventName,'operation.accepted');
+      assert.ok(own.some(x=>x._meta.roleOrchestratorSource.eventName==='attempt.dispatched'));
+      assert.ok(own.some(x=>x._meta.roleOrchestratorSource.findingId==='notice-finding'));
+      assert.equal(new Set(own.map(x=>x.messageId)).size,own.length);
+      assert.equal(updates.filter(x=>x.sessionUpdate==='notice').length,0);
+      assert.equal(updates.at(-1).content.text,'Notice final');
+      assert.equal(updates.filter(x=>x.content?.text==='Notice final').length,1);
     }finally{await host.close();}
   }
 }));
