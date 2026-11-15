@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { cliOwner } from '../../src/hosts/cli-owner.js';
 import { createCliInput } from '../../src/hosts/cli-input.js';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
+import { cliPresentation } from '../../src/hosts/cli-presentation.js';
 import { pollAttachedInputs } from '../../src/hosts/attached-input.js';
 import { callControl, openControl, readDescriptor } from '../../src/hosts/local-control.js';
 import { withOwnedRun } from '../../scripts/owned-run.mjs';
@@ -432,4 +433,23 @@ test('C13R.1 unavailable input after uncertain reply does not send automatic new
     await reported.promise;await delay(30);assert.equal(asks,2);assert.equal(answers,1);
     stop.abort();await polling;gate.resolve();await work;
   }finally{stop.abort();gate.resolve();await server.close();}
+}));
+
+test('C14R.5R attached actual socket final survives failed CLI Writable', {timeout:5000,skip:localSocketCheck},()=>withOwnedRun('C14R-write-failure',async directory=>{
+  const ready=Promise.withResolvers(),gate=Promise.withResolvers(),failed=Promise.withResolvers();
+  let listener,dispatches=0,omitted=0;
+  const server=await openControl(directory,'config',async(_cmd,accepted)=>{dispatches++;accepted('op');ready.resolve();await gate.promise;return {done:true};},undefined,{
+    subscribe(_id,fn){listener=fn;return ()=>{};},pending:()=>[],respond:()=>assert.fail('no synthetic reply')
+  });
+  const output=new Writable({write(_chunk,_encoding,cb){cb(Error('broken presentation'));failed.resolve();}});
+  const terminal=createCliInput(new PassThrough(),output,false,()=>{});
+  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk);
+  try{
+    const descriptor=await readDescriptor(directory);
+    const result=callControl(descriptor,'config',{action:'run',requestId:'work',text:'task'},undefined,undefined,{notice:notice=>renderer.notice(notice),onGap:count=>{omitted+=count;}});
+    await ready.promise;
+    await listener({channel:'activity',event:{kind:'reasoning',nativeKind:'agent_thought_chunk',operationId:'op',attemptId:'a',profileId:'p',providerId:'x',sequence:1,payload:{content:{type:'text',text:'native'}}}});
+    await failed.promise;gate.resolve();
+    assert.deepEqual(await result,{done:true});assert.equal(omitted,1);assert.equal(dispatches,1);
+  }finally{gate.resolve();renderer.close();terminal.close();output.destroy();await server.close();}
 }));

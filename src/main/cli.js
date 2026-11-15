@@ -108,15 +108,15 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
                 if (!registered) { registered = true; cancel(id); }
                 if (!interactive) return;
                 if (!key) {
-                  void input.print('Interaction ownership unavailable for '+id+'; observing existing work only.');
+                  void input.report('Interaction ownership unavailable for '+id+'; observing existing work only.');
                   return;
                 }
                 reconnectKey = key;
                 if (polling) return;
                 polling = pollAttachedInputs({operationId:id,ownerRequestId:invocation.command.requestId,answerKey:key,
-                  signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.print,
+                  signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.report,
                   call:(command,signal)=>callControl(descriptor,configurationRef,command,undefined,undefined,{signal})});
-              }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice) : undefined,onGap:count=>{void input.print('[Delivery gap] '+count+' notices not confirmed at finish');}} : undefined);
+              }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice) : undefined,onGap:count=>{void input.report('[Delivery gap] '+count+' notices not confirmed at finish');}} : undefined);
               if (result !== undefined) { renderer.finish(result); return result; }
               if (registered) throw new HostError('CONTROL_RESPONSE_LOST','Original live owner unavailable; work was not replayed');
               break;
@@ -124,7 +124,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
               if (connection !== 0 || !reconnectKey || stop.signal.aborted || hostError(error).code !== 'CONTROL_RESPONSE_LOST') throw error;
               const current = await readDescriptor(stateDirectory);
               if (current?.token !== descriptor.token || current.path !== descriptor.path) throw error;
-              void input.print('Control connection lost; reconnecting the original work binding without replay.');
+              void input.report('Control connection lost; reconnecting the original work binding without replay.');
             } finally { watch.abort(); await polling; }
           }
         }
@@ -178,7 +178,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
               detach = ()=>{subscription();clients.detach(id,invocation.command.requestId);};
             });
             const omitted = await subscription.finish?.() ?? 0;
-            if (omitted) void input.print('[Delivery gap] '+omitted+' notices not confirmed at finish');
+            if (omitted) void input.report('[Delivery gap] '+omitted+' notices not confirmed at finish');
             renderer.finish(result);
             return result;
           } finally { detach(); }

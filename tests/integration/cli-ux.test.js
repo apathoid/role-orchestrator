@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
+import { once } from 'node:events';
+import { setImmediate as tick } from 'node:timers/promises';
+import { createBoundedDelivery } from '../../src/application/delivery.js';
+import { setup, final } from '../fixtures/application.js';
+import { request } from '../fixtures/core.js';
+import { runCli } from '../../src/hosts/cli.js';
 import { createCliInput } from '../../src/hosts/cli-input.js';
 import { cliPresentation } from '../../src/hosts/cli-presentation.js';
 import { cliOwner } from '../../src/hosts/cli-owner.js';
@@ -82,4 +88,84 @@ test('C13R.3 terminal view never replays a dropped recorded finding',async()=>{
     {kind:'attempt.outcome',findings:[{findingId:'f',author:'p',claim:'omitted claim',subject:'file',supports:[],uncertainties:[]}]}
   ]});
   assert.match(out.join('\n'),/Delivery gap/);assert.doesNotMatch(out.join('\n'),/omitted claim/);
+});
+
+
+const writeNotice={channel:'activity',event:{kind:'reasoning',nativeKind:'agent_thought_chunk',operationId:'op',attemptId:'a',profileId:'p',providerId:'x',sequence:1,payload:{content:{type:'text',text:'native'}}}};
+function writerDelivery(output){
+  const terminal=createCliInput(new PassThrough(),output,false,()=>{});
+  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk);
+  const delivery=createBoundedDelivery(notice=>renderer.notice(notice),()=>({channel:'gap',droppedCount:1,reason:'overflow'}));
+  return {terminal,renderer,delivery};
+}
+
+test('C14R.5R actual Writable success and callback/throw/closed failures reach delivery',async()=>{
+  for(const mode of ['success','callback','throw','destroyed','ended','broken']){
+    let writes=0;
+    const output=new Writable({write(_chunk,_encoding,cb){writes++;cb(mode==='callback'?Error('callback failed'):undefined);}});
+    if(mode==='throw')output.write=()=>{writes++;throw Error('sync write failed');};
+    const {terminal,delivery}=writerDelivery(output);
+    if(mode==='destroyed'){const closed=once(output,'close');output.destroy();await closed;}
+    if(mode==='ended'){const finished=once(output,'finish');output.end();await finished;}
+    if(mode==='broken')output.emit('error',Error('already broken'));
+    delivery.enqueue(writeNotice,100);
+    assert.equal(await delivery.finish(),mode==='success'?0:1,mode);
+    await terminal.report('local gap message'); // fire-and-forget path never rejects
+    if(!['success','callback','throw'].includes(mode))assert.equal(writes,0);
+    if(mode==='callback'||mode==='throw')assert.equal(writes,1,'do not write recursively to broken output');
+    terminal.close();output.destroy();
+  }
+});
+
+test('C14R.5R actual Writable close/error settle pending writes; timeout stays unconfirmed after late callback',async()=>{
+  for(const mode of ['close','error','timeout']){
+    const started=Promise.withResolvers();
+    let writes=0,callback;
+    const output=new Writable({write(_chunk,_encoding,cb){writes++;callback=cb;started.resolve();}});
+    const {terminal,delivery}=writerDelivery(output);
+    delivery.enqueue(writeNotice,100);await started.promise;
+    delivery.enqueue(writeNotice,100);
+    if(mode==='close')output.destroy();
+    if(mode==='error')output.emit('error',Error('stream failed'));
+    const finish=delivery.finish(25);
+    assert.equal(await finish,2);
+    assert.equal(writes,1);
+    callback();await tick();
+    assert.equal(await delivery.finish(),2);
+    assert.equal(writes,1,'no automatic repeat or late queued delivery');
+    terminal.close();output.destroy();
+  }
+});
+
+test('C14R.5R broken prompt settles unavailable; local report and terminal summary do not reject',async()=>{
+  const output=new Writable({write(_chunk,_encoding,cb){cb(Error('prompt failed'));}});
+  const terminal=createCliInput(new PassThrough(),output,true,()=>{});
+  assert.deepEqual(await terminal.ask(permission,new AbortController().signal),{kind:'unavailable'});
+  assert.deepEqual(await terminal.ask(form,new AbortController().signal),{kind:'unavailable'});
+  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk);
+  renderer.finish({operationId:'op',status:'finished',assessment:{overall:'complete'},attempts:[],limits:{maxInvocations:4},events:[]});
+  void terminal.report('uncertain reply');terminal.close();await tick();
+  output.destroy();
+});
+
+test('C14R.5R failed actual presentation Writable leaves direct execution and final JSON unchanged',async()=>{
+  async function run(fail){
+    const {api}=setup({respond(invocation,_n,_observe,activity){activity({kind:'reasoning',nativeKind:'agent_thought_chunk',payload:{content:{type:'text',text:'native'}}});return final(invocation);}});
+    const stdout=new PassThrough(),stderr=new Writable({write(_chunk,_encoding,cb){cb(fail?Error('presentation failed'):undefined);}});
+    let text='';stdout.on('data',b=>text+=b);
+    const terminal=createCliInput(new PassThrough(),stderr,false,()=>{});
+    const renderer=cliPresentation('compact',terminal.print,terminal.printChunk);
+    let state,omitted;
+    try{
+      const code=await runCli(['run','task','--format','json'],{cwd:'/tmp',stdin:new PassThrough(),stdout,stderr},async()=>{
+        let sub;
+        const submission=await api.submit(request(),id=>{sub=api.subscribeActivity({operationId:id},event=>renderer.notice({channel:'activity',event}));});
+        state=await submission.completion;omitted=await sub.finish();renderer.finish(state);return state;
+      });
+      assert.equal(code,0);assert.equal(JSON.parse(text).assessment.answer,'Direct answer');
+      assert.equal(omitted,fail?1:0);
+      return {state,text};
+    }finally{renderer.close();terminal.close();stderr.destroy();await api.close();}
+  }
+  assert.deepEqual(await run(true),await run(false));
 });

@@ -54,20 +54,49 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @type {import('node:readline').Interface | undefined} */
   let rl;
   let eof = false;
-  let outputBroken = false;
-  const broken = () => { outputBroken = true; };
+  /** @type {Error | undefined} */
+  let outputFailure;
+  /** @type {Set<(error?:Error)=>void>} */
+  const writes = new Set();
+  /** @param {unknown} [error] */
+  function broken(error) {
+    outputFailure ??= error instanceof Error ? error : new Error('CLI presentation output unavailable');
+    for (const settle of writes) settle(outputFailure);
+    // No actionable prompt can be confirmed on a failed terminal. Do not
+    // fabricate an approval or keep a user waiting for invisible input.
+    for (const value of [...pending.values()]) value.finish({kind:'unavailable'});
+  }
   output.on('error',broken);
+  output.once('close',broken);
+  function unavailable() {
+    return !!outputFailure || !output.writable ||
+      ('destroyed' in output && output.destroyed) || ('writableEnded' in output && output.writableEnded);
+  }
   /** @type {string|undefined} */
   let chunkSource;
   let openLine=false;
-  /** @param {string} text */
+  /** A fulfilled callback confirms only the Writable boundary, not a human
+   * reading the text. Delivery owns its existing bounded finish deadline.
+   * @param {string} text @returns {Promise<void>}
+   */
   function write(text) {
-    if (outputBroken || ('destroyed' in output && output.destroyed)) return Promise.resolve();
-    if (rl && interactive && 'isTTY' in output && output.isTTY) { clearLine(output, 0); cursorTo(output, 0); }
-    return new Promise(resolve => {
-      try { output.write(terminalText(text), () => resolve(undefined)); }
-      catch { resolve(undefined); }
-      if (rl) rl.prompt(true);
+    if (unavailable()) {
+      broken();
+      return Promise.reject(outputFailure);
+    }
+    return new Promise((resolve,reject) => {
+      /** @param {Error} [error] */
+      const settle = error => {
+        if (!writes.delete(settle)) return;
+        if (error) reject(error);
+        else resolve();
+      };
+      writes.add(settle);
+      try {
+        if (rl && interactive && 'isTTY' in output && output.isTTY) { clearLine(output, 0); cursorTo(output, 0); }
+        output.write(terminalText(text), error => { if (error) broken(error); else settle(); });
+        if (rl) rl.prompt(true);
+      } catch (error) { broken(error); }
     });
   }
   /** @param {string} text */
@@ -76,6 +105,11 @@ export function createCliInput(input, output, interactive, interrupt) {
     openLine=false;chunkSource=undefined;
     return write(prefix+text+'\n');
   }
+  /** Local messages do not own a delivery receipt. Never recursively
+   * report an output failure to the same failed stream.
+   * @param {string} text
+   */
+  function report(text) { return print(text).catch(()=>{}); }
   /** @param {{source:string,header:string,text:string}} fragment */
   function printChunk(fragment) {
     // Readline owns its current input line. Use a technical line boundary
@@ -89,8 +123,10 @@ export function createCliInput(input, output, interactive, interrupt) {
   }
   function prompt() {
     if (pending.size) {
-      rl?.setPrompt('Reply (' + [...pending.keys()].join(', ') + '): ');
-      rl?.prompt();
+      try {
+        rl?.setPrompt('Reply (' + [...pending.keys()].join(', ') + '): ');
+        rl?.prompt();
+      } catch(error) { broken(error); }
     }
   }
   function stopReader() {
@@ -107,7 +143,7 @@ export function createCliInput(input, output, interactive, interrupt) {
       const entry = label && pending.get(label);
       const value = entry && parse(entry.entry, match && match[1] === label ? match[2].trim() : line.trim());
       if (entry && value) entry.finish(value);
-      else void print('Select a pending request label and enter an offered option or form response.');
+      else void report('Select a pending request label and enter an offered option or form response.');
       prompt();
     });
     reader.once('close', () => {
@@ -123,14 +159,15 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @param {PendingInput} entry @param {AbortSignal} signal @returns {Promise<InputResult>} */
   async function ask(entry, signal) {
     if (signal.aborted) return {kind:'cancelled'};
-    if (!interactive || eof || outputBroken || (entry.kind === 'input' && !supportedForm(entry.request))) {
-      void print(entry.kind === 'permission' ? 'Permission unavailable for ' + JSON.stringify(entry.request.resource) : 'Interaction unavailable: unsupported form or input');
+    if (!interactive || eof || unavailable() || (entry.kind === 'input' && !supportedForm(entry.request))) {
+      void report(entry.kind === 'permission' ? 'Permission unavailable for ' + JSON.stringify(entry.request.resource) : 'Interaction unavailable: unsupported form or input');
       return {kind:'unavailable'};
     }
     const label = '#' + entry.request.requestId;
     if (pending.has(label)) return {kind:'unavailable'};
-    if(openLine){void write('\n');openLine=false;chunkSource=undefined;}
-    open();
+    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;}
+    if(unavailable()) return {kind:'unavailable'};
+    try { open(); } catch(error) { broken(error); return {kind:'unavailable'}; }
     return new Promise(resolve => {
       /** @param {InputResult} result */
       const finish = result => {
@@ -142,16 +179,16 @@ export function createCliInput(input, output, interactive, interrupt) {
       pending.set(label,{entry,finish});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
-      void print(label + ' [' + entry.request.profileId + '/' + entry.request.attemptId + '] ' +
+      void report(label + ' [' + entry.request.profileId + '/' + entry.request.attemptId + '] ' +
         (entry.kind === 'permission' ? 'Permission requested\n' + JSON.stringify({subject:entry.request.resource, action:entry.request.action, options:entry.request.options},null,2)
         : 'Native form (deadline ' + new Date(entry.request.deadlineAt).toISOString() + ')\n' + JSON.stringify(entry.request.payload,null,2) + '\nEnter JSON object, decline or cancel.'));
       prompt();
     });
   }
-  return { ask, print, printChunk, close() {
+  return { ask, print, printChunk, report, close() {
     for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     stopReader();
-    if(openLine){void write('\n');openLine=false;chunkSource=undefined;}
+    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;}
     // Leave the error guard on this terminal stream through outstanding writes;
     // the CLI process owns its lifetime, not the presentation consumer.
   }};

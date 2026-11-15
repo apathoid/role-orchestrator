@@ -20,7 +20,7 @@ export async function pollAttachedInputs({operationId,ownerRequestId,answerKey,s
   const lifetime = new AbortController();
   const stop = AbortSignal.any([signal,lifetime.signal]);
   /** @param {string} message */
-  const report = message => { if (!stop.aborted) void print(message); };
+  const report = message => { if (!stop.aborted) void print(message).catch(()=>{}); };
   /** @param {ControlCommand} command @param {AbortSignal} current */
   const request = (command,current) => call(command,AbortSignal.any([current,AbortSignal.timeout(5000)]));
   try {

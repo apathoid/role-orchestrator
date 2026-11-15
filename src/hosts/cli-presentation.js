@@ -33,7 +33,7 @@ export function cliPresentation(mode, print, printChunk) {
       const summary = formatOperation(state,mode);
       const text=Buffer.byteLength(summary)<=512*1024?summary:formatOperation(state,'compact')+'\n[Detailed snapshot omitted; inspect current operation]';
       closed = true;
-      void print(text);
+      void print(text).catch(()=>{});
     },
     close() { closed = true; },
   };
