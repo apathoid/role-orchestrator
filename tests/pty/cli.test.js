@@ -21,11 +21,11 @@ async function config(cwd,acp=false,scenario='host-elicitation') {
     storage:{directory:'state'},plugins:acp?[]:[{id:'host-fixture',module:fixture}]}));
   return path;
 }
-async function tty(cwd,args,reply,expected) {
+async function tty(cwd,args,reply,expected,env=process.env) {
   // util-linux script allocates an actual PTY; this is a transport fixture,
   // not a real model or graphical client acceptance.
   const child=spawn('script',['-qefc',[process.execPath,entry,...args].map(quote).join(' '),'/dev/null'],
-    {cwd,stdio:['pipe','pipe','pipe'],signal:AbortSignal.timeout(12000)});
+    {cwd,env,stdio:['pipe','pipe','pipe'],signal:AbortSignal.timeout(12000)});
   let output='',errors='',sent=false;
   child.stdout.on('data',chunk=>{
     output+=chunk;
@@ -79,4 +79,20 @@ test('C14R.5 actual PTY final answer and clarification strip terminal controls o
     const output=await tty(cwd,['run',task,'--config',path],undefined,/Привет 🌍\r?\nLine!/);
     assert.doesNotMatch(output,/\x1b\[2J|SECRET|\x9b/);
   }
+}));
+
+
+test('C15 actual PTY trusted colors, native lifecycle and NO_COLOR plain fallback',{timeout:25000},()=>withOwnedRun('C15-pty-color',async cwd=>{
+  const path=await config(cwd);
+  const env={...process.env,TERM:'xterm-256color'};delete env.NO_COLOR;
+  const args=['run','notice-delegate','--config',path,'--presentation','compact'];
+  const colored=await tty(cwd,args,undefined,/Notice final/,env);
+  assert.match(colored,/\x1b\[1;36mRole Orchestrator/);
+  assert.match(colored,/Invocation dispatched/);
+  assert.match(colored,/Recorded finding/);
+  assert.match(colored,/\x1b\[32m\[Operation/);
+  const plain=await tty(cwd,args,undefined,/Notice final/,{...env,NO_COLOR:'1'});
+  assert.match(plain,/Role Orchestrator/);
+  assert.match(plain,/Recorded finding/);
+  assert.doesNotMatch(plain,/\x1b\[[0-9;]*m/);
 }));

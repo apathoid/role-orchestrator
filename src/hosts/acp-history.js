@@ -94,11 +94,11 @@ export function historicalReply(operation,durableId,responseEventId){
 }
 
 /** Stream user/answer text below the ACP frame limit without changing text.
- * @param {string} text @param {boolean} user @param {(update:SessionUpdate)=>Promise<void>} emit
+ * @param {string} text @param {boolean} user @param {(update:SessionUpdate)=>Promise<void>} emit @param {AbortSignal} [signal]
  */
-async function replayText(text,user,emit){
+async function replayText(text,user,emit,signal){
   const size=64*1024;
-  for(let offset=0;offset<text.length||offset===0;){
+  for(let offset=0;!signal?.aborted&&(offset<text.length||offset===0);){
     let end=Math.min(offset+size,text.length);
     if(end<text.length&&text.charCodeAt(end-1)>=0xd800&&text.charCodeAt(end-1)<=0xdbff)end--;
     await emit({sessionUpdate:user?'user_message_chunk':'agent_message_chunk',content:{type:'text',text:text.slice(offset,end)}});
@@ -119,14 +119,16 @@ function journalUpdates(operation,index,mode){
 }
 
 /** Chronological session turns; snapshots are reused only within this load and
- * released at their last associated request. No copied journal or replayed tools.
+ * released on switch/last request. No copied journal or replayed tools.
  * @param {Session} session @param {(id:string)=>Promise<Operation>} inspect
  * @param {(update:SessionUpdate)=>Promise<void>} emit @param {PresentationMode} mode
- * @param {ProgressDisplay} display
+ * @param {ProgressDisplay} display @param {AbortSignal} [signal]
  */
-export async function replayHistory(session,inspect,emit,mode,display){
-  /** @type {Map<string,Operation>} */
-  const snapshots=new Map();
+export async function replayHistory(session,inspect,emit,mode,display,signal){
+  // Keep at most one full snapshot, even when many Operations interleave.
+  // A revisit reads the append-only journal again; recorded response IDs remain exact.
+  /** @type {Operation|undefined} */
+  let snapshot;
   /** @type {Map<string,number>} */
   const remaining=new Map(),seenBoundary=new Map();
   const seen=new Set();
@@ -134,7 +136,7 @@ export async function replayHistory(session,inspect,emit,mode,display){
   /** @param {Operation} operation @param {number} from @param {number} to */
   async function background(operation,from,to){
     let heading=false;
-    for(let index=from;index<to;index++){
+    for(let index=from;!signal?.aborted&&index<to;index++){
       for(const update of journalUpdates(operation,index,mode)){
         if(!heading){
           heading=true;
@@ -146,10 +148,12 @@ export async function replayHistory(session,inspect,emit,mode,display){
     }
   }
   for(const request of session.requests){
+    if(signal?.aborted)return;
     const id=request.operationId;
     if(!id||!session.operations.includes(id))continue;
-    let operation=snapshots.get(id);
-    if(!operation){operation=await inspect(id);snapshots.set(id,operation);}
+    if(snapshot?.operationId!==id){snapshot=undefined;snapshot=await inspect(id);}
+    const operation=snapshot;
+    if(signal?.aborted)return;
     const durableId=operationRequestId(session.sessionId,request.requestId);
     const range=turnRange(operation,durableId);
     const inline=(request.progressDisplay??display)==='inline';
@@ -157,13 +161,18 @@ export async function replayHistory(session,inspect,emit,mode,display){
       seen.add(id);
       const prior=seenBoundary.get(id);
       if(inline&&prior!==undefined&&prior<range.start-(range.continuing?1:0))await background(operation,prior,range.start-(range.continuing?1:0));
-      await replayText(range.text,true,emit);
+      await replayText(range.text,true,emit,signal);
+      if(signal?.aborted)return;
       if(inline)await emit(acpAccepted(id,durableId,range.continuing,'inline',true));
       const response=historicalReply(operation,durableId,request.responseEventId);
       const end=response?response.index+1:range.end;
-      if(inline)for(let i=range.start;i<end;i++)for(const update of journalUpdates(operation,i,mode))await emit(update);
+      if(inline)for(let i=range.start;!signal?.aborted&&i<end;i++)for(const update of journalUpdates(operation,i,mode)){
+        if(signal?.aborted)return;
+        await emit(update);
+      }
+      if(signal?.aborted)return;
       if(response){
-        if(response.reply.text!==undefined)await replayText(response.reply.text,false,emit);
+        if(response.reply.text!==undefined)await replayText(response.reply.text,false,emit,signal);
       }else{
         await emit(acpOwnMessage('Historical response boundary unavailable; no answer inferred for this request',
           {source:'history',operationId:id,requestId:durableId,recovered:true},durableId));
@@ -175,10 +184,10 @@ export async function replayHistory(session,inspect,emit,mode,display){
     if(left===0){
       const boundary=seenBoundary.get(id);
       if(inline&&boundary!==undefined&&boundary<operation.events.length)await background(operation,boundary,operation.events.length);
-      snapshots.delete(id);seenBoundary.delete(id);
+      snapshot=undefined;seenBoundary.delete(id);
     }
   }
-  for(const id of session.operations)if(!seen.has(id)){
+  for(const id of session.operations)if(!signal?.aborted&&!seen.has(id)){
     await emit(acpOwnMessage('Recovered Operation '+id+' · user turn association unavailable',
       {source:'history',operationId:id,recovered:true},'missing-turns'));
   }

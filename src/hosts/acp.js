@@ -157,7 +157,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         }
         session.cwd = cwd;
         await save(session);
-        await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay);
+        await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay,connection.signal);
         sessions.set(sessionId, session);
         return {};
       } finally { loading.delete(sessionId); }
