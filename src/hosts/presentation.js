@@ -136,8 +136,8 @@ export function thinkingFragment(event,mode,sourceLabel) {
 /** @type {Record<string,string>} */
 const lifecycleLabels={
   'operation.accepted':'Operation accepted','attempt.dispatched':'Invocation dispatched',
-  'attempt.outcome':'Invocation ended','attempt.cancel_requested':'Cancellation requested',
-  'operation.cancelled':'Operation cancelled','operation.waiting':'Operation waiting',
+  'attempt.outcome':'Outcome recorded','attempt.late_outcome':'Late outcome recorded','attempt.outcome_discrepancy':'Outcome discrepancy','attempt.cancel_requested':'Cancellation requested',
+  'operation.cancelled':'Operation cancelled','action.cancelled':'Action cancelled','operation.waiting':'Operation waiting',
   'operation.finished':'Assessment recorded','operation.continued':'Request continued',
   'operation.recovered':'Operation recovered','controller.invalid_proposal':'Invalid model proposal',
   'action.rejected':'Action rejected','action.deferred':'Action deferred',
@@ -153,7 +153,7 @@ const lifecycle = new Set(['operation.accepted', 'attempt.dispatched', 'attempt.
 /** @param {DiagnosticEvent} event @param {PresentationMode} mode @param {ExecutionFact} [fact] */
 export function formatExecution(event, mode, fact) {
   if (event.eventName === 'delivery.gap') return terminalText('[Execution gap] ' + event.details?.droppedCount + ' notices dropped');
-  if (mode !== 'debug' && !lifecycle.has(event.eventName) && event.level !== 'error' && event.level !== 'warn') return;
+  if (mode !== 'debug' && !lifecycle.has(event.eventName) && fact?.kind!=='attempt.outcome' && event.level !== 'error' && event.level !== 'warn') return;
   const identity = fact?.attemptId ? factLabel(fact) : event.attemptId ? (event.actionId === event.attemptId ? 'Controller' : 'Attempt') + ' ' + event.attemptId
     : event.actionId ? 'Action ' + event.actionId : 'Operation ' + (event.operationId ?? '');
   const extra = mode === 'debug' ? ' event=' + event.eventId + ' seq=' + event.sequence + ' at=' + event.receivedAt +
@@ -164,10 +164,13 @@ export function formatExecution(event, mode, fact) {
     (fact.reasoning?.mode==='selectable'?' · effort='+boundedText(fact.reasoning.level,80):fact.reasoning?.mode==='native'?' · native effort':'')+
     (fact.objective?'\n  '+boundedText(fact.objective):''):'';
   const terminal=fact?.kind==='attempt.outcome'?
-    ' · '+fact.terminal+' · effect='+fact.effect+(fact.late?' · late report':''):
+    ' · reported terminal='+fact.terminal+' · reported effect='+fact.effect+(fact.late?' · late report':''):
+    fact?.kind==='controller.invalid_proposal'&&fact.invalidPath!==undefined?
+      ' · '+boundedText(fact.invalidPath,240).replace(/[\n\t]/g,' ')+' expected '+boundedText(fact.expected??'',240).replace(/[\n\t]/g,' '):
+    fact?.cancellation&&['attempt.cancel_requested','operation.cancelled','action.cancelled'].includes(fact.kind)?' · source='+fact.cancellation:
     fact?.kind==='operation.finished'&&fact.assessmentOverall?' · '+fact.assessmentOverall:
     fact?.kind==='operation.waiting'&&fact.waitingKind?' · '+fact.waitingKind:'';
-  const reason=mode==='debug'||!['attempt.dispatched','attempt.outcome','operation.accepted','operation.finished','operation.continued'].includes(event.eventName)
+  const reason=mode==='debug'||!['attempt.dispatched','attempt.outcome','attempt.late_outcome','attempt.outcome_discrepancy','operation.accepted','operation.finished','operation.continued'].includes(event.eventName)
     ?' · '+event.reasonCode:'';
   return terminalText('[' + identity + '] ' + title + terminal + reason + route + extra);
 }
@@ -181,7 +184,7 @@ export function formatFindingRecords(findings,mode) {
   return findings.map(finding => ({
     id: finding.findingId,
     author: finding.author,
-    text: terminalText('[Recorded finding ' + finding.findingId + ' · ' + finding.author + '] ' + boundedText(finding.claim) +
+    text: terminalText('[Recorded finding ' + boundedText(finding.findingId,160).replace(/[\n\t]/g,' ') + ' · ' + boundedText(finding.author,120).replace(/[\n\t]/g,' ') + '] ' + boundedText(finding.claim) +
       ' — ' + boundedText(finding.subject,1024) +
       (finding.uncertainties.length ? '\nUncertainty: ' + boundedText(finding.uncertainties.join('; '),2048) : '') +
       (mode !== 'compact' && finding.supports.length ? '\nSupports: ' + boundedText(finding.supports.join(', '),2048) : '') +

@@ -8,6 +8,7 @@
  * effect?:import('../core/contracts.js').Outcome['effect'],
  * dispatchCertainty?:import('../core/operation.js').DispatchCertainty,
  * cancellation?:import('../core/contracts.js').CancellationSource,
+ * invalidPath?:string, expected?:string,
  * late?:true, assessmentOverall?:import('../core/contracts.js').Assessment['overall'], waitingKind?:'question'|'technical'
  * }} ExecutionFact */
 
@@ -23,7 +24,7 @@ export function executionFact(state,event) {
   const actionId=attempt?.actionId??('actionId' in event?event.actionId:undefined);
   /** @type {import('../core/contracts.js').Action|undefined} */
   let action;
-  if (attempt && attempt.actionId!==attempt.attemptId && (event.kind==='attempt.dispatched'||event.kind==='attempt.outcome')) {
+  if (attempt && attempt.actionId!==attempt.attemptId) {
     for (let i=state.events.length-1;i>=0&&!action;i--) {
       const item=state.events[i];
       if (item.kind!=='controller.responded') continue;
@@ -46,5 +47,7 @@ export function executionFact(state,event) {
       dispatchCertainty:event.dispatchCertainty,late:event.late}),
     ...(event.kind==='operation.finished'&&{assessmentOverall:event.assessment.overall}),
     ...(event.kind==='operation.waiting'&&{waitingKind:event.waiting.kind}),
+    ...(event.kind==='controller.invalid_proposal'&&{invalidPath:event.reason.path,expected:event.reason.expected}),
+    ...((event.kind==='attempt.cancel_requested'||event.kind==='action.cancelled'||event.kind==='operation.cancelled')&&{cancellation:event.source}),
   };
 }

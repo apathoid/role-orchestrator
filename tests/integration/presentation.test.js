@@ -68,3 +68,13 @@ test('C15.6 labels keep historical attempt identity and do not allow line inject
   assert.match(label,/#7 · p fake$/);
   assert.doesNotMatch(label,/[\n\t]/);
 });
+
+
+test('C15.6 late and conflicting outcome reports never imply accepted terminal state; invalid field is addressable',()=>{
+  const event={eventName:'attempt.outcome_discrepancy',attemptId:'a',actionId:'a',reasonCode:'IDENTITY_CONFLICT',level:'warn'};
+  const fact={kind:'attempt.outcome',attemptId:'a',invocationKind:'controller',attemptOrdinal:1,terminal:'completed',effect:'confirmed'};
+  assert.match(formatExecution(event,'compact',fact),/Outcome discrepancy · reported terminal=completed · reported effect=confirmed/);
+  assert.match(formatExecution({...event,eventName:'attempt.late_outcome',level:'info'},'compact',{...fact,late:true}),/Late outcome recorded.*late report/);
+  assert.match(formatExecution({...event,eventName:'controller.invalid_proposal',reasonCode:'INVALID_PROPOSAL'},'compact',
+    {...fact,kind:'controller.invalid_proposal',invalidPath:'/additions/0/profileId',expected:'a non-empty string'}),/\/additions\/0\/profileId expected a non-empty string/);
+});
