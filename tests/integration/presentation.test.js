@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { acpActivity, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText } from '../../src/hosts/presentation.js';
+import { acpActivity, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer } from '../../src/hosts/presentation.js';
 
 const native = (kind, payload, extra = {}) => ({kind,payload, operationId:'op',attemptId:'a',profileId:'reviewer',providerId:'provider',sequence:1,source:'provider_activity',...extra});
 test('presentation preserves actual chunks and distinguishes tool, finding, lifecycle and gaps', () => {
@@ -9,12 +9,12 @@ test('presentation preserves actual chunks and distinguishes tool, finding, life
   assert.equal(thought.payload.content.text.includes('\x1b'),true);
   assert.equal(terminalText('a\r\x00b'),'ab');
   const tool = native('tool',{sessionUpdate:'tool_call',toolCallId:'t',title:'Read',status:'in_progress'});
-  assert.equal(formatActivity(tool,'compact'),undefined);
+  assert.equal(formatActivity(tool,'compact'),'[reviewer/a] Tool Read · in_progress');
   assert.equal(formatActivity(tool,'detailed'),'[reviewer/a] Tool Read · in_progress');
   assert.equal(formatActivity(native('finding',{claim:'A model claim'}),'compact'),'[reviewer/a] Reported finding: A model claim');
   assert.equal(formatActivity({kind:'gap',operationId:'op',droppedCount:5,reason:'overflow'},'compact'),'[Activity gap] 5 notices dropped');
   assert.equal(formatExecution({eventName:'attempt.dispatched',attemptId:'a',actionId:'a',reasonCode:'DISPATCH_STARTED'},'compact'),
-    '[Controller a] attempt.dispatched · DISPATCH_STARTED');
+    '[Controller a] Invocation dispatched');
   assert.equal(formatExecution({eventName:'context.materialized',reasonCode:'DELIVERED'},'compact'),undefined);
   assert.match(formatRecordedFindings({kind:'attempt.outcome',findings:[{findingId:'f',author:'reviewer',claim:'Observed issue',subject:'file',supports:['obs'],uncertainties:['unknown']}]},'detailed')[0].text,/Observed issue.*file[\s\S]*Uncertainty: unknown[\s\S]*Supports: obs/);
 });
@@ -49,4 +49,15 @@ test('C14R.1 anonymous ACP thought keeps trusted attempt metadata without invent
   const codex=native('reasoning',{type:'item.completed',item:{id:'item',type:'reasoning',text:'summary'}},{nativeId:'item',nativeKind:'item.completed'});
   assert.equal(acpActivity(codex,'compact',false).messageId,scopedNativeId('a','item'));
   assert.equal(acpActivity(codex,'compact',false)._meta.roleOrchestratorSource.nativeId,'item');
+});
+
+test('C15.2 split terminal controls are removed without buffering reasoning',()=>{
+  const sanitizer=createTerminalSanitizer();
+  assert.equal(sanitizer.push('first\x1b]52;c;'),'first');
+  assert.equal(sanitizer.push('SECRET\x1b'),'');
+  assert.equal(sanitizer.push('\\ second\x1b['),' second');
+  assert.equal(sanitizer.push('2J third\u202e'),' third');
+  assert.equal(sanitizer.push(' end'),' end');
+  sanitizer.reset();
+  assert.equal(sanitizer.push('new source'),'new source');
 });

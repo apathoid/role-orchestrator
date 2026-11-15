@@ -1,6 +1,7 @@
 import { createInterface, clearLine, cursorTo } from 'node:readline';
-import { terminalText } from './presentation.js';
+import { terminalText, createTerminalSanitizer } from './presentation.js';
 
+/** @import {PresentationTone} from './presentation.js' */
 /** @import {PendingPermission, PermissionHandler} from '../application/configuration/permissions.js' */
 /** @import {PendingInteraction, InteractionResult} from '../core/ports.js' */
 /** @typedef {{kind:'permission', request: PendingPermission} | {kind:'input', request: PendingInteraction}} PendingInput */
@@ -75,6 +76,14 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @type {string|undefined} */
   let chunkSource;
   let openLine=false;
+  const color=Boolean('isTTY' in output&&output.isTTY&&process.env.NO_COLOR===undefined&&process.env.TERM!=='dumb');
+  const sanitizer=createTerminalSanitizer();
+  /** @param {string} safe @param {PresentationTone} [tone] */
+  function style(safe,tone) {
+    if(!color||!tone||tone==='neutral')return safe;
+    const code={header:'1;36',thinking:'2;3',tool:'36',finding:'1;33',error:'1;31',success:'32'}[tone];
+    return '\x1b['+code+'m'+safe+'\x1b[0m';
+  }
   /** A fulfilled callback confirms only the Writable boundary, not a human
    * reading the text. Delivery owns its existing bounded finish deadline.
    * @param {string} text @returns {Promise<void>}
@@ -94,16 +103,16 @@ export function createCliInput(input, output, interactive, interrupt) {
       writes.add(settle);
       try {
         if (rl && interactive && 'isTTY' in output && output.isTTY) { clearLine(output, 0); cursorTo(output, 0); }
-        output.write(terminalText(text), error => { if (error) broken(error); else settle(); });
+        output.write(text, error => { if (error) broken(error); else settle(); });
         if (rl) rl.prompt(true);
       } catch (error) { broken(error); }
     });
   }
-  /** @param {string} text */
-  function print(text) {
+  /** @param {string} text @param {PresentationTone} [tone] */
+  function print(text,tone) {
     const prefix=openLine?'\n':'';
-    openLine=false;chunkSource=undefined;
-    return write(prefix+text+'\n');
+    openLine=false;chunkSource=undefined;sanitizer.reset();
+    return write(prefix+style(terminalText(text),tone)+'\n');
   }
   /** Local messages do not own a delivery receipt. Never recursively
    * report an output failure to the same failed stream.
@@ -114,11 +123,13 @@ export function createCliInput(input, output, interactive, interrupt) {
   function printChunk(fragment) {
     // Readline owns its current input line. Use a technical line boundary
     // while editing instead of overwriting or buffering a native chunk.
-    if(rl)return print(fragment.header+fragment.text);
     const changed=chunkSource!==fragment.source;
-    const text=(changed?(openLine?'\n':'')+fragment.header:'')+fragment.text;
+    if(changed)sanitizer.reset();
+    const body=sanitizer.push(fragment.text);
+    if(rl){chunkSource=fragment.source;return write(style(terminalText(fragment.header),'thinking')+body+'\n');}
+    const text=(changed?(openLine?'\n':'')+style(terminalText(fragment.header),'thinking'):'')+body;
     chunkSource=fragment.source;
-    openLine=!text.endsWith('\n');
+    if(text)openLine=!text.endsWith('\n');
     return write(text);
   }
   function prompt() {
@@ -165,7 +176,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     }
     const label = '#' + entry.request.requestId;
     if (pending.has(label)) return {kind:'unavailable'};
-    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;}
+    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;sanitizer.reset();}
     if(unavailable()) return {kind:'unavailable'};
     try { open(); } catch(error) { broken(error); return {kind:'unavailable'}; }
     return new Promise(resolve => {
@@ -188,7 +199,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   return { ask, print, printChunk, report, close() {
     for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     stopReader();
-    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;}
+    if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;sanitizer.reset();}
     // Leave the error guard on this terminal stream through outstanding writes;
     // the CLI process owns its lifetime, not the presentation consumer.
   }};

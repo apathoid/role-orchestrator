@@ -105,7 +105,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             let polling;
             try {
               const result = await callControl(descriptor, configurationRef, invocation.command, (id,key) => {
-                if (!registered) { registered = true; cancel(id); }
+                if (!registered) { registered = true; cancel(id); renderer.accepted(id); }
                 if (!interactive) return;
                 if (!key) {
                   void input.report('Interaction ownership unavailable for '+id+'; observing existing work only.');
@@ -172,6 +172,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             const result = await dispatchCommand(api, invocation.command,id=>{
               cancel(id);
               if (!startsWork) return;
+              renderer.accepted(id);
               clients.accept(id,invocation.command.requestId,false,interactive);
               const streams = controlStreams(()=>api);
               subscription = mode ? streams.subscribe(id,notice=>renderer.notice(notice)) : ()=>{};

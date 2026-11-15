@@ -4,7 +4,9 @@ import { eventFindings } from '../core/finding.js';
 /** @import {DiagnosticEvent} from '../core/diagnostics.js' */
 /** @import {Event, Operation} from '../core/operation.js' */
 /** @import {SessionUpdate} from '@agentclientprotocol/sdk' */
+/** @import {ExecutionFact} from '../application/execution-facts.js' */
 /** @typedef {'compact' | 'detailed' | 'debug'} PresentationMode */
+/** @typedef {'header'|'thinking'|'tool'|'finding'|'error'|'success'|'neutral'} PresentationTone */
 
 /** Display only: preserve underlying payload and final answer. @param {string} text */
 export function terminalText(text) {
@@ -12,6 +14,63 @@ export function terminalText(text) {
     .replace(/(?:\x1b[P^_X]|[\x90\x98\x9e\x9f])[\s\S]*?(?:\x1b\\|\x9c|$)/g, '')
     .replace(/(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]/g, '')
     .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '');
+}
+
+/** Bounded stream sanitizer: remembers only the active control sequence kind.
+ * Untrusted fragments are sanitized before trusted ANSI styling.
+ */
+export function createTerminalSanitizer() {
+  /** @type {'text'|'esc'|'csi'|'osc'|'string'|'oscEsc'|'stringEsc'} */
+  let state='text';
+  return {
+    reset(){state='text';},
+    /** @param {string} fragment */
+    push(fragment){
+      let output='';
+      for(const ch of fragment){
+        const code=ch.codePointAt(0)??0;
+        if(state==='esc'){
+          state=ch==='['?'csi':ch===']'?'osc':'P^_X'.includes(ch)?'string':'text';
+          continue;
+        }
+        if(state==='csi'){
+          if(code>=0x40&&code<=0x7e)state='text';
+          else if(ch==='\x1b')state='esc';
+          continue;
+        }
+        if(state==='oscEsc'||state==='stringEsc'){
+          state=ch==='\\'?'text':state==='oscEsc'?'osc':'string';
+          continue;
+        }
+        if(state==='osc'||state==='string'){
+          if(code===0x9c||(state==='osc'&&code===7))state='text';
+          else if(ch==='\x1b')state=state==='osc'?'oscEsc':'stringEsc';
+          continue;
+        }
+        if(code===0x1b){state='esc';continue;}
+        if(code===0x9b){state='csi';continue;}
+        if(code===0x9d){state='osc';continue;}
+        if([0x90,0x98,0x9e,0x9f].includes(code)){state='string';continue;}
+        if((code<32&&code!==9&&code!==10)||(code>=127&&code<=159)||
+          (code>=0x202a&&code<=0x202e)||(code>=0x2066&&code<=0x2069))continue;
+        output+=ch;
+      }
+      return output;
+    },
+  };
+}
+
+/** @param {string} text @param {number} [limit] */
+export function boundedText(text,limit=4096){
+  const safe=terminalText(text);
+  return safe.length>limit?safe.slice(0,limit)+'… [display truncated]':safe;
+}
+
+/** @param {ExecutionFact} fact */
+export function factLabel(fact){
+  return boundedText((fact.invocationKind==='controller'?'Controller':fact.roleId??'Worker')+
+    (fact.attemptOrdinal!==undefined?' #'+fact.attemptOrdinal:'')+
+    (fact.profileId?' · '+fact.profileId:''),240);
 }
 
 /** @param {unknown} value @returns {Record<string, unknown>} */
@@ -30,25 +89,26 @@ export function nativeText(event) {
   return string(item.text) ?? string(payload.text) ?? (event.kind === 'finding' ? string(payload.claim) : undefined);
 }
 
-/** @param {ActivityNotice} event @param {PresentationMode} mode */
-export function formatActivity(event, mode) {
+/** @param {ActivityNotice} event @param {PresentationMode} mode @param {string} [sourceLabel] */
+export function formatActivity(event, mode, sourceLabel) {
   if (event.kind === 'gap') return terminalText('[Activity gap] ' + event.droppedCount + ' notices dropped' +
     (event.attemptId ? ' attempt=' + event.attemptId : '') +
     (event.sequenceRange ? ' sequence=' + event.sequenceRange.first + '–' + event.sequenceRange.last : ''));
-  const prefix = '[' + event.profileId + '/' + event.attemptId + '] ';
+  const prefix = '[' + (sourceLabel??event.profileId + '/' + event.attemptId) + '] ';
   const details = mode === 'debug' ? ' (' + [event.providerId, event.nativeKind, event.nativeId, 'seq=' + event.sequence].filter(Boolean).join(' ') + ')' : '';
   let body;
   if (event.kind === 'reasoning' || event.kind === 'user_message' || event.kind === 'finding') {
     const text = nativeText(event);
     if (text === undefined) return;
     body = (event.kind === 'reasoning' ? 'Thinking' : event.kind === 'finding' ? 'Reported finding' : 'Message') + details + ': ' + text;
-  } else if (mode !== 'compact') {
+  } else {
     const payload = object(event.payload), item = object(payload.item);
     if (event.kind === 'tool') {
       const title = string(payload.title) ?? string(item.type) ?? event.nativeKind ?? 'native tool';
       const status = string(payload.status) ?? string(item.status);
-      body = 'Tool ' + title + (status ? ' · ' + status : '') + details;
-    } else if (event.kind === 'plan') {
+      const command = string(item.command) ?? string(payload.command);
+      body = 'Tool ' + boundedText(title,240) + (status ? ' · ' + status : '') + (command ? ' · '+boundedText(command,240) : '') + details;
+    } else if (event.kind === 'plan' && mode !== 'compact') {
       const entries = Array.isArray(payload.entries) ? payload.entries : item.items;
       if (!Array.isArray(entries)) return;
       body = 'Plan' + details + ':\n' + entries.map(entry => {
@@ -61,28 +121,50 @@ export function formatActivity(event, mode) {
   return body === undefined ? undefined : terminalText(prefix + body);
 }
 
-/** Only native streamed text fragments, not repeated snapshots. @param {ActivityNotice} event @param {PresentationMode} mode */
-export function thinkingFragment(event,mode) {
+/** Only native streamed text fragments, not repeated snapshots. @param {ActivityNotice} event @param {PresentationMode} mode @param {string} [sourceLabel] */
+export function thinkingFragment(event,mode,sourceLabel) {
   if(event.kind!=='reasoning'||event.nativeKind!=='agent_thought_chunk')return;
   const text=nativeText(event);
   if(text===undefined)return;
   return {source:JSON.stringify([event.operationId,event.attemptId,event.nativeId??null]),
-    header:'['+event.profileId+'/'+event.attemptId+'] Thinking'+(mode==='debug'?' ('+event.providerId+')':'')+': ',text};
+    header:'['+(sourceLabel??event.profileId+'/'+event.attemptId)+'] Thinking'+(mode==='debug'?' ('+event.providerId+')':'')+': ',text};
 }
 
+/** @type {Record<string,string>} */
+const lifecycleLabels={
+  'operation.accepted':'Operation accepted','attempt.dispatched':'Invocation dispatched',
+  'attempt.outcome':'Invocation ended','attempt.cancel_requested':'Cancellation requested',
+  'operation.cancelled':'Operation cancelled','operation.waiting':'Operation waiting',
+  'operation.finished':'Assessment recorded','operation.continued':'Request continued',
+  'operation.recovered':'Operation recovered','controller.invalid_proposal':'Invalid model proposal',
+  'action.rejected':'Action rejected','action.deferred':'Action deferred',
+  'permission.requested':'Permission requested','permission.resolved':'Permission resolved',
+  'permission.expired':'Permission expired','interaction.requested':'Interaction requested',
+  'interaction.resolved':'Interaction resolved'
+};
 const lifecycle = new Set(['operation.accepted', 'attempt.dispatched', 'attempt.outcome',
   'attempt.cancel_requested', 'operation.cancelled', 'operation.waiting', 'operation.finished',
   'operation.continued', 'operation.recovered', 'controller.invalid_proposal', 'action.rejected', 'action.deferred',
   'permission.requested', 'permission.resolved', 'permission.expired', 'interaction.requested', 'interaction.resolved']);
 
-/** @param {DiagnosticEvent} event @param {PresentationMode} mode */
-export function formatExecution(event, mode) {
+/** @param {DiagnosticEvent} event @param {PresentationMode} mode @param {ExecutionFact} [fact] */
+export function formatExecution(event, mode, fact) {
   if (event.eventName === 'delivery.gap') return terminalText('[Execution gap] ' + event.details?.droppedCount + ' notices dropped');
   if (mode !== 'debug' && !lifecycle.has(event.eventName) && event.level !== 'error' && event.level !== 'warn') return;
-  const identity = event.attemptId ? (event.actionId === event.attemptId ? 'Controller' : 'Attempt') + ' ' + event.attemptId
+  const identity = fact?.attemptId ? factLabel(fact) : event.attemptId ? (event.actionId === event.attemptId ? 'Controller' : 'Attempt') + ' ' + event.attemptId
     : event.actionId ? 'Action ' + event.actionId : 'Operation ' + (event.operationId ?? '');
-  const extra = mode === 'debug' ? ' event=' + event.eventId + ' seq=' + event.sequence + ' at=' + event.receivedAt : '';
-  return terminalText('[' + identity + '] ' + event.eventName + ' · ' + event.reasonCode + extra);
+  const extra = mode === 'debug' ? ' event=' + event.eventId + ' seq=' + event.sequence + ' at=' + event.receivedAt +
+    (fact?.attemptId?' attempt='+fact.attemptId:'') : '';
+  const title=mode==='debug'?event.eventName:lifecycleLabels[event.eventName]??event.eventName;
+  const route=fact&&event.eventName==='attempt.dispatched'?
+    (fact.modelSelector?' · selector='+boundedText(fact.modelSelector,160):'')+
+    (fact.reasoning?.mode==='selectable'?' · effort='+boundedText(fact.reasoning.level,80):fact.reasoning?.mode==='native'?' · native effort':'')+
+    (fact.objective?'\n  '+boundedText(fact.objective):''):'';
+  const terminal=fact&&event.eventName==='attempt.outcome'?
+    ' · '+fact.terminal+' · effect='+fact.effect:'';
+  const reason=mode==='debug'||!['attempt.dispatched','attempt.outcome','operation.accepted','operation.finished','operation.continued'].includes(event.eventName)
+    ?' · '+event.reasonCode:'';
+  return terminalText('[' + identity + '] ' + title + terminal + reason + route + extra);
 }
 
 /** @param {Event} event @param {PresentationMode} mode */
@@ -93,10 +175,10 @@ export function formatRecordedFindings(event, mode) {
 export function formatFindingRecords(findings,mode) {
   return findings.map(finding => ({
     id: finding.findingId,
-    text: terminalText('[Recorded finding ' + finding.findingId + ' · ' + finding.author + '] ' + finding.claim +
-      ' — ' + finding.subject +
-      (finding.uncertainties.length ? '\nUncertainty: ' + finding.uncertainties.join('; ') : '') +
-      (mode !== 'compact' && finding.supports.length ? '\nSupports: ' + finding.supports.join(', ') : '') +
+    text: terminalText('[Recorded finding ' + finding.findingId + ' · ' + finding.author + '] ' + boundedText(finding.claim) +
+      ' — ' + boundedText(finding.subject,1024) +
+      (finding.uncertainties.length ? '\nUncertainty: ' + boundedText(finding.uncertainties.join('; '),2048) : '') +
+      (mode !== 'compact' && finding.supports.length ? '\nSupports: ' + boundedText(finding.supports.join(', '),2048) : '') +
       (finding.supersedes ? '\nSupersedes: ' + finding.supersedes : '')),
   }));
 }
@@ -112,6 +194,9 @@ export function formatOperation(state, mode) {
   return terminalText('[Operation ' + state.operationId + '] ' + terminal +
     (state.waiting?.kind === 'technical' ? ' · ' + state.waiting.reason.code : '') +
     ' · invocations ' + state.attempts.length + '/' + state.limits.maxInvocations +
+    ' · workers '+state.attempts.filter(a=>a.actionId!==a.attemptId).length+
+    ' · recorded findings '+state.events.reduce((count,event)=>count+(eventFindings(event)?.length??0),0)+
+    (state.attempts.some(a=>a.outcome?.effect==='unknown'||a.outcome?.terminal==='unknown')?' · unknown effects/outcomes':'') +
     (mode === 'compact' || !attempts ? '' : '\n' + attempts));
 }
 
@@ -166,8 +251,8 @@ export function acpExecutionNotices(event,findings,mode) {
   for(const finding of findings??[]) notices.push({sessionUpdate:'notice',severity:'info',
     title:'Recorded finding '+finding.findingId+' · '+finding.author,
     description:finding.claim+' — '+finding.subject+
-      (finding.uncertainties.length?'\nUncertainty: '+finding.uncertainties.join('; '):'')+
-      (mode!=='compact'&&finding.supports.length?'\nSupports: '+finding.supports.join(', '):'')+
+      (finding.uncertainties.length?'\nUncertainty: '+boundedText(finding.uncertainties.join('; '),2048):'')+
+      (mode!=='compact'&&finding.supports.length?'\nSupports: '+boundedText(finding.supports.join(', '),2048):'')+
       (finding.supersedes?'\nSupersedes: '+finding.supersedes:''),
     _meta:{roleOrchestratorSource:{...source,source:'recorded_finding',findingId:finding.findingId,author:finding.author}}});
   return notices;
