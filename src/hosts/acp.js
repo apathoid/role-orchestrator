@@ -11,7 +11,7 @@ import { acpActivity } from './presentation.js';
 /** @import {PresentationMode} from './presentation.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {HostApi} from './commands.js' */
-/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => () => void}} AcpApi */
+/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}}} AcpApi */
 /** @typedef {{sessionId: string, cwd: string, operations: string[], requests: {requestId: string, fingerprint: string, operationId?: string}[]}} Session */
 /** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>}} Turn */
 
@@ -220,6 +220,7 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
       /** @type {Turn} */
       const turn = { cancelled: false, settled: settled.promise };
       turns.set(sessionId, turn);
+      /** @type {(() => void) & {finish?:()=>Promise<number>}} */
       let unsubscribe = () => {};
       let subscribed = false;
       let displaying = true;
@@ -274,6 +275,7 @@ export function serveAcp(api, directory, stream, mode = 'compact') {
           attach(session, request, operation.operationId);
           await save(session);
         }
+        if (!turn.cancelled && !connection.signal.aborted) await unsubscribe.finish?.();
         stopDisplay();
         const answer = operationMessage(operation);
         if (answer !== undefined) await message(client, sessionId, answer);

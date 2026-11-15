@@ -12,8 +12,8 @@ import { HostError, hostError } from './commands.js';
 /** @typedef {{path: string, token: string, pid: number}} Descriptor */
 /** @typedef {{controllerProfile?: string, preferredSkills?: string[]}} LaunchOverrides */
 /** @typedef {(command: Command, accepted: (operationId: string) => void) => Promise<unknown>} Execute */
-/** @typedef {{channel: 'activity', event: import('../core/ports.js').ActivityNotice} | {channel: 'execution', event: import('../core/diagnostics.js').DiagnosticEvent} | {channel: 'gap', droppedCount: number, reason: 'overflow'}} ControlNotice */
-/** @typedef {{subscribe: (operationId: string, listener: (notice: ControlNotice) => Promise<void>) => () => void,
+/** @typedef {{channel: 'activity', event: import('../core/ports.js').ActivityNotice} | {channel: 'execution', event: import('../core/diagnostics.js').DiagnosticEvent} | {channel: 'gap', droppedCount: number, reason: 'overflow' | 'finish_timeout'}} ControlNotice */
+/** @typedef {{subscribe: (operationId: string, listener: (notice: ControlNotice) => Promise<void>) => (() => void) & {finish?:()=>Promise<number>},
  * pending: (operationId: string) => unknown,
  * respond: (reply: import('../core/ports.js').InteractionReply) => unknown,
  * ownerAccepted?: (operationId:string,requestId:string,interactive:boolean)=>boolean,
@@ -65,6 +65,8 @@ export async function openControl(directory, configurationRef, execute, launch, 
   const observers = new Set();
   let closing = false;
   let stopping = false;
+  /** @type {Map<Socket, (()=>void) & {finish?:()=>Promise<number>}>} */
+  const subscriptions = new Map();
 
   const server = createServer(socket => {
     sockets.add(socket);
@@ -90,7 +92,13 @@ export async function openControl(directory, configurationRef, execute, launch, 
       const requestId = raw && typeof raw === 'object' && 'requestId' in raw && typeof raw.requestId === 'string'
         ? raw.requestId : undefined;
       const response = run(raw, socket).then(
-        outcome => send(socket, { requestId, outcome }, true),
+        async outcome => {
+          const subscription = subscriptions.get(socket);
+          const omitted = await subscription?.finish?.() ?? 0;
+          subscription?.();
+          if (omitted) send(socket,{requestId,notice:{channel:'gap',droppedCount:omitted,reason:'finish_timeout'}});
+          send(socket, { requestId, outcome }, true);
+        },
         error => send(socket, { requestId, error: hostError(error) }, true),
       );
       if (!observers.has(socket)) active.add(response);
@@ -111,9 +119,11 @@ export async function openControl(directory, configurationRef, execute, launch, 
       socket.once('close', done);
       socket.write(JSON.stringify({ requestId, notice }) + '\n', done);
     }));
-    const close = () => { socket.removeListener('close', close); unsubscribe(); };
+    const close = () => { socket.removeListener('close', close); subscriptions.delete(socket); unsubscribe(); };
+    const subscription = Object.assign(close,{finish:()=>unsubscribe.finish?.() ?? Promise.resolve(0)});
+    subscriptions.set(socket,subscription);
     socket.once('close', close);
-    return close;
+    return subscription;
   }
 
   /** @param {unknown} raw @param {Socket} socket */
@@ -189,10 +199,10 @@ export async function openControl(directory, configurationRef, execute, launch, 
       requests.set(requestId, tracked);
       void result.then(() => { tracked.settled = true; }, () => { tracked.settled = true; });
     } else {
-      entry.clients.add(socket);
-      if (payload.stream === 'live') entry.views.add(socket);
       const reconnect = !entry.settled && !!entry.answerKey && payload.reconnectKey === entry.answerKey;
       if (payload.reconnectKey && !reconnect && !entry.settled) throw new HostError('CONTROL_INTERACTION_OWNER_REQUIRED', 'Original work binding unavailable');
+      entry.clients.add(socket);
+      if (payload.stream === 'live') entry.views.add(socket);
       if (reconnect) {
         if (entry.operationId && !entry.ownerBound) {
           entry.ownerBound = streams?.ownerAccepted?.(entry.operationId,requestId,entry.interactive) ?? true;
@@ -271,12 +281,12 @@ export async function readDescriptor(directory) {
 
 /** @param {Descriptor} descriptor @param {string} configurationRef @param {ControlCommand} command
  * @param {(operationId: string, answerKey?: string) => void} [accepted] @param {LaunchOverrides} [launch]
- * @param {{notice?: (notice: ControlNotice) => void | Promise<void>, signal?: AbortSignal, interactive?:boolean, reconnectKey?:string}} [live]
+ * @param {{notice?: (notice: ControlNotice) => void | Promise<void>, signal?: AbortSignal, interactive?:boolean, reconnectKey?:string, onGap?:(count:number)=>void}} [live]
  */
 export function callControl(descriptor, configurationRef, command, accepted, launch, live) {
   return new Promise((resolve, reject) => {
     const socket = createConnection(descriptor.path);
-    let sent = false;
+    let sent = false, terminalReceived = false;
     const delivery = live?.notice && createBoundedDelivery(live.notice,
       (/** @type {Extract<ControlNotice, {channel:'gap'}> | undefined} */ prior, /** @type {ControlNotice} */ _event) =>
         ({ channel: /** @type {const} */ ('gap'), droppedCount: (prior?.droppedCount ?? 0) + 1, reason: /** @type {const} */ ('overflow') }));
@@ -301,7 +311,7 @@ export function callControl(descriptor, configurationRef, command, accepted, lau
       else if (sent) lost();
       else reject(error);
     });
-    socket.once('close', () => { delivery?.close(); lost(); });
+    socket.once('close', () => { if (!terminalReceived) { delivery?.close(); lost(); } });
     socket.setEncoding('utf8');
     let buffer = '';
     socket.on('data', chunk => {
@@ -314,10 +324,15 @@ export function callControl(descriptor, configurationRef, command, accepted, lau
           if (typeof message.accepted === 'string') accepted?.(message.accepted, message.answerKey);
           else if (message.notice && delivery) delivery.enqueue(message.notice, Buffer.byteLength(JSON.stringify(message.notice)));
           else {
-            if (message.error) reject(new HostError(message.error.code, message.error.message));
-            else if (Object.hasOwn(message, 'outcome')) resolve(message.outcome);
-            else throw new Error('Missing outcome');
+            if (!message.error && !Object.hasOwn(message, 'outcome')) throw new Error('Missing outcome');
+            terminalReceived = true;
             socket.end();
+            void (async () => {
+              const omitted = await delivery?.finish() ?? 0;
+              if (omitted) { try { live?.onGap?.(omitted); } catch { /* Presentation only. */ } }
+              if (message.error) reject(new HostError(message.error.code, message.error.message));
+              else resolve(message.outcome);
+            })().catch(reject);
             return;
           }
         } catch {

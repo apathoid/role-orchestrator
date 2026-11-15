@@ -45,7 +45,10 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
       if (typeof listener !== 'function') throw new TypeError('Event listener must be a function');
       const subscription = { scope: scope && { ...scope }, delivery: createBoundedDelivery(listener, gapFor) };
       subscribers.add(subscription);
-      return () => { subscription.delivery.close(); subscribers.delete(subscription); };
+      return Object.assign(() => { subscription.delivery.close(); subscribers.delete(subscription); }, { finish: () => {
+        subscribers.delete(subscription);
+        return subscription.delivery.finish();
+      } });
     },
     close() {
       closed = true;

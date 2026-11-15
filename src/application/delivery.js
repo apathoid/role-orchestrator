@@ -13,7 +13,18 @@ export function createBoundedDelivery(listener, gapFor) {
   const queue = [];
   /** @type {G | undefined} */
   let gap;
-  let bytes = 0, inFlight = 0, running = false, closed = false;
+  let bytes = 0, inFlight = 0, running = false, closed = false, finishing = false, dropped = 0, flightCount = 0;
+  const drained = Promise.withResolvers();
+  /** @type {Promise<number> | undefined} */
+  let finishResult;
+  function remaining() { return queue.length + dropped + flightCount; }
+  function close() {
+    if (closed) return;
+    closed = true;
+    const omitted = remaining();
+    queue.length = 0; bytes = 0; gap = undefined; dropped = 0;
+    drained.resolve(omitted);
+  }
   function wake() {
     if (running || closed) return;
     running = true;
@@ -25,34 +36,45 @@ export function createBoundedDelivery(listener, gapFor) {
         const entry = queue.shift();
         const notice = entry?.value ?? gap;
         if (notice === undefined) break;
-        if (!entry) gap = undefined;
+        flightCount = entry ? 1 : dropped;
+        if (!entry) { gap = undefined; dropped = 0; }
         inFlight = 1;
         try { await listener(notice); } catch { /* Best effort, independent of execution. */ }
-        inFlight = 0;
+        inFlight = 0; flightCount = 0;
         if (entry && !closed) bytes -= entry.bytes;
       }
     } finally {
       running = false;
       if (!closed && (queue.length || gap !== undefined)) wake();
+      else if (finishing) close();
     }
   }
   return {
     /** @param {T} value @param {number} size */
     enqueue(value, size) {
-      if (closed) return;
+      if (closed || finishing) return;
       if (gap !== undefined || queue.length + inFlight >= maxEvents - 1 || size > maxBytes - bytes) {
-        gap = gapFor(gap, value);
+        gap = gapFor(gap, value); dropped++;
       } else {
         queue.push({ value, bytes: size });
         bytes += size;
       }
       wake();
     },
-    close() {
-      closed = true;
-      queue.length = 0;
-      bytes = 0;
-      gap = undefined;
+    close,
+    /** Stop accepting new notices, allow the queued prefix/gap to drain.
+     * The caller is a presentation transport, never the execution coordinator.
+     * Returns the number of notices not confirmed delivered by the deadline.
+     * @param {number} [timeoutMs]
+     */
+    finish(timeoutMs = 250) {
+      if (finishResult) return finishResult;
+      finishing = true;
+      if (!running && !queue.length && gap === undefined) close();
+      else wake();
+      const timer = setTimeout(close, timeoutMs);
+      finishResult = drained.promise.then(omitted => { clearTimeout(timer); return omitted; });
+      return finishResult;
     },
   };
 }

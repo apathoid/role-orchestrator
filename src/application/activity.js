@@ -55,7 +55,10 @@ export function createActivityStream() {
       const sub = { scope: { operationId: scope.operationId, attemptId: scope.attemptId },
         delivery: createBoundedDelivery(listener, gapFor) };
       subscribers.add(sub);
-      return () => detach(sub);
+      return Object.assign(() => detach(sub), { finish: () => {
+        subscribers.delete(sub);
+        return sub.delivery.finish();
+      } });
     },
     /**
      * @param {{operationId: string, attemptId: string, profileId: string, providerId: string}} source

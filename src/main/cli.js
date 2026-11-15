@@ -118,7 +118,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
                 polling = pollAttachedInputs({operationId:id,ownerRequestId:invocation.command.requestId,answerKey:key,
                   signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.print,
                   call:(command,signal)=>callControl(descriptor,configurationRef,command,undefined,undefined,{signal})});
-              }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice,inspect) : undefined} : undefined);
+              }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice,inspect) : undefined,onGap:count=>{void input.print('[Delivery gap] '+count+' notices not confirmed at finish');}} : undefined);
               if (result !== undefined) { renderer.finish(result); return result; }
               if (registered) throw new HostError('CONTROL_RESPONSE_LOST','Original live owner unavailable; work was not replayed');
               break;
@@ -168,15 +168,19 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
           const api = runtime.api;
           const cancel = onAccepted(id => api.cancel(id, 'client'));
           let detach = () => {};
+          /** @type {(()=>void) & {finish?:()=>Promise<number>}} */
+          let subscription = ()=>{};
           try {
             const result = await dispatchCommand(api, invocation.command,id=>{
               cancel(id);
               if (!startsWork) return;
               clients.accept(id,invocation.command.requestId,false,interactive);
               const streams = controlStreams(()=>api);
-              const unsubscribe = mode ? streams.subscribe(id,notice=>renderer.notice(notice,api.inspect)) : ()=>{};
-              detach = ()=>{unsubscribe();clients.detach(id,invocation.command.requestId);};
+              subscription = mode ? streams.subscribe(id,notice=>renderer.notice(notice,api.inspect)) : ()=>{};
+              detach = ()=>{subscription();clients.detach(id,invocation.command.requestId);};
             });
+            const omitted = await subscription.finish?.() ?? 0;
+            if (omitted) void input.print('[Delivery gap] '+omitted+' notices not confirmed at finish');
             renderer.finish(result);
             return result;
           } finally { detach(); }
