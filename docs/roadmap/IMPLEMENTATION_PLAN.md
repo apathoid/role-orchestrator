@@ -6,7 +6,7 @@
 
 ## C15R.6 — CLI Interaction Safety & Presentation Refinement (planned; next engineering step)
 
-[Исполнимый corrective plan C15R.6.0–.7](C15R_PRESENTATION_QUALITY.md#c15r6--cli-interaction-safety--presentation-refinement). Approved architecture review 2026-11-16: natural native questions/forms and unambiguous permissions without new Host semantics, forms framework, capability restrictions, forced workflow or artificial execution environment. Exact current step and baseline in [STATUS](STATUS.md). Earlier C15R engineering/CI is historical and remains valid only for its original implementation SHA; new implementation is NOT STARTED.
+[Исполнимый corrective plan C15R.6.0–.7](C15R_PRESENTATION_QUALITY.md). Approved architecture review 2026-11-16: natural native questions/forms and unambiguous permissions without new Host semantics, forms framework, capability restrictions, forced workflow or artificial execution environment. Exact current step and baseline in [STATUS](STATUS.md). Earlier C15R engineering/CI is historical and remains valid only for its original implementation SHA; new implementation is NOT STARTED.
 
 | Шаг | Обязательный результат |
 |---|---|
