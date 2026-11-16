@@ -47,7 +47,7 @@ async function tty(cwd,args,reply,expected,env=process.env,columns) {
 }
 test('actual PTY direct CLI permission and native ACP form', {timeout:30000},()=>withOwnedRun('C14-pty-direct',async cwd=>{
   const path=await config(cwd);
-  await tty(cwd,['run','permission','--config',path,'--presentation','detailed'],'deny',/(?:\r?\n)deny\r?\n/);
+  await tty(cwd,['run','permission','--config',path,'--presentation','detailed'],'id:deny',/(?:\r?\n)deny\r?\n/);
   const acp=await config(cwd,true);
   await tty(cwd,['run','form','--config',acp,'--presentation','compact'],'{"value":"chosen"}',/(?:\r?\n)chosen\r?\n/);
 }));
@@ -68,7 +68,7 @@ test('actual PTY attached CLI answers its own permission, not the writer stdin',
 
 test('C14R.3 actual PTY preserves native fragments across workers and permission', {timeout:25000},()=>withOwnedRun('C14R-pty-chunks',async cwd=>{
   const path=await config(cwd,true,'host-chunks');
-  const output=await tty(cwd,['run','chunks','--config',path,'--presentation','compact'],'deny',/Native final once/);
+  const output=await tty(cwd,['run','chunks','--config',path,'--presentation','compact'],'id:deny',/Native final once/);
   assert.match(output,/Native thought worker-a/);assert.match(output,/Native thought worker-b/);
   assert.match(output,/continued/);assert.match(output,/Permission requested/);
   assert.match(output,/Native thought [^\r\n]+ continued/);

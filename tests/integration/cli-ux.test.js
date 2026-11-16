@@ -19,7 +19,7 @@ test('C14 CLI selects simultaneous real requests by label and preserves explicit
   const terminal=createCliInput(input,output,true,()=>{});
   const signal=new AbortController().signal;
   const p=terminal.ask(permission,signal), f=terminal.ask(form,signal);
-  input.write('#f {"value":"chosen"}\n#p deny\n');
+  input.write('#2 {"value":"chosen"}\n#1 id:deny\n');
   assert.deepEqual(await f,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
   assert.deepEqual(await p,{kind:'answered',payload:{optionId:'deny'}});
   terminal.close();
@@ -74,7 +74,7 @@ test('C14R.3 native adjacent chunks use one source heading, switch and permissio
   await renderer.notice(event('a','first'));await renderer.notice(event('a',' second'));
   await renderer.notice(event('b','other'));await renderer.notice(event('b',' fragment'));
   const reply=terminal.ask(permission,new AbortController().signal);
-  input.write('deny\n');await reply;
+  input.write('id:deny\n');await reply;
   await renderer.notice(event('a','again'));terminal.close();
   assert.match(text,/Thinking · p\/a\n  first second\n[\s\S]*Thinking · p\/b\n  other fragment\n/);
   assert.match(text,/Permission requested/);assert.match(text,/Thinking · p\/a\n  again\n/);
@@ -177,7 +177,7 @@ test('C15.3 numbered choices preserve native option identity and render actual f
   const p=terminal.ask(permission,signal), f=terminal.ask(form,signal);
   assert.match(text,/1\. deny \[id=deny\]/);assert.match(text,/2\. allow \[id=allow\]/);
   assert.match(text,/Which value\?/);assert.match(text,/value · string \(required\)/);
-  input.write('#p option 2\n#f {"value":"chosen"}\n');
+  input.write('#1 option 2\n#2 {"value":"chosen"}\n');
   assert.deepEqual(await p,{kind:'answered',payload:{optionId:'allow'}});
   assert.deepEqual(await f,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
   terminal.close();
@@ -247,4 +247,50 @@ test('C15R.2 gap resets native text continuation without swallowing subsequent t
   terminal.close();
   assert.match(text,/before[\s\S]*Activity gap[\s\S]*after gap/);
   assert.doesNotMatch(text,/\x1b/);
+});
+
+
+test('C15R.6.1 exact position is never shadowed by optionId; explicit ID is separate',async()=>{
+  const input=new PassThrough(),output=new PassThrough();output.resume();
+  const terminal=createCliInput(input,output,true,()=>{});
+  const request=structuredClone(permission);
+  request.request.requestId='collision';
+  request.request.options=[{id:'deny',kind:'deny',label:'Deny'},
+    {id:'option 1',kind:'allow',label:'Allow'},{id:'2',kind:'allow',scope:'always'}];
+  try{
+    const first=terminal.ask(request,new AbortController().signal);
+    input.write('option 1\n');
+    assert.deepEqual(await first,{kind:'answered',payload:{optionId:'deny'}});
+    const second=terminal.ask({...request,request:{...request.request,requestId:'second'}},new AbortController().signal);
+    input.write('id:option 1\n');
+    assert.deepEqual(await second,{kind:'answered',payload:{optionId:'option 1'}});
+    const third=terminal.ask({...request,request:{...request.request,requestId:'third'}},new AbortController().signal);
+    input.write('2\n');
+    assert.deepEqual(await third,{kind:'answered',payload:{optionId:'option 1'}});
+    const cancelled=terminal.ask({...request,request:{...request.request,requestId:'fourth'}},new AbortController().signal);
+    input.write(':cancel\n');assert.deepEqual(await cancelled,{kind:'cancelled'});
+  }finally{terminal.close();input.end();}
+});
+
+test('C15R.6.1 input started for expired request cannot transfer to newly pending one',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let printed='';
+  output.on('data',b=>printed+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const oldStop=new AbortController(),newStop=new AbortController();
+  const first=terminal.ask(permission,oldStop.signal);
+  input.write('1');
+  const second=terminal.ask({...permission,request:{...permission.request,requestId:'new'}},newStop.signal);
+  oldStop.abort();
+  assert.deepEqual(await first,{kind:'cancelled'});
+  input.write('\n');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(printed,/does not belong to an active request/);
+  input.write('#2 1\n');assert.deepEqual(await second,{kind:'answered',payload:{optionId:'deny'}});
+  const third=terminal.ask({...permission,request:{...permission.request,requestId:'later'}},new AbortController().signal);
+  input.write('#1 2\n');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(printed,/does not belong to an active request/);
+  input.write('#3 2\n');
+  assert.deepEqual(await third,{kind:'answered',payload:{optionId:'allow'}});
+  terminal.close();input.end();
 });

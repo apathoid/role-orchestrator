@@ -25,10 +25,13 @@ export function supportedForm(request) {
 /** @param {PendingInput} entry @param {string} line @returns {InputResult | undefined} */
 function parse(entry, line) {
   if (entry.kind === 'permission') {
-    const numbered=/^option ([1-9]\d*)$/.exec(line);
-    const exact=entry.request.options.find(option => option.id === line);
-    const option = exact ?? (numbered ? entry.request.options[Number(numbered[1])-1] : undefined);
-    return option && { kind:'answered', payload: { optionId: option.id } };
+    // Positional selection has precedence by grammar, never by native optionId.
+    // Native IDs require an explicit prefix, even when numeric or command-like.
+    if(line===':cancel')return {kind:'cancelled'};
+    const numbered=/^(?:option )?([1-9]\d*)$/.exec(line);
+    const option=numbered?entry.request.options[Number(numbered[1])-1]:
+      line.startsWith('id:')?entry.request.options.find(value=>value.id===line.slice(3)):undefined;
+    return option&&{kind:'answered',payload:{optionId:option.id}};
   }
   if (line === 'decline' || line === 'cancel') return { kind:'answered', payload: { action: line } };
   try {
@@ -52,7 +55,7 @@ function parse(entry, line) {
  * @param {PendingInput} entry @param {string} label
  */
 function inputBlock(entry,label){
-  const header=label+' ['+entry.request.profileId+'/'+entry.request.attemptId+'] ';
+  const header=label+' ['+boundedText(entry.request.profileId,80)+'] ';
   if(entry.kind==='permission'){
     const request=entry.request,action=request.action;
     const detail=action?[action.title,action.kind,action.details,...(action.locations??[]).map(l=>l.path+(l.line!==undefined?':'+l.line:''))].filter(Boolean).join('\n  '):'';
@@ -78,8 +81,31 @@ function inputBlock(entry,label){
  * @param {NodeJS.ReadableStream} input @param {NodeJS.WritableStream} output
  * @param {boolean} interactive @param {() => void} interrupt */
 export function createCliInput(input, output, interactive, interrupt) {
-  /** @type {Map<string, {entry: PendingInput, finish: (result: InputResult) => void}>} */
+  /** @type {Map<string, {entry: PendingInput, finish: (result: InputResult) => void,epoch:number}>} */
   const pending = new Map();
+  // Local, monotonic aliases and creation epochs are only terminal display identity.
+  // They never replace the trusted request/attempt/owner correlation.
+  let aliasSequence=0,epoch=0;
+  /** @type {{epoch:number,target:string|undefined}|undefined} */
+  let lineOrigin;
+  /** @type {{epoch:number,target:string|undefined}[]} */
+  const enteredLines=[];
+  let previousCR=false;
+  /** @param {Buffer|string} chunk */
+  function capture(chunk){
+    const data=Buffer.isBuffer(chunk)?chunk.toString('utf8'):String(chunk);
+    for(const ch of data){
+      if(ch==='\n'&&previousCR){previousCR=false;continue;}
+      previousCR=ch==='\r';
+      if(ch==='\r'||ch==='\n'){
+        if(enteredLines.length>=128)enteredLines.shift();
+        enteredLines.push(lineOrigin??{epoch,target:undefined});
+        lineOrigin=undefined;
+      }else if(!lineOrigin){
+        lineOrigin={epoch,target:pending.size===1?pending.keys().next().value:undefined};
+      }
+    }
+  }
   /** @type {import('node:readline').Interface | undefined} */
   let rl;
   let eof = false;
@@ -194,25 +220,37 @@ export function createCliInput(input, output, interactive, interrupt) {
     }
   }
   function stopReader() {
-    if (pending.size || !rl) return;
-    const reader = rl; rl = undefined; chunkSource=undefined; reader.close();
+    if(pending.size||!rl)return;
+    const reader=rl;rl=undefined;chunkSource=undefined;
+    input.removeListener('data',capture);
+    enteredLines.length=0;lineOrigin=undefined;previousCR=false;
+    reader.close();
   }
   function open() {
     if (rl) return;
+    input.prependListener('data',capture);
     const reader = createInterface({input, output, terminal: Boolean('isTTY' in output && output.isTTY)});
     rl = reader;
     reader.on('line', line => {
-      const match = /^(\S+)\s+([\s\S]*)$/.exec(line.trim());
-      const label = match && pending.has(match[1]) ? match[1] : pending.size === 1 ? [...pending.keys()][0] : undefined;
-      const entry = label && pending.get(label);
-      const value = entry && parse(entry.entry, match && match[1] === label ? match[2].trim() : line.trim());
-      if (entry && value) entry.finish(value);
-      else void report('Select a pending request label and enter an offered option or form response.');
+      const origin=enteredLines.shift()??lineOrigin??{epoch:-1,target:undefined};
+      lineOrigin=undefined;
+      const explicit=/^(#\d+)\s+([\s\S]*)$/.exec(line);
+      const label=explicit?explicit[1]:origin.target;
+      const state=label?pending.get(label):undefined;
+      if(!state||state.epoch>origin.epoch||(origin.target&&origin.target!==label)){
+        void report('This input does not belong to an active request. Use the displayed request alias.');
+        prompt();return;
+      }
+      const raw=explicit?explicit[2]:line;
+      const value=parse(state.entry,raw);
+      if(value)state.finish(value);
+      else void report('Invalid selection for '+label+'. Enter a displayed number or explicit id:<option ID>.');
       prompt();
     });
     reader.once('close', () => {
       if (rl !== reader) return;
       rl = undefined; eof = true;
+      input.removeListener('data',capture);enteredLines.length=0;lineOrigin=undefined;
       for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     });
     reader.on('SIGINT', () => {
@@ -227,8 +265,8 @@ export function createCliInput(input, output, interactive, interrupt) {
       void report(entry.kind === 'permission' ? 'Permission unavailable for ' + JSON.stringify(entry.request.resource) : 'Interaction unavailable: unsupported form or input');
       return {kind:'unavailable'};
     }
-    const label = '#' + entry.request.requestId;
-    if (pending.has(label)) return {kind:'unavailable'};
+    if([...pending.values()].some(state=>state.entry.request.requestId===entry.request.requestId))return {kind:'unavailable'};
+    const label='#'+ ++aliasSequence;
     if(openLine){void write('\n').catch(()=>{});openLine=false;chunkSource=undefined;}
     if(unavailable()) return {kind:'unavailable'};
     try { open(); } catch(error) { broken(error); return {kind:'unavailable'}; }
@@ -240,7 +278,7 @@ export function createCliInput(input, output, interactive, interrupt) {
         resolve(result); stopReader();
       };
       const abort = () => finish({kind:'cancelled'});
-      pending.set(label,{entry,finish});
+      pending.set(label,{entry,finish,epoch:++epoch});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
       void print(inputBlock(entry,label),'header').catch(()=>{});
