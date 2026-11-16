@@ -338,3 +338,21 @@ test('C15R.6.2 literal control words and optional omission are distinct',async()
   assert.deepEqual(await second,{kind:'answered',payload:{action:'accept',content:{answer:':cancel'}}});
   terminal.close();input.end();
 });
+
+
+test('C15R.6.3 active readline preserves one Thinking block across 80 short native fragments and typed permission input',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let display='';output.on('data',b=>display+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk,terminal.resetPresentation);
+  const answer=terminal.ask(permission,new AbortController().signal);
+  input.write('id:');
+  for(let i=0;i<80;i++){
+    await renderer.notice({channel:'activity',event:{kind:'reasoning',nativeKind:'agent_thought_chunk',operationId:'op',
+      attemptId:'worker-a',profileId:'p',providerId:'x',sequence:i,payload:{content:{type:'text',text:'<'+i+'>'}}}});
+  }
+  input.write('deny\n');
+  assert.deepEqual(await answer,{kind:'answered',payload:{optionId:'deny'}});
+  assert.equal((display.match(/Thinking · p\/worker-a/g)??[]).length,1);
+  for(let i=0;i<80;i++)assert.ok(display.includes('<'+i+'>'),String(i));
+  terminal.close();input.end();
+});

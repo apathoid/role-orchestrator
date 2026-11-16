@@ -167,12 +167,17 @@ export function createCliInput(input, output, interactive, interrupt) {
       return write(text);
     }
     if(!body)return Promise.resolve();
-    const boundary=changed||!!rl;
+    // A readline redraw creates a physical line boundary per write, not a new
+    // semantic/source Thinking block. Only a real source change gets a header.
+    const boundary=changed;
     if(boundary)atLineStart=true;
+    let physicalStart=atLineStart||!!rl;
     let decorated='';
     for(const ch of body){
-      if(atLineStart&&ch!=='\n')decorated+=fragment.indent;
-      decorated+=ch;atLineStart=ch==='\n';
+      if(physicalStart&&ch!=='\n')decorated+=fragment.indent;
+      decorated+=ch;
+      atLineStart=ch==='\n';
+      physicalStart=ch==='\n';
     }
     const header=boundary?(openLine?'\n':'')+style(terminalText(fragment.header),'thinking'):'';
     const text=header+style(decorated,'thinking')+(rl&&!decorated.endsWith('\n')?'\n':'');
