@@ -297,6 +297,9 @@ test('external ACP keeps a background worker permission and client read after cl
         result = await readFile(join(cwd, 'relay-result'), 'utf8').catch(error => {
           if (error.code !== 'ENOENT') throw error;
         });
+        // The fixture publishes via writeFile; existence may precede the first
+        // bytes under full-suite load. An empty in-flight read is not completion.
+        if(result==='')result=undefined;
         if (result === undefined) await new Promise(resolve => setTimeout(resolve, 10));
       }
       assert.equal(result, 'allow:late client bytes');
