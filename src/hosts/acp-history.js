@@ -2,7 +2,7 @@ import { historicalOutcomeReports } from '../core/snapshot.js';
 import { journalReasonCode } from '../core/operation.js';
 import { eventFindings } from '../core/finding.js';
 import { executionFact } from '../application/execution-facts.js';
-import { acpAccepted, acpExecutionInline, acpOwnMessage } from './presentation.js';
+import { boundedText, acpAccepted, acpExecutionInline, acpOwnMessage } from './presentation.js';
 
 /** @import {Event, Operation} from '../core/operation.js' */
 /** @import {SessionUpdate, StopReason} from '@agentclientprotocol/sdk' */
@@ -140,11 +140,38 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
   /** @type {Map<string,number>} */
   const remaining=new Map(),seenBoundary=new Map();
   const seen=new Set();
+  /** Exact durable turn references, not guessed from title or chronological time. */
+  /** @type {Map<string,Set<string>>} */
+  const associated=new Map();
+  for(const req of session.requests)if(req.operationId){
+    let ids=associated.get(req.operationId);
+    if(!ids)associated.set(req.operationId,ids=new Set());
+    ids.add(operationRequestId(session.sessionId,req.requestId));
+  }
+  /** @param {Operation} operation @param {string} id @param {string} text @param {string} origin */
+  async function unassociated(operation,id,text,origin){
+    if(signal?.aborted)return;
+    await emit(acpOwnMessage(
+      'Recovered '+origin+' for Operation '+operation.operationId+
+      ' (not associated with a recorded session turn; chronological position/answer unknown)'+
+      (text?'\n'+boundedText(text,2048):''),
+      {source:'history',operationId:operation.operationId,recovered:true,requestId:id},
+      'orphan:'+id));
+  }
   for(const request of session.requests)if(request.operationId)remaining.set(request.operationId,(remaining.get(request.operationId)??0)+1);
   /** @param {Operation} operation @param {number} from @param {number} to */
   async function background(operation,from,to){
     let heading=false;
+    const known=associated.get(operation.operationId);
+    if(from===0&&to>0&&!known?.has(operation.request.requestId)){
+      await unassociated(operation,operation.request.requestId,operation.request.text,'initial Request');
+    }
     for(let index=from;!signal?.aborted&&index<to;index++){
+      const item=operation.events[index];
+      if(item.kind==='operation.continued'&&!known?.has(item.input.requestId)){
+        await unassociated(operation,item.input.requestId,item.input.text,'continuation');
+        continue;
+      }
       for(const update of journalUpdates(operation,index,mode,reports)){
         if(!heading){
           heading=true;
@@ -169,7 +196,11 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
     if(range){
       seen.add(id);
       const prior=seenBoundary.get(id);
-      if(inline&&prior!==undefined&&prior<range.start-(range.continuing?1:0))await background(operation,prior,range.start-(range.continuing?1:0));
+      const earlier=range.start-(range.continuing?1:0);
+      if(inline&&(prior??0)<earlier)await background(operation,prior??0,earlier);
+      if(!inline&&prior===undefined&&earlier>0&&!associated.get(id)?.has(operation.request.requestId)){
+        await unassociated(operation,operation.request.requestId,operation.request.text,'initial Request');
+      }
       await replayText(range.text,true,emit,signal);
       if(signal?.aborted)return;
       if(inline)await emit(acpAccepted(id,durableId,range.continuing,'inline',true));
@@ -187,6 +218,10 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
           {source:'history',operationId:id,requestId:durableId,recovered:true},durableId));
       }
       seenBoundary.set(id,end);
+    }else{
+      await emit(acpOwnMessage('Recorded session association unavailable for request '+durableId+
+        ' in Operation '+id+'; no user text or answer inferred',
+        {source:'history',operationId:id,requestId:durableId,recovered:true},'missing-association:'+durableId));
     }
     const left=(remaining.get(id)??1)-1;
     remaining.set(id,left);
@@ -197,7 +232,23 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
     }
   }
   for(const id of session.operations)if(!signal?.aborted&&!seen.has(id)){
-    await emit(acpOwnMessage('Recovered Operation '+id+' · user turn association unavailable',
+    await emit(acpOwnMessage('Recovered Operation '+id+
+      ' · no authoritative session turn association; no chronological user answer inferred',
       {source:'history',operationId:id,recovered:true},'missing-turns'));
+    if(signal?.aborted)return;
+    /** @type {Operation|undefined} */
+    let operation;
+    try{operation=await inspect(id);}catch{ /* An unavailable legacy snapshot is not a turn. */ }
+    if(!operation||signal?.aborted)continue;
+    if(display==='inline'){
+      reports=historicalOutcomeReports(operation);
+      await background(operation,0,operation.events.length);
+    }else{
+      if(!associated.get(id)?.has(operation.request.requestId))
+        await unassociated(operation,operation.request.requestId,operation.request.text,'initial Request');
+      for(const event of operation.events)if(event.kind==='operation.continued'&&!associated.get(id)?.has(event.input.requestId))
+        await unassociated(operation,event.input.requestId,event.input.text,'continuation');
+    }
+    reports.clear();
   }
 }

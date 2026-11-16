@@ -109,3 +109,36 @@ test('C15R.4 historical classifications match actual applied ordinary, late and 
   await replayHistory(session,async()=>legacy,async u=>fallback.push(u),'compact','inline');
   assert.match(fallback.find(u=>u._meta?.roleOrchestratorSource?.eventId==='ordinary').content.text,/Historical outcome report/);
 });
+
+
+test('C15R.6.5 missing initial and intermittent continuations are attributed, never fabricated as session user turns',async()=>{
+  const A=operation('A','a0','orphan first',[
+    event('A','old-finished','operation.finished',{assessment:assessment('not for a1')}),
+    event('A','start1','operation.continued',{input:{requestId:id('a1'),text:'associated A1'}}),
+    event('A','answer1','operation.finished',{assessment:assessment('answer A1')}),
+    event('A','start2','operation.continued',{input:{requestId:id('a2'),text:'orphan middle'}}),
+    event('A','orphan-done','operation.finished',{assessment:assessment('not for a3')}),
+    event('A','start3','operation.continued',{input:{requestId:id('a3'),text:'associated A3'}}),
+    event('A','answer3','operation.finished',{assessment:assessment('answer A3')}),
+  ]);
+  const B=operation('B','b0','unrelated orphan',[
+    event('B','b-work','operation.recovered',{}),
+    event('B','b-end','operation.finished',{assessment:assessment('unknown session reply')}),
+  ]);
+  const records=[entry('a1','A','answer1'),entry('a3','A','answer3')];
+  const session={sessionId:'session',cwd:'/tmp',operations:['A','B'],requests:records};
+  const updates=[],reads=[];
+  await replayHistory(session,async id=>{reads.push(id);return id==='A'?A:B;},async u=>updates.push(u),'compact','inline');
+  assert.deepEqual(plain(updates),['associated A1','answer A1','associated A3','answer A3']);
+  const meta=updates.filter(u=>u._meta?.roleOrchestratorSource?.source==='history');
+  assert.ok(meta.some(u=>u.content.text.includes('orphan first')));
+  assert.ok(meta.some(u=>u.content.text.includes('orphan middle')));
+  assert.ok(meta.some(u=>u.content.text.includes('unrelated orphan')));
+  assert.ok(meta.every(u=>u._meta.roleOrchestratorSource.recovered));
+  assert.ok(!updates.some(u=>u.sessionUpdate==='user_message_chunk'&&/orphan/.test(u.content.text)));
+  assert.ok(!updates.some(u=>u.sessionUpdate==='agent_message_chunk'&&!u._meta?.roleOrchestratorSource&&/not for|unknown session reply/.test(u.content.text)));
+  assert.deepEqual(reads,['A','B']); // one full snapshot at a time
+  const stop=new AbortController();const partial=[];
+  await replayHistory(session,async()=>A,async u=>{partial.push(u);stop.abort();},'compact','inline',stop.signal);
+  assert.equal(partial.length,1);
+});
