@@ -1,3 +1,4 @@
+import { projectForm, createFormDraft, renderFormIntro, renderFormField, formValue, validateFormContent } from './cli-form.js';
 import { createInterface, clearLine, cursorTo } from 'node:readline';
 import { terminalText, createTerminalSanitizer, boundedText } from './presentation.js';
 
@@ -10,45 +11,18 @@ import { terminalText, createTerminalSanitizer, boundedText } from './presentati
 /** @param {unknown} value @returns {Record<string, unknown>} */
 const object = value => value && typeof value === 'object' && !Array.isArray(value) ? /** @type {Record<string, unknown>} */ (value) : {};
 
-/** CLI can display protocol form fields and accept explicit JSON; no URL/auth or nested forms.
+/** Actual SDK 2.4.0 ACP v1 restricted form. No arbitrary JSON Schema or custom wire assumptions.
  * @param {PendingInteraction} request */
-export function supportedForm(request) {
-  const payload = object(request.payload), schema = object(payload.requestedSchema);
-  return payload.mode === 'form' && schema.type === 'object' && !!schema.properties &&
-    Object.values(object(schema.properties)).every(value => {
-      const field = object(value);
-      return ['string','number','integer','boolean'].includes(String(field.type)) ||
-        (field.type === 'array' && ['string','number','integer','boolean'].includes(String(object(field.items).type)));
-    });
-}
+export function supportedForm(request){return projectForm(request)!==undefined;}
 
-/** @param {PendingInput} entry @param {string} line @returns {InputResult | undefined} */
-function parse(entry, line) {
-  if (entry.kind === 'permission') {
-    // Positional selection has precedence by grammar, never by native optionId.
-    // Native IDs require an explicit prefix, even when numeric or command-like.
-    if(line===':cancel')return {kind:'cancelled'};
-    const numbered=/^(?:option )?([1-9]\d*)$/.exec(line);
-    const option=numbered?entry.request.options[Number(numbered[1])-1]:
-      line.startsWith('id:')?entry.request.options.find(value=>value.id===line.slice(3)):undefined;
-    return option&&{kind:'answered',payload:{optionId:option.id}};
-  }
-  if (line === 'decline' || line === 'cancel') return { kind:'answered', payload: { action: line } };
-  try {
-    const value = JSON.parse(line);
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
-    const schema = object(object(entry.request.payload).requestedSchema), properties = object(schema.properties);
-    if (Array.isArray(schema.required) && schema.required.some(key => typeof key === 'string' && !Object.hasOwn(value, key))) return;
-    for (const [key, item] of Object.entries(value)) {
-      if (!Object.hasOwn(properties, key)) return;
-      const field = object(properties[key]);
-      /** @param {unknown} v @param {Record<string,unknown>} shape */
-      const valid = (v, shape) => (shape.type === 'integer' ? Number.isInteger(v) : typeof v === shape.type) &&
-        (!Array.isArray(shape.enum) || shape.enum.includes(v));
-      if (field.type === 'array' ? !Array.isArray(item) || !item.every(v => valid(v, object(field.items))) : !valid(item, field)) return;
-    }
-    return { kind:'answered', payload: { action:'accept', content:value } };
-  } catch { return; }
+/** @param {PendingInput} entry @param {string} line @returns {InputResult|undefined} */
+function parsePermission(entry,line){
+  if(entry.kind!=='permission')return;
+  if(line===':cancel')return {kind:'cancelled'};
+  const numbered=/^(?:option )?([1-9]\d*)$/.exec(line);
+  const option=numbered?entry.request.options[Number(numbered[1])-1]:
+    line.startsWith('id:')?entry.request.options.find(value=>value.id===line.slice(3)):undefined;
+  return option&&{kind:'answered',payload:{optionId:option.id}};
 }
 
 /** Display only the actual request/options, with explicit numeric selection.
@@ -65,23 +39,18 @@ function inputBlock(entry,label){
         (option.scope?' · '+option.scope:'')).join('\n')+
       '\nEnter '+label+' option NUMBER or an offered option ID.';
   }
-  const request=entry.request,payload=object(request.payload),schema=object(payload.requestedSchema);
-  const fields=Object.entries(object(schema.properties)).map(([key,value])=>{
-    const field=object(value),required=Array.isArray(schema.required)&&schema.required.includes(key);
-    return '  '+key+' · '+String(field.type)+(required?' (required)':'')+
-      (Array.isArray(field.enum)?' · choices: '+JSON.stringify(field.enum):'')+
-      (typeof field.description==='string'?' · '+field.description:'');
-  }).join('\n');
-  return header+'Native form (deadline '+new Date(request.deadlineAt).toISOString()+')\n'+
-    (typeof payload.message==='string'?boundedText(payload.message)+'\n':'')+fields+
-    '\nEnter '+label+' JSON object, decline or cancel.';
+  const form=projectForm(entry.request);
+  return form?renderFormIntro(form,label)+renderFormField(form,0):header+'Native interaction unavailable';
+
 }
 
 /** Single terminal input owner; labels select existing pending requests, not grants.
  * @param {NodeJS.ReadableStream} input @param {NodeJS.WritableStream} output
  * @param {boolean} interactive @param {() => void} interrupt */
 export function createCliInput(input, output, interactive, interrupt) {
-  /** @type {Map<string, {entry: PendingInput, finish: (result: InputResult) => void,epoch:number}>} */
+  /** @typedef {{entry:PendingInput,finish:(result:InputResult)=>void,epoch:number,
+   * form?:ReturnType<typeof projectForm>,draft?:ReturnType<typeof createFormDraft>}} PendingLine
+   * @type {Map<string,PendingLine>} */
   const pending = new Map();
   // Local, monotonic aliases and creation epochs are only terminal display identity.
   // They never replace the trusted request/attempt/owner correlation.
@@ -211,10 +180,24 @@ export function createCliInput(input, output, interactive, interrupt) {
     openLine=!rl&&!atLineStart;
     return write(text);
   }
+  /** @param {string} label @param {PendingLine} state */
+  function nextForm(label,state){
+    const form=state.form,draft=state.draft;
+    if(!form||!draft)return;
+    if(draft.index<form.fields.length){
+      void print(renderFormField(form,draft.index),'header').catch(()=>{});
+      return;
+    }
+    const issue=validateFormContent(form,draft.content);
+    if(issue){void report('Invalid form: '+issue);draft.index=0;return;}
+    state.finish({kind:'answered',payload:{action:'accept',content:{...draft.content}}});
+  }
   function prompt() {
     if (pending.size) {
       try {
-        rl?.setPrompt('Reply (' + [...pending.keys()].join(', ') + '): ');
+        const singles=[...pending.entries()];
+        const field=singles.length===1?singles[0][1].draft?.index:undefined;
+        rl?.setPrompt('Reply (' + singles.map(([key])=>key).join(', ') + ')' + (field!==undefined?' field '+(field+1):'') + ': ');
         rl?.prompt();
       } catch(error) { broken(error); }
     }
@@ -242,9 +225,42 @@ export function createCliInput(input, output, interactive, interrupt) {
         prompt();return;
       }
       const raw=explicit?explicit[2]:line;
-      const value=parse(state.entry,raw);
-      if(value)state.finish(value);
-      else void report('Invalid selection for '+label+'. Enter a displayed number or explicit id:<option ID>.');
+      if(state.entry.kind==='permission'){
+        const result=parsePermission(state.entry,raw);
+        if(result)state.finish(result);
+        else void report('Invalid option for '+label+': enter a displayed position or id:<exact option ID>.');
+      }else if(state.form&&state.draft){
+        const {form,draft}=state;
+        if(raw===':cancel'||raw===':decline'){
+          state.finish({kind:'answered',payload:{action:raw.slice(1)}});
+        }else if(raw===':back'){
+          draft.index=Math.max(0,draft.index-1);
+          void print(renderFormField(form,draft.index),'header').catch(()=>{});
+        }else if(raw===':skip'){
+          const field=form.fields[draft.index];
+          if(field?.required)void report('Required field '+label+': cannot skip.');
+          else if(field){delete draft.content[field.key];draft.index++;nextForm(label,state);}
+          else void report('Use :submit to accept an empty form.');
+        }else if(raw===':submit'&&form.fields.length===0){
+          state.finish({kind:'answered',payload:{action:'accept',content:{}}});
+        }else if(raw.startsWith(':json ')){
+          try{
+            const content=JSON.parse(raw.slice(6));
+            const issue=content&&typeof content==='object'&&!Array.isArray(content)?
+              validateFormContent(form,content):'expected an object';
+            if(issue)void report('Form invalid: '+issue);
+            else state.finish({kind:'answered',payload:{action:'accept',content}});
+          }catch{void report('Form invalid: expected a JSON object after :json.');}
+        }else{
+          const field=form.fields[draft.index];
+          if(!field){void report('No field selected; enter :submit.');}
+          else {
+            const parsed=formValue(raw,field);
+            if(!parsed.ok)void report('Invalid '+label+' field '+(field.shape.title??field.key)+': '+parsed.error);
+            else {draft.content[field.key]=parsed.value;draft.index++;nextForm(label,state);}
+          }
+        }
+      }
       prompt();
     });
     reader.once('close', () => {
@@ -278,7 +294,8 @@ export function createCliInput(input, output, interactive, interrupt) {
         resolve(result); stopReader();
       };
       const abort = () => finish({kind:'cancelled'});
-      pending.set(label,{entry,finish,epoch:++epoch});
+      const form=entry.kind==='input'?projectForm(entry.request):undefined;
+      pending.set(label,{entry,finish,epoch:++epoch,...(form&&{form,draft:createFormDraft(form)})});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
       void print(inputBlock(entry,label),'header').catch(()=>{});

@@ -19,7 +19,7 @@ test('C14 CLI selects simultaneous real requests by label and preserves explicit
   const terminal=createCliInput(input,output,true,()=>{});
   const signal=new AbortController().signal;
   const p=terminal.ask(permission,signal), f=terminal.ask(form,signal);
-  input.write('#2 {"value":"chosen"}\n#1 id:deny\n');
+  input.write('#2 chosen\n#1 id:deny\n');
   assert.deepEqual(await f,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
   assert.deepEqual(await p,{kind:'answered',payload:{optionId:'deny'}});
   terminal.close();
@@ -177,7 +177,7 @@ test('C15.3 numbered choices preserve native option identity and render actual f
   const p=terminal.ask(permission,signal), f=terminal.ask(form,signal);
   assert.match(text,/1\. deny \[id=deny\]/);assert.match(text,/2\. allow \[id=allow\]/);
   assert.match(text,/Which value\?/);assert.match(text,/value · string \(required\)/);
-  input.write('#1 option 2\n#2 {"value":"chosen"}\n');
+  input.write('#1 option 2\n#2 chosen\n');
   assert.deepEqual(await p,{kind:'answered',payload:{optionId:'allow'}});
   assert.deepEqual(await f,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
   terminal.close();
@@ -292,5 +292,49 @@ test('C15R.6.1 input started for expired request cannot transfer to newly pendin
   assert.match(printed,/does not belong to an active request/);
   input.write('#3 2\n');
   assert.deepEqual(await third,{kind:'answered',payload:{optionId:'allow'}});
+  terminal.close();input.end();
+});
+
+
+test('C15R.6.2 form displays offered oneOf and maps numeric choice to const, not title',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let display='';output.on('data',b=>display+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const f=structuredClone(form);
+  f.request.payload={mode:'form',message:'What should happen?',requestedSchema:{type:'object',
+    properties:{decision:{type:'string',title:'Next step',oneOf:[{const:'continue',title:'Continue work'},{const:'stop',title:'Stop work'}]}},required:['decision']}};
+  const answer=terminal.ask(f,new AbortController().signal);
+  assert.match(display,/What should happen/);assert.match(display,/Continue work/);assert.match(display,/Stop work/);
+  input.write('2\n');
+  assert.deepEqual(await answer,{kind:'answered',payload:{action:'accept',content:{decision:'stop'}}});
+  terminal.close();input.end();
+});
+test('C15R.6.2 text, optional/required, typed values, multi-select and exact string whitespace',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let display='';output.on('data',b=>display+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const f=structuredClone(form);
+  f.request.payload={mode:'form',message:'Choose values',requestedSchema:{type:'object',
+    properties:{answer:{type:'string',title:'Your answer',minLength:1},count:{type:'integer',minimum:0,maximum:10,default:4},
+      agreed:{type:'boolean'},tags:{type:'array',items:{anyOf:[{const:'x',title:'Alpha'},{const:'y',title:'Beta'}]},minItems:1,maxItems:2}},
+    required:['answer','count','agreed','tags']}};
+  const done=terminal.ask(f,new AbortController().signal);
+  input.write('  verbatim  \n');
+  input.write('12\n');await new Promise(resolve=>setImmediate(resolve));assert.match(display,/number above maximum/);
+  input.write('0\nfalse\n1,2\n');
+  assert.deepEqual(await done,{kind:'answered',payload:{action:'accept',
+    content:{answer:'  verbatim  ',count:0,agreed:false,tags:['x','y']}}});
+  terminal.close();input.end();
+});
+test('C15R.6.2 literal control words and optional omission are distinct',async()=>{
+  const input=new PassThrough(),output=new PassThrough();output.resume();
+  const terminal=createCliInput(input,output,true,()=>{});
+  const f=structuredClone(form);
+  f.request.payload={mode:'form',message:'Say something',requestedSchema:{type:'object',
+    properties:{answer:{type:'string',title:'Your answer'},comment:{type:'string',default:'untouched'}},required:['answer']}};
+  const done=terminal.ask(f,new AbortController().signal);
+  input.write('cancel\n:skip\n');
+  assert.deepEqual(await done,{kind:'answered',payload:{action:'accept',content:{answer:'cancel'}}});
+  const second=terminal.ask({...f,request:{...f.request,requestId:'another'}},new AbortController().signal);
+  input.write('::cancel\n:skip\n');
+  assert.deepEqual(await second,{kind:'answered',payload:{action:'accept',content:{answer:':cancel'}}});
   terminal.close();input.end();
 });

@@ -49,7 +49,7 @@ test('actual PTY direct CLI permission and native ACP form', {timeout:30000},()=
   const path=await config(cwd);
   await tty(cwd,['run','permission','--config',path,'--presentation','detailed'],'id:deny',/(?:\r?\n)deny\r?\n/);
   const acp=await config(cwd,true);
-  await tty(cwd,['run','form','--config',acp,'--presentation','compact'],'{"value":"chosen"}',/(?:\r?\n)chosen\r?\n/);
+  await tty(cwd,['run','form','--config',acp,'--presentation','compact'],'chosen',/(?:\r?\n)chosen\r?\n/);
 }));
 test('actual PTY attached CLI answers its own permission, not the writer stdin', {timeout:25000},()=>withOwnedRun('C14-pty-attached',async cwd=>{
   const path=await config(cwd);
