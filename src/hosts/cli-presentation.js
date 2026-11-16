@@ -82,7 +82,7 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
         let text=notice.channel==='execution'?formatExecution(notice.event,mode,notice.fact):
           notice.channel==='activity'?formatActivity(notice.event,mode):'[Delivery gap] '+notice.droppedCount+' notices dropped';
         if(text&&notice.channel==='execution'&&mode==='compact'&&notice.event.attemptId){
-          const event=notice.event,known=aliases.get(event.attemptId);
+          const event=notice.event,known=aliases.get(event.attemptId??'');
           if(known){
             const full='['+(event.actionId===event.attemptId?'Controller':'Attempt')+' '+event.attemptId+'] ';
             if(text.startsWith(full))text='['+known+'] '+text.slice(full.length);

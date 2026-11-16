@@ -209,7 +209,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     state.finish({kind:'answered',payload:{action:'accept',content:{...draft.content}}});
   }
   /** @param {string} label @param {PendingLine} state @param {Record<string,unknown>} content @param {()=>void} finish */
-  function confirmPatterns(label,state,content,finish){
+  function confirmPatterns(label??'',state,content,finish){
     if(!state.form)return;
     state.validating=true;
     void validateFormPatterns(state.form,content,state.signal).then(result=>{
@@ -292,7 +292,7 @@ export function createCliInput(input, output, interactive, interrupt) {
             const issue=content&&typeof content==='object'&&!Array.isArray(content)?
               validateFormContent(form,content):'expected an object';
             if(issue)void report('Form invalid: '+issue);
-            else confirmPatterns(label,state,content,()=>state.finish({kind:'answered',payload:{action:'accept',content}}));
+            else confirmPatterns(label??'',state,content,()=>state.finish({kind:'answered',payload:{action:'accept',content}}));
           }catch{void report('Form invalid: expected a JSON object after :json.');}
         }else{
           const field=form.fields[draft.index];
@@ -303,7 +303,7 @@ export function createCliInput(input, output, interactive, interrupt) {
             else if(typeof field.shape.pattern==='string'){
               const check=Object.create(null);
               check[field.key]=parsed.value;
-              confirmPatterns(label,state,check,()=>{
+              confirmPatterns(label??'',state,check,()=>{
                 draft.content[field.key]=parsed.value;draft.index++;nextForm(label??'',state);
               });
             }else{draft.content[field.key]=parsed.value;draft.index++;nextForm(label??'',state);}
