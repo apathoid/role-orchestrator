@@ -225,3 +225,18 @@ Likely boundaries to inspect (verify owner in current code): src/hosts/cli-input
 6. Implement .0–.7 as logical commits, STATUS at checkpoints, updated single acceptance matrix and relevant docs/CLI help/CHANGELOG when behavior lands. Final handoff: exact SHAs/CI, protocol mapping, red/green outcomes, full representative PTY transcript, native examples or blockers, measurements and architectural audit. No merge to master without explicit instruction.
 
 **Execution directive:** On receiving this planning checkpoint, start with C15R.6.0 if STATUS still lists it as next; continue all engineering stages through .6, then native acceptance/handoff .7 to the extent the real environment permits. Do not stop after research or document preparation. Do not mark C15R.6 implemented until actual code, tests and evidence exist.
+
+
+## C15R.6R — CLI Interaction Correctness & Presentation Completion (IMPLEMENTING)
+
+**Review baseline** `804bbaa24f606dc5be79a27db303489dda1dd27f`. **Historical CI** 43957276791 PASS (485 root, 9 real Linux PTY), but code review found an unbounded V8 pattern execution and six presentation/fidelity gaps. Corrective assignment does not authorize new core semantics or an agent execution scheduler.
+
+- **.0 Baseline:** confirm actual HEAD, SDK 2.4.0 restricted ACP form contract, and source/red witnesses for pattern backtracking, >128 fields, compact metadata, notices-orphans, blank Enter, `__proto__`, source attribution.
+- **.1 P1 safe validation:** provider-controlled regex runs outside main event loop with bounded per-validation duration/resource/ownership and cancellation, no false accept or mislabeled mismatch, including `:json`.
+- **.2 form fidelity:** remove arbitrary field-count UI rejection, sequential bounded display, original typed values including empty/false/zero and special keys; keep native schema and trusted delivery unchanged.
+- **.3 tool/question presentation:** compact real locations and descriptions once, native provenance of questions without invented roles/identity; debug retains identifiers.
+- **.4 history:** recover known orphan Request and continuations independently of inline/notices, without assuming chronology, answers or execution replay.
+- **.5 regression/CI:** targeted negative/positive, SDK, PTY, complete CI and resource/golden audits, extend sole acceptance matrix after A93.
+- **.6 native/handoff:** exact implementation and CI SHA, representative PTY, installed client/provider comparison or explicit UNVERIFIED; update STATUS, implementation plan and normative docs only for changed behavior. No master merge.
+
+**Invariants:** model-first; no Host interpretation/answering, provider/tool/skill filtering, extra permissions, secondary workflow lifecycle, synthetic environment or host scheduling of model work. UI uses existing trusted request identity, deadline, cancellation and ACK. Form worker, if used, is an isolated *technical input validation task only*, not an agent or project sandbox.

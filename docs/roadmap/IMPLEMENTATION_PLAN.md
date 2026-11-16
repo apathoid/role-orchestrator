@@ -4,7 +4,11 @@
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
-## C15R.6 — CLI Interaction Safety & Presentation Refinement (planned; next engineering step)
+## C15R.6R — corrective technical completion (active)
+
+Baseline `804bbaa24f606dc5be79a27db303489dda1dd27f`, CI 43957276791 historical PASS 485 root/9 PTY. Review follow-up for pattern ReDoS P1; field limits, empty/special fields, compact metadata and provenance, notices history, and truthful handoff P2. Ordered steps .0 baseline → .1 asynchronous bounded regex → .2 forms → .3 compact UX → .4 history → .5 regression → .6 native handoff. Exact normative details and acceptance source: [C15R.6R](C15R_PRESENTATION_QUALITY.md#c15r6r--cli-interaction-correctness--presentation-completion-implementing). Live next step in [STATUS](STATUS.md). Existing core/workflow/provider permissions unchanged.
+
+## C15R.6 — CLI Interaction Safety & Presentation Refinement (engineering PASS on 804bbaa2; native UNVERIFIED)
 
 [Исполнимый corrective plan C15R.6.0–.7](C15R_PRESENTATION_QUALITY.md). Approved architecture review 2026-11-16: natural native questions/forms and unambiguous permissions without new Host semantics, forms framework, capability restrictions, forced workflow or artificial execution environment. Exact current step and baseline in [STATUS](STATUS.md). Earlier C15R engineering/CI is historical and remains valid only for its original implementation SHA; new implementation is NOT STARTED.
 
