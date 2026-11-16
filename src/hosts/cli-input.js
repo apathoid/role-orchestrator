@@ -209,7 +209,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     state.finish({kind:'answered',payload:{action:'accept',content:{...draft.content}}});
   }
   /** @param {string} label @param {PendingLine} state @param {Record<string,unknown>} content @param {()=>void} finish */
-  function confirmPatterns(label??'',state,content,finish){
+  function confirmPatterns(label,state,content,finish){
     if(!state.form)return;
     state.validating=true;
     void validateFormPatterns(state.form,content,state.signal).then(result=>{
