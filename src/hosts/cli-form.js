@@ -1,3 +1,4 @@
+import { checkPattern } from './cli-pattern.js';
 import { boundedText } from './presentation.js';
 /** @import {PendingInteraction} from '../core/ports.js' */
 /** @typedef {{key:string,shape:Record<string,unknown>,required:boolean,options?:{value:string,label:string,description?:string}[]}} FormField */
@@ -35,8 +36,9 @@ export function projectForm(request){
         if(!Array.isArray(shape.enum)||shape.enum.some(x=>typeof x!=='string'))return;
         options=shape.enum.map(value=>({value,label:value}));
       }
-      if(shape.pattern!=null){if(typeof shape.pattern!=='string'||shape.pattern.length>512)return;
-        try{new RegExp(shape.pattern,'u');}catch{return;}}
+      // Even syntax compilation is deferred to the technical validation worker.
+      // A valid but expensive provider expression must not execute on the main thread.
+      if(shape.pattern!=null&&typeof shape.pattern!=='string')return;
       if(shape.format!=null&&!['email','uri','date','date-time'].includes(String(shape.format)))return;
       if(!validNonnegative(shape.minLength)||!validNonnegative(shape.maxLength))return;
     }else if(type==='array'){
@@ -146,7 +148,6 @@ export function validateFormValue(value,field){
     if(typeof shape.minLength==='number'&&length<shape.minLength)return 'text is shorter than '+shape.minLength;
     if(typeof shape.maxLength==='number'&&length>shape.maxLength)return 'text exceeds '+shape.maxLength;
     if(field.options&&!field.options.some(x=>x.value===value))return 'value not offered by the request';
-    if(typeof shape.pattern==='string'&&!new RegExp(shape.pattern,'u').test(value))return 'text does not match required pattern';
     if(typeof shape.format==='string'&&!validFormat(value,shape.format))return 'invalid '+shape.format;
   }else if(type==='number'||type==='integer'){
     if(typeof value!=='number'||!Number.isFinite(value)||(type==='integer'&&!Number.isSafeInteger(value)))return 'invalid '+type;
@@ -178,4 +179,30 @@ export function validateFormContent(form,content){
     const error=validateFormValue(content[field.key],field);
     if(error)return field.key+': '+error;
   }
+}
+
+
+/** A fully completed validation is distinct from user mismatch and technical uncertainty.
+ * @param {FormProjection} form @param {Record<string,unknown>} content @param {AbortSignal} [signal]
+ * @returns {Promise<{kind:'valid'|'invalid'|'cancelled'|'unavailable',message?:string}>}
+ */
+export async function validateFormPatterns(form,content,signal){
+  for(const field of form.fields){
+    if(signal?.aborted)return {kind:'cancelled'};
+    const pattern=field.shape.pattern;
+    if(typeof pattern!=='string'||!Object.hasOwn(content,field.key))continue;
+    const value=content[field.key];
+    if(typeof value!=='string')return {kind:'invalid',message:field.key+': must be text'};
+    const outcome=await checkPattern(pattern,value,signal);
+    if(outcome==='match')continue;
+    if(outcome==='mismatch')return {kind:'invalid',message:field.key+': text does not match required pattern'};
+    if(outcome==='cancelled')return {kind:'cancelled'};
+    return {kind:'unavailable',message:field.key+': '+({
+      invalid_pattern:'provider pattern syntax is invalid',timeout:'pattern validation timed out',
+      resource_limit:'pattern validation resource limit reached',
+      unavailable:'pattern validation unavailable',
+    }[outcome]??'pattern validation could not be confirmed')+
+      '; no answer was sent'};
+  }
+  return {kind:'valid'};
 }

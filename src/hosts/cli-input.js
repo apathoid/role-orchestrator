@@ -1,4 +1,4 @@
-import { projectForm, createFormDraft, renderFormIntro, renderFormField, formValue, validateFormContent } from './cli-form.js';
+import { projectForm, createFormDraft, renderFormIntro, renderFormField, formValue, validateFormContent, validateFormPatterns } from './cli-form.js';
 import { createInterface, clearLine, cursorTo } from 'node:readline';
 import { terminalText, createTerminalSanitizer, boundedText } from './presentation.js';
 
@@ -49,7 +49,8 @@ function inputBlock(entry,label){
  * @param {boolean} interactive @param {() => void} interrupt */
 export function createCliInput(input, output, interactive, interrupt) {
   /** @typedef {{entry:PendingInput,finish:(result:InputResult)=>void,epoch:number,
-   * form?:ReturnType<typeof projectForm>,draft?:ReturnType<typeof createFormDraft>}} PendingLine
+   * form?:ReturnType<typeof projectForm>,draft?:ReturnType<typeof createFormDraft>,
+   * signal:AbortSignal,validating?:boolean}} PendingLine
    * @type {Map<string,PendingLine>} */
   const pending = new Map();
   // Local, monotonic aliases and creation epochs are only terminal display identity.
@@ -197,6 +198,22 @@ export function createCliInput(input, output, interactive, interrupt) {
     if(issue){void report('Invalid form: '+issue);draft.index=0;return;}
     state.finish({kind:'answered',payload:{action:'accept',content:{...draft.content}}});
   }
+  /** @param {string} label @param {PendingLine} state @param {Record<string,unknown>} content @param {()=>void} finish */
+  function confirmPatterns(label,state,content,finish){
+    if(!state.form)return;
+    state.validating=true;
+    void validateFormPatterns(state.form,content,state.signal).then(result=>{
+      if(pending.get(label)!==state||state.signal.aborted)return;
+      state.validating=false;
+      if(result.kind==='valid')finish();
+      else if(result.kind!=='cancelled')void report(result.message??'Pattern validation unavailable; no answer sent.');
+      prompt();
+    }).catch(()=>{
+      if(pending.get(label)===state&&!state.signal.aborted){
+        state.validating=false;void report('Pattern validation unavailable; no answer sent.');prompt();
+      }
+    });
+  }
   function prompt() {
     if (pending.size) {
       try {
@@ -230,6 +247,10 @@ export function createCliInput(input, output, interactive, interrupt) {
         prompt();return;
       }
       const raw=explicit?explicit[2]:line;
+      if(state.validating){
+        void report('Validation is still pending for '+label+'. No response has been sent.');
+        prompt();return;
+      }
       if(state.entry.kind==='permission'){
         const result=parsePermission(state.entry,raw);
         if(result)state.finish(result);
@@ -254,7 +275,7 @@ export function createCliInput(input, output, interactive, interrupt) {
             const issue=content&&typeof content==='object'&&!Array.isArray(content)?
               validateFormContent(form,content):'expected an object';
             if(issue)void report('Form invalid: '+issue);
-            else state.finish({kind:'answered',payload:{action:'accept',content}});
+            else confirmPatterns(label,state,content,()=>state.finish({kind:'answered',payload:{action:'accept',content}}));
           }catch{void report('Form invalid: expected a JSON object after :json.');}
         }else{
           const field=form.fields[draft.index];
@@ -262,7 +283,13 @@ export function createCliInput(input, output, interactive, interrupt) {
           else {
             const parsed=formValue(raw,field);
             if(!parsed.ok)void report('Invalid '+label+' field '+(field.shape.title??field.key)+': '+parsed.error);
-            else {draft.content[field.key]=parsed.value;draft.index++;nextForm(label??'',state);}
+            else if(typeof field.shape.pattern==='string'){
+              const check=Object.create(null);
+              check[field.key]=parsed.value;
+              confirmPatterns(label,state,check,()=>{
+                draft.content[field.key]=parsed.value;draft.index++;nextForm(label??'',state);
+              });
+            }else{draft.content[field.key]=parsed.value;draft.index++;nextForm(label??'',state);}
           }
         }
       }
@@ -300,7 +327,7 @@ export function createCliInput(input, output, interactive, interrupt) {
       };
       const abort = () => finish({kind:'cancelled'});
       const form=entry.kind==='input'?projectForm(entry.request):undefined;
-      pending.set(label,{entry,finish,epoch:++epoch,...(form&&{form,draft:createFormDraft(form)})});
+      pending.set(label,{entry,finish,epoch:++epoch,signal,...(form&&{form,draft:createFormDraft(form)})});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
       void print(inputBlock(entry,label),'header').catch(()=>{});
