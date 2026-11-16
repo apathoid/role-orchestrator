@@ -6,7 +6,7 @@ test('C15R.1 sparse native tool identity, distinct modes, no invented terminal',
   const events=[tool({title:'shell',kind:'execute',status:'pending'},1),tool({title:'git show HEAD',status:'in_progress'},2),tool({title:'git show HEAD',status:'in_progress'},3),tool({status:'completed'},4)];
   for(const [mode,count] of [['compact',2],['detailed',3],['debug',4]]){
     const projection=createCliTools(),lines=events.map(e=>projection.accept(e,mode)).filter(Boolean);
-    assert.equal(lines.length,count,mode);assert.match(lines.at(-1).text,/\[T1\] · completed/);
+    assert.equal(lines.length,count,mode);assert.match(lines.at(-1).text,mode==='debug'?/git show HEAD · completed/:/\[T1\] · completed/);
     assert.ok(!lines.some(l=>l.text.includes('tool_call_update ·')));
     assert.equal(events[3].payload.title,undefined);
   }

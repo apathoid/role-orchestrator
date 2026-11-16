@@ -227,9 +227,9 @@ test('C15R.2 full compact, detailed and debug transcripts preserve text and actu
       ...(mode!=='compact'?[row('◇ [T1] shell · pending','tool_call','x',3)]:[]),
       row('◇ [T1] git show HEAD · in_progress','tool_call_update','x',4),
       ...(debug?[row('◇ [T1] git show HEAD · in_progress','tool_call_update','x',5)]:[]),
-      row('✓ [T1] · completed','tool_call_update','x',6),
+      row(debug?'✓ [T1] git show HEAD · completed':'✓ [T1] · completed','tool_call_update','x',6),
       row('◇ [T2] Read package.json · in_progress','tool_call','y',7),
-      row('✗ [T2] · failed','tool_call_update','y',8),'',
+      row(debug?'✗ [T2] Read package.json · failed':'✗ [T2] · failed','tool_call_update','y',8),'',
       heading,'  Version only.','',
     ].join('\n'),mode);
   }
