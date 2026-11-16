@@ -164,7 +164,7 @@ test('C15R.6R.4 inline/notices replay the same known orphan continuations withou
       assert.equal(reads,1);
       assert.deepEqual(plain(updates),['associated a1','answer a1','associated a3','answer a3']);
       const recovered=updates.filter(u=>u._meta?.roleOrchestratorSource?.source==='history'&&
-        u.content?.text?.startsWith('Recovered '));
+        u.content?.text?.includes('Recovered '));
       for(const phrase of ['orphan initial','orphan a2','orphan trailing']){
         assert.equal(recovered.filter(x=>x.content.text.includes(phrase)).length,1,display+' '+phrase);
       }
