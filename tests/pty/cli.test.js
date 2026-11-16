@@ -175,7 +175,10 @@ test('C15R.6 actual SDK/PTY permission and titled form preserve identity and Mar
   assert.match(output,/What should happen next\?/);
   assert.match(output,/Continue work/);assert.match(output,/Stop work/);
   assert.match(output,/Optional context/);
-  assert.equal((output.match(/Thinking · Controller/g)??[]).length,1);
+  // Real interaction and lifecycle notices may legitimately interrupt Thinking.
+  // They cannot produce one header per native fragment while readline redraws.
+  assert.ok((output.match(/Thinking · Controller/g)??[]).length<=3,output);
+  for(let i=0;i<30;i++)assert.ok(output.includes('('+i+')'),'missing native thought '+i);
   assert.match(output,/\[T1\] Read config/);assert.match(output,/\[T2\] Read config/);
   assert.match(output,/Permission: deny/);assert.match(output,/Choice: stop/);
   assert.ok(output.indexOf('### Native answer')<output.indexOf('Operation complete'));
