@@ -224,12 +224,12 @@ test('C15R.2 full compact, detailed and debug transcripts preserve text and actu
       'Role Orchestrator · '+mode+' · '+(debug?'Operation 123456789':'12345678'),'','● Controller #1 · p','  Invocation dispatched · selector=m · native effort',
       ...(debug?['  attempt=a event=dispatch seq=1 at=0 reason=DISPATCH_STARTED']:[]),'',
       heading,'  Inspect the commit.','  Read the diff.',
-      ...(mode!=='compact'?[row('◇ shell · pending','tool_call','x',3)]:[]),
-      row('◇ git show HEAD · in_progress','tool_call_update','x',4),
-      ...(debug?[row('◇ git show HEAD · in_progress','tool_call_update','x',5)]:[]),
-      row('✓ git show HEAD · completed','tool_call_update','x',6),
-      row('◇ Read package.json · in_progress','tool_call','y',7),
-      row('✗ Read package.json · failed','tool_call_update','y',8),'',
+      ...(mode!=='compact'?[row('◇ [T1] shell · pending','tool_call','x',3)]:[]),
+      row('◇ [T1] git show HEAD · in_progress','tool_call_update','x',4),
+      ...(debug?[row('◇ [T1] git show HEAD · in_progress','tool_call_update','x',5)]:[]),
+      row('✓ [T1] · completed','tool_call_update','x',6),
+      row('◇ [T2] Read package.json · in_progress','tool_call','y',7),
+      row('✗ [T2] · failed','tool_call_update','y',8),'',
       heading,'  Version only.','',
     ].join('\n'),mode);
   }

@@ -2,8 +2,11 @@ import { boundedText } from './presentation.js';
 /** @import {PendingInteraction} from '../core/ports.js' */
 /** @typedef {{key:string,shape:Record<string,unknown>,required:boolean,options?:{value:string,label:string,description?:string}[]}} FormField */
 /** @typedef {{message:string,title?:string,description?:string,fields:FormField[]}} FormProjection */
+/** @param {unknown} value @returns {Record<string,unknown>} */
 const obj=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)?/** @type {Record<string,unknown>} */(value):{};
+/** @param {unknown} value */
 const str=value=>typeof value==='string'?value:undefined;
+/** @param {unknown} value @param {number} [limit] */
 const named=(value,limit=240)=>boundedText(String(value),limit).replace(/[\r\n\t]/g,' ');
 
 /** ACP SDK 2.4.0 v1 restricted elicitation fields; unrecognized annotations are display-opaque.
@@ -54,7 +57,9 @@ export function projectForm(request){
   }
   return {message:str(payload.message)??'',title:str(schema.title),description:str(schema.description),fields};
 }
+/** @param {unknown} n */
 const validNonnegative=n=>n==null||(Number.isSafeInteger(n)&&n>=0);
+/** @param {unknown} n */
 const validNumber=n=>n==null||(typeof n==='number'&&Number.isFinite(n));
 
 /** The bound form draft is ephemeral; only original keys and typed values are retained. */

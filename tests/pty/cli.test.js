@@ -103,9 +103,9 @@ test('C15 actual PTY trusted colors, native lifecycle and NO_COLOR plain fallbac
 function assertTranscript(output,profile){
   assert.match(output,new RegExp('● Controller #1 · '+profile));
   assert.match(output,new RegExp('Thinking · Controller #1 · '+profile+'\\n  Inspect the commit\\.\\n  Read the diff\\.'));
-  assert.equal((output.match(/git show HEAD/g)??[]).length,2);
-  assert.match(output,/◇ git show HEAD · in_progress\n  ✓ git show HEAD · completed/);
-  assert.match(output,/◇ Read package\.json · in_progress\n  ✗ Read package\.json · failed/);
+  assert.equal((output.match(/git show HEAD/g)??[]).length,1);
+  assert.match(output,/◇ \[T1\] git show HEAD · in_progress\n  ✓ \[T1\] · completed/);
+  assert.match(output,/◇ \[T2\] Read package\.json · in_progress\n  ✗ \[T2\] · failed/);
   assert.match(output,new RegExp('Thinking · Controller #1 · '+profile+'\\n  Version only\\.'));
   assert.doesNotMatch(output,/tool_call_update · completed/);
   assert.equal((output.match(/Version updated\./g)??[]).length,1);

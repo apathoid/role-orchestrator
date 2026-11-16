@@ -186,7 +186,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     return write(text);
   }
   /** @param {string} label @param {PendingLine} state */
-  function nextForm(label,state){
+  function nextForm(label??'',state){
     const form=state.form,draft=state.draft;
     if(!form||!draft)return;
     if(draft.index<form.fields.length){
@@ -244,7 +244,7 @@ export function createCliInput(input, output, interactive, interrupt) {
         }else if(raw===':skip'){
           const field=form.fields[draft.index];
           if(field?.required)void report('Required field '+label+': cannot skip.');
-          else if(field){delete draft.content[field.key];draft.index++;nextForm(label,state);}
+          else if(field){delete draft.content[field.key];draft.index++;nextForm(label??'',state);}
           else void report('Use :submit to accept an empty form.');
         }else if(raw===':submit'&&form.fields.length===0){
           state.finish({kind:'answered',payload:{action:'accept',content:{}}});
@@ -262,7 +262,7 @@ export function createCliInput(input, output, interactive, interrupt) {
           else {
             const parsed=formValue(raw,field);
             if(!parsed.ok)void report('Invalid '+label+' field '+(field.shape.title??field.key)+': '+parsed.error);
-            else {draft.content[field.key]=parsed.value;draft.index++;nextForm(label,state);}
+            else {draft.content[field.key]=parsed.value;draft.index++;nextForm(label??'',state);}
           }
         }
       }
