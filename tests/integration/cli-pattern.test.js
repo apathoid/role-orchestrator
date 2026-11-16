@@ -33,3 +33,17 @@ test('C15R.6R P1: aborted pattern validation does not return mismatch or accepta
   ctl.abort();
   assert.equal(await result,'cancelled');
 });
+
+
+test('C15R.6R bounded large native multi-select validation uses original offered values',()=>{
+  const options=Array.from({length:4000},(_,i)=>({const:'v'+i,title:'Option '+i}));
+  const form=projectForm({payload:{mode:'form',message:'Many options',requestedSchema:{type:'object',
+    properties:{values:{type:'array',items:{anyOf:options},minItems:1}}}}});
+  assert.ok(form);
+  const content={values:options.slice(0,2000).map(option=>option.const)};
+  const start=performance.now();
+  assert.equal(validateFormContent(form,content),undefined);
+  const ms=performance.now()-start;
+  assert.ok(ms<1000,'large offered values incurred quadratic validation cost');
+  assert.match(validateFormContent(form,{values:['Option 1']}),/value not offered/);
+});

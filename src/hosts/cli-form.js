@@ -150,7 +150,10 @@ export function validateFormValue(value,field){
     if(typeof shape.minItems==='number'&&value.length<shape.minItems)return 'select at least '+shape.minItems;
     if(typeof shape.maxItems==='number'&&value.length>shape.maxItems)return 'select at most '+shape.maxItems;
     if(new Set(value).size!==value.length)return 'duplicate selection';
-    if(value.some(x=>!field.options?.some(y=>y.value===x)))return 'value not offered by the request';
+    // Large protocol-valid multi-selects must not cause quadratic validation
+    // cost on the Host event loop. Never infer a value from a displayed title.
+    const offered=new Set(field.options?.map(option=>option.value));
+    if(value.some(item=>!offered.has(item)))return 'value not offered by the request';
   }else if(type==='string'){
     if(typeof value!=='string')return 'must be text';
     const length=[...value].length;
