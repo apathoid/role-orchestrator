@@ -26,10 +26,10 @@ function parsePermission(entry,line){
 }
 
 /** Display only the actual request/options, with explicit numeric selection.
- * @param {PendingInput} entry @param {string} label
+ * @param {PendingInput} entry @param {string} label @param {string} source
  */
-function inputBlock(entry,label){
-  const header=label+' ['+boundedText(entry.request.profileId,80)+'] ';
+function inputBlock(entry,label,source){
+  const header=label+' · '+source+' · ';
   if(entry.kind==='permission'){
     const request=entry.request,action=request.action;
     const detail=action?[action.title,action.kind,action.details,...(action.locations??[]).map(l=>l.path+(l.line!==undefined?':'+l.line:''))].filter(Boolean).join('\n  '):'';
@@ -40,7 +40,7 @@ function inputBlock(entry,label){
       '\nSelect a displayed number or id:<exact option ID>. :cancel cancels this request.';
   }
   const form=projectForm(entry.request);
-  return form?renderFormIntro(form,label)+renderFormField(form,0):header+'Native interaction unavailable';
+  return form?renderFormIntro(form,label,source)+renderFormField(form,0):header+'Native interaction unavailable';
 
 }
 
@@ -53,6 +53,13 @@ export function createCliInput(input, output, interactive, interrupt) {
    * signal:AbortSignal,validating?:boolean}} PendingLine
    * @type {Map<string,PendingLine>} */
   const pending = new Map();
+  /** Known invocation identity from the existing presentation facts, when delivered.
+   * @type {(attemptId:string)=>string|undefined}
+   */
+  let sourceResolver=()=>undefined;
+  /** @param {PendingInput} entry */
+  const sourceFor=entry=>sourceResolver(entry.request.attemptId)??
+    ('profile '+boundedText(entry.request.profileId,80)+' · role not recorded');
   // Local, monotonic aliases and creation epochs are only terminal display identity.
   // They never replace the trusted request/attempt/owner correlation.
   let aliasSequence=0,epoch=0;
@@ -340,11 +347,14 @@ export function createCliInput(input, output, interactive, interrupt) {
       pending.set(label,{entry,finish,epoch:++epoch,signal,...(form&&{form,draft:createFormDraft(form)})});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
-      void print(inputBlock(entry,label),'header').catch(()=>{});
+      void print(inputBlock(entry,label,sourceFor(entry)),'header').catch(()=>{});
       prompt();
     });
   }
-  return { ask, print, printChunk, report, resetPresentation(){sanitizers.clear();chunkSource=undefined;atLineStart=true;}, close() {
+  return { ask, print, printChunk, report,
+    /** @param {(attemptId:string)=>string|undefined} resolve */ 
+    setSourceResolver(resolve){sourceResolver=resolve;},
+    resetPresentation(){sanitizers.clear();chunkSource=undefined;atLineStart=true;}, close() {
     for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     stopReader();
     sanitizers.clear();

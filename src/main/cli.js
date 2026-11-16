@@ -86,6 +86,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
     const clients = cliOwner(input);
     const mode = invocation.presentation ?? (interactive && invocation.format === 'text' && ['run','resume'].includes(invocation.command.action) ? 'compact' : undefined);
     const renderer = cliPresentation(mode,input.print,input.printChunk,input.resetPresentation);
+    input.setSourceResolver(renderer.sourceFor);
     const deferSummary=invocation.format==='text'&&['run','resume'].includes(invocation.command.action)&&!invocation.output&&sharedTerminal();
     /** @param {unknown} result */
     const finishPresentation=result=>{deferredSummary=renderer.finish(result,deferSummary);};

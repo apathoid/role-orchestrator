@@ -15,8 +15,10 @@ const terminal=status=>['completed','failed','cancelled','canceled','unknown'].i
 function detail(view,mode){
   const title=view.title||view.kind||'Tool (earlier details unavailable)';
   const command=view.command&&view.command!==title?' · '+view.command:'';
-  return title+command+(mode!=='compact'&&view.location?' · '+view.location:'')+
-    (mode!=='compact'&&view.description?' · '+view.description:'');
+  // Compact needs the real native location/description to distinguish same-title
+  // calls. Each value is already terminal-sanitized and individually bounded.
+  return title+command+(view.location?' · '+view.location:'')+
+    (view.description?' · '+view.description:'');
 }
 /** Presentation cache with local monotonic aliases; no tool state or trusted identity is written. */
 export function createCliTools(){

@@ -108,9 +108,9 @@ export function renderFormField(form,index,choiceOffset=0){
     (!field.required?'\n  :skip omits this field.':'')+
     '\n  :back edits the preceding field; :decline or :cancel stops the form.';
 }
-/** @param {FormProjection} form @param {string} label */
-export function renderFormIntro(form,label){
-  return label+' · Native question'+(form.title?' · '+boundedText(form.title,240):'')+
+/** @param {FormProjection} form @param {string} label @param {string} [source] */
+export function renderFormIntro(form,label,source){
+  return '? '+boundedText(source??'Source unknown',200)+' · '+label+' · Native question'+(form.title?' · '+boundedText(form.title,240):'')+
     '\n'+(form.message?boundedText(form.message,2000):'')+
     (form.description?'\n'+boundedText(form.description,1000):'');
 }

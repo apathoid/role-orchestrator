@@ -22,6 +22,8 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
   /** @param {string} text @param {number} [count] */
   const indent=(text,count=2)=>text.split('\n').map(line=>' '.repeat(count)+line).join('\n');
   return {
+    /** Trusted attempt identity established from execution facts, never guessed. */
+    sourceFor: (/** @type {string} */ attemptId)=>aliases.get(attemptId),
     /** @param {string} id */
     accepted(id) {
       if(!mode||closed||acceptedId===id)return;
@@ -77,8 +79,19 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
         const technical=mode==='debug'?'\n'+indent('attempt='+fact.attemptId+' event='+notice.event.eventId+' seq='+notice.event.sequence+' at='+notice.event.receivedAt+' reason='+notice.event.reasonCode):'';
         await print('\n'+(fact.invocationKind==='controller'?'● ':'├─ ')+alias+'\n'+indent('Invocation dispatched'+(route?' · '+boundedText(route,480):''))+objective+technical,'header');
       }else{
-        const text=notice.channel==='execution'?formatExecution(notice.event,mode,notice.fact):
+        let text=notice.channel==='execution'?formatExecution(notice.event,mode,notice.fact):
           notice.channel==='activity'?formatActivity(notice.event,mode):'[Delivery gap] '+notice.droppedCount+' notices dropped';
+        if(text&&notice.channel==='execution'&&mode==='compact'&&notice.event.attemptId){
+          const event=notice.event,known=aliases.get(event.attemptId);
+          if(known){
+            const full='['+(event.actionId===event.attemptId?'Controller':'Attempt')+' '+event.attemptId+'] ';
+            if(text.startsWith(full))text='['+known+'] '+text.slice(full.length);
+          }
+          if(['interaction.requested','permission.requested'].includes(event.eventName)&&
+            event.reasonCode==='AWAITING_TRUSTED_REPLY'){
+            text=text.replace(/ · AWAITING_TRUSTED_REPLY$/, '');
+          }
+        }
         if(text){
           const fact=notice.channel==='execution'?notice.fact:undefined;
           const event=notice.channel==='execution'?notice.event:undefined;

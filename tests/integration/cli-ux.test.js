@@ -419,3 +419,21 @@ test('C15R.6R.2 large valid form streams one field; choice lists are paged witho
   ctl.abort();assert.deepEqual(await done,{kind:'cancelled'});
   terminal.close();input.end();
 });
+
+
+test('C15R.6R.3 question source is the actual known execution label, otherwise unknown role is explicit',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let rendered='';output.on('data',b=>rendered+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const renderer=cliPresentation('compact',terminal.print,terminal.printChunk,terminal.resetPresentation);
+  terminal.setSourceResolver(renderer.sourceFor);
+  await renderer.notice({channel:'execution',event:{eventName:'attempt.dispatched',eventId:'e1',
+    level:'info',sequence:1,receivedAt:0,reasonCode:'DISPATCH_STARTED'},fact:{
+    attemptId:'b',invocationKind:'worker',roleId:'Reviewer',attemptOrdinal:2,profileId:'worker'}});
+  const first=terminal.ask(form,new AbortController().signal);
+  assert.match(rendered,/\? Reviewer #2 · worker · #1 · Native question/);
+  input.write('value\n');await first;
+  const second=terminal.ask({...form,request:{...form.request,requestId:'unknown',attemptId:'unseen'}},new AbortController().signal);
+  assert.match(rendered,/profile worker · role not recorded/);
+  input.write('another\n');await second;
+  terminal.close();renderer.close();input.end();
+});

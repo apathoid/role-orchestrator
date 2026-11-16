@@ -63,3 +63,20 @@ test('C15R.6.4 same-title independent tools keep distinct local aliases, termina
   assert.match(view.accept(unknown,'compact').text,/Read same file/);
   assert.match(view.accept(unknown,'compact').text,/Read same file/);
 });
+
+
+test('C15R.6R.3 compact shows genuine native locations and description, but not repeat long details',()=>{
+  const p=createCliTools();
+  const first=p.accept(tool({title:'Read',kind:'read',status:'in_progress',
+    locations:[{path:'src/editor/one.js',line:8}],description:'source tree file'},1,'a','call1'),'compact');
+  const other=p.accept(tool({title:'Read',kind:'read',status:'in_progress',
+    locations:[{path:'src/editor/two.js'}],description:'another file'},2,'a','call2'),'compact');
+  assert.match(first.text,/src\/editor\/one.js:8/);
+  assert.match(first.text,/source tree file/);
+  assert.match(other.text,/src\/editor\/two.js/);
+  const complete=p.accept(tool({status:'completed'},3,'a','call1'),'compact');
+  assert.match(complete.text,/\[T1\] · completed/);
+  assert.doesNotMatch(complete.text,/editor\/one|source tree/);
+  const missing=p.accept({...tool({title:'Read',status:'in_progress'},4,'a','call3'),nativeId:undefined},'compact');
+  assert.doesNotMatch(missing.text,/\[T\d+\]/);
+});
