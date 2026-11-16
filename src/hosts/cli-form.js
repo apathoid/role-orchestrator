@@ -20,7 +20,7 @@ export function projectForm(request){
   const required=schema.required;
   if(required!=null&&(!Array.isArray(required)||required.some(x=>typeof x!=='string')))return;
   const props=obj(schema.properties),fields=[];
-  if(Object.keys(props).length>128)return;
+  // Field count is not a protocol limitation: fields render one at a time.
   if(required?.some(key=>!Object.hasOwn(props,key)))return;
   for(const [key,original] of Object.entries(props)){
     const shape=obj(original),type=shape.type;
@@ -67,11 +67,14 @@ const validNumber=n=>n==null||(typeof n==='number'&&Number.isFinite(n));
 /** The bound form draft is ephemeral; only original keys and typed values are retained. */
 export function createFormDraft(/** @type {FormProjection} */ form){
   /** @type {Record<string,string|number|boolean|string[]>} */
-  const content={};
+  const content=Object.create(null);
   return {content,index:0};
 }
-/** @param {FormProjection} form @param {number} index */
-export function renderFormField(form,index){
+/** Render one field and at most one bounded choice page; the original options
+ * remain addressable by their absolute positions without altering native values.
+ * @param {FormProjection} form @param {number} index @param {number} [choiceOffset]
+ */
+export function renderFormField(form,index,choiceOffset=0){
   const field=form.fields[index];
   if(!field)return 'No fields. Enter :submit to accept an empty response.';
   const shape=field.shape;
@@ -88,13 +91,19 @@ export function renderFormField(form,index){
     typeof shape.pattern==='string'?'pattern '+named(shape.pattern,160):undefined,
     typeof shape.format==='string'?'format '+shape.format:undefined,
   ].filter(Boolean);
-  const choices=field.options?.map((v,i)=>'\n    '+(i+1)+'. '+named(v.label)+
+  const pageSize=20;
+  const total=field.options?.length??0;
+  const from=Math.min(Math.max(0,choiceOffset),Math.max(0,total-1));
+  const choices=field.options?.slice(from,from+pageSize).map((v,i)=>
+    '\n    '+(from+i+1)+'. '+named(v.label)+
     (v.description?' — '+named(v.description,480):'')).join('')??'';
+  const choicesNote=total>pageSize?'\n  Showing '+(from+1)+'–'+Math.min(total,from+pageSize)+' of '+
+    total+' choices. Enter :choices N to view starting at choice N.':'';
   return '\n  '+(index+1)+'/'+form.fields.length+'  '+boundedText(caption,1000)+' ('+type+
     (field.required?', required':', optional')+')'+description+
     (constraints.length?'\n  '+constraints.join(' · '):'')+
     (shape.default!==undefined&&shape.default!==null?'\n  Offered default (not applied): '+named(JSON.stringify(shape.default),240):'')+
-    choices+
+    choices+choicesNote+
     (field.options?'\n  Enter a displayed number'+(shape.type==='array'?' list separated by commas':'')+'.':'\n  Enter the value as text.')+
     (!field.required?'\n  :skip omits this field.':'')+
     '\n  :back edits the preceding field; :decline or :cancel stops the form.';

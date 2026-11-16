@@ -69,7 +69,10 @@ export function createCliInput(input, output, interactive, interrupt) {
       previousCR=ch==='\r';
       if(ch==='\r'||ch==='\n'){
         if(enteredLines.length>=128)enteredLines.shift();
-        enteredLines.push(lineOrigin??{epoch,target:undefined});
+        // An empty Enter still belongs to the only visibly active request at
+        // the physical input event. Concurrent requests require an alias.
+        const unique=pending.size===1?pending.keys().next().value:undefined;
+        enteredLines.push(lineOrigin??{epoch,target:unique});
         lineOrigin=undefined;
       }else if(!lineOrigin){
         lineOrigin={epoch,target:pending.size===1?pending.keys().next().value:undefined};
@@ -259,6 +262,13 @@ export function createCliInput(input, output, interactive, interrupt) {
         const {form,draft}=state;
         if(raw===':cancel'||raw===':decline'){
           state.finish({kind:'answered',payload:{action:raw.slice(1)}});
+        }else if(raw.startsWith(':choices ')){
+          const position=raw.slice(9);
+          const field=form.fields[draft.index];
+          const num=/^[1-9]\d*$/.test(position)?Number(position):NaN;
+          if(!field?.options||!Number.isSafeInteger(num)||num<1||num>field.options.length){
+            void report('Invalid choice page: enter :choices N for an offered choice position.');
+          }else void print(renderFormField(form,draft.index,num-1),'header').catch(()=>{});
         }else if(raw===':back'){
           draft.index=Math.max(0,draft.index-1);
           void print(renderFormField(form,draft.index),'header').catch(()=>{});

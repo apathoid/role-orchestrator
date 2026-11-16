@@ -356,3 +356,66 @@ test('C15R.6.3 active readline preserves one Thinking block across 80 short nati
   for(let i=0;i<80;i++)assert.ok(display.includes('<'+i+'>'),String(i));
   terminal.close();input.end();
 });
+
+
+test('C15R.6R.2 blank Enter accepts empty string for the sole live form, not an omitted field',async()=>{
+  const input=new PassThrough(),output=new PassThrough();output.resume();
+  const terminal=createCliInput(input,output,true,()=>{});
+  const f=structuredClone(form);
+  f.request.requestId='blank';
+  f.request.payload={mode:'form',message:'Optional text',requestedSchema:{type:'object',
+    properties:{text:{type:'string'}},required:['text']}};
+  const done=terminal.ask(f,new AbortController().signal);
+  input.write('\n');
+  assert.deepEqual(await done,{kind:'answered',payload:{action:'accept',content:{text:''}}});
+  const old=new AbortController();
+  const p=terminal.ask(permission,old.signal);
+  const future=terminal.ask({...f,request:{...f.request,requestId:'blank2'}},new AbortController().signal);
+  input.write('\n'); // Two active owners: ambiguous empty Enter cannot be routed.
+  await new Promise(resolve=>setImmediate(resolve));
+  old.abort();assert.deepEqual(await p,{kind:'cancelled'});
+  input.write('\n'); // Now one displayed live owner can accept blank text.
+  assert.deepEqual(await future,{kind:'answered',payload:{action:'accept',content:{text:''}}});
+  terminal.close();input.end();
+});
+test('C15R.6R.2 original special field names and typed values survive form draft and :json',async()=>{
+  const input=new PassThrough(),output=new PassThrough();output.resume();
+  const terminal=createCliInput(input,output,true,()=>{});
+  const props=JSON.parse('{"__proto__":{"type":"array","items":{"type":"string","enum":["a","b"]}},"constructor":{"type":"string"},"prototype":{"type":"integer"}}');
+  const f=structuredClone(form);f.request.requestId='special';
+  f.request.payload={mode:'form',message:'Special keys',requestedSchema:{type:'object',
+    properties:props,required:['__proto__','constructor','prototype']}};
+  const result=terminal.ask(f,new AbortController().signal);
+  input.write('1,2\nname\n0\n');
+  const received=await result;
+  assert.equal(received.kind,'answered');
+  assert.deepEqual(received.payload?.content?.['__proto__'],['a','b']);
+  assert.equal(Object.hasOwn(received.payload.content,'__proto__'),true);
+  assert.equal(received.payload.content.constructor,'name');
+  assert.equal(received.payload.content.prototype,0);
+  const next=terminal.ask({...f,request:{...f.request,requestId:'special2'}},new AbortController().signal);
+  input.write(':json {"__proto__":["b"],"constructor":"given","prototype":0}\n');
+  const accepted=await next;
+  assert.equal(Object.hasOwn(accepted.payload.content,'__proto__'),true);
+  assert.deepEqual(accepted.payload.content['__proto__'],['b']);
+  terminal.close();input.end();
+});
+test('C15R.6R.2 large valid form streams one field; choice lists are paged without losing actual value',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let shown='';output.on('data',chunk=>shown+=chunk);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const keys=Object.fromEntries(Array.from({length:132},(_,i)=>['f'+i,{type:'string'}]));
+  keys.f0={type:'string',oneOf:Array.from({length:51},(_,i)=>({const:'value-'+(i+1),title:'Choice '+(i+1)}))};
+  const f=structuredClone(form);f.request.requestId='large';
+  f.request.payload={mode:'form',message:'Large valid ACP form',requestedSchema:{type:'object',properties:keys}};
+  const ctl=new AbortController();const done=terminal.ask(f,ctl.signal);
+  assert.match(shown,/Large valid ACP form/);
+  assert.match(shown,/Choice 20/);assert.doesNotMatch(shown,/Choice 51/);
+  input.write(':choices 41\n');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(shown,/Choice 51/);
+  input.write('51\n');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(shown,/2\/132/);
+  ctl.abort();assert.deepEqual(await done,{kind:'cancelled'});
+  terminal.close();input.end();
+});
