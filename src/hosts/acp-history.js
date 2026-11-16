@@ -159,9 +159,11 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
       'orphan:'+id));
   }
   for(const request of session.requests)if(request.operationId)remaining.set(request.operationId,(remaining.get(request.operationId)??0)+1);
-  /** @param {Operation} operation @param {number} from @param {number} to */
-  async function background(operation,from,to){
-    let heading=false;
+  /** Recovered user records are independent of inline/notices presentation mode.
+   * Traverse only gaps outside known session turns, never infer turn chronology.
+   * @param {Operation} operation @param {number} from @param {number} to
+   */
+  async function orphanRecords(operation,from,to){
     const known=associated.get(operation.operationId);
     if(from===0&&to>0&&!known?.has(operation.request.requestId)){
       await unassociated(operation,operation.request.requestId,operation.request.text,'initial Request');
@@ -170,8 +172,15 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
       const item=operation.events[index];
       if(item.kind==='operation.continued'&&!known?.has(item.input.requestId)){
         await unassociated(operation,item.input.requestId,item.input.text,'continuation');
-        continue;
       }
+    }
+  }
+  /** Technical journal facts are optional inline presentation, not user-turn recovery.
+   * @param {Operation} operation @param {number} from @param {number} to
+   */
+  async function background(operation,from,to){
+    let heading=false;
+    for(let index=from;!signal?.aborted&&index<to;index++){
       for(const update of journalUpdates(operation,index,mode,reports)){
         if(!heading){
           heading=true;
@@ -197,9 +206,9 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
       seen.add(id);
       const prior=seenBoundary.get(id);
       const earlier=range.start-(range.continuing?1:0);
-      if(inline&&(prior??0)<earlier)await background(operation,prior??0,earlier);
-      if(!inline&&prior===undefined&&earlier>0&&!associated.get(id)?.has(operation.request.requestId)){
-        await unassociated(operation,operation.request.requestId,operation.request.text,'initial Request');
+      if((prior??0)<earlier){
+        await orphanRecords(operation,prior??0,earlier);
+        if(inline)await background(operation,prior??0,earlier);
       }
       await replayText(range.text,true,emit,signal);
       if(signal?.aborted)return;
@@ -227,7 +236,10 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
     remaining.set(id,left);
     if(left===0){
       const boundary=seenBoundary.get(id);
-      if(inline&&boundary!==undefined&&boundary<operation.events.length)await background(operation,boundary,operation.events.length);
+      if(boundary!==undefined&&boundary<operation.events.length){
+        await orphanRecords(operation,boundary,operation.events.length);
+        if(inline)await background(operation,boundary,operation.events.length);
+      }
       snapshot=undefined;reports.clear();classified=false;seenBoundary.delete(id);
     }
   }
@@ -240,14 +252,10 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
     let operation;
     try{operation=await inspect(id);}catch{ /* An unavailable legacy snapshot is not a turn. */ }
     if(!operation||signal?.aborted)continue;
+    await orphanRecords(operation,0,operation.events.length);
     if(display==='inline'){
       reports=historicalOutcomeReports(operation);
       await background(operation,0,operation.events.length);
-    }else{
-      if(!associated.get(id)?.has(operation.request.requestId))
-        await unassociated(operation,operation.request.requestId,operation.request.text,'initial Request');
-      for(const event of operation.events)if(event.kind==='operation.continued'&&!associated.get(id)?.has(event.input.requestId))
-        await unassociated(operation,event.input.requestId,event.input.text,'continuation');
     }
     reports.clear();
   }

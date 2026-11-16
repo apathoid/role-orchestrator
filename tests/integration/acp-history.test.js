@@ -142,3 +142,36 @@ test('C15R.6.5 missing initial and intermittent continuations are attributed, ne
   await replayHistory(session,async()=>A,async u=>{partial.push(u);stop.abort();},'compact','inline',stop.signal);
   assert.equal(partial.length,1);
 });
+
+
+test('C15R.6R.4 inline/notices replay the same known orphan continuations without inventing turns',async()=>{
+  const A=operation('A','a0','orphan initial',[
+    event('A','wait0','operation.waiting',{waiting:{kind:'question',question:'unattributed'}}),
+    event('A','c1','operation.continued',{input:{requestId:id('a1'),text:'associated a1'}}),
+    event('A','f1','operation.finished',{assessment:assessment('answer a1')}),
+    event('A','c2','operation.continued',{input:{requestId:id('a2'),text:'orphan a2'}}),
+    event('A','f2','operation.finished',{assessment:assessment('not associated')}),
+    event('A','c3','operation.continued',{input:{requestId:id('a3'),text:'associated a3'}}),
+    event('A','f3','operation.finished',{assessment:assessment('answer a3')}),
+    event('A','c4','operation.continued',{input:{requestId:id('a4'),text:'orphan trailing'}}),
+  ]);
+  const session={sessionId:'session',cwd:'/tmp',operations:['A'],
+    requests:[entry('a1','A','f1'),entry('a3','A','f3')]};
+  for(const display of ['inline','notices']){
+    for(let pass=0;pass<2;pass++){
+      let reads=0;const updates=[];
+      await replayHistory(session,async()=>{reads++;return A;},async update=>updates.push(update),'compact',display);
+      assert.equal(reads,1);
+      assert.deepEqual(plain(updates),['associated a1','answer a1','associated a3','answer a3']);
+      const recovered=updates.filter(u=>u._meta?.roleOrchestratorSource?.source==='history'&&
+        u.content?.text?.startsWith('Recovered '));
+      for(const phrase of ['orphan initial','orphan a2','orphan trailing']){
+        assert.equal(recovered.filter(x=>x.content.text.includes(phrase)).length,1,display+' '+phrase);
+      }
+      assert.ok(recovered.every(u=>u._meta.roleOrchestratorSource.recovered));
+      assert.ok(!updates.some(u=>u.sessionUpdate==='user_message_chunk'&&u.content.text.includes('orphan')));
+      assert.ok(!updates.some(u=>u.sessionUpdate==='agent_message_chunk'&&!u._meta?.roleOrchestratorSource&&
+        u.content.text.includes('not associated')));
+    }
+  }
+});
