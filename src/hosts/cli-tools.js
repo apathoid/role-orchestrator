@@ -9,6 +9,7 @@ const maxEntries=128,maxBytes=256*1024;
 const obj=value=>value&&typeof value==='object'&&!Array.isArray(value)?/** @type {Record<string,unknown>} */(value):{};
 /** @param {unknown} value */
 const field=value=>typeof value==='string'?boundedText(value,480).replace(/[\n\t]/g,' '):undefined;
+/** @param {string|undefined} status */
 const terminal=status=>['completed','failed','cancelled','canceled','unknown'].includes(status??'');
 /** @param {ToolView} view @param {PresentationMode} mode */
 function detail(view,mode){

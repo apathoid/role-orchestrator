@@ -37,7 +37,7 @@ function inputBlock(entry,label){
       (detail?'\n  '+boundedText(detail):'')+'\n'+request.options.map((option,i)=>
         '  '+(i+1)+'. '+(option.label??option.kind)+' [id='+option.id+']'+
         (option.scope?' · '+option.scope:'')).join('\n')+
-      '\nEnter '+label+' option NUMBER or an offered option ID.';
+      '\nSelect a displayed number or id:<exact option ID>. :cancel cancels this request.';
   }
   const form=projectForm(entry.request);
   return form?renderFormIntro(form,label)+renderFormField(form,0):header+'Native interaction unavailable';

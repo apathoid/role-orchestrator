@@ -58,7 +58,7 @@ export function projectForm(request){
   return {message:str(payload.message)??'',title:str(schema.title),description:str(schema.description),fields};
 }
 /** @param {unknown} n */
-const validNonnegative=n=>n==null||(Number.isSafeInteger(n)&&n>=0);
+const validNonnegative=n=>n==null||(typeof n==='number'&&Number.isSafeInteger(n)&&n>=0);
 /** @param {unknown} n */
 const validNumber=n=>n==null||(typeof n==='number'&&Number.isFinite(n));
 
