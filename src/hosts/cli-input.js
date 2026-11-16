@@ -186,7 +186,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     return write(text);
   }
   /** @param {string} label @param {PendingLine} state */
-  function nextForm(label??'',state){
+  function nextForm(label,state){
     const form=state.form,draft=state.draft;
     if(!form||!draft)return;
     if(draft.index<form.fields.length){
