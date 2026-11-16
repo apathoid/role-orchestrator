@@ -437,3 +437,39 @@ test('C15R.6R.3 question source is the actual known execution label, otherwise u
   input.write('another\n');await second;
   terminal.close();renderer.close();input.end();
 });
+
+
+test('C15R.6R.1 pattern timeout does not block another pending permission or grant its own request', {timeout:10000},async()=>{
+  const input=new PassThrough(),output=new PassThrough();let shown='';output.on('data',b=>shown+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const risky=structuredClone(form);risky.request.requestId='risky';
+  risky.request.payload={mode:'form',message:'Pattern',requestedSchema:{type:'object',properties:{
+    value:{type:'string',pattern:'(a+)+$'}},required:['value']}};
+  const stop=new AbortController();
+  const answer=terminal.ask(risky,stop.signal);
+  input.write('a'.repeat(40)+'!\n');
+  const start=performance.now();
+  const approval=terminal.ask({...permission,request:{...permission.request,requestId:'parallel'}},new AbortController().signal);
+  input.write('#2 1\n');
+  assert.deepEqual(await approval,{kind:'answered',payload:{optionId:'deny'}});
+  assert.ok(performance.now()-start<700,'permission owner was stalled by unrelated provider regex');
+  await new Promise(resolve=>setTimeout(resolve,950));
+  assert.match(shown,/pattern validation timed out/);
+  input.write(':cancel\n');
+  assert.deepEqual(await answer,{kind:'answered',payload:{action:'cancel'}});
+  terminal.close();input.end();
+});
+test('C15R.6R.1 :json fallback validates native pattern rather than accepting unverified content', {timeout:10000},async()=>{
+  const input=new PassThrough(),output=new PassThrough();let shown='';output.on('data',b=>shown+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const f=structuredClone(form);f.request.requestId='json-pattern';
+  f.request.payload={mode:'form',message:'Pattern value',requestedSchema:{type:'object',
+    properties:{value:{type:'string',pattern:'^(abc|def)$'}},required:['value']}};
+  const answer=terminal.ask(f,new AbortController().signal);
+  input.write(':json {"value":"different"}\n');
+  await new Promise(resolve=>setTimeout(resolve,160));
+  assert.match(shown,/does not match required pattern/);
+  input.write(':json {"value":"abc"}\n');
+  assert.deepEqual(await answer,{kind:'answered',payload:{action:'accept',content:{value:'abc'}}});
+  terminal.close();input.end();
+});

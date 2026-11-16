@@ -172,6 +172,7 @@ test('C15R.6 actual SDK/PTY permission and titled form preserve identity and Mar
   const configPath=await config(cwd,true,'c15r6-interaction');
   const output=await ttyDialogue(cwd,['run','native','--config',configPath,'--presentation','compact'],c15r6Replies);
   assert.match(output,/Permission requested/);
+  assert.match(output,/\? Controller #1 · primary · #2 · Native question/);
   assert.match(output,/What should happen next\?/);
   assert.match(output,/Continue work/);assert.match(output,/Stop work/);
   assert.match(output,/Optional context/);

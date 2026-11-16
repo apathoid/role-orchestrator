@@ -225,7 +225,244 @@ agent()
       const selected=permission.outcome.outcome==='selected'?permission.outcome.optionId:'cancelled';
       const ask=client.request(c.elicitation.create,{...source,mode:'form',message:'What should happen next?',
         requestedSchema:{type:'object',title:'Next action',properties:{
-          choice:{type:'string',title:'Choose an action',oneOf:[{const:'continue',title:'Continue work'},
+          choice:{type:'string',title:'Choose an action',pattern:'^(continue|stop)
+            {const:'stop',title:'Stop work'}]},
+          note:{type:'string',title:'Optional context',description:'Add details if needed'}
+        },required:['choice']}});
+      for(let i=0;i<30;i++){
+        await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'agent_thought_chunk',
+          content:{type:'text',text:'('+i+')'}}});
+        if(i%3===0)await sleep(2);
+      }
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call',
+        toolCallId:'tool-a',title:'Read config',kind:'read',status:'in_progress'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call',
+        toolCallId:'tool-b',title:'Read config',kind:'read',status:'in_progress'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call_update',
+        toolCallId:'tool-a',status:'completed'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call_update',
+        toolCallId:'tool-b',status:'failed'}});
+      const form=await ask;
+      const answer='### Native answer\nPermission: '+selected+'\nChoice: '+(form.action==='accept'?form.content.choice:form.action);
+      await message('final',JSON.stringify({schemaVersion:1,operationId,decisionId:attemptId+'-native',
+        contextCursor:context.find(x=>x.ref==='host:invocation-context').value.contextCursor,
+        additions:[],cancellations:[],finalAssessment:{author:profileId,overall:'complete',requirements:[],
+          observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer}}));
+      return {stopReason:'end_turn'};
+    }
+    if (scenario === 'host-elicitation') {
+      assert.equal(clientCapabilities?.elicitation?.url, undefined);
+      let text = 'unavailable';
+      const form = { mode: 'form', sessionId, message: 'Which value?', requestedSchema: {
+        type: 'object', properties: { value: { type: 'string' } }, required: ['value'],
+      } };
+      if (clientCapabilities?.elicitation?.form) {
+        assert.equal((await client.request(c.elicitation.create, { ...form, sessionId: 'wrong' })).action, 'cancel');
+        const reply = await client.request(c.elicitation.create, form);
+        text = reply.action === 'accept' ? reply.content.value : reply.action;
+      } else await assert.rejects(client.request(c.elicitation.create, form), error => error.code === -32601);
+      await message('result', JSON.stringify({ schemaVersion: 1, operationId, decisionId: 'elicitation-decision', contextCursor: 0,
+        additions: [], cancellations: [], finalAssessment: { author: profileId, overall: 'complete', requirements: [],
+          observationRefs: [], findingRefs: [], unresolvedQuestions: [], answer: text } }));
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'native-activity') {
+      await message('progress', 'ambiguous progress');
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'reasoning chunk' } } });
+      await client.notify(c.session.update, { sessionId: 'wrong', update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'foreign' } } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'plan', entries: [{ content: 'inspect', priority: 'medium', status: 'pending' }] } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 'shared', title: 'Read', kind: 'read', status: 'in_progress' } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'tool_call_update', toolCallId: 'shared', status: 'completed' } });
+      for (;;) {
+        try { await access(attemptId + '.release'); break; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
+      }
+      await message('final', 'native result');
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'host-extension') {
+      const advertised = clientCapabilities?._meta?.roleOrchestratorExtensions;
+      assert.equal(clientCapabilities?.fs?.readTextFile ?? false, false);
+      assert.equal(clientCapabilities?.terminal ?? false, false);
+      assert.equal(clientCapabilities?._meta?.unrelated, undefined);
+      let text = 'unavailable';
+      if (advertised?.requests.includes('_ro/echo')) {
+        assert.deepEqual(advertised, { requests: ['_ro/echo'], notifications: ['_ro/notice'] });
+        await assert.rejects(client.request('_ro/unknown', { sessionId }), error => error.code === -32601);
+        await assert.rejects(client.request('_ro/echo', { sessionId: 'wrong' }), error => error.code === -32800);
+        const payload = { sessionId, nested: { sessionId: 'opaque', arbitrary: [1, null] }, objective };
+        await client.notify('_ro/notice', payload);
+        const reply = await client.request('_ro/echo', payload);
+        text = reply.answer;
+      } else {
+        await assert.rejects(client.request('_ro/echo', { sessionId }), error => error.code === -32601);
+      }
+      await message('result', JSON.stringify({ schemaVersion: 1, operationId, decisionId: 'extension-decision', contextCursor: 0,
+        additions: [], cancellations: [], finalAssessment: { author: profileId, overall: 'complete', requirements: [],
+          observationRefs: [], findingRefs: [], unresolvedQuestions: [], answer: text } }));
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'host-relay' || scenario === 'host-relay-concurrent') {
+      if (objective === 'slow-relay') {
+        await writeFile('relay-ready', '');
+        while (true) {
+          try { await access('relay-go'); break; }
+          catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
+        }
+      }
+      const permission = await client.request(c.session.requestPermission, {
+        sessionId, toolCall: { toolCallId: 'shared-native-id', title: objective, locations: [{ path: '/example' }] },
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }, { optionId: 'deny', name: 'Deny', kind: 'reject_once' }],
+      });
+      let text = permission.outcome.outcome === 'selected' ? permission.outcome.optionId : 'cancelled';
+      if (clientCapabilities?.fs?.readTextFile && text === 'allow') {
+        const result = await client.request(c.fs.readTextFile, { sessionId, path: '/example' });
+        text += ':' + result.content;
+      }
+      if(scenario==='host-relay-concurrent'){
+        const form=await client.request(c.elicitation.create,{sessionId,mode:'form',toolCallId:'shared-native-id',
+          message:'Old worker form',requestedSchema:{type:'object',properties:{value:{type:'string'}},required:['value']}});
+        assert.equal(form.action,'accept');text+=':'+form.content.value;
+        const payload={sessionId,objective,nested:{sessionId:'opaque'}};
+        await client.notify('_ro/notice',payload);
+        const ext=await client.request('_ro/echo',payload);text+=':'+ext.answer;
+      }
+      assert.equal(Boolean(clientCapabilities?.terminal), false);
+      if (objective === 'slow-relay') await writeFile('relay-result', text);
+      await message('result', JSON.stringify({
+        schemaVersion: 1, operationId, decisionId: 'relay-decision', contextCursor: 0, additions: [], cancellations: [],
+        finalAssessment: { author: profileId, overall: 'complete', requirements: [], observationRefs: [],
+          findingRefs: [], unresolvedQuestions: [], answer: text },
+      }));
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'mcp') {
+      assert.match(prompt, /Optional MCP context_list and context_fetch/);
+      const decision = await retrieveContext(mcpUrl, { attemptId, profileId, operationId, context });
+      await message('result', JSON.stringify(decision));
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'mcp-unsupported') assert.match(prompt, /Context retrieval is unavailable/);
+    if (reasoningScenario) {
+      await writeFile('prompt-effort', effort);
+      await client.notify(c.session.update, {sessionId,update: {
+        sessionUpdate:'agent_message_chunk', messageId:'effort', content:{type:'text',text:effort},
+      }});
+      return {stopReason:'end_turn'};
+    }
+    const anonymous = scenario === 'anonymous-controller';
+    const modelId = anonymous ? undefined : 'result';
+    await message(anonymous ? undefined : 'progress', 'progress ' + attemptId);
+    if (modeScenario) await writeFile('prompt-model', model);
+    if (objective === 'hold') {
+      await writeFile(attemptId + '.ready', '');
+      const untilReleased = async () => {
+        while (true) {
+          try { await access(attemptId + '.release'); return 'end_turn'; }
+          catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
+        }
+      };
+      if (await Promise.race([untilReleased(), stop.promise]) === 'cancelled') {
+        if (scenario !== 'late-terminal') return { stopReason: 'cancelled' };
+        await message('late', 'late result');
+        return { stopReason: 'end_turn' };
+      }
+    }
+    if (scenario === 'disconnect') process.exit(3);
+    if (scenario === 'malformed') return {};
+    if (scenario === 'oversize') {
+      for (let i = 0; i < 3; i++) await message('progress', 'x'.repeat(400_000));
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'provider-cancel') return { stopReason: 'cancelled' };
+    if (objective === 'failure') return { stopReason: 'refusal' };
+    if (scenario === 'permission-description') {
+      const toolCall = { toolCallId: 'edit-config', title: 'Write project configuration', kind: 'edit',
+        locations: [{ path: '/project/config.json' }], rawInput: { text: 'enabled' },
+        content: [{ type: 'diff', path: '/project/config.json', oldText: 'disabled', newText: 'enabled' }],
+      };
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'tool_call', ...toolCall } });
+      for (const tool of [{ toolCallId: toolCall.toolCallId }, { ...toolCall, toolCallId: 'edit-config-direct' }]) {
+        await client.request(c.session.requestPermission, { sessionId, toolCall: tool,
+          options: [{ optionId: 'deny', name: 'Deny', kind: 'reject_once' }] });
+      }
+      await message('result', 'permissions answered');
+    } else if (['permission', 'pending-permission', 'permission-disconnect'].includes(scenario)) {
+      const options = [{ optionId: 'allow', name: 'Allow always', kind: 'allow_always' },
+        { optionId: 'deny', name: 'Reject once', kind: 'reject_once' }];
+      const ask = toolCallId => client.request(c.session.requestPermission, { sessionId, toolCall: { toolCallId }, options });
+      const repliesPromise = Promise.all([ask('tool-one'), ask('tool-two'), ask('tool-three')]);
+      if (scenario === 'permission-disconnect') {
+        await access('permissions-ready').catch(async () => {
+          while (true) {
+            try { await access('permissions-ready'); break; }
+            catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
+          }
+        });
+        process.exit(3);
+      }
+      const replies = await repliesPromise;
+      if (scenario === 'pending-permission') {
+        if (replies.some(reply => reply.outcome.outcome !== 'cancelled')) throw Error('Permission survived cancellation');
+        await stop.promise;
+        await writeFile('permissions-cancelled', '');
+        return { stopReason: 'cancelled' };
+      }
+      await message('result', JSON.stringify(replies.map(reply => reply.outcome)));
+    } else if (scenario === 'bridge' || scenario === 'bridge-cancel') {
+      let output;
+      try { output = (await client.request(c.fs.readTextFile, { sessionId, path: '/test/file' })).content; }
+      catch (error) { output = String(error.code); }
+      if (scenario === 'bridge-cancel') {
+        await stop.promise;
+        return { stopReason: 'cancelled' };
+      }
+      await message('result', output);
+    } else if (scenario === 'resource') {
+      await message('result', params.prompt.slice(1).map(item => item.type).join(','));
+    } else if (scenario === 'image') {
+      await message('result', params.prompt[1]?.type === 'image' ? 'image delivered' : 'missing image');
+    } else if (kind === 'controller') {
+      const cursor = context.find(item => item.ref === 'host:invocation-context').value.contextCursor;
+      if (scenario === 'controller-contract') {
+        const error=context.find(item=>item.ref==='host:decision-error')?.value;
+        if (!error) {
+          await message(modelId,'not JSON');
+          return {stopReason:'end_turn'};
+        }
+        assert.equal(error.expected,'valid JSON');
+      }
+      const decision = JSON.stringify({ schemaVersion: 1, decisionId: attemptId + '-decision',
+        operationId, contextCursor: cursor, additions: [], cancellations: [], finalAssessment: {
+          author: profileId, overall: 'partial', requirements: [], observationRefs: [], findingRefs: [],
+          unresolvedQuestions: [], answer: scenario === 'controller-contract' ? '# Result\nПроверка 🧪\n{"value":1}' : 'ACP Controller response',
+        } });
+      if (anonymous) await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'tool_call', toolCallId: 'inspect-config', title: 'Inspect configuration',
+      } });
+      await message(modelId, decision.slice(0, 30));
+      if (anonymous) await client.notify(c.session.update, { sessionId, update: {
+        sessionUpdate: 'tool_call_update', toolCallId: 'inspect-config', status: 'completed',
+      } });
+      await message(modelId, decision.slice(30));
+    } else if (scenario === 'mode') {
+      await message('result', mode);
+    } else if (scenario === 'selected-model') {
+      await message('result', model);
+    } else {
+      if (scenario === 'events') {
+        const update = { sessionUpdate: 'tool_call', toolCallId: 'tool', title: 'fixture tool', status: 'completed' };
+        await client.notify(c.session.update, { sessionId: 'foreign', update });
+        await client.notify(c.session.update, { sessionId, update });
+        await client.notify(c.session.update, { sessionId, update });
+      }
+      await message('result', 'result ');
+      await message('result', attemptId);
+    }
+    return { stopReason: 'end_turn' };
+  })
+  .connect(ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin)));
+,oneOf:[{const:'continue',title:'Continue work'},
             {const:'stop',title:'Stop work'}]},
           note:{type:'string',title:'Optional context',description:'Add details if needed'}
         },required:['choice']}});

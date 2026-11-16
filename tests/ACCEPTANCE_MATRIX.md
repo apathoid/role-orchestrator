@@ -432,3 +432,18 @@ C15R A82–A85 engineering PASS: [CI 43713292671](https://github.com/apathoid/ro
 | A93 | R13,R18,R19,R27,R30,R31 | Real installed CLI and graphical ACP, actual native question, paired changed skill and comparative outcome/latency/usage | N |
 
 C15R.6 A87–A92 implementation pending final exact-SHA CI; A93 installed/native/comparative UNVERIFIED. Earlier A81/A86/F4/C12/C13/C14/C13R/C14R remain open.
+
+
+## C15R.6R — CLI interaction corrective regression
+
+| ID | Requirements | Evidence required before PASS | Level |
+|---|---|---|---|
+| A94 | R14,R19,R21,R23 | Provider regex pathological red subprocess, bounded worker match/mismatch/invalid/timeout/cancel, concurrent permission unaffected, :json typed validation | I/E |
+| A95 | R18,R19,R21,R23 | Pinned SDK native form >128 fields, bounded choices paging, empty Enter, exact optional/required, original field keys including __proto__, verified reply ownership | I/SDK |
+| A96 | R18,R21,R22,R23 | Compact native tool locations/descriptions plus short aliases; original source question attribution and lifecycle identity; delivered details preserved in debug | I/PTY |
+| A97 | R08,R21,R26 | Same known orphan initial/middle/trailing continuation in inline and notices; exact session turns/history classification, no fabricated response or execution | I/SDK |
+| A98 | R01,R03,R09,R11,R13,R16,R18,R21,R26,R31 | Full regression and CI on corrective HEAD: checkJs, suites, Linux PTY, package/Nix/lock/release, side-effect equivalence | I/E |
+| A99 | R13,R18,R19,R21,R31 | Real PTY actual SDK bounded regex, independent native questions/permissions/tools, authoritative single final and no unresolved ACK auto-replay | I/PTY |
+| A100 | R13,R18,R19,R27,R30,R31 | Real installed native RO, provider/changed-skill comparison, Zed ACP and visual/quality/latency re-acceptance, precise blocker when unavailable | N |
+
+C15R.6R A94–A99 implementation/checks **pending exact-SHA CI**; A100 real native/visual/comparative **UNVERIFIED**. Prior A93/A86/A81 and F4/C12/C13/C14/C13R/C14R native obligations remain open. No synthetic fixture substitutes for a real provider.
