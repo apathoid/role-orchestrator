@@ -42,7 +42,7 @@ test('C15R Codex item completion without status is displayed as report, not fabr
   assert.match(p.accept(initial,'compact').text,/command_execution · git status · in_progress/);
   const completion={...initial,sequence:2,nativeKind:'item.completed',payload:{item:{type:'command_execution'}}};
   const line=p.accept(completion,'compact');
-  assert.match(line.text,/git status · item completion reported \(status not supplied; last status=in_progress\)/);
+  assert.match(line.text,/\[T1\] · item completion reported \(status not supplied; last status=in_progress\)/);
   assert.doesNotMatch(line.text,/^✓/);
   assert.equal(p.accept({...completion,sequence:3},'compact'),undefined);
   assert.match(p.accept({...initial,sequence:4},'compact').text,/conflicting status report/);

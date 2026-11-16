@@ -684,7 +684,8 @@ test('C15R.6 external ACP SDK retains native form and permission schema without 
     .onRequest(c.elicitation.create,({params})=>{forms.push(params);
       return {action:'accept',content:{choice:'stop'}};}));
   try{
-    await initialize(host.agent);const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    await host.agent.request(a.initialize,{protocolVersion:PROTOCOL_VERSION,clientCapabilities:{elicitation:{form:{}}}});
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
     await prompt(host.agent,sessionId,'native');
     assert.equal(permissions.length,1);assert.equal(permissions[0].options[1].optionId,'option 1');
     assert.equal(forms.length,1);

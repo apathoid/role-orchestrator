@@ -176,7 +176,7 @@ test('C15.3 numbered choices preserve native option identity and render actual f
   const signal=new AbortController().signal;
   const p=terminal.ask(permission,signal), f=terminal.ask(form,signal);
   assert.match(text,/1\. deny \[id=deny\]/);assert.match(text,/2\. allow \[id=allow\]/);
-  assert.match(text,/Which value\?/);assert.match(text,/value · string \(required\)/);
+  assert.match(text,/Which value\?/);assert.match(text,/value \(text, required\)/);
   input.write('#1 option 2\n#2 chosen\n');
   assert.deepEqual(await p,{kind:'answered',payload:{optionId:'allow'}});
   assert.deepEqual(await f,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});

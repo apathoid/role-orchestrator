@@ -67,10 +67,11 @@ export function createCliTools(){
       const status=view.completionReported?'item completion reported (status not supplied'+
         (view.status?'; last status='+view.status:'')+')':view.status;
       const mark=view.status==='completed'&&!view.completionReported?'✓':view.status==='failed'&&!view.completionReported?'✗':'◇';
-      const alias=view.alias!==undefined?'[T'+view.alias+'] ':'';
+      const alias=view.alias!==undefined?'[T'+view.alias+']':'';
       const header=mode==='debug'||changed||!prior?.rendered?content:'';
       const fallback=!header&&view.alias===undefined?content:'';
-      const text=(outOfOrder||conflict?'! ':mark+' ')+alias+(header||fallback)+
+      const body=alias?(alias+(header||fallback?' '+(header||fallback):'')):(header||fallback);
+      const text=(outOfOrder||conflict?'! ':mark+' ')+body+
         (status?' · '+status:'')+(outOfOrder?' · out-of-order report':conflict?' · conflicting status report':'')+
         (mode==='debug'?' ['+[field(event.nativeKind),field(event.nativeId),'seq='+event.sequence].filter(Boolean).join(' ')+']':'');
       /** @type {PresentationTone} */
@@ -79,7 +80,8 @@ export function createCliTools(){
       const genericPending=view.status==='pending'&&!view.command&&!view.location&&
         (!view.title||view.title.toLowerCase()===view.kind?.toLowerCase()||
           ['shell','tool','execute','read','write','search','glob','edit'].includes(view.title.toLowerCase()));
-      const duplicate=mode!=='debug'&&!!prior&&prior.rendered===text;
+      const duplicate=mode!=='debug'&&!!prior&&prior.status===view.status&&
+        prior.completionReported===view.completionReported&&content===prior.shownDetail;
       // Since alias is stable, a status-only line doesn't need repeated detail.
       const suppressed=mode!=='debug'&&((mode==='compact'&&genericPending&&key!==undefined)||duplicate);
       if(!suppressed){view.shownDetail=content;view.rendered=text;}
