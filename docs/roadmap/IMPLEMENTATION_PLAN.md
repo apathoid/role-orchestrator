@@ -4,6 +4,23 @@
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
+## C15R.6 — CLI Interaction Safety & Presentation Refinement (planned; next engineering step)
+
+[Исполнимый corrective plan C15R.6.0–.7](C15R_PRESENTATION_QUALITY.md#c15r6--cli-interaction-safety--presentation-refinement). Approved architecture review 2026-11-16: natural native questions/forms and unambiguous permissions without new Host semantics, forms framework, capability restrictions, forced workflow or artificial execution environment. Exact current step and baseline in [STATUS](STATUS.md). Earlier C15R engineering/CI is historical and remains valid only for its original implementation SHA; new implementation is NOT STARTED.
+
+| Шаг | Обязательный результат |
+|---|---|
+| C15R.6.0 | Current HEAD/pinned ACP 2.4.0 contract, original payload if available, red SDK and actual PTY evidence |
+| C15R.6.1 | P1 permission selection and active-input/request binding; deadline/reconnect/observer safety |
+| C15R.6.2 | Thin human-readable native forms, strict original values/types, safe fallback, no capability regression |
+| C15R.6.3 | Readline + thinking logical continuity with independent Worker streaming |
+| C15R.6.4 | Readable append-only sources/tools/findings/final, safe bounded presentation-only caches |
+| C15R.6.5 | ACP legacy history fallback for known partial/unassociated turn records, no chronology inference |
+| C15R.6.6 | New acceptance tests + full CI, runtime invariant audit and same-input deterministic overhead |
+| C15R.6.7 | Real installed CLI/Zed/native/comparative acceptance or precise UNVERIFIED; separate changed diagnosis and handoff |
+
+Implement sequential logical checkpoints; do not stop after baseline. Single existing [acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md) gains actual new coverage during implementation, not speculative PASS now. Native tasks are documented in [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md#c15r6--native-corrective-re-acceptance-planned). Existing A86 and earlier real-world obligations stay UNVERIFIED. No master merge without explicit request.
+
 ## C15R — Presentation Quality & Fidelity (engineering complete; native re-acceptance)
 
 [Детальное задание C15R](C15R_PRESENTATION_QUALITY.md). Review baseline `0aee345c9833ec741b6cd8e622c39c1c7c6b88ce`; C15 engineering PASS, compact visual acceptance NOT ACCEPTED. Ветка feature/interactive-ux. Следующий шаг исключительно по [STATUS](STATUS.md).
