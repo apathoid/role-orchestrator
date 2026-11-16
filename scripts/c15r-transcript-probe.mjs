@@ -39,7 +39,7 @@ await withOwnedRun('C15R-transcript',async cwd=>{
       assert.match(sample.transcript,/Tool tool_call_update · completed/);
     }else{
       assert.doesNotMatch(sample.transcript,/Tool tool_call_update · completed/);
-      assert.match(sample.transcript,/\[T1\] · completed/);
+      assert.match(sample.transcript,name==='debug'?/\[T1\] git show HEAD · completed/:/\[T1\] · completed/);
       assert.match(sample.transcript,/Inspect the commit\.\n  Read the diff\./);
       const expected=name==='debug'?3:1;
       assert.equal((sample.transcript.match(/git show HEAD/g)??[]).length,expected);
