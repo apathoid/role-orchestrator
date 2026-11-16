@@ -162,7 +162,7 @@ Changed: archived actual RO operation 309ccd6c-51c4-4823-a941-56c9ec44b6ca (2026
 
 ## C15R.6 — native corrective re-acceptance (PLANNED)
 
-C15R.6 addresses the observed unusable JSON/question prompt and residual CLI transcript defects after C15R engineering completion; [detailed implementation and acceptance](C15R_PRESENTATION_QUALITY.md#c15r6--cli-interaction-safety--presentation-refinement). **No C15R.6 implementation or native run is verified by this planning edit**. Carry A86 and earlier native obligations forward, do not count prior 476/476 + 7/7 as new evidence.
+C15R.6 addresses the observed unusable JSON/question prompt and residual CLI transcript defects after C15R engineering completion; [detailed implementation and acceptance](C15R_PRESENTATION_QUALITY.md). **No C15R.6 implementation or native run is verified by this planning edit**. Carry A86 and earlier native obligations forward, do not count prior 476/476 + 7/7 as new evidence.
 
 After C15R.6.6, verify the **actually installed** RO package SHA and real provider/ACP/Zed/version/model/effort/config/cwd/permissions. Repeat the user's native changed-skill description task in the authorized frontend environment, plus a real interaction if naturally requested; otherwise use an exact pinned SDK/PTY form/permission fixture and mark real model-native question **UNVERIFIED**. Capture redacted complete terminal scrollback including source/Thinking/tool blocks, active input, selections, final once, status and unknown effects. Check partially typed response vs expired request/new permission, attached owner/reconnect, parallel Workers continuing, readable no-color/narrow PTY and machine stdout.
 
