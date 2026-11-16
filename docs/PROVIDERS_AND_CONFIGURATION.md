@@ -175,3 +175,8 @@ CLI run/resume и `role-orchestrator acp --presentation compact|detailed|debug` 
 
 
 C15R CLI presentation: compact shows native tool actions and terminal updates without identical repeats; detailed adds meaningful transitions and available display details; debug includes delivered native event identity/sequence. Sparse updates retain prior fields only within actual native tool/attempt identity. Native source and thinking remain incremental, no full response buffering or live status line. Unknown identity/gap/eviction is explicit or uses standalone fallback. Shared human TTY prints the model answer before the summary; JSON and redirected stdout are unchanged. ACP inline default and native widgets/explicit notices are unchanged.
+
+
+### C15R.6 CLI native input
+
+CLI interactive form supports the restricted ACP SDK v2.4.0 stable-v1 form subset (flat primitive fields, single-/multi-select, required/optional, bounded display constraints). It displays original message and provided labels, asks for each field's normal text/typed value and maps numbered choices to actual native values; `:skip` omits an optional field, `:back` edits, `:decline`/`:cancel` return native form actions, `:json {...}` is an explicitly validated low-level fallback. Literal strings such as `cancel` remain text; prefix `::` escapes a literal `:` command. Permission options select numbered displayed positions or `id:<native ID>`; no bare native ID grants. Reply aliases are monotonic per terminal ownership and do not change trusted request identity. Unsupported form variants stay available to native graphical ACP clients; CLI does not infer relationships between field names or alter provider discovery/tools/skills.

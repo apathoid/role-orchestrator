@@ -417,3 +417,18 @@ C15 A77–A80 engineering verification: see exact checkpoint and CI in [STATUS](
 | A86 | R18,R19,R26,R31 | Installed native CLI visual re-acceptance and real ACP client, matched real task/model/usage/latency and separate changed skill diagnosis; unavailable explicitly UNVERIFIED | N |
 
 C15R A82–A85 engineering PASS: [CI 43713292671](https://github.com/apathoid/role-orchestrator/actions/runs/43713292671), exact implementation `9c09318f729b20fa989e1d4c6474a7eea7c0eff5`, 476/476 root + 7/7 actual Linux PTY, full mandatory Nix/package/release and red/green/matched fixture benchmarks PASS. A86 real native/visual/comparative UNVERIFIED; [actual transcripts and measurements](../docs/roadmap/C15R_TRANSCRIPT_EVIDENCE.md). See [C15R](../docs/roadmap/C15R_PRESENTATION_QUALITY.md) and [STATUS](../docs/roadmap/STATUS.md). Earlier A77–A80 exact-SHA CI evidence retained; A81 and F4/C12/C13/C14/C13R/C14R native/comparative obligations remain open.
+
+
+## C15R.6 — CLI interaction safety and presentation refinement
+
+| ID | Requirements | Required observations / regression sources | Level |
+|---|---|---|---|
+| A87 | R08,R14,R19,R21,R23 | Permission positional/native-id collision and request-bound partial input, expire/reconnect/observer/no unintended grant: cli-ux.test.js, local-control.test.js, Linux PTY | I/PTY |
+| A88 | R18,R19,R21,R23 | Pinned ACP 2.4.0 typed form projection, oneOf/enum/anyOf, free text and multiple fields, constraints, skip/cancel and original response identity: cli-ux.test.js, host-acp.test.js, PTY | I/SDK/PTY |
+| A89 | R21,R22,R23 | One Thinking source across many readline chunks, delivered text and original typed reply, direct/attached: cli-ux.test.js, PTY | I/PTY |
+| A90 | R18,R21,R22,R31 | Distinct native tools with same title, monotonic bounded aliases, sparse/terminal, human Markdown final authority, machine stdout: cli-tools.test.js, cli-ux.test.js, PTY | I/PTY |
+| A91 | R08,R14,R21,R26 | Partial orphan/mixed historical associations and exact known boundaries, no guessed answer; long/repeated/aborted load: acp-history.test.js, host-acp.test.js | I/SDK |
+| A92 | R01,R03,R09,R11,R13,R16,R18,R21,R26,R31 | Red/green baseline, deterministic mode equivalence, complete root/PTY/Nix/package/release checks, overhead and architectural audit | I/E |
+| A93 | R13,R18,R19,R27,R30,R31 | Real installed CLI and graphical ACP, actual native question, paired changed skill and comparative outcome/latency/usage | N |
+
+C15R.6 A87–A92 implementation pending final exact-SHA CI; A93 installed/native/comparative UNVERIFIED. Earlier A81/A86/F4/C12/C13/C14/C13R/C14R remain open.

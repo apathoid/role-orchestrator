@@ -32,7 +32,7 @@ async function tty(cwd,args,reply,expected,env=process.env,columns) {
     output+=chunk;
     if(reply!==undefined&&!sent&&output.includes('Reply (')){
       sent=true;
-      assert.match(output,/Permission requested|Native form/);
+      assert.match(output,/Permission requested|Native question/);
       child.stdin.write(reply+'\n');
     }
   });
@@ -60,8 +60,8 @@ test('actual PTY attached CLI answers its own permission, not the writer stdin',
     for(let i=0;!await readDescriptor(join(cwd,'state'));i++){
       assert.ok(i<500,'writer did not start');await delay(10);
     }
-    await tty(cwd,['run','permission','--config',path,'--presentation','debug'],'deny',/(?:\r?\n)deny\r?\n/);
-    await tty(cwd,['run','permission','--config',path,'--format','json'],'deny',/"answer":"deny"/);
+    await tty(cwd,['run','permission','--config',path,'--presentation','debug'],'id:deny',/(?:\r?\n)deny\r?\n/);
+    await tty(cwd,['run','permission','--config',path,'--format','json'],'id:deny',/"answer":"deny"/);
     assert.equal(owner.exitCode,null,'peer answer must not cancel the independent writer operation');
   } finally { owner.kill('SIGINT');await closed; }
 }));
@@ -138,5 +138,63 @@ test('C15R actual attached PTY uses same rich native transcript while owner rema
     const output=(await tty(cwd,['run','transcript','--config',path,'--presentation','compact'],undefined,/Version updated\./,{...process.env,NO_COLOR:'1',TERM:'xterm-256color'},52)).replace(/\r\n/g,'\n');
     assertTranscript(output,'primary');assert.equal(owner.exitCode,null);
     console.log('C15R_PTY_ATTACHED '+JSON.stringify(output));
+  }finally{owner.kill('SIGINT');await closed;}
+}));
+
+
+/** Actual Linux PTY dialogue; replies are tied to observed prompt identities, not a timer. */
+async function ttyDialogue(cwd,args,replies){
+  const cmd=[process.execPath,entry,...args].map(quote).join(' ');
+  const child=spawn('script',['-qefc',cmd,'/dev/null'],{cwd,stdio:['pipe','pipe','pipe'],
+    env:{...process.env,TERM:'xterm-256color',NO_COLOR:'1'},signal:AbortSignal.timeout(15000)});
+  let output='',errors='',index=0;
+  child.stdout.on('data',chunk=>{
+    output+=chunk;
+    while(index<replies.length&&output.includes(replies[index].when)){
+      child.stdin.write(replies[index].value+'\n');
+      index++;
+    }
+  });
+  child.stderr.on('data',chunk=>errors+=chunk);
+  try{
+    const [code]=await once(child,'close');
+    assert.equal(code,0,output+errors);
+    assert.equal(index,replies.length,output);
+    return output.replace(/\r\n/g,'\n');
+  }finally{if(child.exitCode===null)child.kill('SIGKILL');child.stdin.destroy();}
+}
+const c15r6Replies=[
+  {when:'Reply (#1):',value:'1'},
+  {when:'Reply (#2) field 1:',value:'2'},
+  {when:'Reply (#2) field 2:',value:':skip'},
+];
+test('C15R.6 actual SDK/PTY permission and titled form preserve identity and Markdown final',{timeout:30000},()=>withOwnedRun('C15R6-pty',async cwd=>{
+  const configPath=await config(cwd,true,'c15r6-interaction');
+  const output=await ttyDialogue(cwd,['run','native','--config',configPath,'--presentation','compact'],c15r6Replies);
+  assert.match(output,/Permission requested/);
+  assert.match(output,/What should happen next\?/);
+  assert.match(output,/Continue work/);assert.match(output,/Stop work/);
+  assert.match(output,/Optional context/);
+  assert.equal((output.match(/Thinking · Controller/g)??[]).length,1);
+  assert.match(output,/\[T1\] Read config/);assert.match(output,/\[T2\] Read config/);
+  assert.match(output,/Permission: deny/);assert.match(output,/Choice: stop/);
+  assert.ok(output.indexOf('### Native answer')<output.indexOf('Operation complete'));
+  assert.equal((output.match(/### Native answer/g)??[]).length,1);
+  console.log('C15R6_PTY '+JSON.stringify(output));
+}));
+test('C15R.6 attached SDK/PTY retains authoritative input route',{timeout:30000},()=>withOwnedRun('C15R6-pty-attached',async cwd=>{
+  const configPath=await config(cwd,true,'c15r6-interaction');
+  const owner=spawn(process.execPath,[entry,'run','hold','--config',configPath,'--format','json'],
+    {cwd,stdio:['ignore','pipe','pipe']});
+  owner.stdout.resume();owner.stderr.resume();
+  const closed=once(owner,'close');
+  try{
+    for(let i=0;!await readDescriptor(join(cwd,'state'));i++){assert.ok(i<500);await delay(10);}
+    for(let i=0;;i++){try{await access(join(cwd,'c15r6-hold-ready'));break;}
+      catch{assert.ok(i<500);await delay(10);}}
+    const output=await ttyDialogue(cwd,['run','native','--config',configPath,'--presentation','compact'],c15r6Replies);
+    assert.match(output,/Permission: deny/);assert.match(output,/Choice: stop/);
+    assert.equal(owner.exitCode,null);
+    console.log('C15R6_PTY_ATTACHED '+JSON.stringify(output));
   }finally{owner.kill('SIGINT');await closed;}
 }));

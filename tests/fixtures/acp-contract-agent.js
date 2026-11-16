@@ -215,6 +215,41 @@ agent()
       await message('result','skills delivered');
       return {stopReason:'end_turn'};
     }
+    if (scenario === 'c15r6-interaction') {
+      if(objective==='hold'){await writeFile('c15r6-hold-ready','');await stop.promise;return {stopReason:'cancelled'};}
+      const source={sessionId};
+      const permission=await client.request(c.session.requestPermission,{...source,
+        toolCall:{toolCallId:'native-interaction',title:'Native read permission',status:'pending'},
+        options:[{optionId:'deny',name:'Deny',kind:'reject_once'},
+          {optionId:'option 1',name:'Allow',kind:'allow_always'}]});
+      const selected=permission.outcome.outcome==='selected'?permission.outcome.optionId:'cancelled';
+      const ask=client.request(c.elicitation.create,{...source,mode:'form',message:'What should happen next?',
+        requestedSchema:{type:'object',title:'Next action',properties:{
+          choice:{type:'string',title:'Choose an action',oneOf:[{const:'continue',title:'Continue work'},
+            {const:'stop',title:'Stop work'}]},
+          note:{type:'string',title:'Optional context',description:'Add details if needed'}
+        },required:['choice']}});
+      for(let i=0;i<30;i++){
+        await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'agent_thought_chunk',
+          content:{type:'text',text:'('+i+')'}}});
+        if(i%3===0)await sleep(2);
+      }
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call',
+        toolCallId:'tool-a',title:'Read config',kind:'read',status:'in_progress'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call',
+        toolCallId:'tool-b',title:'Read config',kind:'read',status:'in_progress'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call_update',
+        toolCallId:'tool-a',status:'completed'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call_update',
+        toolCallId:'tool-b',status:'failed'}});
+      const form=await ask;
+      const answer='### Native answer\nPermission: '+selected+'\nChoice: '+(form.action==='accept'?form.content.choice:form.action);
+      await message('final',JSON.stringify({schemaVersion:1,operationId,decisionId:attemptId+'-native',
+        contextCursor:context.find(x=>x.ref==='host:invocation-context').value.contextCursor,
+        additions:[],cancellations:[],finalAssessment:{author:profileId,overall:'complete',requirements:[],
+          observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer}}));
+      return {stopReason:'end_turn'};
+    }
     if (scenario === 'host-elicitation') {
       assert.equal(clientCapabilities?.elicitation?.url, undefined);
       let text = 'unavailable';

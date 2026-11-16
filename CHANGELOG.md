@@ -4,6 +4,12 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R.6 — CLI interaction safety and native question UX
+
+- CLI permission selection now distinguishes displayed positions from explicit native IDs and binds partially typed input to its original live request, even during concurrent requests and expiry.
+- ACP restricted native forms are displayed as readable sequential fields: oneOf/enum/anyOf, plain text, typed values, required/optional and constraints; no JSON required for normal use.
+- Readline Thinking streams retain one semantic block; native tools have bounded distinct short aliases and non-repeating details; ACP recovery discloses orphan recorded turns without inventing answers.
+
 ### C15R — Presentation quality and fidelity
 
 - CLI: bounded native tool identity/sparse updates, compact/detailed/debug distinction, append-only source/Thinking blocks, truthful summary after authoritative response on shared TTY.

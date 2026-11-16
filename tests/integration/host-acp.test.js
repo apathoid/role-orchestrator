@@ -671,3 +671,31 @@ test('C15R SDK session.load preserves actual reducer report classifications and 
     assert.deepEqual(host.messages.slice(before).map(x=>x.update),first);
   }finally{await host.close();}
 }));
+
+
+test('C15R.6 external ACP SDK retains native form and permission schema without CLI rewriting',{timeout:20000},()=>
+ withOwnedRun('C15R6-acp-native',async cwd=>{
+  const config=await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,
+    args:[fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url)),'c15r6-interaction']}}},plugins:[]});
+  const forms=[],permissions=[];
+  const host=launch(cwd,config,app=>app
+    .onRequest(c.session.requestPermission,({params})=>{permissions.push(params);
+      return {outcome:{outcome:'selected',optionId:'deny'}};})
+    .onRequest(c.elicitation.create,({params})=>{forms.push(params);
+      return {action:'accept',content:{choice:'stop'}};}));
+  try{
+    await initialize(host.agent);const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    await prompt(host.agent,sessionId,'native');
+    assert.equal(permissions.length,1);assert.equal(permissions[0].options[1].optionId,'option 1');
+    assert.equal(forms.length,1);
+    assert.equal(forms[0].requestedSchema.properties.choice.oneOf[1].const,'stop');
+    assert.equal(forms[0].requestedSchema.properties.note.title,'Optional context');
+    assert.deepEqual(forms[0].requestedSchema.required,['choice']);
+    const updates=host.messages.map(x=>x.update);
+    assert.ok(updates.filter(u=>u.sessionUpdate==='agent_thought_chunk').length>=30);
+    assert.equal(updates.filter(u=>u.sessionUpdate==='tool_call_update').length,2);
+    const final=updates.filter(u=>u.sessionUpdate==='agent_message_chunk'&&
+      !u._meta?.roleOrchestratorSource&&u.content?.text?.startsWith('### Native answer'));
+    assert.equal(final.length,1);assert.match(final[0].content.text,/Choice: stop/);
+  }finally{await host.close();}
+}));
