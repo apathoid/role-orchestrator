@@ -4,9 +4,9 @@
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
-## C15R-UX — CLI Visual Fidelity & Markdown Rendering (IMPLEMENTED; FULL CI REVALIDATION PENDING, REAL NATIVE UNVERIFIED)
+## C15R-UX — CLI Visual Fidelity & Markdown Rendering (ENGINEERING CI PASS, REAL NATIVE UNVERIFIED)
 
-**Инженерная реализация:** [C15R-UX.0–.8](C15R_UX_CLI_VISUAL_FIDELITY.md) после baseline `9223fad4d9242bc131aaa3ecbef6e93d691ef02f` выполнена кодом/тестами. CheckJs, integration/root/PTy regression и полномасштабный Nix/package CI требуют подтверждения на *финальном SHA* (см. [STATUS](STATUS.md)); реальная installed model/Zed приёмка A108 остаётся UNVERIFIED, а прежний A100 не закрывается. Следующий шаг после подтверждения CI — реальная native-приёмка, не новый Host workflow.
+**Инженерная реализация:** [C15R-UX.0–.8](C15R_UX_CLI_VISUAL_FIDELITY.md) после baseline `9223fad4d9242bc131aaa3ecbef6e93d691ef02f` выполнена кодом/тестами. Полный mandatory CI [44186026545](https://github.com/apathoid/role-orchestrator/actions/runs/44186026545) PASS на `9480cb7fc642f4b4071d39e37ecd82fd7ea562eb` (505/505 root, 10/10 actual Linux PTY, Nix/package/release). После этой записи документация получает отдельный SHA с собственной CI-проверкой; реальная installed model/Zed приёмка A108 остаётся UNVERIFIED, а прежний A100 не закрывается. Следующий шаг после подтверждения CI — реальная native-приёмка, не новый Host workflow.
 
 | Шаг | Исполнимый результат |
 |---|---|

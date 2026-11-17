@@ -448,9 +448,9 @@ C15R.6 A87–A92 engineering PASS on `804bbaa24f606dc5be79a27db303489dda1dd27f`,
 
 C15R.6R A94–A99 **ENGINEERING PASS**: `8b9be91a96f4657dd861647da13808f86f548e93`, [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) SUCCESS (500/500 root, 9/9 actual Linux PTY, complete Nix/package/release). Dedicated real-module baseline-vs-current cancellation probe confirmed RED→GREEN for native :cancel/:decline in normal and :json input. No native acceptance inferred. A100 real native/visual/comparative **UNVERIFIED**. Prior A93/A86/A81 and F4/C12/C13/C14/C13R/C14R native obligations remain open. No synthetic fixture substitutes for a real provider.
 
-## C15R-UX — CLI Visual Fidelity & Markdown Rendering (IMPLEMENTED / FINAL CI PENDING / NATIVE UNVERIFIED)
+## C15R-UX — CLI Visual Fidelity & Markdown Rendering (ENGINEERING CI PASS / NATIVE UNVERIFIED)
 
-Новые критерии относятся только к пользовательскому представлению. Это не новый обязательный runtime workflow, схема model response или изменение Host authority. Новые интеграционные регрессии добавлены в `tests/integration/cli-visual.test.js`, а реальные color/plain PTY — в `tests/pty/cli.test.js`; окончательный инженерный PASS A101–A107 возможен только по завершённому CI на финальном SHA. Реальный installed native A108 **UNVERIFIED**. Детальный [план](../docs/roadmap/C15R_UX_CLI_VISUAL_FIDELITY.md), текущий статус в [STATUS](../docs/roadmap/STATUS.md).
+Новые критерии относятся только к пользовательскому представлению. Это не новый обязательный runtime workflow, схема model response или изменение Host authority. Новые интеграционные регрессии добавлены в `tests/integration/cli-visual.test.js`, а реальные color/plain PTY — в `tests/pty/cli.test.js`; инженерные A101–A107 проверены в CI [44186026545](https://github.com/apathoid/role-orchestrator/actions/runs/44186026545) на SHA `9480cb7fc642f4b4071d39e37ecd82fd7ea562eb` (505 root / 10 Linux PTY). Новый docs-only SHA проверяется отдельно; реальный installed native A108 **UNVERIFIED**. Детальный [план](../docs/roadmap/C15R_UX_CLI_VISUAL_FIDELITY.md), текущий статус в [STATUS](../docs/roadmap/STATUS.md).
 
 | ID | Требования | Проверяемое наблюдение | Уровень |
 |---|---|---|---|

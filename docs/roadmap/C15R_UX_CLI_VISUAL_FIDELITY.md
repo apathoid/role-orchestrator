@@ -1,6 +1,6 @@
 # C15R-UX — CLI Visual Fidelity & Markdown Rendering
 
-**Статус:** PLANNED / IMPLEMENTATION NOT STARTED. **Ветка:** feature/interactive-ux. **Planning baseline:** bf117d405bf31cfc577021cb6cb12e2091df2b4b. **Scope:** только presentation refinement CLI. **Текущий следующий шаг:** C15R-UX.0, далее .1–.8 по результатам проверок. Не вливать в master без отдельного поручения.
+**Статус:** ENGINEERING CI VERIFIED ON `9480cb7fc642f4b4071d39e37ecd82fd7ea562eb` / REAL NATIVE UNVERIFIED. **Ветка:** feature/interactive-ux. **Planning baseline:** bf117d405bf31cfc577021cb6cb12e2091df2b4b. **Scope:** только presentation refinement CLI. **Текущий следующий шаг:** installed native visual/ACP acceptance (A108, UNVERIFIED); engineering .0–.7 реализованы и проверены CI, .8 документы/handoff выполнены. Не вливать в master без отдельного поручения.
 
 Этот этап утверждён после ревью визуального состояния C15R.6R и дополняет [C15](C15_PRESENTATION_EXPERIENCE.md), [C15R](C15R_PRESENTATION_QUALITY.md), [C14](C14_CLIENT_UX.md), но не заменяет их контрактов. Предыдущий C15R.6R инженерно проверен на `8b9be91a96f4657dd861647da13808f86f548e93` (CI 44035000221, 500 root / 9 actual Linux PTY); это **не** проверка C15R-UX. A100 и прежние реальные native obligations остаются UNVERIFIED.
 
@@ -125,4 +125,4 @@ Thinking — только реально выданный нативный по�
 
 Если review обнаружит реальный дефект **вне** presentation scope, зафиксировать его с provenance и согласовать отдельную работу; не превращать этот UX этап в изменение core/protocol/environment.
 
-**Execution directive для нового агента:** взять **актуальный** HEAD, начать с C15R-UX.0, выполнить технические шаги .1–.7 и документацию/handoff .8, фиксируя фактические результаты. Не останавливаться на чтении плана и не объявлять implementation completed до кода/тестов/наблюдений. Это planning commit, исходники в нём не изменены.
+**Execution directive для нового агента:** взять **актуальный** HEAD, начать с C15R-UX.0, выполнить технические шаги .1–.7 и документацию/handoff .8, фиксируя фактические результаты. Не останавливаться на чтении плана и не объявлять implementation completed до кода/тестов/наблюдений. Исходный planning commit был docs-only; инженерная реализация и полный CI зарегистрированы в [STATUS](STATUS.md), без master merge.
