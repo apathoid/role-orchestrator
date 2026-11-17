@@ -50,7 +50,7 @@ function inputBlock(entry,label,source){
 export function createCliInput(input, output, interactive, interrupt) {
   /** @typedef {{entry:PendingInput,finish:(result:InputResult)=>void,epoch:number,
    * form?:ReturnType<typeof projectForm>,draft?:ReturnType<typeof createFormDraft>,
-   * signal:AbortSignal,validating?:boolean}} PendingLine
+   * signal:AbortSignal,validating?:boolean,validationAbort?:AbortController}} PendingLine
    * @type {Map<string,PendingLine>} */
   const pending = new Map();
   /** Known invocation identity from the existing presentation facts, when delivered.
@@ -211,16 +211,21 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @param {string} label @param {PendingLine} state @param {Record<string,unknown>} content @param {()=>void} finish */
   function confirmPatterns(label,state,content,finish){
     if(!state.form)return;
+    const validation=new AbortController();
+    state.validationAbort=validation;
     state.validating=true;
-    void validateFormPatterns(state.form,content,state.signal).then(result=>{
-      if(pending.get(label)!==state||state.signal.aborted)return;
+    void validateFormPatterns(state.form,content,validation.signal).then(result=>{
+      if(pending.get(label)!==state||state.validationAbort!==validation||validation.signal.aborted)return;
+      state.validationAbort=undefined;
       state.validating=false;
       if(result.kind==='valid')finish();
       else if(result.kind!=='cancelled')void report(result.message??'Pattern validation unavailable; no answer sent.');
       prompt();
     }).catch(()=>{
-      if(pending.get(label)===state&&!state.signal.aborted){
-        state.validating=false;void report('Pattern validation unavailable; no answer sent.');prompt();
+      if(pending.get(label)===state&&state.validationAbort===validation&&!validation.signal.aborted){
+        state.validationAbort=undefined;
+        state.validating=false;
+        void report('Pattern validation unavailable; no answer sent.');prompt();
       }
     });
   }
@@ -257,6 +262,12 @@ export function createCliInput(input, output, interactive, interrupt) {
         prompt();return;
       }
       const raw=explicit?explicit[2]:line;
+      // Terminal control commands outrank a pending technical validation.
+      // The trusted request/line-origin check above still applies.
+      if(state.form&&(raw===':cancel'||raw===':decline')){
+        state.finish({kind:'answered',payload:{action:raw.slice(1)}});
+        prompt();return;
+      }
       if(state.validating){
         void report('Validation is still pending for '+label+'. No response has been sent.');
         prompt();return;
@@ -267,9 +278,7 @@ export function createCliInput(input, output, interactive, interrupt) {
         else void report('Invalid option for '+label+': enter a displayed position or id:<exact option ID>.');
       }else if(state.form&&state.draft){
         const {form,draft}=state;
-        if(raw===':cancel'||raw===':decline'){
-          state.finish({kind:'answered',payload:{action:raw.slice(1)}});
-        }else if(raw.startsWith(':choices ')){
+        if(raw.startsWith(':choices ')){
           const position=raw.slice(9);
           const field=form.fields[draft.index];
           const num=/^[1-9]\d*$/.test(position)?Number(position):NaN;
@@ -338,7 +347,13 @@ export function createCliInput(input, output, interactive, interrupt) {
     return new Promise(resolve => {
       /** @param {InputResult} result */
       const finish = result => {
-        if (!pending.delete(label)) return;
+        const state=pending.get(label);
+        if(!state)return;
+        pending.delete(label);
+        // A resolved/cancelled request must not retain a regex worker or
+        // accept its late result, regardless of the external AbortSignal.
+        state.validationAbort?.abort();
+        state.validationAbort=undefined;
         signal.removeEventListener('abort', abort);
         resolve(result); stopReader();
       };

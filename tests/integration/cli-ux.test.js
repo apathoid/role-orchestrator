@@ -473,3 +473,74 @@ test('C15R.6R.1 :json fallback validates native pattern rather than accepting un
   assert.deepEqual(await answer,{kind:'answered',payload:{action:'accept',content:{value:'abc'}}});
   terminal.close();input.end();
 });
+
+
+test('C15R.6R-Final cancellation commands preempt a pending provider regex and cannot send a late accept',
+  {timeout:10000},async()=>{
+  for(const [command,action] of [[':cancel','cancel'],[':decline','decline']]){
+    const input=new PassThrough(),output=new PassThrough();let shown='';
+    output.on('data',b=>shown+=b);
+    const terminal=createCliInput(input,output,true,()=>{});
+    const risky=structuredClone(form);risky.request.requestId='pending-'+action;
+    risky.request.payload={mode:'form',message:'Untrusted regex',requestedSchema:{type:'object',
+      properties:{value:{type:'string',pattern:'(a+)+$'}},required:['value']}};
+    try{
+      const pending=terminal.ask(risky,new AbortController().signal);
+      input.write('a'.repeat(40)+'!\n');
+      // The first input has started a background validator. Do not wait for
+      // its timeout; the next line must terminate the live native request.
+      input.write(command+'\n');
+      assert.deepEqual(await pending,{kind:'answered',payload:{action}});
+      const next=structuredClone(form);next.request.requestId='after-'+action;
+      next.request.payload={mode:'form',message:'Following question',requestedSchema:{type:'object',
+        properties:{value:{type:'string',pattern:'^ok$'}},required:['value']}};
+      const answer=terminal.ask(next,new AbortController().signal);
+      input.write('ok\n');
+      assert.deepEqual(await answer,{kind:'answered',payload:{action:'accept',content:{value:'ok'}}});
+      await new Promise(resolve=>setTimeout(resolve,800));
+      assert.doesNotMatch(shown,/pattern validation timed out|Pattern validation unavailable/);
+    }finally{terminal.close();input.end();}
+  }
+});
+
+test('C15R.6R-Final cancel while validating does not block an independent permission or steal its answer',
+  {timeout:10000},async()=>{
+  const input=new PassThrough(),output=new PassThrough();output.resume();
+  const terminal=createCliInput(input,output,true,()=>{});
+  const risky=structuredClone(form);risky.request.requestId='worker-a';
+  risky.request.payload={mode:'form',message:'Pattern',requestedSchema:{type:'object',
+    properties:{value:{type:'string',pattern:'(a+)+$'}},required:['value']}};
+  try{
+    const formAnswer=terminal.ask(risky,new AbortController().signal);
+    input.write('a'.repeat(40)+'!\n');
+    const permissionAnswer=terminal.ask({...permission,request:{...permission.request,requestId:'worker-b'}},
+      new AbortController().signal);
+    input.write('#1 :cancel\n#2 1\n');
+    assert.deepEqual(await formAnswer,{kind:'answered',payload:{action:'cancel'}});
+    assert.deepEqual(await permissionAnswer,{kind:'answered',payload:{optionId:'deny'}});
+  }finally{terminal.close();input.end();}
+});
+
+test('C15R.6R-Final external abort wins if already delivered; later typed cancel cannot reach a new request',
+  {timeout:10000},async()=>{
+  const input=new PassThrough(),output=new PassThrough();let outputText='';
+  output.on('data',b=>outputText+=b);
+  const terminal=createCliInput(input,output,true,()=>{});
+  const stop=new AbortController(),risky=structuredClone(form);
+  risky.request.requestId='cancel-race';
+  risky.request.payload={mode:'form',message:'Pattern',requestedSchema:{type:'object',
+    properties:{value:{type:'string',pattern:'(a+)+$'}},required:['value']}};
+  try{
+    const original=terminal.ask(risky,stop.signal);
+    input.write('a'.repeat(40)+'!');
+    stop.abort();
+    assert.deepEqual(await original,{kind:'cancelled'});
+    const future=terminal.ask({...form,request:{...form.request,requestId:'future'}},
+      new AbortController().signal);
+    input.write('\n');
+    await tick();
+    input.write('#2 chosen\n');
+    assert.deepEqual(await future,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
+    assert.match(outputText,/does not belong to an active request/);
+  }finally{terminal.close();input.end();}
+});
