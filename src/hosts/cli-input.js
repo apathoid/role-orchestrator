@@ -201,9 +201,11 @@ export function createCliInput(input, output, interactive, interrupt) {
     const first=value.indexOf('\n');
     if(first<0)return [{text:value,tone:'accent'}];
     const last=value.lastIndexOf('\n');
-    return [{text:value.slice(0,first),tone:'accent'},
-      {text:value.slice(first,last>first?last:value.length),tone:'neutral'},
-      ...(last>first?[{text:value.slice(last),tone:'muted'}]:[])];
+    /** @type {{text:string,tone?:PresentationTone}[]} */
+    const parts=[{text:value.slice(0,first),tone:'accent'},
+      {text:value.slice(first,last>first?last:value.length),tone:'neutral'}];
+    if(last>first)parts.push({text:value.slice(last),tone:'muted'});
+    return parts;
   }
   /** Original request data in bounded pages; no mutation of native content/draft.
    * @param {PendingLine} state @param {number} page */

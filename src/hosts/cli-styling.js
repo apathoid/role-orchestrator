@@ -52,8 +52,7 @@ export function styleText(safe,tone,capability) {
   if(tone==='finding')return '\x1b[1;33m'+safe+'\x1b[0m';
   if(tone==='thinking'||tone==='italic')return '\x1b[2;3m'+safe+'\x1b[0m';
   if(tone==='bold')return '\x1b[1m'+safe+'\x1b[0m';
-  if(tone==='header')tone='heading';
-  if(tone==='finding'||tone==='prompt')tone='accent';
+  if(tone==='prompt')tone='accent';
   const color=colors[tone];
   if(!color)return safe;
   const prefix=capability==='truecolor'?'38;2;'+color[0]:capability==='256'?'38;5;'+color[1]:color[2];

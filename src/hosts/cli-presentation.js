@@ -87,12 +87,14 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
           fact.reasoning?.mode==='selectable'?'effort='+fact.reasoning.level:fact.reasoning?.mode==='native'?'native effort':undefined].filter(Boolean).join(' · ');
         const objective=fact.objective?'\n'+indent('Objective: '+boundedText(fact.objective)):'';
         const technical=mode==='debug'?'\n'+indent('attempt='+fact.attemptId+' event='+notice.event.eventId+' seq='+notice.event.sequence+' at='+notice.event.receivedAt+' reason='+notice.event.reasonCode):'';
-        await print([
+        /** @type {{text:string,tone?:PresentationTone}[]} */
+        const dispatchSegments=[
           {text:'\n'+(fact.invocationKind==='controller'?'● ':'├─ ')+alias,tone:sourceTone(fact)},
           {text:'\n'+indent('Invocation dispatched'+(route?' · '+boundedText(route,480):'')),tone:'muted'},
-          ...(objective?[{text:objective,tone:'neutral'}]:[]),
-          ...(technical?[{text:technical,tone:'muted'}]:[]),
-        ]);
+        ];
+        if(objective)dispatchSegments.push({text:objective,tone:'neutral'});
+        if(technical)dispatchSegments.push({text:technical,tone:'muted'});
+        await print(dispatchSegments);
       }else{
         // These are technical lifecycle records already represented by native
         // input or the authoritative answer/summary; keep raw names in debug.
