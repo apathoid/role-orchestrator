@@ -75,6 +75,8 @@ jobs:
         run: nix develop --no-update-lock-file --command node scripts/c15r6-interaction-baseline.mjs
       - name: C15R.6R provider pattern red subprocess and bounded green worker
         run: nix develop --no-update-lock-file --command node scripts/c15r6r-validation-probe.mjs
+      - name: C15R.6R-Final user cancellation during pending regex red/green
+        run: nix develop --no-update-lock-file --command node scripts/c15r6r-final-cancel-probe.mjs
       - name: Nix flake and locked package
         run: nix flake check --no-update-lock-file --print-build-logs
       - name: Install and exercise Nix package outside checkout
