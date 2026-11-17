@@ -163,15 +163,22 @@ export function createCliInput(input, output, interactive, interrupt) {
    * @param {string} text @param {PresentationTone} [tone]
    */
   function report(text,tone) { return print(text,tone).catch(()=>{}); }
-  /** @param {{source:string,header:string,text:string,indent?:string,headerTone?:PresentationTone}} fragment */
+  /** @param {{header:string,headerTone?:PresentationTone,sourceHeaderLength?:number}} fragment */
+  function styledChunkHeader(fragment){
+    if(fragment.sourceHeaderLength===undefined)return style(terminalText(fragment.header),fragment.headerTone??'thinking');
+    const boundary=fragment.sourceHeaderLength;
+    return style(terminalText(fragment.header.slice(0,boundary)),fragment.headerTone??'muted')+
+      style(terminalText(fragment.header.slice(boundary)),'muted');
+  }
+  /** @param {{source:string,header:string,text:string,indent?:string,headerTone?:PresentationTone,sourceHeaderLength?:number}} fragment */
   function printChunk(fragment) {
     // Readline owns its current input line. Use a technical line boundary
     // while editing instead of overwriting or buffering a native chunk.
     const changed=chunkSource!==fragment.source;
     const body=sanitizerFor(fragment.source).push(fragment.text);
     if(!fragment.indent){
-      if(rl){chunkSource=fragment.source;return write(style(terminalText(fragment.header),fragment.headerTone??'thinking')+body+'\n');}
-      const text=(changed?(openLine?'\n':'')+style(terminalText(fragment.header),fragment.headerTone??'thinking'):'')+body;
+      if(rl){chunkSource=fragment.source;return write(styledChunkHeader(fragment)+body+'\n');}
+      const text=(changed?(openLine?'\n':'')+styledChunkHeader(fragment):'')+body;
       chunkSource=fragment.source;
       if(text)openLine=!text.endsWith('\n');
       return write(text);
@@ -189,7 +196,7 @@ export function createCliInput(input, output, interactive, interrupt) {
       atLineStart=ch==='\n';
       physicalStart=ch==='\n';
     }
-    const header=boundary?(openLine?'\n':'')+style(terminalText(fragment.header),fragment.headerTone??'thinking'):'';
+    const header=boundary?(openLine?'\n':'')+styledChunkHeader(fragment):'';
     const text=header+style(decorated,'thinking')+(rl&&!decorated.endsWith('\n')?'\n':'');
     chunkSource=fragment.source;
     openLine=!rl&&!atLineStart;

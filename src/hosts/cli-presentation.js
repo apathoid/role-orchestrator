@@ -5,7 +5,7 @@ import { formatActivity, formatExecution, formatOperation, formatFindingRecords,
 /** @import {Operation} from '../core/operation.js' */
 /** @import {PresentationMode, PresentationTone} from './presentation.js' */
 
-/** @param {PresentationMode | undefined} mode @param {(text:string|readonly {text:string,tone?:PresentationTone}[],tone?:PresentationTone)=>Promise<unknown>} print @param {(fragment:{source:string,header:string,text:string,indent?:string,headerTone?:PresentationTone})=>Promise<unknown>} [printChunk] @param {()=>void} [resetChunks] */
+/** @param {PresentationMode | undefined} mode @param {(text:string|readonly {text:string,tone?:PresentationTone}[],tone?:PresentationTone)=>Promise<unknown>} print @param {(fragment:{source:string,header:string,text:string,indent?:string,headerTone?:PresentationTone,sourceHeaderLength?:number})=>Promise<unknown>} [printChunk] @param {()=>void} [resetChunks] */
 export function cliPresentation(mode, print, printChunk, resetChunks) {
   let closed=false;
   const tools=createCliTools();
@@ -25,10 +25,11 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
   }
   /** @param {string} text @param {number} [count] */
   const indent=(text,count=2)=>text.split('\n').map(line=>' '.repeat(count)+line).join('\n');
-  /** @param {string} id @param {string} alias @param {string} message @param {PresentationTone} [tone] */
+  /** @param {string} id @param {string} alias @param {string|readonly {text:string,tone?:PresentationTone}[]} message @param {PresentationTone} [tone] */
   function sourcePrint(id,alias,message,tone='neutral'){
     const heading=select(id,alias);
-    return print([...(heading?[{text:heading,tone:tones.get(id)??'neutral'}]:[]),{text:message,tone}]);
+    return print([...(heading?[{text:heading,tone:tones.get(id)??'neutral'}]:[]),
+      ...(typeof message==='string'?[{text:message,tone}]:message)]);
   }
   return {
     /** Trusted attempt identity established from execution facts, never guessed. */
@@ -43,7 +44,10 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
     async notice(notice) {
       if(!mode||closed)return;
       if(notice.channel==='execution'&&notice.fact?.attemptId){
-        if(aliases.size>=128&&!aliases.has(notice.fact.attemptId)){const first=aliases.keys().next().value;if(first!==undefined)aliases.delete(first);}
+        if(aliases.size>=128&&!aliases.has(notice.fact.attemptId)){
+          const first=aliases.keys().next().value;
+          if(first!==undefined){aliases.delete(first);tones.delete(first);}
+        }
         aliases.set(notice.fact.attemptId,factLabel(notice.fact));
         tones.set(notice.fact.attemptId,sourceTone(notice.fact));
       }
@@ -65,7 +69,8 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
             // Input owner also restarts the header after a prompt or a non-text boundary.
             const heading=select(event.attemptId,alias);
             const technical=mode==='debug'?' ['+boundedText(event.providerId,80)+' '+boundedText(event.nativeKind??'',80)+(event.nativeId?' id='+boundedText(event.nativeId,120):'')+']':'';
-            await printChunk({...fragment,header:heading+'\n  Thinking · '+alias+technical+'\n',headerTone:tones.get(event.attemptId)??'muted',indent:'  '});
+            await printChunk({...fragment,header:heading+'\n  Thinking · '+alias+technical+'\n',
+              sourceHeaderLength:heading.length,headerTone:tones.get(event.attemptId)??'muted',indent:'  '});
             return;
           }
         }
@@ -77,7 +82,11 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
           }
         }
         const text=formatActivity(event,mode,alias);
-        if(text){const prefix='['+alias+'] ';await sourcePrint(event.attemptId,alias,indent(text.startsWith(prefix)?text.slice(prefix.length):text),event.kind==='finding'?'finding':'neutral');}
+        if(text){
+          const prefix='['+alias+'] ',body=indent(text.startsWith(prefix)?text.slice(prefix.length):text);
+          await sourcePrint(event.attemptId,alias,event.kind==='finding'
+            ?[{text:'  ◆ ',tone:'accent'},{text:body.slice(2),tone:'neutral'}]:body);
+        }
         return;
       }
       if(notice.channel==='execution'&&notice.event.eventName==='attempt.dispatched'&&notice.fact?.attemptId){
@@ -134,7 +143,7 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
         for(const finding of formatFindingRecords(notice.findings,mode)){
           if(closed)break;
           currentSource=undefined;
-          await print('\n◆ '+finding.text,'finding');
+          await print([{text:'\n◆ ',tone:'accent'},{text:finding.text,tone:'neutral'}]);
         }
       }
     },
