@@ -44,6 +44,12 @@ export function sourceTone(fact) {
  * @param {string} safe @param {PresentationTone|undefined} tone @param {ColorCapability} capability */
 export function styleText(safe,tone,capability) {
   if(!safe||capability==='none'||!tone||tone==='neutral')return safe;
+  // Retain the established generic CLI indicator tones across color modes.
+  // Only trusted source/accent identities consume the capability palette.
+  if(tone==='header')return '\x1b[1;36m'+safe+'\x1b[0m';
+  if(tone==='success')return '\x1b[32m'+safe+'\x1b[0m';
+  if(tone==='error')return '\x1b[1;31m'+safe+'\x1b[0m';
+  if(tone==='finding')return '\x1b[1;33m'+safe+'\x1b[0m';
   if(tone==='thinking'||tone==='italic')return '\x1b[2;3m'+safe+'\x1b[0m';
   if(tone==='bold')return '\x1b[1m'+safe+'\x1b[0m';
   if(tone==='header')tone='heading';
