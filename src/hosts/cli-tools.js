@@ -7,8 +7,8 @@ import { boundedText } from './presentation.js';
 const maxEntries=128,maxBytes=256*1024;
 /** @param {unknown} value @returns {Record<string,unknown>} */
 const obj=value=>value&&typeof value==='object'&&!Array.isArray(value)?/** @type {Record<string,unknown>} */(value):{};
-/** @param {unknown} value */
-const field=value=>typeof value==='string'?boundedText(value,480).replace(/[\n\t]/g,' '):undefined;
+/** @param {unknown} value @param {number} [limit] */
+const field=(value,limit=480)=>typeof value==='string'?boundedText(value,limit).replace(/[\n\t]/g,' '):undefined;
 /** @param {string|undefined} status */
 const terminal=status=>['completed','failed','cancelled','canceled','unknown'].includes(status??'');
 /** @param {ToolView} view @param {PresentationMode} mode */
@@ -48,15 +48,16 @@ export function createCliTools(){
       /** @type {ToolView} */
       const view={...prior,sequence:event.sequence};
       if(key!==undefined&&!prior)view.alias=++nextAlias;
+      const displayField=/** @param {unknown} value */ value=>field(value,mode==='compact'?240:mode==='detailed'?960:2048);
       const fields={title:payload.title,kind:payload.kind??item.type,command:payload.command??item.command,
         status:payload.status??item.status,description:payload.description};
       for(const name of /** @type {(keyof typeof fields)[]} */(Object.keys(fields))){
         const value=fields[name];
         // Sparse/null optional ACP fields mean no new value, as in provider mapping.
-        if(typeof value==='string')view[name]=field(value);
+        if(typeof value==='string')view[name]=displayField(value);
       }
       if(Array.isArray(payload.locations)){
-        view.location=field(payload.locations.map(location=>{
+        view.location=displayField(payload.locations.map(location=>{
           const loc=obj(location);return typeof loc.path==='string'?loc.path+(typeof loc.line==='number'?':'+loc.line:''):'';
         }).filter(Boolean).join(', '));
       }
@@ -79,13 +80,12 @@ export function createCliTools(){
       /** @type {PresentationTone} */
       const tone=outOfOrder||conflict||mark==='✗'?'error':mark==='✓'?'success':'tool';
       if(outOfOrder||conflict)return {text,tone};
-      const genericPending=view.status==='pending'&&!view.command&&!view.location&&
-        (!view.title||view.title.toLowerCase()===view.kind?.toLowerCase()||
-          ['shell','tool','execute','read','write','search','glob','edit'].includes(view.title.toLowerCase()));
       const duplicate=mode!=='debug'&&!!prior&&prior.status===view.status&&
         prior.completionReported===view.completionReported&&content===prior.shownDetail;
       // Since alias is stable, a status-only line doesn't need repeated detail.
-      const suppressed=mode!=='debug'&&((mode==='compact'&&genericPending&&key!==undefined)||duplicate);
+      // A generic-only native call must remain visible if no richer update
+      // ever arrives. Suppress only an identical displayed transition by ID.
+      const suppressed=mode!=='debug'&&duplicate;
       if(!suppressed){view.shownDetail=content;view.rendered=text;}
       if(key!==undefined)retain(key,view);
       return suppressed?undefined:{text,tone};

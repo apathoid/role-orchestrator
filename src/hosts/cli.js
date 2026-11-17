@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { terminalText } from './presentation.js';
+import { renderMarkdownAnswer } from './cli-markdown.js';
+import { terminalColor } from './cli-styling.js';
 import { HostError, hostError, newRequestId, operationView } from './commands.js';
 
 /** @import {Command} from './commands.js' */
@@ -158,7 +160,9 @@ export async function runCli(args, io, execute, afterHuman) {
                 ' available=' + (view.waiting.reason.availableLevels ?? []).join(',') +
                 (view.waiting.reason.reasoningCause ? ' cause=' + view.waiting.reason.reasoningCause : '') : '')
             : view.status);
-        const text=('isTTY' in io.stdout && io.stdout.isTTY ? terminalText(human) : human)+'\n';
+        const tty='isTTY' in io.stdout && io.stdout.isTTY;
+        const answer=typeof view.assessment?.answer==='string';
+        const text=(tty?(answer?renderMarkdownAnswer(human,terminalColor(io.stdout)):terminalText(human)):human)+'\n';
         if(afterHuman)io.stdout.write(text,error=>{if(!error)afterHuman();});
         else io.stdout.write(text);
       } else io.stdout.write(JSON.stringify(view, null, invocation.format === 'text' ? 2 : undefined) + '\n');

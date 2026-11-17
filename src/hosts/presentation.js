@@ -72,7 +72,7 @@ export function boundedText(text,limit=4096){
 
 /** @param {ExecutionFact} fact */
 export function factLabel(fact){
-  return (fact.invocationKind==='controller'?'Controller':boundedText(fact.roleId??'Worker',80).replace(/[\n\t]/g,' '))+
+  return (fact.invocationKind==='controller'?'Controller':(fact.roleId?boundedText(fact.roleId,80).replace(/[\n\t]/g,' '):'Worker (role unknown)'))+
     (fact.attemptOrdinal!==undefined?' #'+fact.attemptOrdinal:'')+
     (fact.profileId?' · '+boundedText(fact.profileId,120).replace(/[\n\t]/g,' '):'');
 }
