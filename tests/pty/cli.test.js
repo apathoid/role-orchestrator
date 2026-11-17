@@ -143,10 +143,10 @@ test('C15R actual attached PTY uses same rich native transcript while owner rema
 
 
 /** Actual Linux PTY dialogue; replies are tied to observed prompt identities, not a timer. */
-async function ttyDialogue(cwd,args,replies){
+async function ttyDialogue(cwd,args,replies,env={...process.env,TERM:'xterm-256color',NO_COLOR:'1'}){
   const cmd=[process.execPath,entry,...args].map(quote).join(' ');
   const child=spawn('script',['-qefc',cmd,'/dev/null'],{cwd,stdio:['pipe','pipe','pipe'],
-    env:{...process.env,TERM:'xterm-256color',NO_COLOR:'1'},signal:AbortSignal.timeout(15000)});
+    env,signal:AbortSignal.timeout(15000)});
   let output='',errors='',index=0;
   child.stdout.on('data',chunk=>{
     output+=chunk;
@@ -202,3 +202,20 @@ test('C15R.6 attached SDK/PTY retains authoritative input route',{timeout:30000}
     console.log('C15R6_PTY_ATTACHED '+JSON.stringify(output));
   }finally{owner.kill('SIGINT');await closed;}
 }));
+
+test('C15R-UX actual Linux PTY renders authoritative Markdown in color but keeps NO_COLOR raw', {timeout:30000},
+  ()=>withOwnedRun('C15R-UX-pty-markdown',async cwd=>{
+    const path=await config(cwd,true,'c15r6-interaction');
+    const args=['run','native','--config',path,'--presentation','compact'];
+    const env={...process.env,TERM:'xterm-256color',COLORTERM:''};
+    delete env.NO_COLOR;
+    const colored=await ttyDialogue(cwd,args,c15r6Replies,env);
+    assert.match(colored,/\x1b\[[0-9;]+mNative answer\x1b\[0m/);
+    assert.doesNotMatch(colored,/### Native answer/);
+    assert.equal((colored.match(/Native answer/g)??[]).length,1);
+    assert.ok(colored.indexOf('Native answer')<colored.indexOf('Operation complete'));
+    const plain=await ttyDialogue(cwd,args,c15r6Replies,{...env,NO_COLOR:'1'});
+    assert.match(plain,/### Native answer/);
+    assert.equal((plain.match(/### Native answer/g)??[]).length,1);
+    assert.doesNotMatch(plain,/\x1b\[[0-9;]+m/);
+  }));
