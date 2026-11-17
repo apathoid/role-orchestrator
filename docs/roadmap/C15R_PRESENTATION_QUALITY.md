@@ -227,9 +227,9 @@ Likely boundaries to inspect (verify owner in current code): src/hosts/cli-input
 **Execution directive:** On receiving this planning checkpoint, start with C15R.6.0 if STATUS still lists it as next; continue all engineering stages through .6, then native acceptance/handoff .7 to the extent the real environment permits. Do not stop after research or document preparation. Do not mark C15R.6 implemented until actual code, tests and evidence exist.
 
 
-## C15R.6R — CLI Interaction Correctness & Presentation Completion (IMPLEMENTING)
+## C15R.6R — CLI Interaction Correctness & Presentation Completion (ENGINEERING VERIFIED; NATIVE UNVERIFIED)
 
-**Review baseline** `804bbaa24f606dc5be79a27db303489dda1dd27f`. **Historical CI** 43957276791 PASS (485 root, 9 real Linux PTY), but code review found an unbounded V8 pattern execution and six presentation/fidelity gaps. Corrective assignment does not authorize new core semantics or an agent execution scheduler.
+**Review baseline** `804bbaa24f606dc5be79a27db303489dda1dd27f`. **Final implementation** `8b9be91a96f4657dd861647da13808f86f548e93`, [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) PASS 500 root / 9 PTY. The final narrow fix prioritizes `:cancel`/`:decline` before the pending-validation guard, aborts the matching local worker on request terminal, and rejects late callbacks. A94–A99 engineering verified; A100 real native UNVERIFIED. **Historical CI** 43957276791 PASS (485 root, 9 real Linux PTY), but code review found an unbounded V8 pattern execution and six presentation/fidelity gaps. Corrective assignment does not authorize new core semantics or an agent execution scheduler.
 
 - **.0 Baseline:** confirm actual HEAD, SDK 2.4.0 restricted ACP form contract, and source/red witnesses for pattern backtracking, >128 fields, compact metadata, notices-orphans, blank Enter, `__proto__`, source attribution.
 - **.1 P1 safe validation:** provider-controlled regex runs outside main event loop with bounded per-validation duration/resource/ownership and cancellation, no false accept or mislabeled mismatch, including `:json`.

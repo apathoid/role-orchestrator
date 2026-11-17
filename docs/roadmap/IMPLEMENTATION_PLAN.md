@@ -1,16 +1,16 @@
 # Активный план реализации и приёмки
 
-**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A86 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
+**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A100 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
-## C15R.6R — corrective technical completion (active)
+## C15R.6R — corrective technical completion (engineering verified; real native UNVERIFIED)
 
-Baseline `804bbaa24f606dc5be79a27db303489dda1dd27f`, CI 43957276791 historical PASS 485 root/9 PTY. Review follow-up for pattern ReDoS P1; field limits, empty/special fields, compact metadata and provenance, notices history, and truthful handoff P2. Ordered steps .0 baseline → .1 asynchronous bounded regex → .2 forms → .3 compact UX → .4 history → .5 regression → .6 native handoff. Exact normative details and acceptance source: [C15R.6R](C15R_PRESENTATION_QUALITY.md#c15r6r--cli-interaction-correctness--presentation-completion-implementing). Live next step in [STATUS](STATUS.md). Existing core/workflow/provider permissions unchanged.
+Baseline `804bbaa24f606dc5be79a27db303489dda1dd27f` and review `0bd01ccca8eb1740805af5d04aed6cbced5b3d60` (historical CI 43970858896 PASS, 497 root / 9 PTY). C15R.6R.0–.6 and narrow C15R.6R-Final cancellation correction completed on `8b9be91a96f4657dd861647da13808f86f548e93`: [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) PASS, 500/500 root and 9/9 PTY, full Nix/package/release. Scoped fix: native form `:cancel`/`:decline` are accepted during asynchronous provider-regex validation, abort the technical worker and ignore late outcomes without changing external correlation or other pending requests. [C15R.6R contract](C15R_PRESENTATION_QUALITY.md), [STATUS](STATUS.md) and sole [acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md) have actual evidence. A94–A99 engineering PASS; A100, A93/A86/A81 and F4/C12/C13/C14/C13R/C14R native visual/comparative UNVERIFIED. **Next action:** separate installed real-provider/client native acceptance only; no new engineering cluster required by current review.
 
 ## C15R.6 — CLI Interaction Safety & Presentation Refinement (engineering PASS on 804bbaa2; native UNVERIFIED)
 
-[Исполнимый corrective plan C15R.6.0–.7](C15R_PRESENTATION_QUALITY.md). Approved architecture review 2026-11-16: natural native questions/forms and unambiguous permissions without new Host semantics, forms framework, capability restrictions, forced workflow or artificial execution environment. Exact current step and baseline in [STATUS](STATUS.md). Earlier C15R engineering/CI is historical and remains valid only for its original implementation SHA; new implementation is NOT STARTED.
+[Исполнимый corrective plan C15R.6.0–.7](C15R_PRESENTATION_QUALITY.md). Approved architecture review 2026-11-16: natural native questions/forms and unambiguous permissions without new Host semantics, forms framework, capability restrictions, forced workflow or artificial execution environment. Exact current step and baseline in [STATUS](STATUS.md). Earlier C15R engineering/CI is historical and remains valid only for its original implementation SHA; C15R.6 original implementation and its corrective follow-up are verified on the exact SHAs above; real native acceptance is separate.
 
 | Шаг | Обязательный результат |
 |---|---|

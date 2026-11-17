@@ -4,6 +4,10 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R.6R-Final — Native form cancellation while validating
+
+- `:cancel` and `:decline` now preempt in-flight provider-controlled form pattern validation on the original correlated terminal request. Finishing a request aborts its technical worker; late results cannot send `accept`, mutate form drafts, report stale errors or answer subsequent requests. No orchestration/permissions/provider changes. Red/green baseline probe and full CI; real native client acceptance remains UNVERIFIED.
+
 ### C15R.6 — CLI interaction safety and native question UX
 
 - CLI permission selection now distinguishes displayed positions from explicit native IDs and binds partially typed input to its original live request, even during concurrent requests and expiry.
