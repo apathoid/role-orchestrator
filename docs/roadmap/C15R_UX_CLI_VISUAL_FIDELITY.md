@@ -1,6 +1,6 @@
 # C15R-UX — CLI Visual Fidelity & Markdown Rendering
 
-**Статус:** ENGINEERING CI VERIFIED ON `9480cb7fc642f4b4071d39e37ecd82fd7ea562eb` / REAL NATIVE UNVERIFIED. **Ветка:** feature/interactive-ux. **Planning baseline:** bf117d405bf31cfc577021cb6cb12e2091df2b4b. **Scope:** только presentation refinement CLI. **Текущий следующий шаг:** installed native visual/ACP acceptance (A108, UNVERIFIED); engineering .0–.7 реализованы и проверены CI, .8 документы/handoff выполнены. Не вливать в master без отдельного поручения.
+**Статус:** ENGINEERING CI VERIFIED ON `7b5a29faf523ffe1652cfaa2f55f4a8b23576254` ([full mandatory CI 44187637516](https://github.com/apathoid/role-orchestrator/actions/runs/44187637516), 505 root, 10 PTY, Nix) / REAL NATIVE UNVERIFIED. **Ветка:** feature/interactive-ux. **Planning baseline:** bf117d405bf31cfc577021cb6cb12e2091df2b4b. **Scope:** только presentation refinement CLI. **Текущий следующий шаг:** installed native visual/ACP acceptance (A108, UNVERIFIED); engineering .0–.7 реализованы и проверены CI, .8 документы/handoff выполнены. Не вливать в master без отдельного поручения.
 
 Этот этап утверждён после ревью визуального состояния C15R.6R и дополняет [C15](C15_PRESENTATION_EXPERIENCE.md), [C15R](C15R_PRESENTATION_QUALITY.md), [C14](C14_CLIENT_UX.md), но не заменяет их контрактов. Предыдущий C15R.6R инженерно проверен на `8b9be91a96f4657dd861647da13808f86f548e93` (CI 44035000221, 500 root / 9 actual Linux PTY); это **не** проверка C15R-UX. A100 и прежние реальные native obligations остаются UNVERIFIED.
 
