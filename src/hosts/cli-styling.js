@@ -3,6 +3,7 @@
 /** @import {PresentationTone} from './presentation.js' */
 /** @typedef {'none'|'16'|'256'|'truecolor'} ColorCapability */
 
+/** @type {Record<string, [string, number, string]>} */
 const colors = {
   controller: ['86;182;255',117,'1;34'],
   'worker-0': ['185;160;245',141,'1;35'],

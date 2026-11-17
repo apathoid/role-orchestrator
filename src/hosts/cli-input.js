@@ -1,6 +1,7 @@
 import { projectForm, createFormDraft, renderFormIntro, renderFormField, formValue, validateFormContent, validateFormPatterns } from './cli-form.js';
 import { createInterface, clearLine, cursorTo } from 'node:readline';
 import { terminalText, createTerminalSanitizer, boundedText } from './presentation.js';
+import { terminalColor, styleText } from './cli-styling.js';
 
 /** @import {PresentationTone} from './presentation.js' */
 /** @import {PendingPermission, PermissionHandler} from '../application/configuration/permissions.js' */
@@ -37,7 +38,7 @@ function inputBlock(entry,label,source){
       (detail?'\n  '+boundedText(detail):'')+'\n'+request.options.map((option,i)=>
         '  '+(i+1)+'. '+(option.label??option.kind)+' [id='+option.id+']'+
         (option.scope?' · '+option.scope:'')).join('\n')+
-      '\nSelect a displayed number or id:<exact option ID>. :cancel cancels this request.';
+      '\nSelect a displayed number or id:<exact option ID>. :cancel cancels this request. :details shows original request data.';
   }
   const form=projectForm(entry.request);
   return form?renderFormIntro(form,label,source)+renderFormField(form,0):header+'Native interaction unavailable';
@@ -111,7 +112,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   let chunkSource;
   let openLine=false;
   let atLineStart=true;
-  const color=Boolean('isTTY' in output&&output.isTTY&&process.env.NO_COLOR===undefined&&process.env.TERM!=='dumb');
+  const color=terminalColor(output);
   /** @type {Map<string,ReturnType<typeof createTerminalSanitizer>>} */
   const sanitizers=new Map();
   /** @param {string} source */
@@ -124,11 +125,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     return sanitizer;
   }
   /** @param {string} safe @param {PresentationTone} [tone] */
-  function style(safe,tone) {
-    if(!color||!tone||tone==='neutral')return safe;
-    const code={header:'1;36',thinking:'2;3',tool:'36',finding:'1;33',error:'1;31',success:'32'}[tone];
-    return '\x1b['+code+'m'+safe+'\x1b[0m';
-  }
+  function style(safe,tone) { return styleText(safe,tone,color); }
   /** A fulfilled callback confirms only the Writable boundary, not a human
    * reading the text. Delivery owns its existing bounded finish deadline.
    * @param {string} text @returns {Promise<void>}
@@ -153,26 +150,28 @@ export function createCliInput(input, output, interactive, interrupt) {
       } catch (error) { broken(error); }
     });
   }
-  /** @param {string} text @param {PresentationTone} [tone] */
+  /** Each trusted style is applied only after its untrusted text is sanitized.
+   * @param {string | readonly {text:string,tone?:PresentationTone}[]} text @param {PresentationTone} [tone] */
   function print(text,tone) {
     const prefix=openLine?'\n':'';
     openLine=false;chunkSource=undefined;atLineStart=true;
-    return write(prefix+style(terminalText(text),tone)+'\n');
+    const parts=typeof text==='string'?[{text,tone}]:text;
+    return write(prefix+parts.map(part=>style(terminalText(part.text),part.tone)).join('')+'\n');
   }
   /** Local messages do not own a delivery receipt. Never recursively
    * report an output failure to the same failed stream.
-   * @param {string} text
+   * @param {string} text @param {PresentationTone} [tone]
    */
-  function report(text) { return print(text).catch(()=>{}); }
-  /** @param {{source:string,header:string,text:string,indent?:string}} fragment */
+  function report(text,tone) { return print(text,tone).catch(()=>{}); }
+  /** @param {{source:string,header:string,text:string,indent?:string,headerTone?:PresentationTone}} fragment */
   function printChunk(fragment) {
     // Readline owns its current input line. Use a technical line boundary
     // while editing instead of overwriting or buffering a native chunk.
     const changed=chunkSource!==fragment.source;
     const body=sanitizerFor(fragment.source).push(fragment.text);
     if(!fragment.indent){
-      if(rl){chunkSource=fragment.source;return write(style(terminalText(fragment.header),'thinking')+body+'\n');}
-      const text=(changed?(openLine?'\n':'')+style(terminalText(fragment.header),'thinking'):'')+body;
+      if(rl){chunkSource=fragment.source;return write(style(terminalText(fragment.header),fragment.headerTone??'thinking')+body+'\n');}
+      const text=(changed?(openLine?'\n':'')+style(terminalText(fragment.header),fragment.headerTone??'thinking'):'')+body;
       chunkSource=fragment.source;
       if(text)openLine=!text.endsWith('\n');
       return write(text);
@@ -190,18 +189,43 @@ export function createCliInput(input, output, interactive, interrupt) {
       atLineStart=ch==='\n';
       physicalStart=ch==='\n';
     }
-    const header=boundary?(openLine?'\n':'')+style(terminalText(fragment.header),'thinking'):'';
+    const header=boundary?(openLine?'\n':'')+style(terminalText(fragment.header),fragment.headerTone??'thinking'):'';
     const text=header+style(decorated,'thinking')+(rl&&!decorated.endsWith('\n')?'\n':'');
     chunkSource=fragment.source;
     openLine=!rl&&!atLineStart;
     return write(text);
+  }
+  /** Preserve original form/permission text, styling only known scaffold spans.
+   * @param {string} value @returns {{text:string,tone?:PresentationTone}[]} */
+  function inputSegments(value) {
+    const first=value.indexOf('\n');
+    if(first<0)return [{text:value,tone:'accent'}];
+    const last=value.lastIndexOf('\n');
+    return [{text:value.slice(0,first),tone:'accent'},
+      {text:value.slice(first,last>first?last:value.length),tone:'neutral'},
+      ...(last>first?[{text:value.slice(last),tone:'muted'}]:[])];
+  }
+  /** Original request data in bounded pages; no mutation of native content/draft.
+   * @param {PendingLine} state @param {number} page */
+  function requestDetails(state,page) {
+    const field=state.draft&&state.form?.fields[state.draft.index];
+    const value=state.entry.kind==='permission'
+      ? {resource:state.entry.request.resource,action:state.entry.request.action,options:state.entry.request.options}
+      : field?{key:field.key,required:field.required,shape:field.shape}
+        : {payload:state.entry.request.payload};
+    const safe=terminalText(JSON.stringify(value,null,2)??'null');
+    const size=2000,total=Math.max(1,Math.ceil(safe.length/size));
+    if(!Number.isSafeInteger(page)||page<1||page>total)return 'Details page out of range (1–'+total+').';
+    const start=(page-1)*size;
+    return 'Original request details · page '+page+'/'+total+'\n'+safe.slice(start,start+size)+
+      (page<total?'\nUse :details '+(page+1)+' for the next page.':'');
   }
   /** @param {string} label @param {PendingLine} state */
   function nextForm(label,state){
     const form=state.form,draft=state.draft;
     if(!form||!draft)return;
     if(draft.index<form.fields.length){
-      void print(renderFormField(form,draft.index),'header').catch(()=>{});
+      void print(inputSegments(renderFormField(form,draft.index))).catch(()=>{});
       return;
     }
     const issue=validateFormContent(form,draft.content);
@@ -272,6 +296,10 @@ export function createCliInput(input, output, interactive, interrupt) {
         void report('Validation is still pending for '+label+'. No response has been sent.');
         prompt();return;
       }
+      if(raw===':details'||/^:details [1-9]\d*$/.test(raw)){
+        const page=raw===':details'?1:Number(raw.slice(9));
+        void report(requestDetails(state,page),'muted');prompt();return;
+      }
       if(state.entry.kind==='permission'){
         const result=parsePermission(state.entry,raw);
         if(result)state.finish(result);
@@ -284,10 +312,10 @@ export function createCliInput(input, output, interactive, interrupt) {
           const num=/^[1-9]\d*$/.test(position)?Number(position):NaN;
           if(!field?.options||!Number.isSafeInteger(num)||num<1||num>field.options.length){
             void report('Invalid choice page: enter :choices N for an offered choice position.');
-          }else void print(renderFormField(form,draft.index,num-1),'header').catch(()=>{});
+          }else void print(inputSegments(renderFormField(form,draft.index,num-1))).catch(()=>{});
         }else if(raw===':back'){
           draft.index=Math.max(0,draft.index-1);
-          void print(renderFormField(form,draft.index),'header').catch(()=>{});
+          void print(inputSegments(renderFormField(form,draft.index))).catch(()=>{});
         }else if(raw===':skip'){
           const field=form.fields[draft.index];
           if(field?.required)void report('Required field '+label+': cannot skip.');
@@ -362,7 +390,7 @@ export function createCliInput(input, output, interactive, interrupt) {
       pending.set(label,{entry,finish,epoch:++epoch,signal,...(form&&{form,draft:createFormDraft(form)})});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
-      void print(inputBlock(entry,label,sourceFor(entry)),'header').catch(()=>{});
+      void print(inputSegments(inputBlock(entry,label,sourceFor(entry)))).catch(()=>{});
       prompt();
     });
   }

@@ -8,7 +8,7 @@ import { eventFindings } from '../core/finding.js';
 /** @import {ExecutionFact} from '../application/execution-facts.js' */
 /** @typedef {'compact' | 'detailed' | 'debug'} PresentationMode */
 /** @typedef {'inline'|'notices'} ProgressDisplay */
-/** @typedef {'header'|'thinking'|'tool'|'finding'|'error'|'success'|'neutral'} PresentationTone */
+/** @typedef {'header'|'thinking'|'tool'|'finding'|'error'|'success'|'neutral'|'controller'|'worker-0'|'worker-1'|'worker-2'|'worker-3'|'worker-4'|'worker-5'|'accent'|'muted'|'heading'|'bold'|'italic'|'code'|'link'|'prompt'} PresentationTone */
 
 /** Display only: preserve underlying payload and final answer. @param {string} text */
 export function terminalText(text) {
