@@ -4,7 +4,7 @@ import { createCliTools } from '../../src/hosts/cli-tools.js';
 const tool=(payload,sequence=1,attemptId='a',nativeId='x')=>({kind:'tool',operationId:'op',attemptId,profileId:'p',providerId:'fixture',sequence,nativeId,nativeKind:payload.sessionUpdate??'tool_call_update',payload});
 test('C15R.1 sparse native tool identity, distinct modes, no invented terminal',()=>{
   const events=[tool({title:'shell',kind:'execute',status:'pending'},1),tool({title:'git show HEAD',status:'in_progress'},2),tool({title:'git show HEAD',status:'in_progress'},3),tool({status:'completed'},4)];
-  for(const [mode,count] of [['compact',2],['detailed',3],['debug',4]]){
+  for(const [mode,count] of [['compact',3],['detailed',3],['debug',4]]){
     const projection=createCliTools(),lines=events.map(e=>projection.accept(e,mode)).filter(Boolean);
     assert.equal(lines.length,count,mode);assert.match(lines.at(-1).text,mode==='debug'?/git show HEAD · completed/:/\[T1\] · completed/);
     assert.ok(!lines.some(l=>l.text.includes('tool_call_update ·')));

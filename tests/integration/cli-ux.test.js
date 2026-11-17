@@ -224,7 +224,7 @@ test('C15R.2 full compact, detailed and debug transcripts preserve text and actu
       'Role Orchestrator · '+mode+' · '+(debug?'Operation 123456789':'12345678'),'','● Controller #1 · p','  Invocation dispatched · selector=m · native effort',
       ...(debug?['  attempt=a event=dispatch seq=1 at=0 reason=DISPATCH_STARTED']:[]),'',
       heading,'  Inspect the commit.','  Read the diff.',
-      ...(mode!=='compact'?[row('◇ [T1] shell · pending','tool_call','x',3)]:[]),
+      row('◇ [T1] shell · pending','tool_call','x',3),
       row('◇ [T1] git show HEAD · in_progress','tool_call_update','x',4),
       ...(debug?[row('◇ [T1] git show HEAD · in_progress','tool_call_update','x',5)]:[]),
       row(debug?'✓ [T1] git show HEAD · completed':'✓ [T1] · completed','tool_call_update','x',6),
