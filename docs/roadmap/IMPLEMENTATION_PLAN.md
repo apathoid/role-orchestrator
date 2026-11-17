@@ -4,9 +4,9 @@
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
-## C15R-UX — CLI Visual Fidelity & Markdown Rendering (PLANNED)
+## C15R-UX — CLI Visual Fidelity & Markdown Rendering (IMPLEMENTED; FULL CI REVALIDATION PENDING, REAL NATIVE UNVERIFIED)
 
-**Следующий активный инженерный этап:** [полный C15R-UX.0–.8 план](C15R_UX_CLI_VISUAL_FIDELITY.md). Planning baseline `bf117d405bf31cfc577021cb6cb12e2091df2b4b`; брать текущий HEAD при старте и проверить, не реализован ли этап отдельно. Это новый UX scope после инженерно проверенного C15R.6R, не повторное открытие его исправлений и не подтверждение A100. До реализации C15R-UX к нему нет собственного CI PASS.
+**Инженерная реализация:** [C15R-UX.0–.8](C15R_UX_CLI_VISUAL_FIDELITY.md) после baseline `9223fad4d9242bc131aaa3ecbef6e93d691ef02f` выполнена кодом/тестами. CheckJs, integration/root/PTy regression и полномасштабный Nix/package CI требуют подтверждения на *финальном SHA* (см. [STATUS](STATUS.md)); реальная installed model/Zed приёмка A108 остаётся UNVERIFIED, а прежний A100 не закрывается. Следующий шаг после подтверждения CI — реальная native-приёмка, не новый Host workflow.
 
 | Шаг | Исполнимый результат |
 |---|---|

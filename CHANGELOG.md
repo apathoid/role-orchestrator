@@ -4,6 +4,13 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-UX — CLI visual fidelity and Markdown presentation (engineering, native UNVERIFIED)
+- Fixed Controller source accent, deterministic predefined palette for arbitrary Worker roleIds, no role-name heuristics; trusted per-segment ANSI after untrusted sanitization, terminal 24-bit/256/16 and plain fallbacks.
+- Compact native tools now show even the only generic pending report; duplicate transitions remain identity-scoped. Native source switching, actual streamed Thinking, recorded finding accent and debug-only redundant lifecycle notices are presentation-only.
+- Human TTY authoritative Assessment.answer renders a bounded safe Markdown subset; non-TTY/stdout JSON/ACP/state and original assessment remain unchanged. Forms/permissions can reveal actual current request data via `:details [page]` without altering answers, authority, or ACK.
+- Added integration and actual Linux PTY regression. Exact CI status and UNVERIFIED native/Zed acceptance are tracked in [STATUS](docs/roadmap/STATUS.md).
+
+
 ### C15R.6R-Final — Native form cancellation while validating
 
 - `:cancel` and `:decline` now preempt in-flight provider-controlled form pattern validation on the original correlated terminal request. Finishing a request aborts its technical worker; late results cannot send `accept`, mutate form drafts, report stale errors or answer subsequent requests. No orchestration/permissions/provider changes. Red/green baseline probe and full CI; real native client acceptance remains UNVERIFIED.

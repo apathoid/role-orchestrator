@@ -1,5 +1,14 @@
 # C12.3–C12.4: протокол нативной приёмки
 
+## C15R-UX.8 — native visual acceptance (UNVERIFIED)
+
+**Статус:** UNVERIFIED. Synthetic Node SDK/actual Linux PTY может подтвердить технический транспорт и Markdown/ANSI fidelity, но не настоящие native questions, выбор модели, реальную параллельную самостоятельную работу Workers или графическое представление ACP/Zed. В этой GitHub-сессии отсутствует authenticated пользовательская среда с настоящими provider executors, config/permissions и Zed GUI. Не отправлять secrets, приватные пути и prompts в публичный CI/репозиторий.
+
+На установленном пакете с **точно записанным SHA**, Node/Nix version, native ACP/CLI provider binary+model versions и permission configuration выполнить контролируемые non-Git задания: (1) прямой ответ с Markdown и без Markdown, проверить original Assessment.answer через JSON и redirected stdout, visual TTY с/без NO_COLOR и единственный authoritative final; (2) native form из нескольких полей + `:details N`, выбор native option/scope и `:back`/`:skip`/`:cancel`, значение с пробелами, отказ и подтверждённый ACK, не угадывая q0/_custom; (3) два естественно фактически dispatched независимых Worker с произвольными ролями, intermixed Thinking и tools, failure/unknown/gap/recorded finding и bounded scrollback; (4) аналогичный клиент ACP через настоящий Zed с source identity и без подавления native widgets/skills; (5) сопоставимая задача на предыдущем C15R.6R build и новом C15R-UX при равных models/config/environment.
+
+Для каждого прогона сохранить redacted command, versions, SHA, timestamp, request/attempt/native IDs, короткий transcript/скриншоты, фактические ACK/outputs/exit, PASS/FAIL/UNVERIFIED. Для native недоступных возможностей записать точный blocker, не эмулировать пользовательские permissions. Уточнить статусы A108 и исторических A100/A93/A86 только после фактических доказательств.
+
+
 **Статус:** реальные вызовы двух независимых LLM-исполнителей, внешнего ACP-клиента и Zed **UNVERIFIED**. Контрактные тесты, синтетические subprocess/SDK fixtures и успешный Nix package smoke не подменяют эти результаты. Настоящий вызов требует конфигурации/полномочий пользователя и доступной native среды; в этой GitHub-операции они не предоставлены. Не передавать токены в GitHub Actions или логи.
 
 ## C12.3 — реальный provider-agnostic прогон
