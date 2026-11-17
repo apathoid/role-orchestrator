@@ -42,7 +42,16 @@ function inline(line,color,depth=0){
         }
       }
     }
-    const markers=ch==='*'?['**','*']:ch==='_'?['__','_']:ch==='~'?['~~']:[];
+    // Plain identifiers (foo_bar, a*b, 2*3) are not formatting requests.
+    // Avoid erasing punctuation from ordinary model-authored text.
+    if(ch==='_'||ch==='*'){
+      const left=line[at-1]??'',right=line[at+1]??'';
+      if(/[\p{L}\p{N}]/u.test(left)&&/[\p{L}\p{N}]/u.test(right)){
+        out+=ch;at++;continue;
+      }
+    }
+    // Unsupported strikethrough stays literal rather than being presented as bold.
+    const markers=ch==='*'?['**','*']:ch==='_'?['__','_']:[];
     let matched=false;
     for(const marker of markers){
       if(!line.startsWith(marker,at))continue;

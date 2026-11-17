@@ -42,6 +42,9 @@ test('A105 Markdown renders only supplied structure, preserves long/fenced sourc
   assert.match(strip(styled),/\x60\x60\x60js\nconst x = 1;\n\x60\x60\x60/);
   assert.equal(renderMarkdownAnswer(original,'none'),original,'NO_COLOR fallback remains ordinary Markdown');
   assert.equal(renderMarkdownAnswer('Обычный текст модели','256'),'Обычный текст модели');
+  const ordinary='foo_bar_baz, x*y*z, 2*3*4 и ~~не изменено~~';
+  assert.equal(renderMarkdownAnswer(ordinary,'256'),ordinary,
+    'ordinary identifiers and arithmetic remain literal, not synthetic Markdown');
   assert.equal(renderMarkdownAnswer('## unclosed **\n<script>not executed</script>','none'),'## unclosed **\n<script>not executed</script>');
   const unsafe='Hello\x1b]52;c;SECRET\x07\u202e world';
   assert.equal(renderMarkdownAnswer(unsafe,'256'),'Hello world');
