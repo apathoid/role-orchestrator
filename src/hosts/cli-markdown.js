@@ -3,6 +3,8 @@ import { styleText } from './cli-styling.js';
 /** @import {ColorCapability} from './cli-styling.js' */
 
 const maxStyledAnswer=256*1024;
+const maxStyledLine=16*1024;
+const maxMarkupDelimiters=256;
 const maxInlineDepth=8;
 
 /** Safe, bounded subset of Markdown for authoritative *human TTY* display.
@@ -63,7 +65,16 @@ function inline(line,color,depth=0){
 export function renderMarkdownAnswer(answer,color) {
   const safe=terminalText(answer);
   if(color==='none'||safe.length>maxStyledAnswer)return safe;
+  // Failed delimiter lookups can otherwise become quadratic on adversarial or
+  // simply malformed model output. Fall back *without losing any content*.
   const lines=safe.split('\n');
+  if(lines.some(line=>line.length>maxStyledLine))return safe;
+  let tokens=0;
+  for(const ch of safe){
+    if(ch==='['||ch==='*'||ch==='_'||ch==='~'||ch==='\x60'){
+      if(++tokens>maxMarkupDelimiters)return safe;
+    }
+  }
   let fence;
   let result='';
   for(let i=0;i<lines.length;i++){

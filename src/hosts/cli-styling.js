@@ -24,7 +24,8 @@ const colors = {
 
 /** @param {NodeJS.WritableStream} output @param {NodeJS.ProcessEnv} [env] @returns {ColorCapability} */
 export function terminalColor(output,env=process.env) {
-  if(!('isTTY' in output) || !output.isTTY || env.NO_COLOR!==undefined || env.TERM==='dumb')return 'none';
+  if(!('isTTY' in output) || !output.isTTY || env.NO_COLOR!==undefined ||
+    !env.TERM || env.TERM==='dumb' || env.TERM==='unknown')return 'none';
   if(/truecolor|24bit/i.test(env.COLORTERM??''))return 'truecolor';
   if(/256color/i.test(env.TERM??''))return '256';
   return '16';

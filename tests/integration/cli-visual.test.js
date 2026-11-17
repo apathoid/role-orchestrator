@@ -12,6 +12,8 @@ const strip=text=>text.replace(/\x1b\[[0-9;]*m/g,'');
 test('A101 terminal capability fallback and role coloring are stable independent of role name/arrival order',()=>{
   const tty={isTTY:true};
   assert.equal(terminalColor(tty,{TERM:'dumb'}),'none');
+  assert.equal(terminalColor(tty,{}),'none');
+  assert.equal(terminalColor(tty,{TERM:'unknown'}),'none');
   assert.equal(terminalColor(tty,{TERM:'xterm-256color',NO_COLOR:''}),'none');
   assert.equal(terminalColor(tty,{TERM:'xterm-256color'}),'256');
   assert.equal(terminalColor(tty,{TERM:'xterm',COLORTERM:'truecolor'}),'truecolor');
@@ -45,6 +47,12 @@ test('A105 Markdown renders only supplied structure, preserves long/fenced sourc
   assert.equal(renderMarkdownAnswer(unsafe,'256'),'Hello world');
   const long='Содержимое '+ 'x'.repeat(260*1024)+'\n**final**';
   assert.equal(renderMarkdownAnswer(long,'256'),long,'large answers fall back without truncation');
+  const pathological='['.repeat(12000)+'\n'+'*'.repeat(24000);
+  assert.equal(renderMarkdownAnswer(pathological,'256'),pathological,
+    'malformed excessive markup returns original safe text with bounded parsing work');
+  const hugeLine='## heading '+'a'.repeat(20000);
+  assert.equal(renderMarkdownAnswer(hugeLine,'256'),hugeLine,
+    'overlong lines fall back to complete plain text without scanning for closures');
 });
 
 test('A103 native fragments retain identity across two arbitrary Workers and source switching',async()=>{
