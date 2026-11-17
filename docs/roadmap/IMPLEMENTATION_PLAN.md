@@ -1,12 +1,30 @@
 # Активный план реализации и приёмки
 
-**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A100 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
+**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A108 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
 
+## C15R-UX — CLI Visual Fidelity & Markdown Rendering (PLANNED)
+
+**Следующий активный инженерный этап:** [полный C15R-UX.0–.8 план](C15R_UX_CLI_VISUAL_FIDELITY.md). Planning baseline `bf117d405bf31cfc577021cb6cb12e2091df2b4b`; брать текущий HEAD при старте и проверить, не реализован ли этап отдельно. Это новый UX scope после инженерно проверенного C15R.6R, не повторное открытие его исправлений и не подтверждение A100. До реализации C15R-UX к нему нет собственного CI PASS.
+
+| Шаг | Исполнимый результат |
+|---|---|
+| C15R-UX.0 | HEAD/CI/current source owners, RED full-transcript baselines, immutable output/input/provenance boundaries |
+| C15R-UX.1 | Minimal trusted text segments; **фиксированный Controller accent**, все неизвестные заранее Worker roleId → стабильный цвет палитры, без hardcoded role names |
+| C15R-UX.2 | Человеческие original native questions/permissions, отдельные accent/neutral/meta/prompt/footer, exact values/ACK/authority |
+| C15R-UX.3 | Лаконичные реальные source headers, streaming Thinking и независимые Workers без artificial plan/grouping |
+| C15R-UX.4 | Identity-aware compact tools, debug-only raw lifecycle codes, truthful status/gap/unknown; no event loss/guessed success |
+| C15R-UX.5 | Safe Markdown formatting **только** `Assessment.answer` в human TTY; unchanged raw/machine/JSON/ACP; final once |
+| C15R-UX.6 | Model-authored findings, factual snapshots и honest final summary без Host semantics |
+| C15R-UX.7 | Regression/golden/real PTY/performance/execution equivalence/full exact-SHA CI; non-Git/arbitrary roles/tools |
+| C15R-UX.8 | Native visual acceptance or UNVERIFIED, docs/handoff, explicit unclosed native obligations |
+
+**Приёмка:** [A101–A108](../../tests/ACCEPTANCE_MATRIX.md). Ни один новый тест не считается выполненным на основании CI C15R.6R. Без master merge; нормативные docs только если изменился внешний contract. Доступ к skills/native tools и environment discovery не ограничивать ради renderer.
+
 ## C15R.6R — corrective technical completion (engineering verified; real native UNVERIFIED)
 
-Baseline `804bbaa24f606dc5be79a27db303489dda1dd27f` and review `0bd01ccca8eb1740805af5d04aed6cbced5b3d60` (historical CI 43970858896 PASS, 497 root / 9 PTY). C15R.6R.0–.6 and narrow C15R.6R-Final cancellation correction completed on `8b9be91a96f4657dd861647da13808f86f548e93`: [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) PASS, 500/500 root and 9/9 PTY, full Nix/package/release. Scoped fix: native form `:cancel`/`:decline` are accepted during asynchronous provider-regex validation, abort the technical worker and ignore late outcomes without changing external correlation or other pending requests. [C15R.6R contract](C15R_PRESENTATION_QUALITY.md), [STATUS](STATUS.md) and sole [acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md) have actual evidence. A94–A99 engineering PASS; A100, A93/A86/A81 and F4/C12/C13/C14/C13R/C14R native visual/comparative UNVERIFIED. **Next action:** separate installed real-provider/client native acceptance only; no new engineering cluster required by current review.
+Baseline `804bbaa24f606dc5be79a27db303489dda1dd27f` and review `0bd01ccca8eb1740805af5d04aed6cbced5b3d60` (historical CI 43970858896 PASS, 497 root / 9 PTY). C15R.6R.0–.6 and narrow C15R.6R-Final cancellation correction completed on `8b9be91a96f4657dd861647da13808f86f548e93`: [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) PASS, 500/500 root and 9/9 PTY, full Nix/package/release. Scoped fix: native form `:cancel`/`:decline` are accepted during asynchronous provider-regex validation, abort the technical worker and ignore late outcomes without changing external correlation or other pending requests. [C15R.6R contract](C15R_PRESENTATION_QUALITY.md), [STATUS](STATUS.md) and sole [acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md) have actual evidence. A94–A99 engineering PASS; A100, A93/A86/A81 and F4/C12/C13/C14/C13R/C14R native visual/comparative UNVERIFIED. **Historical C15R.6R handoff:** separate installed real-provider/client native acceptance remained open. New approved engineering work is now C15R-UX (above); C15R.6R itself has no pending engineering fixes.
 
 ## C15R.6 — CLI Interaction Safety & Presentation Refinement (engineering PASS on 804bbaa2; native UNVERIFIED)
 

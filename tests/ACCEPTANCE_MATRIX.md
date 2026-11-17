@@ -447,3 +447,20 @@ C15R.6 A87–A92 engineering PASS on `804bbaa24f606dc5be79a27db303489dda1dd27f`,
 | A100 | R13,R18,R19,R27,R30,R31 | Real installed native RO, provider/changed-skill comparison, Zed ACP and visual/quality/latency re-acceptance, precise blocker when unavailable | N |
 
 C15R.6R A94–A99 **ENGINEERING PASS**: `8b9be91a96f4657dd861647da13808f86f548e93`, [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) SUCCESS (500/500 root, 9/9 actual Linux PTY, complete Nix/package/release). Dedicated real-module baseline-vs-current cancellation probe confirmed RED→GREEN for native :cancel/:decline in normal and :json input. No native acceptance inferred. A100 real native/visual/comparative **UNVERIFIED**. Prior A93/A86/A81 and F4/C12/C13/C14/C13R/C14R native obligations remain open. No synthetic fixture substitutes for a real provider.
+
+## C15R-UX — CLI Visual Fidelity & Markdown Rendering (PLANNED / NOT RUN)
+
+Новые критерии относятся только к пользовательскому представлению. Это не новый обязательный runtime workflow, схема model response или изменение Host authority. До фактических тестов A101–A107 **NOT RUN**; реальный installed native A108 **UNVERIFIED**. Детальный [план](../docs/roadmap/C15R_UX_CLI_VISUAL_FIDELITY.md), текущий статус в [STATUS](../docs/roadmap/STATUS.md).
+
+| ID | Требования | Проверяемое наблюдение | Уровень |
+|---|---|---|---|
+| A101 | R13,R18,R21,R22 | Trusted segmented styling и ANSI safety, fixed Controller accent, arbitrary `roleId` → deterministic predefined palette without Worker-name special cases; plain/NO_COLOR/16/256/truecolor, unique visible Attempt attribution, unchanged input/readline | I/PTY |
+| A102 | R08,R14,R19,R21,R23 | Native questions, multi-field forms, permissions and footer: distinct header/prompt/options/meta, all material source descriptions/constraints accessible; exact typed values, scopes/options/ACK, partial input, concurrent requests, reconnect/cancel | I/SDK/PTY |
+| A103 | R03,R13,R18,R21,R26 | Controller + arbitrary-role Workers source switching and Thinking continuity under native interleaving; only actual dispatched workers, honest profile/model/effort, gap/retry, no invented plan or model-generated content rewriting | I/PTY |
+| A104 | R11,R18,R21,R22,R23 | Identity-aware compact tools, meaningful transitions without generic duplicates, display truncation marked, separate completed vs succeeded, unknown/gap/out-of-order preserved, raw lifecycle codes only in debug, no native event/evidence filtering | I/SDK/PTY |
+| A105 | R11,R13,R19,R21,R22 | Markdown from authoritative Assessment.answer rendered safely only human TTY, plain answer unstructured, code fences/Unicode/links/large fallback; output exactly once before summary, exact raw/machine/JSON/ACP and state fidelity | I/PTY |
+| A106 | R11,R13,R14,R21,R22,R23 | Actual reported/recorded findings with uncertainty, factual status/footer/summaries, no inference from silence, no misleading success/ACK/effect claims; permission and unknown warnings visible | I/PTY |
+| A107 | R01,R03,R05,R08,R09,R13,R16,R18,R21,R26,R31 | Golden complete transcript + actual Linux PTY, non-Git and arbitrary role/tool fixture, independent Workers and unchanged skills/context/Invocation/Outcome; slow/broken writable and bounded memory/latency; full mandatory exact-SHA CI | I/E/PTY |
+| A108 | R13,R18,R19,R21,R27,R30,R31 | Installed real CLI visual re-acceptance and real provider/standard ACP client/native skill comparison where available; precise UNVERIFIED blocker otherwise. Distinct from historical A100/A93/A86 obligations | N |
+
+**Planning baseline:** `bf117d405bf31cfc577021cb6cb12e2091df2b4b`; historical C15R.6R [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) covers only its original A94–A99, **not** C15R-UX. A100/A93/A86/A81 and other earlier native obligations remain UNVERIFIED.
