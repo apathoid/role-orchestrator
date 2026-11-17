@@ -532,12 +532,14 @@ test('C15R.6R-Final external abort wins if already delivered; later typed cancel
     properties:{value:{type:'string',pattern:'(a+)+$'}},required:['value']}};
   try{
     const original=terminal.ask(risky,stop.signal);
-    input.write('a'.repeat(40)+'!');
+    input.write('a'.repeat(40)+'!\n');
     stop.abort();
     assert.deepEqual(await original,{kind:'cancelled'});
     const future=terminal.ask({...form,request:{...form.request,requestId:'future'}},
       new AbortController().signal);
-    input.write('\n');
+    // A delayed explicit answer for the already cancelled alias must never
+    // be interpreted as a command for the newly displayed question.
+    input.write('#1 :cancel\n');
     await tick();
     input.write('#2 chosen\n');
     assert.deepEqual(await future,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
