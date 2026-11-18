@@ -112,6 +112,7 @@ test('R2-F1 boundaries 1/20/21 and 101 preserve original IDs and scope and only 
     output.on('data',chunk=>transcript+=chunk.toString());
     const terminal=createCliInput(input,output,true,()=>{});
     let sent=false;const asking=terminal.ask(req,new AbortController().signal).then(x=>{sent=true;return x;});
+    await tick(); // The initial 1–20 options have crossed the Writable boundary.
     if(position>20){
       input.write(position+'\n');await tick();
       assert.equal(sent,false);

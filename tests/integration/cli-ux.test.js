@@ -177,6 +177,7 @@ test('C15.3 numbered choices preserve native option identity and render actual f
   const p=terminal.ask(permission,signal), f=terminal.ask(form,signal);
   assert.match(text,/1\. deny \[id=deny\]/);assert.match(text,/2\. allow \[id=allow\]/);
   assert.match(text,/Which value\?/);assert.match(text,/value \(text, required\)/);
+  await tick();
   input.write('#1 option 2\n#2 chosen\n');
   assert.deepEqual(await p,{kind:'answered',payload:{optionId:'allow'}});
   assert.deepEqual(await f,{kind:'answered',payload:{action:'accept',content:{value:'chosen'}}});
@@ -259,12 +260,14 @@ test('C15R.6.1 exact position is never shadowed by optionId; explicit ID is sepa
     {id:'option 1',kind:'allow',label:'Allow'},{id:'2',kind:'allow',scope:'always'}];
   try{
     const first=terminal.ask(request,new AbortController().signal);
+    await tick();
     input.write('option 1\n');
     assert.deepEqual(await first,{kind:'answered',payload:{optionId:'deny'}});
     const second=terminal.ask({...request,request:{...request.request,requestId:'second'}},new AbortController().signal);
     input.write('id:option 1\n');
     assert.deepEqual(await second,{kind:'answered',payload:{optionId:'option 1'}});
     const third=terminal.ask({...request,request:{...request.request,requestId:'third'}},new AbortController().signal);
+    await tick();
     input.write('2\n');
     assert.deepEqual(await third,{kind:'answered',payload:{optionId:'option 1'}});
     const cancelled=terminal.ask({...request,request:{...request.request,requestId:'fourth'}},new AbortController().signal);
@@ -304,6 +307,7 @@ test('C15R.6.2 form displays offered oneOf and maps numeric choice to const, not
     properties:{decision:{type:'string',title:'Next step',oneOf:[{const:'continue',title:'Continue work'},{const:'stop',title:'Stop work'}]}},required:['decision']}};
   const answer=terminal.ask(f,new AbortController().signal);
   assert.match(display,/What should happen/);assert.match(display,/Continue work/);assert.match(display,/Stop work/);
+  await tick();
   input.write('2\n');
   assert.deepEqual(await answer,{kind:'answered',payload:{action:'accept',content:{decision:'stop'}}});
   terminal.close();input.end();
@@ -319,7 +323,9 @@ test('C15R.6.2 text, optional/required, typed values, multi-select and exact str
   const done=terminal.ask(f,new AbortController().signal);
   input.write('  verbatim  \n');
   input.write('12\n');await new Promise(resolve=>setImmediate(resolve));assert.match(display,/number above maximum/);
-  input.write('0\nfalse\n1,2\n');
+  input.write('0\nfalse\n');
+  await tick(); // The final multi-select page must be shown before numeric 1,2.
+  input.write('1,2\n');
   assert.deepEqual(await done,{kind:'answered',payload:{action:'accept',
     content:{answer:'  verbatim  ',count:0,agreed:false,tags:['x','y']}}});
   terminal.close();input.end();
@@ -386,6 +392,7 @@ test('C15R.6R.2 original special field names and typed values survive form draft
   f.request.payload={mode:'form',message:'Special keys',requestedSchema:{type:'object',
     properties:props,required:['__proto__','constructor','prototype']}};
   const result=terminal.ask(f,new AbortController().signal);
+  await tick();
   input.write('1,2\nname\n0\n');
   const received=await result;
   assert.equal(received.kind,'answered');
@@ -450,6 +457,7 @@ test('C15R.6R.1 pattern timeout does not block another pending permission or gra
   input.write('a'.repeat(40)+'!\n');
   const start=performance.now();
   const approval=terminal.ask({...permission,request:{...permission.request,requestId:'parallel'}},new AbortController().signal);
+  await tick();
   input.write('#2 1\n');
   assert.deepEqual(await approval,{kind:'answered',payload:{optionId:'deny'}});
   assert.ok(performance.now()-start<700,'permission owner was stalled by unrelated provider regex');
