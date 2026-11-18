@@ -41,7 +41,7 @@ async function setup(t){
 test('R2F RED initial permission numeric choice is rejected until successful Writable callback',{timeout:5000},async(t)=>{
   const {input,output,cli}=await setup(t);
   let done=false;
-  const answer=cli.ask(permission(),new AbortController().signal).then(x=>{done=true;return x;});
+  const answer=cli.ask(permission(),AbortSignal.timeout(4000)).then(x=>{done=true;return x;});
   assert.match(output.held[0]?.text??'',/1\. Deny/);
   input.write('1\n');await tick();
   assert.equal(done,false,'initial options have not crossed the Writable boundary');
@@ -54,7 +54,7 @@ test('R2F RED initial permission numeric choice is rejected until successful Wri
 test('R2F RED initial form numeric choice is rejected before successful Writable callback',{timeout:5000},async(t)=>{
   const {input,output,cli}=await setup(t);
   let done=false;
-  const answer=cli.ask(form(),new AbortController().signal).then(x=>{done=true;return x;});
+  const answer=cli.ask(form(),AbortSignal.timeout(4000)).then(x=>{done=true;return x;});
   input.write('1\n1\n');await tick();
   assert.equal(done,false,'second field must not be reached from an undisplayed first field');
   // An early choice cannot be silently replayed as approval after delivery.
@@ -66,7 +66,7 @@ test('R2F RED initial form numeric choice is rejected before successful Writable
 test('R2F RED nextForm: second-field number waits for its own Writable receipt',{timeout:5000},async(t)=>{
   const {input,output,cli}=await setup(t);
   let done=false;
-  const answer=cli.ask(form(),new AbortController().signal).then(x=>{done=true;return x;});
+  const answer=cli.ask(form(),AbortSignal.timeout(4000)).then(x=>{done=true;return x;});
   output.release();await tick(); // First choice has crossed Writable boundary.
   input.write('1\n');await tick();
   assert.match(output.held[0]?.text??'',/Second choice/);
@@ -81,7 +81,7 @@ test('R2F RED nextForm: second-field number waits for its own Writable receipt',
 test('R2F RED :back: a stale initial callback for the same field index cannot authorize a newer display',{timeout:5000},async(t)=>{
   const {input,output,cli}=await setup(t);
   let done=false;
-  const answer=cli.ask(form('back',false),new AbortController().signal).then(x=>{done=true;return x;});
+  const answer=cli.ask(form('back',false),AbortSignal.timeout(4000)).then(x=>{done=true;return x;});
   input.write(':skip\n:back\n');await tick(); // Back to field 0 while old write is held.
   assert.match(output.held[0]?.text??'',/First choice/);
   output.release();await tick(); // Stale original field-0 callback, not latest :back.
@@ -99,7 +99,7 @@ test('R2F RED fast :choices 30 + 30 after initial receipt remains rejected until
   paged.request.options=Array.from({length:30},(_,i)=>({
     id:'native-'+(i+1),kind:i===29?'allow':'deny',label:'Option '+(i+1),scope:i===29?'always':'once',
   }));
-  const answer=cli.ask(paged,new AbortController().signal).then(x=>{done=true;return x;});
+  const answer=cli.ask(paged,AbortSignal.timeout(4000)).then(x=>{done=true;return x;});
   output.release();await tick();
   input.write(':choices 30\n30\n');await tick();
   assert.equal(done,false,'a queued :choices page is not yet shown');
@@ -123,7 +123,7 @@ test('R2F RED cancel/abort and failed Writable never record a page or allow a la
   }
   {
     const {input,output,cli}=await setup(t);
-    const answer=cli.ask(permission(),new AbortController().signal);
+    const answer=cli.ask(permission(),AbortSignal.timeout(4000));
     output.destroy(new Error('terminal unavailable'));
     assert.deepEqual(await answer,{kind:'unavailable'});
     input.write('2\n');await tick();
@@ -134,8 +134,8 @@ test('R2F RED cancel/abort and failed Writable never record a page or allow a la
 test('R2F RED concurrent pending questions do not share initial display receipts',{timeout:5000},async(t)=>{
   const {input,output,cli}=await setup(t);
   let secondSettled=false;
-  const first=cli.ask(permission('one'),new AbortController().signal);
-  const second=cli.ask(permission('two'),new AbortController().signal).then(x=>{secondSettled=true;return x;});
+  const first=cli.ask(permission('one'),AbortSignal.timeout(4000));
+  const second=cli.ask(permission('two'),AbortSignal.timeout(4000)).then(x=>{secondSettled=true;return x;});
   output.release();await tick();
   input.write('#2 2\n');await tick();
   assert.equal(secondSettled,false,'first question receipt cannot authorize the second one');
