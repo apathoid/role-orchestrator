@@ -1,10 +1,10 @@
 /** Decorative indentation for *human terminal output only*. It changes no
  * source text, native payload, ACP wire, persisted answer or machine stream.
  * Width is advisory: terminal wrapping belongs to the terminal, not Host.
- * @param {{isTTY?:unknown,columns?:unknown}} output */
+ * @param {object} output */
 export function terminalMarginColumns(output) {
-  if(output.isTTY!==true)return 0;
-  const width=output.columns;
+  if(!('isTTY' in output)||output.isTTY!==true)return 0;
+  const width='columns' in output?output.columns:undefined;
   if(typeof width!=='number'||!Number.isFinite(width)||width<=0)return 1;
   return width>=60?2:width>=30?1:0;
 }
