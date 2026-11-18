@@ -134,9 +134,10 @@ export function createCliInput(input, output, interactive, interrupt) {
   function style(safe,tone) { return styleText(safe,tone,color); }
   /** A fulfilled callback confirms only the Writable boundary, not a human
    * reading the text. Delivery owns its existing bounded finish deadline.
-   * @param {string} text @returns {Promise<void>}
+   * @param {string} text @param {()=>void} [delivered]
+   * @returns {Promise<void>}
    */
-  function write(text) {
+  function write(text,delivered) {
     if (unavailable()) {
       broken();
       return Promise.reject(outputFailure);
@@ -146,7 +147,14 @@ export function createCliInput(input, output, interactive, interrupt) {
       const settle = error => {
         if (!writes.delete(settle)) return;
         if (error) reject(error);
-        else resolve();
+        else {
+          // A synchronous Writable callback is already a completed write.
+          // Do not postpone this receipt to a Promise microtask: user input
+          // arriving immediately after a successful synchronous write must
+          // see the accurate display state.
+          delivered?.();
+          resolve();
+        }
       };
       writes.add(settle);
       try {
@@ -157,12 +165,13 @@ export function createCliInput(input, output, interactive, interrupt) {
     });
   }
   /** Each trusted style is applied only after its untrusted text is sanitized.
-   * @param {string | readonly {text:string,tone?:PresentationTone}[]} text @param {PresentationTone} [tone] */
-  function print(text,tone) {
+   * @param {string | readonly {text:string,tone?:PresentationTone}[]} text
+   * @param {PresentationTone} [tone] @param {()=>void} [delivered] */
+  function print(text,tone,delivered) {
     const prefix=openLine?'\n':'';
     openLine=false;chunkSource=undefined;atLineStart=true;
     const parts=typeof text==='string'?[{text,tone}]:text;
-    return write(prefix+parts.map(part=>style(terminalText(part.text),part.tone)).join('')+'\n');
+    return write(prefix+parts.map(part=>style(terminalText(part.text),part.tone)).join('')+'\n',delivered);
   }
   /** Local messages do not own a delivery receipt. Never recursively
    * report an output failure to the same failed stream.
@@ -233,7 +242,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   function showChoicePage(label,state,view,offset){
     const fieldIndex=state.draft?.index;
     const generation=state.formViewGeneration;
-    void print(view).then(()=>{
+    void print(view,undefined,()=>{
       if(pending.get(label)!==state)return;
       if(state.entry.kind==='permission'){
         if(state.shownPermissionPages)rememberPage(state.shownPermissionPages,offset);
