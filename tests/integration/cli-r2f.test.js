@@ -12,7 +12,17 @@ class ControlledWritable extends Writable {
     /** @type {{text:string,done:(error?:Error)=>void}[]} */
     this.held=[];
   }
-  _write(chunk,_encoding,done){this.held.push({text:String(chunk),done});}
+  _write(chunk,_encoding,done){
+    const text=String(chunk);
+    // Readline owns separate prompt/redraw writes. These are not choice
+    // disclosures: acknowledge them immediately so each release() controls
+    // exactly one native options page, not a buffered "Reply:" prompt.
+    const page=text.includes('Permission requested')||text.includes('Native question')||
+      text.includes('First choice')||text.includes('Second choice')||
+      /\n\s+[1-9]\d*\.\s/.test(text);
+    if(page)this.held.push({text,done});
+    else done();
+  }
   release(){
     const item=this.held.shift();
     assert.ok(item,'expected a pending Writable callback');
