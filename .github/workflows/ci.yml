@@ -48,7 +48,7 @@ jobs:
       - name: Integration regression
         run: |
           set +e
-          nix develop --no-update-lock-file --command npm run test:integration > "$RUNNER_TEMP/orchestrator-integration.log" 2>&1
+          nix develop --no-update-lock-file --command timeout 75s npm run test:integration > "$RUNNER_TEMP/orchestrator-integration.log" 2>&1
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
