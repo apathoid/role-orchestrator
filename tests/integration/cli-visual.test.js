@@ -98,10 +98,11 @@ test('A102 original lengthy native constraints are pageable without modifying a 
   assert.match(transcript,/\[display truncated\]/);
   input.write(':details 1\n');
   await tick();
-  assert.match(transcript,/Original request details · page 1\//);
+  assert.match(transcript,/Current native field details · current native data · page 1\//);
+  assert.doesNotMatch(transcript,/Original request details/);
   input.write(':details 2\n');
   await tick();
-  assert.match(transcript,/Original request details · page 2\//);
+  assert.match(transcript,/Current native field details · current native data · page 2\//);
   input.write('  произвольное значение  \n');
   assert.deepEqual(await pending,{kind:'answered',payload:{action:'accept',content:{answer:'  произвольное значение  '}}});
   terminal.close();

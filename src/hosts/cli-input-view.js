@@ -8,7 +8,7 @@ import { boundedText } from './presentation.js';
 /** @param {string} value @param {number} [limit] */
 const short=(value,limit=1000)=>{
   const cut=value.slice(0,limit+(value.length>limit?0:1));
-  return boundedText(cut,limit)+(value.length>limit?' [more in :details]':'');
+  return boundedText(cut,limit)+(value.length>limit?'… [display truncated] (more in :details)':'');
 };
 /** @param {Part[]} parts @param {string} text @param {PresentationTone} [tone] */
 const add=(parts,text,tone='neutral')=>{if(text)parts.push({text,tone});};
