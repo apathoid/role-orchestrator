@@ -133,7 +133,7 @@ test('R2F RED fast :choices 30 + 30 after initial receipt remains rejected until
 
 test('R2F RED cancel/abort and failed Writable never record a page or allow a late native reply',{timeout:5000},async(t)=>{
   {
-    const {input,output,cli}=await setup(),stop=new AbortController();
+    const {input,output,cli}=await setup(t),stop=new AbortController();
     const answer=cli.ask(permission(),stop.signal);
     stop.abort();
     assert.deepEqual(await settled(answer),{kind:'cancelled'});
