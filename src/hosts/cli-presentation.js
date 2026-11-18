@@ -135,7 +135,8 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
         // A source can be trusted at attempt scope, but not tied to a specific
         // pending form/permission alias: the event carries no native requestId.
         const identity=notice.fact?.attemptId?factLabel(notice.fact):
-          notice.event.attemptId?'Attempt '+boundedText(notice.event.attemptId,80):'Unattributed request';
+          notice.event.attemptId?(aliases.get(notice.event.attemptId) ??
+            'Attempt '+boundedText(notice.event.attemptId,80)):'Unattributed request';
         currentSource=undefined;
         /** @type {{text:string,tone?:PresentationTone}[]} */
         const segments=[

@@ -175,3 +175,17 @@ test('R1.1 unexpected diagnostic reason names cannot escape the neutral fallback
   assert.match(out.join('\n'),/Question outcome reported \(details in debug\)/);
   assert.match(out.join('\n'),/Permission outcome reported \(details in debug\)/);
 });
+
+test('R1.1 result uses only already delivered trusted attempt identity, never a guessed request alias',async()=>{
+  const out=[],renderer=cliPresentation('compact',async value=>out.push(textOf(value)));
+  await renderer.notice({channel:'execution',event:{eventName:'attempt.dispatched',reasonCode:'DISPATCH_STARTED',
+    eventId:'dispatch',receivedAt:1,sequence:1,level:'info',operationId:'op',attemptId:'a'},
+    fact:{attemptId:'a',invocationKind:'controller',attemptOrdinal:1,profileId:'native'}});
+  await renderer.notice({channel:'execution',event:{eventName:'interaction.resolved',
+    reasonCode:'INTERACTION_TIMED_OUT',eventId:'resolution',receivedAt:2,sequence:2,
+    level:'warn',operationId:'op',attemptId:'a'}});
+  renderer.close();
+  const display=out.join('\n');
+  assert.match(display,/Controller #1 · native · Question timed out/);
+  assert.doesNotMatch(display,/Attempt a · Question timed out|Question #\d+.*timed out/);
+});
