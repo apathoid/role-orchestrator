@@ -4,6 +4,11 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-UX-R2F — confirmed native choice display before numeric selection (native UNVERIFIED)
+- Initial native permission/form choices, field transitions, `:back`, and paginated `:choices N` can be selected numerically only after successful Writable delivery; stale callbacks do not authorize another request or re-entered field.
+- Native option IDs, typed replies, explicit `id:<optionId>`, grants, provider authority, ACP output and execution lifecycle remain unchanged. Historical CLI input regression fixtures now wait for displayed options before selecting them.
+- Deterministic delayed Writable tests and full engineering CI are recorded in [STATUS](docs/roadmap/STATUS.md). Installed authenticated provider and Zed remain UNVERIFIED.
+
 ### C15R-UX-R2 — bounded native choice selection and technical preview (native UNVERIFIED)
 - Numeric permission/form choices accept only displayed positions belonging to the same live request/field. Recently shown pages are remembered with a bounded UI-only cache; exact `id:<optionId>` remains an explicit selection of the original native ID and provider broker/authority is unchanged.
 - Existing `PERMISSION_UNAVAILABLE` is displayed accurately in compact/detailed, keeping source correlation at trusted attempt scope, not inventing an ACK.
