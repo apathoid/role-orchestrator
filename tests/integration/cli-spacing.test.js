@@ -108,6 +108,7 @@ test('P1 authoritative TTY final uses the same margin without changing assessmen
     let text='';stdout.on('data',part=>text+=part.toString());stderr.resume();
     const after=[];
     const code=await runCli(args,{cwd:'/tmp',stdin,stdout,stderr},async()=>state,()=>after.push('after'));
+    await tick(); // Writable callback follows the runCli Promise, never assert it synchronously.
     return {code,text,after};
   };
   const shown=await invoke(['run','anything'],80,true);
