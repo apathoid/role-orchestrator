@@ -4,6 +4,12 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-UX-R2 — bounded native choice selection and technical preview (native UNVERIFIED)
+- Numeric permission/form choices accept only displayed positions belonging to the same live request/field. Recently shown pages are remembered with a bounded UI-only cache; exact `id:<optionId>` remains an explicit selection of the original native ID and provider broker/authority is unchanged.
+- Existing `PERMISSION_UNAVAILABLE` is displayed accurately in compact/detailed, keeping source correlation at trusted attempt scope, not inventing an ACK.
+- `:details` avoids unbounded object-key enumeration on extremely wide native metadata. The recognized-key projection is explicitly partial with original provider data untouched; accessors are not invoked. Display clipping preserves emoji/surrogate pairs and combining boundary.
+- Node24 resource benchmark, RED→GREEN integration, actual Linux PTY and exact mandatory Nix CI are recorded in [STATUS](docs/roadmap/STATUS.md). Real authenticated provider/Zed acceptance remains UNVERIFIED.
+
 ### C15R-UX-R1 — truthful native input and tool outcomes (corrective; native UNVERIFIED)
 - Visible compact/detailed broker interaction/permission outcomes including timeout, unavailable, denied, invalid and cancellation; attempt attribution only, no invented native request IDs or provider acknowledgement.
 - Native `completed` tool status now neutral rather than a green success claim. First generic pending remains visible with native identity-scoped dedup.
