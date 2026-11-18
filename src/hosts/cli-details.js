@@ -15,7 +15,6 @@ const previewKeys=[
   'mode','message','requestedSchema','properties','value','const','oneOf','enum','anyOf','items',
   'minLength','maxLength','minimum','maximum','minItems','maxItems','pattern','format',
   'default','additionalProperties','annotations','metadata','name','text',
-  'self',
 ];
 /** @param {string} text @param {number} limit */
 function clip(text,limit){

@@ -86,7 +86,7 @@ test('R2-F4: all native view clips preserve surrogate pairs and one truncation m
   assert.equal(option.label.at(239),'\ud83d','native original remains unchanged');
 });
 
-test('R2-F3: record Node 24 wide-property preview baseline latency and memory before choosing a fix',()=>{
+test('R2-F3: Node 24 wide-object preview cost remains independent of total property count',()=>{
   const samples=[];
   for(const count of [10000,100000,300000]){
     const wide={};
@@ -96,5 +96,96 @@ test('R2-F3: record Node 24 wide-property preview baseline latency and memory be
     const elapsed=performance.now()-start,heapDelta=process.memoryUsage().heapUsed-heapStart;
     samples.push({count,ms:Math.round(elapsed*100)/100,heapDelta,chars:preview.text.length,omitted:preview.omitted});
   }
-  assert.fail('R2_WIDE_OBJECT_NODE24_BASELINE '+JSON.stringify({node:process.version,samples}));
+  assert.ok(samples.every(sample=>sample.ms<25),
+    'R2 wide preview exceeded resource target: '+JSON.stringify({node:process.version,samples}));
+  assert.ok(samples.every(sample=>sample.chars<=32000));
+  assert.equal(boundedNativePreview({scope:'always'}).partial,true);
+});
+
+test('R2-F1 boundaries 1/20/21 and 101 preserve original IDs and scope and only visible numeric choices',async()=>{
+  for(const [length,position,expected] of [[1,1,'native-1'],[20,20,'native-20'],[21,21,'native-21'],[101,101,'native-101']]){
+    const options=Array.from({length},(_,i)=>({id:'native-'+(i+1),
+      kind:i===length-1?'allow':'deny',label:i===length-1?'Allow privileged scope':'Deny '+i,
+      scope:i===length-1?'always':'once'}));
+    const req=permission(options);
+    const input=new PassThrough(),output=new PassThrough();let transcript='';
+    output.on('data',chunk=>transcript+=chunk.toString());
+    const terminal=createCliInput(input,output,true,()=>{});
+    let sent=false;const asking=terminal.ask(req,new AbortController().signal).then(x=>{sent=true;return x;});
+    if(position>20){
+      input.write(position+'\n');await tick();
+      assert.equal(sent,false);
+      assert.match(transcript,new RegExp('Use :choices '+position));
+      input.write(':choices '+position+'\n');await tick();
+      assert.match(transcript,/Allow privileged scope.*always/);
+    }
+    input.write(position+'\n');
+    assert.deepEqual(await asking,{kind:'answered',payload:{optionId:expected}});
+    terminal.close();
+  }
+});
+
+test('R2-F1 exact native id selection is distinct from displayed numeric positions',async()=>{
+  const input=new PassThrough(),output=new PassThrough();output.resume();
+  const terminal=createCliInput(input,output,true,()=>{});
+  const value=terminal.ask(permission(choices),new AbortController().signal);
+  // Intentional exact-ID syntax remains an explicitly selected provider option;
+  // it must never map through the visible page's numeric offset.
+  input.write('id:option-30\n');
+  assert.deepEqual(await value,{kind:'answered',payload:{optionId:'option-30'}});
+  terminal.close();
+});
+
+test('R2-F1 permission choices are request-scoped with concurrent form and no late grants',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let outputText='';
+  output.on('data',b=>outputText+=b.toString());
+  const terminal=createCliInput(input,output,true,()=>{});
+  const stop=new AbortController();
+  const p=terminal.ask(permission(choices),stop.signal);
+  const q=terminal.ask({kind:'input',request:{requestId:'q',operationId:'op',attemptId:'b',
+    profileId:'p',providerRequestId:'native-form',payload:{mode:'form',message:'Type',requestedSchema:{
+      type:'object',properties:{answer:{type:'string'}}}}}},new AbortController().signal);
+  input.write('#1 :choices 30\n');
+  await tick();
+  assert.match(outputText,/30\. Allow all paths.*always/);
+  input.write('#2 correct answer\n');
+  assert.deepEqual(await q,{kind:'answered',payload:{action:'accept',content:{answer:'correct answer'}}});
+  stop.abort();
+  assert.deepEqual(await p,{kind:'cancelled'});
+  input.write('#1 30\n');
+  await tick();
+  terminal.close();
+  // The terminated permission cannot be reopened or granted by late input.
+  assert.doesNotMatch(outputText,/Permission selection recorded · allow option/);
+});
+
+test('R2-F3 preview avoids enumerating arbitrary keys, executing accessors or crashing on descriptor exceptions',()=>{
+  let enumerations=0,getters=0;
+  const raw={scope:'always',title:'Native action'};
+  Object.defineProperty(raw,'details',{enumerable:true,get(){getters++;throw Error('getter must not run');}});
+  const view=new Proxy(raw,{ownKeys(){enumerations++;throw Error('native keys must not be enumerated');},
+    getOwnPropertyDescriptor(target,key){
+      if(key==='annotations')throw Error('descriptor unavailable');
+      return Reflect.getOwnPropertyDescriptor(target,key);
+    }});
+  const preview=boundedNativePreview({action:view});
+  assert.equal(enumerations,0);
+  assert.equal(getters,0);
+  assert.match(preview.text,/Native action/);
+  assert.match(preview.text,/accessor not inspected/);
+  assert.match(preview.text,/metadata access unavailable/);
+  assert.match(preview.text,/always/);
+  assert.equal(preview.partial,true);
+  const cycle={title:'cycle'};cycle.metadata=cycle;
+  assert.match(boundedNativePreview(cycle).text,/repeated object not displayed/);
+});
+
+test('R2-F4 native Unicode label clipping preserves original values and avoids splitting combining sequences',()=>{
+  const label='Ω'.repeat(237)+'e\u0301'+'😀'+'tail'.repeat(200);
+  const option={id:'native-id',kind:'allow',label,scope:'always'};
+  const original=structuredClone(option);
+  const segments=permissionChoicesView(permission([option]).request).map(x=>x.text).join('');
+  assert.doesNotMatch(segments,/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/u);
+  assert.match(segments,/\[display truncated\]/);
+  assert.deepEqual(option,original);
 });

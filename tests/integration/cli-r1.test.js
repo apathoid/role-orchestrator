@@ -132,8 +132,8 @@ test('R1.4 bounded native previews avoid full serialization and preserve emoji a
   assert.ok(performance.now()-before<1000,'preview should not traverse the entire native payload');
   assert.match(nativeDetailsPage(huge,1,'Native permission details'),/bounded preview/);
   assert.match(nativeDetailsPage(huge,999999,'Native permission details'),/outside bounded preview/);
-  const cyclic={};cyclic.self=cyclic;assert.match(boundedNativePreview(cyclic).text,/repeated object/);
-  const value={field:'a'.repeat(1985)+'😀'+'b'.repeat(4000)};
+  const cyclic={};cyclic.metadata=cyclic;assert.match(boundedNativePreview(cyclic).text,/repeated object/);
+  const value={label:'a'.repeat(1985)+'😀'+'b'.repeat(4000)};
   for(const page of [1,2,3]){
     const text=nativeDetailsPage(value,page,'Current native field details');
     assert.doesNotMatch(text,/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/u);
