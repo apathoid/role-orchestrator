@@ -32,13 +32,14 @@ const form=(id='f',required=true)=>({kind:'input',request:{
       second:{type:'string',title:'Second choice',oneOf:[{const:'b',title:'Second B'}]},
     },required:required?['first','second']:['second']}},
 }});
-async function setup(){
+async function setup(t){
   const input=new PassThrough(),output=new ControlledWritable(),cli=createCliInput(input,output,true,()=>{});
+  t.after(()=>{cli.close();input.destroy();output.destroy();});
   return {input,output,cli};
 }
 
-test('R2F RED initial permission numeric choice is rejected until successful Writable callback',async()=>{
-  const {input,output,cli}=await setup();
+test('R2F RED initial permission numeric choice is rejected until successful Writable callback',async(t)=>{
+  const {input,output,cli}=await setup(t);
   let done=false;
   const answer=cli.ask(permission(),new AbortController().signal).then(x=>{done=true;return x;});
   assert.match(output.held[0]?.text??'',/1\. Deny/);
@@ -50,8 +51,8 @@ test('R2F RED initial permission numeric choice is rejected until successful Wri
   cli.close();
 });
 
-test('R2F RED initial form numeric choice is rejected before successful Writable callback',async()=>{
-  const {input,output,cli}=await setup();
+test('R2F RED initial form numeric choice is rejected before successful Writable callback',async(t)=>{
+  const {input,output,cli}=await setup(t);
   let done=false;
   const answer=cli.ask(form(),new AbortController().signal).then(x=>{done=true;return x;});
   input.write('1\n1\n');await tick();
@@ -62,8 +63,8 @@ test('R2F RED initial form numeric choice is rejected before successful Writable
   output.destroy();
 });
 
-test('R2F RED nextForm: second-field number waits for its own Writable receipt',async()=>{
-  const {input,output,cli}=await setup();
+test('R2F RED nextForm: second-field number waits for its own Writable receipt',async(t)=>{
+  const {input,output,cli}=await setup(t);
   let done=false;
   const answer=cli.ask(form(),new AbortController().signal).then(x=>{done=true;return x;});
   output.release();await tick(); // First choice has crossed Writable boundary.
@@ -77,8 +78,8 @@ test('R2F RED nextForm: second-field number waits for its own Writable receipt',
   cli.close();
 });
 
-test('R2F RED :back: a stale initial callback for the same field index cannot authorize a newer display',async()=>{
-  const {input,output,cli}=await setup();
+test('R2F RED :back: a stale initial callback for the same field index cannot authorize a newer display',async(t)=>{
+  const {input,output,cli}=await setup(t);
   let done=false;
   const answer=cli.ask(form('back',false),new AbortController().signal).then(x=>{done=true;return x;});
   input.write(':skip\n:back\n');await tick(); // Back to field 0 while old write is held.
@@ -91,8 +92,8 @@ test('R2F RED :back: a stale initial callback for the same field index cannot au
   cli.close();output.destroy();
 });
 
-test('R2F RED fast :choices 30 + 30 after initial receipt remains rejected until second page write resolves',async()=>{
-  const {input,output,cli}=await setup();
+test('R2F RED fast :choices 30 + 30 after initial receipt remains rejected until second page write resolves',async(t)=>{
+  const {input,output,cli}=await setup(t);
   let done=false;
   const paged=permission();
   paged.request.options=Array.from({length:30},(_,i)=>({
@@ -110,7 +111,7 @@ test('R2F RED fast :choices 30 + 30 after initial receipt remains rejected until
   cli.close();
 });
 
-test('R2F RED cancel/abort and failed Writable never record a page or allow a late native reply',async()=>{
+test('R2F RED cancel/abort and failed Writable never record a page or allow a late native reply',async(t)=>{
   {
     const {input,output,cli}=await setup(),stop=new AbortController();
     const answer=cli.ask(permission(),stop.signal);
@@ -121,7 +122,7 @@ test('R2F RED cancel/abort and failed Writable never record a page or allow a la
     cli.close();output.destroy();
   }
   {
-    const {input,output,cli}=await setup();
+    const {input,output,cli}=await setup(t);
     const answer=cli.ask(permission(),new AbortController().signal);
     output.destroy(new Error('terminal unavailable'));
     assert.deepEqual(await answer,{kind:'unavailable'});
@@ -130,8 +131,8 @@ test('R2F RED cancel/abort and failed Writable never record a page or allow a la
   }
 });
 
-test('R2F RED concurrent pending questions do not share initial display receipts',async()=>{
-  const {input,output,cli}=await setup();
+test('R2F RED concurrent pending questions do not share initial display receipts',async(t)=>{
+  const {input,output,cli}=await setup(t);
   let secondSettled=false;
   const first=cli.ask(permission('one'),new AbortController().signal);
   const second=cli.ask(permission('two'),new AbortController().signal).then(x=>{secondSettled=true;return x;});
