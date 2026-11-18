@@ -17,7 +17,7 @@ const short=(value,limit=1000)=>{
   // Move back to the base (within this already bounded display prefix) rather
   // than silently showing an unaccented character. This is not full Unicode
   // grapheme segmentation, and does not scan the original long string.
-  const mark=/\\p{M}/u;
+  const mark=/\p{M}/u;
   const next=end<value.length?value.codePointAt(end):undefined;
   if(next!==undefined&&mark.test(String.fromCodePoint(next))){
     while(end>0){
