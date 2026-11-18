@@ -4,6 +4,12 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-UX-R1 — truthful native input and tool outcomes (corrective; native UNVERIFIED)
+- Visible compact/detailed broker interaction/permission outcomes including timeout, unavailable, denied, invalid and cancellation; attempt attribution only, no invented native request IDs or provider acknowledgement.
+- Native `completed` tool status now neutral rather than a green success claim. First generic pending remains visible with native identity-scoped dedup.
+- Structured source/question/field/options/meta segments from the original ACP schema; bounded preview of current field/permission metadata with explicit omissions, emoji-safe pages and large permission option pagination; unchanged typed replies, permissions authority, ACP and machine output.
+- RED regression, SDK/integration/actual Linux PTY and exact CI results tracked in [STATUS](docs/roadmap/STATUS.md). Installed native and graphical Zed comparison remain UNVERIFIED.
+
 ### C15R-UX — CLI visual fidelity and Markdown presentation (engineering, native UNVERIFIED)
 - Fixed Controller source accent, deterministic predefined palette for arbitrary Worker roleIds, no role-name heuristics; trusted per-segment ANSI after untrusted sanitization, terminal 24-bit/256/16 and plain fallbacks.
 - Compact native tools now show even the only generic pending report; duplicate transitions remain identity-scoped. Native source switching, actual streamed Thinking, recorded finding accent and debug-only redundant lifecycle notices are presentation-only.

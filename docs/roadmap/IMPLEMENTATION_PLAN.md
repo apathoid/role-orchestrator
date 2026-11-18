@@ -1,8 +1,12 @@
 # Активный план реализации и приёмки
 
-**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A108 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
+**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A115 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
+
+## C15R-UX-R1 — корректирующая инженерная работа
+
+Актуальные owner и acceptance: [STATUS](STATUS.md), [A109–A115](../../tests/ACCEPTANCE_MATRIX.md), [C15R-UX](C15R_UX_CLI_VISUAL_FIDELITY.md). Review baseline `d1f2133a961992dbf988721fdd5949078e5a95db`. RED [CI 44255128308](https://github.com/apathoid/role-orchestrator/actions/runs/44255128308) подтвердил четыре defects. Исправления ограничены CLI source/view/input, без Host semantics, ACP/schema/decision/permissions authority, scheduler или workflow. R1.1 broker outcome disclosure без request identity/ACK; R1.2 structured visual native fields/scopes; R1.3 нейтральный `completed`; R1.4 честный bounded preview `:details`; R1.5 immediate generic pending; R1.6 regression/PTy/CI; R1.7 native acceptance/handoff или UNVERIFIED. Результат mandatory exact-SHA CI фиксировать в STATUS после завершения, не переносить исторические PASS. No master merge.
 
 ## C15R-UX — CLI Visual Fidelity & Markdown Rendering (ENGINEERING CI PASS, REAL NATIVE UNVERIFIED)
 

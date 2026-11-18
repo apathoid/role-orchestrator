@@ -126,3 +126,7 @@ Thinking — только реально выданный нативный по�
 Если review обнаружит реальный дефект **вне** presentation scope, зафиксировать его с provenance и согласовать отдельную работу; не превращать этот UX этап в изменение core/protocol/environment.
 
 **Execution directive для нового агента:** взять **актуальный** HEAD, начать с C15R-UX.0, выполнить технические шаги .1–.7 и документацию/handoff .8, фиксируя фактические результаты. Не останавливаться на чтении плана и не объявлять implementation completed до кода/тестов/наблюдений. Исходный planning commit был docs-only; инженерная реализация и полный CI зарегистрированы в [STATUS](STATUS.md), без master merge.
+
+## Корректирующий follow-up C15R-UX-R1
+
+На исходном code-review baseline `d1f2133a961992dbf988721fdd5949078e5a95db` обнаружены самостоятельные user-visible defects: потеря broker outcome notices в compact/detailed; зелёный `completed` при неизвестном успехе команды; слабая иерархия native fields; unbounded full JSON.stringify и ложное название полного оригинала в `:details`. R1 сохраняет approved C15R-UX как исторический завершённый scope и точечно исправляет только presentation/input. Первое generic `pending` остаётся немедленно отображаемым; нет debounce, ожидания terminal, Host semantic parsing или дополнительных workflow. A101–A108 не переписываются, новые acceptance A109–A115 в [матрице](../../tests/ACCEPTANCE_MATRIX.md). Code/CI/live-native provenance — в [STATUS](STATUS.md). Настоящие provider+Zed сценарии остаются UNVERIFIED до фактического исполнения.

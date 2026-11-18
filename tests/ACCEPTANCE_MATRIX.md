@@ -463,4 +463,19 @@ C15R.6R A94–A99 **ENGINEERING PASS**: `8b9be91a96f4657dd861647da13808f86f548e9
 | A107 | R01,R03,R05,R08,R09,R13,R16,R18,R21,R26,R31 | Golden complete transcript + actual Linux PTY, non-Git and arbitrary role/tool fixture, independent Workers and unchanged skills/context/Invocation/Outcome; slow/broken writable and bounded memory/latency; full mandatory exact-SHA CI | I/E/PTY |
 | A108 | R13,R18,R19,R21,R27,R30,R31 | Installed real CLI visual re-acceptance and real provider/standard ACP client/native skill comparison where available; precise UNVERIFIED blocker otherwise. Distinct from historical A100/A93/A86 obligations | N |
 
+
+## C15R-UX-R1 — CLI Interaction & Visual Fidelity Corrective Follow-up
+
+Corrective scope **не меняет** A101–A108 и исходный C15R-UX. Это отдельные проверяемые факты отображения, не новое требование к ответу модели, native wire или Host authority. RED: [CI 44255128308](https://github.com/apathoid/role-orchestrator/actions/runs/44255128308), baseline `92221b18224b57690faed0b1e21f66fd65bb13a9`, 4/4 новых адресных теста воспроизвели дефекты. Новые зелёные инженерные результаты отмечать только с подтверждённым exact-SHA CI. Genuine installed provider/Zed остаётся UNVERIFIED.
+
+| ID | Требования | Проверяемое наблюдение | Уровень |
+|---|---|---|---|
+| A109 | R08,R14,R18,R21,R23 | Interaction/permission broker lifecycle results visible in compact/detailed, all actual reported reasons, no invented request number, native ACK or provider confirmation; debug preserves original reason/event ID, gap/unknown remain explicit | I/PTY |
+| A110 | R08,R14,R21,R22 | Original structured ACP form/permission fields yield segmented source/header/field/options/meta/input prompt; typed/omitted choices unchanged; 128+ fields, large options and concurrent requests navigate safely | I/PTY |
+| A111 | R11,R18,R21,R23 | Native `completed` neutral, not command-success verification; failed/unknown/late/conflict/item.completed without status honest; no guessed verification or change to native tool identity | I/PTY |
+| A112 | R08,R14,R21,R22,R23 | `:details [N]` previews current form field or permission metadata in bounded CPU/memory; explicit omissions, emoji-safe pages, nested/large data and cancellations; request/permissions/draft untouched | I/PTY |
+| A113 | R11,R18,R21 | First generic `pending` visible immediately; only true identity-scoped duplicates suppressed; no delay, timeout inference or fabricated terminal state | I/PTY |
+| A114 | R01,R03,R05,R08,R09,R13,R16,R18,R21,R26,R31 | Direct/attached SDK/Linux PTY, truecolor/256/16/NO_COLOR, slow/broken Writable, full transcript/Markdown final, before/after execution equivalence and exact-SHA mandatory Nix/package CI | I/E/PTY |
+| A115 | R13,R18,R19,R21,R27,R30,R31 | Installed CLI with authenticated real provider, actual question/permission/tool/Workers and Zed ACP visual comparison, documented PASS/FAIL/UNVERIFIED blockers | N |
+
 **Planning baseline:** `bf117d405bf31cfc577021cb6cb12e2091df2b4b`; historical C15R.6R [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) covers only its original A94–A99, **not** C15R-UX. A100/A93/A86/A81 and other earlier native obligations remain UNVERIFIED.

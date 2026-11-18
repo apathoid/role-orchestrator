@@ -1,5 +1,12 @@
 # C12.3–C12.4: протокол нативной приёмки
 
+## C15R-UX-R1.7 — native corrective acceptance (UNVERIFIED)
+
+**Текущий результат: UNVERIFIED.** В GitHub CI нет установленного и авторизованного реального user provider/config/workspace, отдельного графического Zed клиента, фактически выбранной модели и подтверждённых native permissions. Прогон synthetic SDK и настоящего Linux PTY фиксирует только Host/CLI transport, не настоящие решения LLM. A115 и исторические A108/A100/A93/A86/A81 не закрывать.
+
+На установленном CLI с exact implementation SHA и real provider сделать безопасный non-Git request, сохранённые redacted CLI/JSON/trace: один answered + один timed_out/unavailable native form, permission allow/deny/expired, параллельная независимая активность Workers при ожидающем вводе, tool `completed` без verified success, generic-only pending, long schema/emoji/:details/choices/cancel; проверить исходную native correlation и отсутствие false ACK. Сравнить TTY с NO_COLOR/narrow/16/256/truecolor, direct и attached CLI и реальный Zed ACP, финальный Markdown vs raw JSON, старый и исправленный build с одинаковыми model/config/permissions. Для каждого сценария записать binary versions, SHA, operation/attempt/request/native IDs, timestamps, provider response, actual command/exit, exact observed outcome, redacted screenshot и verdict PASS/FAIL/UNVERIFIED. Не записывать secrets, не придумывать native result.
+
+
 ## C15R-UX.8 — native visual acceptance (UNVERIFIED)
 
 **Статус:** UNVERIFIED. Synthetic Node SDK/actual Linux PTY может подтвердить технический транспорт и Markdown/ANSI fidelity, но не настоящие native questions, выбор модели, реальную параллельную самостоятельную работу Workers или графическое представление ACP/Zed. В этой GitHub-сессии отсутствует authenticated пользовательская среда с настоящими provider executors, config/permissions и Zed GUI. Не отправлять secrets, приватные пути и prompts в публичный CI/репозиторий.
