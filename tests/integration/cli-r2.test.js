@@ -197,3 +197,31 @@ test('R2-F4 truncation before a combining mark does not display a false unaccent
   assert.doesNotMatch(shown,/e… \[display truncated\]/);
   assert.ok(item.label.includes('e\u0301'),'the native option label was not edited');
 });
+
+test('R2-F1 an already shown permission choice stays selectable after opening another page',async()=>{
+  const input=new PassThrough(),output=new PassThrough();let outputText='';
+  output.on('data',data=>outputText+=data.toString());
+  const terminal=createCliInput(input,output,true,()=>{});
+  const outcome=terminal.ask(permission(choices),new AbortController().signal);
+  input.write(':choices 30\n');
+  await tick();
+  assert.match(outputText,/30\. Allow all paths.*always/);
+  input.write('1\n');
+  assert.deepEqual(await outcome,{kind:'answered',payload:{optionId:'option-1'}});
+  terminal.close();
+});
+
+test('R2-F1 already viewed form choice pages retain their positions without changing provider values',async()=>{
+  const options=Array.from({length:30},(_,i)=>({const:'native-'+(i+1),title:'Label '+(i+1)}));
+  const entry={kind:'input',request:{requestId:'q',operationId:'op',attemptId:'a',profileId:'p',
+    providerRequestId:'form',payload:{mode:'form',message:'Pick one',requestedSchema:{
+      type:'object',properties:{picked:{type:'string',oneOf:options}},required:['picked']}}}};
+  const input=new PassThrough(),output=new PassThrough();output.resume();
+  const terminal=createCliInput(input,output,true,()=>{});
+  const answer=terminal.ask(entry,new AbortController().signal);
+  input.write(':choices 30\n');
+  await tick();
+  input.write('1\n');
+  assert.deepEqual(await answer,{kind:'answered',payload:{action:'accept',content:{picked:'native-1'}}});
+  terminal.close();
+});

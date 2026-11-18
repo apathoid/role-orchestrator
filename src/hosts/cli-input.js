@@ -28,11 +28,22 @@ function parsePermission(entry,line){
   return option&&{kind:'answered',payload:{optionId:option.id}};
 }
 
-/** Display-only choice visibility for one rendered page; does not change native
- * option identities, broker authorization, or ACP replies.
- * @param {number} position One-based native option position
- * @param {number} offset Zero-based first displayed position */
-const visibleChoice=(position,offset)=>Number.isSafeInteger(position)&&position>offset&&position<=offset+20;
+/** The input owner retains up to 128 recently displayed choice pages per
+ * pending request/field. This is UI history, not a permission registry.
+ * Forgotten pages can always be re-displayed with :choices N.
+ * @param {Set<number>} pages @param {number} offset */
+function rememberPage(pages,offset){
+  pages.delete(offset);
+  if(pages.size>=128){
+    const oldest=pages.values().next().value;
+    if(oldest!==undefined)pages.delete(oldest);
+  }
+  pages.add(offset);
+}
+/** @param {number} position One-based native option position
+ * @param {Set<number>} pages */
+const visibleChoice=(position,pages)=>Number.isSafeInteger(position)&&
+  [...pages].some(offset=>position>offset&&position<=offset+20);
 
 /** Single terminal input owner; labels select existing pending requests, not grants.
  * @param {NodeJS.ReadableStream} input @param {NodeJS.WritableStream} output
@@ -41,7 +52,7 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @typedef {{entry:PendingInput,finish:(result:InputResult)=>void,epoch:number,
    * form?:ReturnType<typeof projectForm>,draft?:ReturnType<typeof createFormDraft>,
    * signal:AbortSignal,validating?:boolean,validationAbort?:AbortController,
-   * shownPermissionOffset?:number,shownFormOffset?:number}} PendingLine
+   * shownPermissionPages?:Set<number>,shownFormPages?:Set<number>}} PendingLine
    * @type {Map<string,PendingLine>} */
   const pending = new Map();
   /** Known invocation identity from the existing presentation facts, when delivered.
@@ -229,7 +240,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     const form=state.form,draft=state.draft;
     if(!form||!draft)return;
     if(draft.index<form.fields.length){
-      state.shownFormOffset=0;
+      state.shownFormPages=new Set([0]);
       void print(formFieldView(form,draft.index)).catch(()=>{});
       return;
     }
@@ -318,7 +329,8 @@ export function createCliInput(input, output, interactive, interrupt) {
             // Writable has acknowledged it. A pasted ":choices N\nN" cannot
             // approve a still-unrendered broad-scope option.
             void print(permissionChoicesView(state.entry.request,n-1)).then(()=>{
-              if(pending.get(label??'')===state)state.shownPermissionOffset=n-1;
+              if(pending.get(label??'')===state&&state.shownPermissionPages)
+                rememberPage(state.shownPermissionPages,n-1);
             }).catch(()=>{});
           }
         }else{
@@ -327,7 +339,7 @@ export function createCliInput(input, output, interactive, interrupt) {
           // Explicit id:<exact ID> remains a deliberate exact-ID selection;
           // only numeric positions imply that the CLI showed their terms.
           if(Number.isSafeInteger(position)&&position<=state.entry.request.options.length&&
-             !visibleChoice(position,state.shownPermissionOffset??0)){
+             !visibleChoice(position,state.shownPermissionPages??new Set())){
             void report('Option '+position+' has not been displayed for '+label+
               '. Use :choices '+position+' to inspect its label and scope before selecting.','error');
           }else{
@@ -347,13 +359,13 @@ export function createCliInput(input, output, interactive, interrupt) {
           }else {
             const shownIndex=draft.index;
             void print(formFieldView(form,shownIndex,num-1)).then(()=>{
-              if(pending.get(label??'')===state&&state.draft?.index===shownIndex)
-                state.shownFormOffset=num-1;
+              if(pending.get(label??'')===state&&state.draft?.index===shownIndex&&state.shownFormPages)
+                rememberPage(state.shownFormPages,num-1);
             }).catch(()=>{});
           }
         }else if(raw===':back'){
           draft.index=Math.max(0,draft.index-1);
-          state.shownFormOffset=0;
+          state.shownFormPages=new Set([0]);
           void print(formFieldView(form,draft.index)).catch(()=>{});
         }else if(raw===':skip'){
           const field=form.fields[draft.index];
@@ -380,7 +392,7 @@ export function createCliInput(input, output, interactive, interrupt) {
             const available=field.options?.length??0;
             const hidden=values.map(x=>/^[1-9]\d*$/.test(x)?Number(x):NaN).find(
               n=>Number.isSafeInteger(n)&&n<=available&&
-                !visibleChoice(n,state.shownFormOffset??0));
+                !visibleChoice(n,state.shownFormPages??new Set()));
             if(hidden!==undefined){
               void report('Choice '+hidden+' has not been displayed for '+label+
                 '. Use :choices '+hidden+' to inspect it before selecting.','error');
@@ -439,7 +451,7 @@ export function createCliInput(input, output, interactive, interrupt) {
       const abort = () => finish({kind:'cancelled'});
       const form=entry.kind==='input'?projectForm(entry.request):undefined;
       pending.set(label,{entry,finish,epoch:++epoch,signal,
-        ...(entry.kind==='permission'?{shownPermissionOffset:0}:{shownFormOffset:0}),
+        ...(entry.kind==='permission'?{shownPermissionPages:new Set([0])}:{shownFormPages:new Set([0])}),
         ...(form&&{form,draft:createFormDraft(form)})});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
