@@ -10,9 +10,24 @@ const short=(value,limit=1000)=>{
   // Clip *before* sanitizing the provider string to keep display work
   // bounded, but never leave the high half of an emoji at the boundary.
   const boundary=Math.min(value.length,limit);
-  const end=boundary>0&&boundary<value.length&&
+  let end=boundary>0&&boundary<value.length&&
     value.charCodeAt(boundary-1)>=0xd800&&value.charCodeAt(boundary-1)<=0xdbff
     ?boundary-1:boundary;
+  // A combining mark immediately after the boundary belongs to its base.
+  // Move back to the base (within this already bounded display prefix) rather
+  // than silently showing an unaccented character. This is not full Unicode
+  // grapheme segmentation, and does not scan the original long string.
+  const mark=/\\p{M}/u;
+  const next=end<value.length?value.codePointAt(end):undefined;
+  if(next!==undefined&&mark.test(String.fromCodePoint(next))){
+    while(end>0){
+      end--;
+      if(end>0&&value.charCodeAt(end)>=0xdc00&&value.charCodeAt(end)<=0xdfff&&
+        value.charCodeAt(end-1)>=0xd800&&value.charCodeAt(end-1)<=0xdbff)end--;
+      const code=value.codePointAt(end);
+      if(code===undefined||!mark.test(String.fromCodePoint(code)))break;
+    }
+  }
   const safe=boundedText(value.slice(0,end),limit);
   return safe+(value.length>end?'… [display truncated] (more in :details)':'');
 };

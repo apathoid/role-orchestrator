@@ -138,7 +138,7 @@ test('R1.4 bounded native previews avoid full serialization and preserve emoji a
     const text=nativeDetailsPage(value,page,'Current native field details');
     assert.doesNotMatch(text,/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/u);
   }
-  assert.ok(value.field.includes('😀'));
+  assert.ok(value.label.includes('😀'));
 });
 
 test('R1.4 140-field form :details and independent permission remain responsive',async()=>{

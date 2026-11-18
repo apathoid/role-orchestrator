@@ -240,3 +240,21 @@ test('R1 actual PTY renders structured native fields and neutral completed tools
   assert.match(tools,/■ \[T1\] · completed/);
   assert.doesNotMatch(tools,/✓ \[T1\]/);
 }));
+
+test('R2 actual Linux PTY does not grant an unseen broad-scope numbered permission',{
+  timeout:30000},()=>withOwnedRun('C15R-UX-R2-pty-paged',async cwd=>{
+  const path=await config(cwd);
+  const result=await ttyDialogue(cwd,
+    ['run','permission-paged','--config',path,'--presentation','compact'],
+    [
+      {when:'Reply (#1):',value:'30'},
+      {when:'Option 30 has not been displayed',value:':choices 30'},
+      {when:'30. Allow all paths',value:'30'},
+    ]);
+  assert.match(result,/Showing 1–20 of 30 options/);
+  assert.match(result,/Option 30 has not been displayed/);
+  assert.match(result,/30\. Allow all paths.*always/);
+  assert.ok(result.indexOf('Option 30 has not been displayed')<result.indexOf('30. Allow all paths'));
+  assert.match(result,/option-30/);
+  assert.match(result,/Permission selection recorded · allow option/);
+}));

@@ -58,11 +58,16 @@ export function createProvider({ providerId }) {
       }
       let answer = latest === 'cwd' ? invocation.workspaceContext?.cwd : latest === 'delegate' ? 'Delegated result' : latest==='notice-delegate'?'Notice final': 'Ответ: ' + latest;
       if (latest === 'settings') answer = JSON.stringify([invocation.profile.profileId, invocation.timeoutMs]);
-      if (latest === 'permission') {
+      if (latest === 'permission'||latest === 'permission-paged') {
+        const options=latest==='permission-paged'
+          ?Array.from({length:30},(_,i)=>({
+            id:'option-'+(i+1),kind:i===29?'allow':'deny',
+            label:i===29?'Allow all paths':'Deny '+(i+1),
+            scope:i===29?'always':'once',
+          }))
+          :[{ id: 'allow', kind: 'allow' }, { id: 'deny', kind: 'deny' }];
         const permission = await invocation.permissions.request({
-          providerRequestId: 'fixture', resource: 'fixture:read', options: [
-            { id: 'allow', kind: 'allow' }, { id: 'deny', kind: 'deny' },
-          ],
+          providerRequestId: 'fixture', resource: 'fixture:read', options,
         });
         answer = permission.kind === 'selected' ? permission.option : permission.kind;
       }

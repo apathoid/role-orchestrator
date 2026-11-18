@@ -189,3 +189,11 @@ test('R2-F4 native Unicode label clipping preserves original values and avoids s
   assert.match(segments,/\[display truncated\]/);
   assert.deepEqual(option,original);
 });
+
+test('R2-F4 truncation before a combining mark does not display a false unaccented base',()=>{
+  const item={kind:'deny',id:'x',label:'a'.repeat(239)+'e\u0301'+'tail'};
+  const shown=permissionChoicesView(permission([item]).request).map(x=>x.text).join('');
+  assert.match(shown,/\[display truncated\]/);
+  assert.doesNotMatch(shown,/e… \[display truncated\]/);
+  assert.ok(item.label.includes('e\u0301'),'the native option label was not edited');
+});
