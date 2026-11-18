@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { terminalText } from './presentation.js';
 import { renderMarkdownAnswer } from './cli-markdown.js';
+import { createTerminalMargin, terminalMarginColumns } from './cli-layout.js';
 import { terminalColor } from './cli-styling.js';
 import { HostError, hostError, newRequestId, operationView } from './commands.js';
 
@@ -162,7 +163,11 @@ export async function runCli(args, io, execute, afterHuman) {
             : view.status);
         const tty='isTTY' in io.stdout && io.stdout.isTTY;
         const answer=typeof view.assessment?.answer==='string';
-        const text=(tty?(answer?renderMarkdownAnswer(human,terminalColor(io.stdout)):terminalText(human)):human)+'\n';
+        const formatted=tty?(answer?renderMarkdownAnswer(human,terminalColor(io.stdout)):terminalText(human)):human;
+        // This last-mile layout applies only to an interactive terminal.
+        // Redirected stdout, JSON, --output and the assessment stay byte-exact.
+        const text=tty?createTerminalMargin().format(formatted+'\n',terminalMarginColumns(io.stdout)):
+          formatted+'\n';
         if(afterHuman)io.stdout.write(text,error=>{if(!error)afterHuman();});
         else io.stdout.write(text);
       } else io.stdout.write(JSON.stringify(view, null, invocation.format === 'text' ? 2 : undefined) + '\n');

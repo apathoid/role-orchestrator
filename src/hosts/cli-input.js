@@ -4,6 +4,7 @@ import { nativeDetailsPage } from './cli-details.js';
 import { createInterface, clearLine, cursorTo } from 'node:readline';
 import { terminalText, createTerminalSanitizer, boundedText } from './presentation.js';
 import { terminalColor, styleText } from './cli-styling.js';
+import { createTerminalMargin, terminalMarginColumns } from './cli-layout.js';
 
 /** @import {PresentationTone} from './presentation.js' */
 /** @import {PendingPermission, PermissionHandler} from '../application/configuration/permissions.js' */
@@ -119,6 +120,8 @@ export function createCliInput(input, output, interactive, interrupt) {
   let openLine=false;
   let atLineStart=true;
   const color=terminalColor(output);
+  const margin=createTerminalMargin();
+  const marginWidth=()=>interactive?terminalMarginColumns(output):0;
   /** @type {Map<string,ReturnType<typeof createTerminalSanitizer>>} */
   const sanitizers=new Map();
   /** @param {string} source */
@@ -159,7 +162,7 @@ export function createCliInput(input, output, interactive, interrupt) {
       writes.add(settle);
       try {
         if (rl && interactive && 'isTTY' in output && output.isTTY) { clearLine(output, 0); cursorTo(output, 0); }
-        output.write(text, error => { if (error) broken(error); else settle(); });
+        output.write(margin.format(text,marginWidth()), error => { if (error) broken(error); else settle(); });
         if (rl) rl.prompt(true);
       } catch (error) { broken(error); }
     });
@@ -319,7 +322,8 @@ export function createCliInput(input, output, interactive, interrupt) {
         const field=singles.length===1?singles[0][1].draft?.index:undefined;
         const plain='Reply (' + singles.map(([key])=>key).join(', ') + ')' +
           (field!==undefined?' field '+(field+1):'') + ': ';
-        rl?.setPrompt(style(plain,'prompt'));
+        // Readline owns prompt/redraw bytes, unlike transcript writes.
+        rl?.setPrompt(' '.repeat(marginWidth())+style(plain,'prompt'));
         rl?.prompt();
       } catch(error) { broken(error); }
     }
