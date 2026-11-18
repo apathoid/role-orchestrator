@@ -377,8 +377,9 @@ export function createCliInput(input, output, interactive, interrupt) {
             const values=field.options?
               (field.shape.type==='array'&&raw===':empty'?[]:
                 field.shape.type==='array'?raw.split(',').map(x=>x.trim()):[raw.trim()]):[];
+            const available=field.options?.length??0;
             const hidden=values.map(x=>/^[1-9]\d*$/.test(x)?Number(x):NaN).find(
-              n=>Number.isSafeInteger(n)&&n<=field.options.length&&
+              n=>Number.isSafeInteger(n)&&n<=available&&
                 !visibleChoice(n,state.shownFormOffset??0));
             if(hidden!==undefined){
               void report('Choice '+hidden+' has not been displayed for '+label+
