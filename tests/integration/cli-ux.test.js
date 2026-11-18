@@ -523,6 +523,7 @@ test('C15R.6R-Final cancel while validating does not block an independent permis
     input.write('a'.repeat(40)+'!\n');
     const permissionAnswer=terminal.ask({...permission,request:{...permission.request,requestId:'worker-b'}},
       new AbortController().signal);
+    await tick(); // The independent permission's numeric choices reached Writable.
     input.write('#1 :cancel\n#2 1\n');
     assert.deepEqual(await formAnswer,{kind:'answered',payload:{action:'cancel'}});
     assert.deepEqual(await permissionAnswer,{kind:'answered',payload:{optionId:'deny'}});
