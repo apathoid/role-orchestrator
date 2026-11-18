@@ -43,6 +43,8 @@ jobs:
         run: nix develop --no-update-lock-file --command npm run test:core
       - name: Provider contract regression
         run: nix develop --no-update-lock-file --command npm run test:contracts
+      - name: R2F targeted smoke (temporary diagnostic)
+        run: nix develop --no-update-lock-file --command timeout 45s node --test tests/integration/cli-r2f.test.js
       - name: Integration regression
         run: |
           set +e
