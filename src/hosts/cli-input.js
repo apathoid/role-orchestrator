@@ -1,4 +1,6 @@
-import { projectForm, createFormDraft, renderFormIntro, renderFormField, formValue, validateFormContent, validateFormPatterns } from './cli-form.js';
+import { projectForm, createFormDraft, formValue, validateFormContent, validateFormPatterns } from './cli-form.js';
+import { formIntroView, formFieldView, permissionIntroView, permissionChoicesView } from './cli-input-view.js';
+import { nativeDetailsPage } from './cli-details.js';
 import { createInterface, clearLine, cursorTo } from 'node:readline';
 import { terminalText, createTerminalSanitizer, boundedText } from './presentation.js';
 import { terminalColor, styleText } from './cli-styling.js';
@@ -26,25 +28,6 @@ function parsePermission(entry,line){
   return option&&{kind:'answered',payload:{optionId:option.id}};
 }
 
-/** Display only the actual request/options, with explicit numeric selection.
- * @param {PendingInput} entry @param {string} label @param {string} source
- */
-function inputBlock(entry,label,source){
-  const header=label+' · '+source+' · ';
-  if(entry.kind==='permission'){
-    const request=entry.request,action=request.action;
-    const detail=action?[action.title,action.kind,action.details,...(action.locations??[]).map(l=>l.path+(l.line!==undefined?':'+l.line:''))].filter(Boolean).join('\n  '):'';
-    return header+'Permission requested\n  Resource: '+boundedText(request.resource)+
-      (detail?'\n  '+boundedText(detail):'')+'\n'+request.options.map((option,i)=>
-        '  '+(i+1)+'. '+(option.label??option.kind)+' [id='+option.id+']'+
-        (option.scope?' · '+option.scope:'')).join('\n')+
-      '\nSelect a displayed number or id:<exact option ID>. :cancel cancels this request. :details shows original request data.';
-  }
-  const form=projectForm(entry.request);
-  return form?renderFormIntro(form,label,source)+renderFormField(form,0):header+'Native interaction unavailable';
-
-}
-
 /** Single terminal input owner; labels select existing pending requests, not grants.
  * @param {NodeJS.ReadableStream} input @param {NodeJS.WritableStream} output
  * @param {boolean} interactive @param {() => void} interrupt */
@@ -58,9 +41,13 @@ export function createCliInput(input, output, interactive, interrupt) {
    * @type {(attemptId:string)=>string|undefined}
    */
   let sourceResolver=()=>undefined;
+  /** @type {(attemptId:string)=>PresentationTone|undefined} */
+  let sourceToneResolver=()=>undefined;
   /** @param {PendingInput} entry */
   const sourceFor=entry=>sourceResolver(entry.request.attemptId)??
     ('profile '+boundedText(entry.request.profileId,80)+' · role not recorded');
+  /** @param {PendingInput} entry */
+  const toneFor=entry=>sourceToneResolver(entry.request.attemptId)??'neutral';
   // Local, monotonic aliases and creation epochs are only terminal display identity.
   // They never replace the trusted request/attempt/owner correlation.
   let aliasSequence=0,epoch=0;
@@ -202,43 +189,43 @@ export function createCliInput(input, output, interactive, interrupt) {
     openLine=!rl&&!atLineStart;
     return write(text);
   }
-  /** Preserve original form/permission text, styling only known scaffold spans.
-   * @param {string} value @returns {{text:string,tone?:PresentationTone}[]} */
-  function inputSegments(value) {
-    const first=value.indexOf('\n');
-    if(first<0)return [{text:value,tone:'accent'}];
-    const last=value.lastIndexOf('\n');
-    /** @type {{text:string,tone?:PresentationTone}[]} */
-    const parts=[{text:value.slice(0,first),tone:'accent'},
-      {text:value.slice(first,last>first?last:value.length),tone:'neutral'}];
-    if(last>first)parts.push({text:value.slice(last),tone:'muted'});
-    return parts;
+  /** Native schema projections are styled by original structured fields,
+   * never by searching the already formatted text for semantic keywords.
+   * @param {PendingInput} entry @param {string} label */
+  function initialView(entry,label){
+    const source=sourceFor(entry),tone=toneFor(entry);
+    if(entry.kind==='permission')return [
+      ...permissionIntroView(entry.request,label,source,tone),
+      ...permissionChoicesView(entry.request),
+    ];
+    const form=projectForm(entry.request);
+    return form?[...formIntroView(form,label,source,tone),...formFieldView(form,0)]:
+      [{text:label+' · '+source+' · Native interaction unavailable',tone:'error'}];
   }
-  /** Original request data in bounded pages; no mutation of native content/draft.
+  /** Bounded diagnostic preview of the current form field or native
+   * permission metadata. It does not claim to be the complete raw request.
    * @param {PendingLine} state @param {number} page */
   function requestDetails(state,page) {
     const field=state.draft&&state.form?.fields[state.draft.index];
     const value=state.entry.kind==='permission'
-      ? {resource:state.entry.request.resource,action:state.entry.request.action,options:state.entry.request.options}
+      ? {resource:state.entry.request.resource,action:state.entry.request.action,
+        options:state.entry.request.options}
       : field?{key:field.key,required:field.required,shape:field.shape}
         : {payload:state.entry.request.payload};
-    const safe=terminalText(JSON.stringify(value,null,2)??'null');
-    const size=2000,total=Math.max(1,Math.ceil(safe.length/size));
-    if(!Number.isSafeInteger(page)||page<1||page>total)return 'Details page out of range (1–'+total+').';
-    const start=(page-1)*size;
-    return 'Original request details · page '+page+'/'+total+'\n'+safe.slice(start,start+size)+
-      (page<total?'\nUse :details '+(page+1)+' for the next page.':'');
+    const label=state.entry.kind==='permission'?'Native permission details':
+      field?'Current native field details':'Native request details';
+    return nativeDetailsPage(value,page,label);
   }
   /** @param {string} label @param {PendingLine} state */
   function nextForm(label,state){
     const form=state.form,draft=state.draft;
     if(!form||!draft)return;
     if(draft.index<form.fields.length){
-      void print(inputSegments(renderFormField(form,draft.index))).catch(()=>{});
+      void print(formFieldView(form,draft.index)).catch(()=>{});
       return;
     }
     const issue=validateFormContent(form,draft.content);
-    if(issue){void report('Invalid form: '+issue);draft.index=0;return;}
+    if(issue){void report('Invalid form '+label+': '+issue,'error');draft.index=0;return;}
     state.finish({kind:'answered',payload:{action:'accept',content:{...draft.content}}});
   }
   /** @param {string} label @param {PendingLine} state @param {Record<string,unknown>} content @param {()=>void} finish */
@@ -252,13 +239,13 @@ export function createCliInput(input, output, interactive, interrupt) {
       state.validationAbort=undefined;
       state.validating=false;
       if(result.kind==='valid')finish();
-      else if(result.kind!=='cancelled')void report(result.message??'Pattern validation unavailable; no answer sent.');
+      else if(result.kind!=='cancelled')void report('Validation '+label+': '+(result.message??'Pattern validation unavailable; no answer sent.'),'error');
       prompt();
     }).catch(()=>{
       if(pending.get(label)===state&&state.validationAbort===validation&&!validation.signal.aborted){
         state.validationAbort=undefined;
         state.validating=false;
-        void report('Pattern validation unavailable; no answer sent.');prompt();
+        void report('Validation '+label+': pattern validation unavailable; no answer sent.','error');prompt();
       }
     });
   }
@@ -267,7 +254,9 @@ export function createCliInput(input, output, interactive, interrupt) {
       try {
         const singles=[...pending.entries()];
         const field=singles.length===1?singles[0][1].draft?.index:undefined;
-        rl?.setPrompt('Reply (' + singles.map(([key])=>key).join(', ') + ')' + (field!==undefined?' field '+(field+1):'') + ': ');
+        const plain='Reply (' + singles.map(([key])=>key).join(', ') + ')' +
+          (field!==undefined?' field '+(field+1):'') + ': ';
+        rl?.setPrompt(style(plain,'prompt'));
         rl?.prompt();
       } catch(error) { broken(error); }
     }
@@ -310,9 +299,17 @@ export function createCliInput(input, output, interactive, interrupt) {
         void report(requestDetails(state,page),'muted');prompt();return;
       }
       if(state.entry.kind==='permission'){
-        const result=parsePermission(state.entry,raw);
-        if(result)state.finish(result);
-        else void report('Invalid option for '+label+': enter a displayed position or id:<exact option ID>.');
+        if(raw.startsWith(':choices ')){
+          const position=raw.slice(9);
+          const n=/^[1-9]\d*$/.test(position)?Number(position):NaN;
+          if(!Number.isSafeInteger(n)||n>state.entry.request.options.length){
+            void report('Invalid choice position for '+label+'. Use :choices N with an offered position.','error');
+          }else void print(permissionChoicesView(state.entry.request,n-1)).catch(()=>{});
+        }else{
+          const result=parsePermission(state.entry,raw);
+          if(result)state.finish(result);
+          else void report('Invalid option for '+label+': enter a displayed position or id:<exact option ID>.','error');
+        }
       }else if(state.form&&state.draft){
         const {form,draft}=state;
         if(raw.startsWith(':choices ')){
@@ -321,10 +318,10 @@ export function createCliInput(input, output, interactive, interrupt) {
           const num=/^[1-9]\d*$/.test(position)?Number(position):NaN;
           if(!field?.options||!Number.isSafeInteger(num)||num<1||num>field.options.length){
             void report('Invalid choice page: enter :choices N for an offered choice position.');
-          }else void print(inputSegments(renderFormField(form,draft.index,num-1))).catch(()=>{});
+          }else void print(formFieldView(form,draft.index,num-1)).catch(()=>{});
         }else if(raw===':back'){
           draft.index=Math.max(0,draft.index-1);
-          void print(inputSegments(renderFormField(form,draft.index))).catch(()=>{});
+          void print(formFieldView(form,draft.index)).catch(()=>{});
         }else if(raw===':skip'){
           const field=form.fields[draft.index];
           if(field?.required)void report('Required field '+label+': cannot skip.');
@@ -399,13 +396,15 @@ export function createCliInput(input, output, interactive, interrupt) {
       pending.set(label,{entry,finish,epoch:++epoch,signal,...(form&&{form,draft:createFormDraft(form)})});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
-      void print(inputSegments(inputBlock(entry,label,sourceFor(entry)))).catch(()=>{});
+      void print(initialView(entry,label)).catch(()=>{});
       prompt();
     });
   }
   return { ask, print, printChunk, report,
     /** @param {(attemptId:string)=>string|undefined} resolve */ 
     setSourceResolver(resolve){sourceResolver=resolve;},
+    /** @param {(attemptId:string)=>PresentationTone|undefined} resolve */
+    setSourceToneResolver(resolve){sourceToneResolver=resolve;},
     resetPresentation(){sanitizers.clear();chunkSource=undefined;atLineStart=true;}, close() {
     for (const entry of [...pending.values()]) entry.finish({kind:'unavailable'});
     stopReader();

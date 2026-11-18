@@ -69,6 +69,8 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
   return {
     /** Trusted attempt identity established from execution facts, never guessed. */
     sourceFor: (/** @type {string} */ attemptId)=>aliases.get(attemptId),
+    /** @param {string} attemptId */
+    toneFor: attemptId=>tones.get(attemptId),
     /** @param {string} id */
     accepted(id) {
       if(!mode||closed||acceptedId===id)return;
