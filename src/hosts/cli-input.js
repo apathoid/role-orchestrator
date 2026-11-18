@@ -28,13 +28,20 @@ function parsePermission(entry,line){
   return option&&{kind:'answered',payload:{optionId:option.id}};
 }
 
+/** Display-only choice visibility for one rendered page; does not change native
+ * option identities, broker authorization, or ACP replies.
+ * @param {number} position One-based native option position
+ * @param {number} offset Zero-based first displayed position */
+const visibleChoice=(position,offset)=>Number.isSafeInteger(position)&&position>offset&&position<=offset+20;
+
 /** Single terminal input owner; labels select existing pending requests, not grants.
  * @param {NodeJS.ReadableStream} input @param {NodeJS.WritableStream} output
  * @param {boolean} interactive @param {() => void} interrupt */
 export function createCliInput(input, output, interactive, interrupt) {
   /** @typedef {{entry:PendingInput,finish:(result:InputResult)=>void,epoch:number,
    * form?:ReturnType<typeof projectForm>,draft?:ReturnType<typeof createFormDraft>,
-   * signal:AbortSignal,validating?:boolean,validationAbort?:AbortController}} PendingLine
+   * signal:AbortSignal,validating?:boolean,validationAbort?:AbortController,
+   * shownPermissionOffset?:number,shownFormOffset?:number}} PendingLine
    * @type {Map<string,PendingLine>} */
   const pending = new Map();
   /** Known invocation identity from the existing presentation facts, when delivered.
@@ -222,6 +229,7 @@ export function createCliInput(input, output, interactive, interrupt) {
     const form=state.form,draft=state.draft;
     if(!form||!draft)return;
     if(draft.index<form.fields.length){
+      state.shownFormOffset=0;
       void print(formFieldView(form,draft.index)).catch(()=>{});
       return;
     }
@@ -305,11 +313,28 @@ export function createCliInput(input, output, interactive, interrupt) {
           const n=/^[1-9]\d*$/.test(position)?Number(position):NaN;
           if(!Number.isSafeInteger(n)||n>state.entry.request.options.length){
             void report('Invalid choice position for '+label+'. Use :choices N with an offered position.','error');
-          }else void print(permissionChoicesView(state.entry.request,n-1)).catch(()=>{});
+          }else {
+            // The page is considered displayed only after this terminal
+            // Writable has acknowledged it. A pasted ":choices N\nN" cannot
+            // approve a still-unrendered broad-scope option.
+            void print(permissionChoicesView(state.entry.request,n-1)).then(()=>{
+              if(pending.get(label??'')===state)state.shownPermissionOffset=n-1;
+            }).catch(()=>{});
+          }
         }else{
-          const result=parsePermission(state.entry,raw);
-          if(result)state.finish(result);
-          else void report('Invalid option for '+label+': enter a displayed position or id:<exact option ID>.','error');
+          const numbered=/^(?:option )?([1-9]\d*)$/.exec(raw);
+          const position=numbered?Number(numbered[1]):NaN;
+          // Explicit id:<exact ID> remains a deliberate exact-ID selection;
+          // only numeric positions imply that the CLI showed their terms.
+          if(Number.isSafeInteger(position)&&position<=state.entry.request.options.length&&
+             !visibleChoice(position,state.shownPermissionOffset??0)){
+            void report('Option '+position+' has not been displayed for '+label+
+              '. Use :choices '+position+' to inspect its label and scope before selecting.','error');
+          }else{
+            const result=parsePermission(state.entry,raw);
+            if(result)state.finish(result);
+            else void report('Invalid option for '+label+': enter a displayed position or id:<exact option ID>.','error');
+          }
         }
       }else if(state.form&&state.draft){
         const {form,draft}=state;
@@ -319,9 +344,16 @@ export function createCliInput(input, output, interactive, interrupt) {
           const num=/^[1-9]\d*$/.test(position)?Number(position):NaN;
           if(!field?.options||!Number.isSafeInteger(num)||num<1||num>field.options.length){
             void report('Invalid choice page: enter :choices N for an offered choice position.');
-          }else void print(formFieldView(form,draft.index,num-1)).catch(()=>{});
+          }else {
+            const shownIndex=draft.index;
+            void print(formFieldView(form,shownIndex,num-1)).then(()=>{
+              if(pending.get(label??'')===state&&state.draft?.index===shownIndex)
+                state.shownFormOffset=num-1;
+            }).catch(()=>{});
+          }
         }else if(raw===':back'){
           draft.index=Math.max(0,draft.index-1);
+          state.shownFormOffset=0;
           void print(formFieldView(form,draft.index)).catch(()=>{});
         }else if(raw===':skip'){
           const field=form.fields[draft.index];
@@ -342,6 +374,17 @@ export function createCliInput(input, output, interactive, interrupt) {
           const field=form.fields[draft.index];
           if(!field){void report('No field selected; enter :submit.');}
           else {
+            const values=field.options?
+              (field.shape.type==='array'&&raw===':empty'?[]:
+                field.shape.type==='array'?raw.split(',').map(x=>x.trim()):[raw.trim()]):[];
+            const hidden=values.map(x=>/^[1-9]\d*$/.test(x)?Number(x):NaN).find(
+              n=>Number.isSafeInteger(n)&&n<=field.options.length&&
+                !visibleChoice(n,state.shownFormOffset??0));
+            if(hidden!==undefined){
+              void report('Choice '+hidden+' has not been displayed for '+label+
+                '. Use :choices '+hidden+' to inspect it before selecting.','error');
+              prompt();return;
+            }
             const parsed=formValue(raw,field);
             if(!parsed.ok)void report('Invalid '+label+' field '+(field.shape.title??field.key)+': '+parsed.error);
             else if(typeof field.shape.pattern==='string'){
@@ -394,7 +437,9 @@ export function createCliInput(input, output, interactive, interrupt) {
       };
       const abort = () => finish({kind:'cancelled'});
       const form=entry.kind==='input'?projectForm(entry.request):undefined;
-      pending.set(label,{entry,finish,epoch:++epoch,signal,...(form&&{form,draft:createFormDraft(form)})});
+      pending.set(label,{entry,finish,epoch:++epoch,signal,
+        ...(entry.kind==='permission'?{shownPermissionOffset:0}:{shownFormOffset:0}),
+        ...(form&&{form,draft:createFormDraft(form)})});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
       void print(initialView(entry,label)).catch(()=>{});

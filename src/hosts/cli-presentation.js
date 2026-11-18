@@ -25,6 +25,7 @@ export function cliRequestOutcome(event){
     STANDING_DENY:'Standing permission decision · deny',
     DENIED:'Permission denied',
     UNAVAILABLE:'Permission unavailable',
+    PERMISSION_UNAVAILABLE:'Permission unavailable',
     INVALID:'Permission invalid',
     CANCELLED:'Permission request cancelled',
   };

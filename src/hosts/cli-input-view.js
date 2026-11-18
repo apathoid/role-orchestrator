@@ -7,8 +7,14 @@ import { boundedText } from './presentation.js';
 /** @typedef {{text:string,tone?:PresentationTone}} Part */
 /** @param {string} value @param {number} [limit] */
 const short=(value,limit=1000)=>{
-  const cut=value.slice(0,limit+(value.length>limit?0:1));
-  return boundedText(cut,limit)+(value.length>limit?'… [display truncated] (more in :details)':'');
+  // Clip *before* sanitizing the provider string to keep display work
+  // bounded, but never leave the high half of an emoji at the boundary.
+  const boundary=Math.min(value.length,limit);
+  const end=boundary>0&&boundary<value.length&&
+    value.charCodeAt(boundary-1)>=0xd800&&value.charCodeAt(boundary-1)<=0xdbff
+    ?boundary-1:boundary;
+  const safe=boundedText(value.slice(0,end),limit);
+  return safe+(value.length>end?'… [display truncated] (more in :details)':'');
 };
 /** @param {Part[]} parts @param {string} text @param {PresentationTone} [tone] */
 const add=(parts,text,tone='neutral')=>{if(text)parts.push({text,tone});};
