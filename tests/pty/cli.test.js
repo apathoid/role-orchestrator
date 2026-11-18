@@ -182,6 +182,8 @@ test('C15R.6 actual SDK/PTY permission and titled form preserve identity and Mar
   for(let i=0;i<30;i++)assert.ok(output.includes('('+i+')'),'missing native thought '+i);
   assert.match(output,/\[T1\] Read config/);assert.match(output,/\[T2\] Read config/);
   assert.match(output,/Permission: deny/);assert.match(output,/Choice: stop/);
+  assert.match(output,/Question response recorded by broker/);
+  assert.match(output,/Permission selection recorded/);
   assert.ok(output.indexOf('### Native answer')<output.indexOf('Operation complete'));
   assert.equal((output.match(/### Native answer/g)??[]).length,1);
   console.log('C15R6_PTY '+JSON.stringify(output));
@@ -219,3 +221,22 @@ test('C15R-UX actual Linux PTY renders authoritative Markdown in color but keeps
     assert.equal((plain.match(/### Native answer/g)??[]).length,1);
     assert.doesNotMatch(plain,/\x1b\[[0-9;]+m/);
   }));
+
+test('R1 actual PTY renders structured native fields and neutral completed tools',{
+  timeout:30000},()=>withOwnedRun('C15R-UX-R1-pty',async cwd=>{
+  const path=await config(cwd,true,'c15r6-interaction');
+  const env={...process.env,TERM:'xterm-256color'};
+  delete env.NO_COLOR;
+  const output=await ttyDialogue(cwd,['run','native','--config',path,'--presentation','compact'],
+    c15r6Replies,env);
+  assert.match(output,/\x1b\[1mChoose an action\x1b\[0m/);
+  assert.match(output,/\x1b\[38;5;[0-9]+m/);
+  assert.match(output,/Question response recorded by broker/);
+  assert.match(output,/Permission selection recorded/);
+  assert.equal((output.match(/Native answer/g)??[]).length,1);
+  const toolPath=await config(cwd,true,'c15r-transcript');
+  const tools=await tty(cwd,['run','transcript','--config',toolPath,'--presentation','compact'],
+    undefined,/Version updated\./,{...env,NO_COLOR:'1'});
+  assert.match(tools,/■ \[T1\] · completed/);
+  assert.doesNotMatch(tools,/✓ \[T1\]/);
+}));
