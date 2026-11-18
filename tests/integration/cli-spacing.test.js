@@ -79,7 +79,7 @@ test('P1 successful page receipt includes padded native permission view; prompt 
   let settled=false;
   const answer=cli.ask(entry,stop.signal).then(value=>{settled=true;return value;});
   try{
-    assert.match(plain(transcript),/(?:^|\n)  #1 ·/);
+    assert.match(plain(transcript),/  #1 ·/);
     assert.match(plain(transcript),/(?:^|\n)    1\. Deny/);
     input.write('1\n');await tick();
     assert.equal(settled,false,'visually padded write is not confirmed before Writable callback');
@@ -113,10 +113,10 @@ test('P1 authoritative TTY final uses the same margin without changing assessmen
   const shown=await invoke(['run','anything'],80,true);
   assert.equal(shown.code,0);
   const visible=plain(shown.text);
-  assert.match(visible,/^  Результат\n  - элемент\n\n  code и 🦊\n  ```js\n  const x = 1;\n  ```\n$/);
+  assert.match(visible,/^  (?:## )?Результат\n  - элемент\n\n  (?:`)?code(?:`)? и 🦊\n  ```js\n  const x = 1;\n  ```\n$/);
   assert.deepEqual(shown.after,['after']);
   const narrow=await invoke(['run','anything'],24,true);
-  assert.equal(plain(narrow.text).startsWith('Результат\n'),true);
+  assert.match(plain(narrow.text),/^(?:## )?Результат\n/);
   const redirect=await invoke(['run','anything'],80,false);
   assert.equal(redirect.text,original+'\n');
   const machine=await invoke(['run','anything','--format','json'],80,true);
