@@ -91,18 +91,22 @@ test('R2F RED :back: a stale initial callback for the same field index cannot au
   cli.close();output.destroy();
 });
 
-test('R2F RED fast :choices 2 + 2 after initial receipt remains rejected until second page write resolves',async()=>{
+test('R2F RED fast :choices 30 + 30 after initial receipt remains rejected until second page write resolves',async()=>{
   const {input,output,cli}=await setup();
   let done=false;
-  const answer=cli.ask(permission(),new AbortController().signal).then(x=>{done=true;return x;});
+  const paged=permission();
+  paged.request.options=Array.from({length:30},(_,i)=>({
+    id:'native-'+(i+1),kind:i===29?'allow':'deny',label:'Option '+(i+1),scope:i===29?'always':'once',
+  }));
+  const answer=cli.ask(paged,new AbortController().signal).then(x=>{done=true;return x;});
   output.release();await tick();
-  input.write(':choices 2\n2\n');await tick();
+  input.write(':choices 30\n30\n');await tick();
   assert.equal(done,false,'a queued :choices page is not yet shown');
-  // Do not auto-replay the 2 from the previous line.
+  // Do not auto-replay 30 from the previous line.
   output.release();await tick();
   assert.equal(done,false);
-  input.write('2\n');
-  assert.deepEqual(await answer,{kind:'answered',payload:{optionId:'allow'}});
+  input.write('30\n');
+  assert.deepEqual(await answer,{kind:'answered',payload:{optionId:'native-30'}});
   cli.close();
 });
 
