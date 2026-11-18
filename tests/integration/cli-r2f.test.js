@@ -24,6 +24,16 @@ const permission=(id='r')=>({kind:'permission',request:{
   requestId:id,operationId:'op',attemptId:id,profileId:'p',providerRequestId:'native',
   resource:'target',options:[{id:'deny',kind:'deny',label:'Deny'},{id:'allow',kind:'allow',label:'Allow',scope:'always'}],
 }});
+/** Bound test cleanup even if an expected answer is never produced. This is
+ * a failure watchdog, not a delay used to decide whether an option was shown. */
+async function settled(promise){
+  let timer;
+  try{
+    return await Promise.race([promise,new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(new Error('R2F fixture reply did not settle')),2500);
+    })]);
+  }finally{clearTimeout(timer);}
+}
 const form=(id='f',required=true)=>({kind:'input',request:{
   requestId:id,operationId:'op',attemptId:id,profileId:'p',providerRequestId:'native-form',
   payload:{mode:'form',message:'Select',requestedSchema:{
@@ -47,7 +57,7 @@ test('R2F RED initial permission numeric choice is rejected until successful Wri
   assert.equal(done,false,'initial options have not crossed the Writable boundary');
   output.release();await tick();
   input.write('1\n');
-  assert.deepEqual(await answer,{kind:'answered',payload:{optionId:'deny'}});
+  assert.deepEqual(await settled(answer),{kind:'answered',payload:{optionId:'deny'}});
   cli.close();
 });
 
@@ -59,7 +69,7 @@ test('R2F RED initial form numeric choice is rejected before successful Writable
   assert.equal(done,false,'second field must not be reached from an undisplayed first field');
   // An early choice cannot be silently replayed as approval after delivery.
   cli.close();
-  assert.deepEqual(await answer,{kind:'unavailable'});
+  assert.deepEqual(await settled(answer),{kind:'unavailable'});
   output.destroy();
 });
 
@@ -74,7 +84,7 @@ test('R2F RED nextForm: second-field number waits for its own Writable receipt',
   assert.equal(done,false,'unacknowledged second field must not complete the form');
   output.release();await tick();
   input.write('1\n');
-  assert.deepEqual(await answer,{kind:'answered',payload:{action:'accept',content:{first:'a',second:'b'}}});
+  assert.deepEqual(await settled(answer),{kind:'answered',payload:{action:'accept',content:{first:'a',second:'b'}}});
   cli.close();
 });
 
@@ -88,7 +98,7 @@ test('R2F RED :back: a stale initial callback for the same field index cannot au
   input.write('1\n1\n');await tick();
   assert.equal(done,false,'stale callback must not authorize the latest field-0 display');
   input.write(':cancel\n');
-  assert.deepEqual(await answer,{kind:'answered',payload:{action:'cancel'}});
+  assert.deepEqual(await settled(answer),{kind:'answered',payload:{action:'cancel'}});
   cli.close();output.destroy();
 });
 
@@ -107,7 +117,7 @@ test('R2F RED fast :choices 30 + 30 after initial receipt remains rejected until
   output.release();await tick();
   assert.equal(done,false);
   input.write('30\n');
-  assert.deepEqual(await answer,{kind:'answered',payload:{optionId:'native-30'}});
+  assert.deepEqual(await settled(answer),{kind:'answered',payload:{optionId:'native-30'}});
   cli.close();
 });
 
@@ -116,7 +126,7 @@ test('R2F RED cancel/abort and failed Writable never record a page or allow a la
     const {input,output,cli}=await setup(),stop=new AbortController();
     const answer=cli.ask(permission(),stop.signal);
     stop.abort();
-    assert.deepEqual(await answer,{kind:'cancelled'});
+    assert.deepEqual(await settled(answer),{kind:'cancelled'});
     output.release();await tick();
     input.write('#1 2\n');await tick();
     cli.close();output.destroy();
@@ -125,7 +135,7 @@ test('R2F RED cancel/abort and failed Writable never record a page or allow a la
     const {input,output,cli}=await setup(t);
     const answer=cli.ask(permission(),AbortSignal.timeout(4000));
     output.destroy(new Error('terminal unavailable'));
-    assert.deepEqual(await answer,{kind:'unavailable'});
+    assert.deepEqual(await settled(answer),{kind:'unavailable'});
     input.write('2\n');await tick();
     cli.close();
   }
@@ -140,10 +150,10 @@ test('R2F RED concurrent pending questions do not share initial display receipts
   input.write('#2 2\n');await tick();
   assert.equal(secondSettled,false,'first question receipt cannot authorize the second one');
   input.write('#1 id:deny\n');
-  assert.deepEqual(await first,{kind:'answered',payload:{optionId:'deny'}});
+  assert.deepEqual(await settled(first),{kind:'answered',payload:{optionId:'deny'}});
   // The independently queued second question may now be delivered.
   output.release();await tick();
   input.write('#2 2\n');
-  assert.deepEqual(await second,{kind:'answered',payload:{optionId:'allow'}});
+  assert.deepEqual(await settled(second),{kind:'answered',payload:{optionId:'allow'}});
   cli.close();
 });
