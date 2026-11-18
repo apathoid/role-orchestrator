@@ -4,6 +4,11 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-UX-P1 — interactive terminal transcript outer spacing (real native UNVERIFIED)
+- Add consistent decorative left margin to interactive CLI progress, native form/permission displays, streaming Thinking, controller/worker blocks, findings/summary and human TTY authoritative final output. Keep existing internal indentation, colors and readline input behavior; adapt margin for 120/80/40/24-column terminals.
+- Do not rewrite model Markdown, apply artificial wrapping, promise a fixed right margin, or modify redirected stdout, JSON, ACP, persisted answers, provider tools or execution semantics.
+- Full Node 24/Nix integration, 14 actual Linux PTY and exact implementation CI evidence in [STATUS](docs/roadmap/STATUS.md). Real authenticated provider and Zed remain UNVERIFIED.
+
 ### C15R-UX-R2F — confirmed native choice display before numeric selection (native UNVERIFIED)
 - Initial native permission/form choices, field transitions, `:back`, and paginated `:choices N` can be selected numerically only after successful Writable delivery; stale callbacks do not authorize another request or re-entered field.
 - Native option IDs, typed replies, explicit `id:<optionId>`, grants, provider authority, ACP output and execution lifecycle remain unchanged. Historical CLI input regression fixtures now wait for displayed options before selecting them.
