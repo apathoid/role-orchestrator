@@ -20,6 +20,9 @@ async function run(source){
     profileId:'worker',providerRequestId:'native',resource:'fixture',options:[
       {id:'deny',kind:'deny',label:'Deny'},{id:'option 1',kind:'allow',label:'Allow'}]}};
   const answer=terminal.ask(permission,ctl.signal);
+  // Both versions must first deliver the offered page to the terminal.
+  // Current CLI rejects a numeric option before Writable completion.
+  await new Promise(resolve=>setImmediate(resolve));
   input.write('option 1\n');const result=await answer;
   terminal.close();input.end();
   const formInput=new PassThrough(),formOutput=new PassThrough();let formText='';
