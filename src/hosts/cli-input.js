@@ -191,7 +191,8 @@ export function createCliInput(input, output, interactive, interrupt) {
   }
   /** Native schema projections are styled by original structured fields,
    * never by searching the already formatted text for semantic keywords.
-   * @param {PendingInput} entry @param {string} label */
+   * @param {PendingInput} entry @param {string} label
+   * @returns {{text:string,tone?:PresentationTone}[]} */
   function initialView(entry,label){
     const source=sourceFor(entry),tone=toneFor(entry);
     if(entry.kind==='permission')return [
