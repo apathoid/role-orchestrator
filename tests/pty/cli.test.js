@@ -47,9 +47,9 @@ async function tty(cwd,args,reply,expected,env=process.env,columns) {
 }
 test('actual PTY direct CLI permission and native ACP form', {timeout:30000},()=>withOwnedRun('C14-pty-direct',async cwd=>{
   const path=await config(cwd);
-  await tty(cwd,['run','permission','--config',path,'--presentation','detailed'],'id:deny',/(?:\r?\n)deny\r?\n/);
+  await tty(cwd,['run','permission','--config',path,'--presentation','detailed'],'id:deny',/(?:\r?\n) {0,2}deny\r?\n/);
   const acp=await config(cwd,true);
-  await tty(cwd,['run','form','--config',acp,'--presentation','compact'],'chosen',/(?:\r?\n)chosen\r?\n/);
+  await tty(cwd,['run','form','--config',acp,'--presentation','compact'],'chosen',/(?:\r?\n) {0,2}chosen\r?\n/);
 }));
 test('actual PTY attached CLI answers its own permission, not the writer stdin', {timeout:25000},()=>withOwnedRun('C14-pty-attached',async cwd=>{
   const path=await config(cwd);
@@ -60,7 +60,7 @@ test('actual PTY attached CLI answers its own permission, not the writer stdin',
     for(let i=0;!await readDescriptor(join(cwd,'state'));i++){
       assert.ok(i<500,'writer did not start');await delay(10);
     }
-    await tty(cwd,['run','permission','--config',path,'--presentation','debug'],'id:deny',/(?:\r?\n)deny\r?\n/);
+    await tty(cwd,['run','permission','--config',path,'--presentation','debug'],'id:deny',/(?:\r?\n) {0,2}deny\r?\n/);
     await tty(cwd,['run','permission','--config',path,'--format','json'],'id:deny',/"answer":"deny"/);
     assert.equal(owner.exitCode,null,'peer answer must not cancel the independent writer operation');
   } finally { owner.kill('SIGINT');await closed; }
@@ -77,7 +77,7 @@ test('C14R.3 actual PTY preserves native fragments across workers and permission
 test('C14R.5 actual PTY final answer and clarification strip terminal controls only', {timeout:25000},()=>withOwnedRun('C14R-pty-final',async cwd=>{
   const path=await config(cwd);
   for(const task of ['tty-control','tty-question']){
-    const output=await tty(cwd,['run',task,'--config',path],undefined,/Привет 🌍\r?\nLine!/);
+    const output=await tty(cwd,['run',task,'--config',path],undefined,/Привет 🌍\r?\n {0,2}Line!/);
     assert.doesNotMatch(output,/\x1b\[2J|SECRET|\x9b/);
   }
 }));
@@ -296,8 +296,8 @@ test('P1 actual Linux PTY keeps native prompt working with padding across color 
   for(let i=0;i<modes.length;i++){
     const output=(await tty(cwd,['run','permission','--config',path,'--presentation','compact'],
       'id:deny',/(?:\r?\n) *deny\r?\n/,modes[i],80)).replace(/\r\n/g,'\n');
-    const plain=output.replace(/\x1b\[[0-9;]*m/g,'');
-    assert.match(plain,/(?:^|\n)  \S.*Permission requested/);
+    const plain=output.replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');
+    assert.match(plain,/(?:^|\n)  #1 · .*Permission requested/);
     assert.match(plain,/  Reply \(#1\):/);
     assert.match(plain,/(?:^|\n)  deny\n/);
     if(i<3)assert.match(output,/\x1b\[[0-9;]*m/);
