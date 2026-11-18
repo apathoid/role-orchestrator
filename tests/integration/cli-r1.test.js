@@ -166,3 +166,12 @@ test('R1.5 generic pending is immediate, identity-scoped and never fabricated as
   assert.match(p.accept({...event,nativeId:'y',sequence:3},'compact').text,/shell · pending/);
   assert.match(p.accept({...event,sequence:4,payload:{title:'Read',status:'in_progress'}},'compact').text,/Read/);
 });
+
+test('R1.1 unexpected diagnostic reason names cannot escape the neutral fallback',async()=>{
+  const out=[],renderer=cliPresentation('compact',async value=>out.push(textOf(value)));
+  await renderer.notice(notice('interaction.resolved','toString'));
+  await renderer.notice(notice('permission.resolved','constructor'));
+  renderer.close();
+  assert.match(out.join('\n'),/Question outcome reported \(details in debug\)/);
+  assert.match(out.join('\n'),/Permission outcome reported \(details in debug\)/);
+});

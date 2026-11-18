@@ -29,11 +29,13 @@ export function cliRequestOutcome(event){
     CANCELLED:'Permission request cancelled',
   };
   if(event.eventName==='interaction.resolved'){
-    const message=interaction[event.reasonCode]??'Question outcome reported (details in debug)';
+    const message=Object.hasOwn(interaction,event.reasonCode)?interaction[event.reasonCode]:
+      'Question outcome reported (details in debug)';
     return {message,alert:!['INTERACTION_ANSWERED'].includes(event.reasonCode)};
   }
   if(event.eventName==='permission.resolved'||event.eventName==='permission.expired'){
-    const message=permission[event.reasonCode]??'Permission outcome reported (details in debug)';
+    const message=Object.hasOwn(permission,event.reasonCode)?permission[event.reasonCode]:
+      'Permission outcome reported (details in debug)';
     return {message,alert:!['ALLOW','DENY','STANDING_ALLOW','STANDING_DENY'].includes(event.reasonCode)};
   }
 }
