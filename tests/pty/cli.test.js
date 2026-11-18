@@ -101,6 +101,10 @@ test('C15 actual PTY trusted colors, native lifecycle and NO_COLOR plain fallbac
 
 
 function assertTranscript(output,profile){
+  // Existing transcript assertions cover *internal* hierarchy. The PTY
+  // fixtures use 48/52 columns: one column of external layout is stripped
+  // for comparison without changing model/native content or tool identity.
+  output=output.split('\n').map(line=>line.startsWith(' ')?line.slice(1):line).join('\n');
   assert.match(output,new RegExp('● Controller #1 · '+profile));
   assert.match(output,new RegExp('Thinking · Controller #1 · '+profile+'\\n  Inspect the commit\\.\\n  Read the diff\\.'));
   assert.equal((output.match(/git show HEAD/g)??[]).length,1);
@@ -257,4 +261,46 @@ test('R2 actual Linux PTY does not grant an unseen broad-scope numbered permissi
   assert.ok(result.indexOf('Option 30 has not been displayed')<result.indexOf('30. Allow all paths'));
   assert.match(result,/option-30/);
   assert.match(result,/Permission selection recorded · allow option/);
+}));
+
+test('P1 actual Linux PTY uses adaptive outer margin at 120/80/40/24 columns and preserves final ordering',{
+  timeout:45000},()=>withOwnedRun('C15R-UX-P1-pty-width',async cwd=>{
+  const path=await config(cwd,true,'c15r-transcript');
+  for(const [columns,spaces] of [[120,2],[80,2],[40,1],[24,0]]){
+    const output=(await tty(cwd,['run','transcript','--config',path,'--presentation','compact'],
+      undefined,/Version updated\./,{...process.env,TERM:'xterm-256color',NO_COLOR:'1'},columns))
+      .replace(/\r\n/g,'\n');
+    const pad=' '.repeat(spaces);
+    assert.match(output,new RegExp('(?:^|\\n)'+pad+'Role Orchestrator · compact'));
+    assert.match(output,new RegExp('(?:^|\\n)'+pad+'● Controller #1 · primary'));
+    assert.match(output,new RegExp('(?:^|\\n)'+pad+'Version updated\\.'));
+    assert.match(output,new RegExp('(?:^|\\n)'+pad+'✓ Operation complete'));
+    assert.ok(output.indexOf('Version updated.')<output.indexOf('✓ Operation complete'));
+    assert.equal((output.match(/Version updated\./g)??[]).length,1);
+    assert.doesNotMatch(output,/\n +\n/,'blank transcript lines must not be padded');
+  }
+}));
+
+test('P1 actual Linux PTY keeps native prompt working with padding across color capabilities',{
+  timeout:50000},()=>withOwnedRun('C15R-UX-P1-pty-colors',async cwd=>{
+  const path=await config(cwd);
+  const modes=[
+    {...process.env,TERM:'xterm-256color',COLORTERM:'truecolor'},
+    {...process.env,TERM:'xterm-256color',COLORTERM:''},
+    {...process.env,TERM:'xterm',COLORTERM:''},
+    {...process.env,TERM:'dumb',COLORTERM:''},
+    {...process.env,TERM:'xterm-256color',NO_COLOR:'1'},
+  ];
+  delete modes[0].NO_COLOR;delete modes[1].NO_COLOR;delete modes[2].NO_COLOR;
+  delete modes[3].NO_COLOR;
+  for(let i=0;i<modes.length;i++){
+    const output=(await tty(cwd,['run','permission','--config',path,'--presentation','compact'],
+      'id:deny',/(?:\r?\n) *deny\r?\n/,modes[i],80)).replace(/\r\n/g,'\n');
+    const plain=output.replace(/\x1b\[[0-9;]*m/g,'');
+    assert.match(plain,/(?:^|\n)  \S.*Permission requested/);
+    assert.match(plain,/  Reply \(#1\):/);
+    assert.match(plain,/(?:^|\n)  deny\n/);
+    if(i<3)assert.match(output,/\x1b\[[0-9;]*m/);
+    else assert.doesNotMatch(output,/\x1b\[[0-9;]*m/);
+  }
 }));
