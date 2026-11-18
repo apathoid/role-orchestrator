@@ -466,7 +466,7 @@ C15R.6R A94–A99 **ENGINEERING PASS**: `8b9be91a96f4657dd861647da13808f86f548e9
 
 ## C15R-UX-R1 — CLI Interaction & Visual Fidelity Corrective Follow-up
 
-Corrective scope **не меняет** A101–A108 и исходный C15R-UX. Это отдельные проверяемые факты отображения, не новое требование к ответу модели, native wire или Host authority. RED: [CI 44255128308](https://github.com/apathoid/role-orchestrator/actions/runs/44255128308), baseline `92221b18224b57690faed0b1e21f66fd65bb13a9`, 4/4 новых адресных теста воспроизвели дефекты. Новые зелёные инженерные результаты отмечать только с подтверждённым exact-SHA CI. Genuine installed provider/Zed остаётся UNVERIFIED.
+Corrective scope **не меняет** A101–A108 и исходный C15R-UX. Это отдельные проверяемые факты отображения, не новое требование к ответу модели, native wire или Host authority. RED: [CI 44255128308](https://github.com/apathoid/role-orchestrator/actions/runs/44255128308), baseline `92221b18224b57690faed0b1e21f66fd65bb13a9`, 4/4 новых адресных теста воспроизвели дефекты. **GREEN:** full mandatory [CI 44257161408](https://github.com/apathoid/role-orchestrator/actions/runs/44257161408) **SUCCESS** на exact implementation SHA `1820ff700b8e25821597fe761bb52b1ba383cd4f` (514 root / 11 actual Linux PTY / Nix). A109–A114 engineering PASS on that SHA, **A115 real installed provider/Zed UNVERIFIED**. Эта docs-only запись имеет отдельный SHA и собственную проверку.
 
 | ID | Требования | Проверяемое наблюдение | Уровень |
 |---|---|---|---|
