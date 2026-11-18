@@ -1,6 +1,41 @@
 import { createCliTools } from './cli-tools.js';
 import { sourceTone } from './cli-styling.js';
 import { formatActivity, formatExecution, formatOperation, formatFindingRecords, thinkingFragment, factLabel, boundedText, nativeText } from './presentation.js';
+
+/** The existing broker reports only attempt/operation scope, not the native
+ * requestId. Never label an outcome as belonging to a particular #N question.
+ * These reasons report a broker transition, not provider-side acceptance.
+ * @param {import('../core/diagnostics.js').DiagnosticEvent} event
+ * @returns {{message:string,alert:boolean}|undefined} */
+export function cliRequestOutcome(event){
+  const interaction={
+    INTERACTION_ANSWERED:'Question response recorded by broker (provider ACK not confirmed)',
+    INTERACTION_CANCELLED:'Question cancelled',
+    INTERACTION_TIMED_OUT:'Question timed out',
+    INTERACTION_UNAVAILABLE:'Question unavailable',
+    INTERACTION_INVALID:'Question invalid',
+    INTERACTION_ERROR:'Question error reported',
+  };
+  const permission={
+    ALLOW:'Permission selection recorded · allow option (provider ACK not confirmed)',
+    DENY:'Permission selection recorded · deny option (provider ACK not confirmed)',
+    STANDING_ALLOW:'Standing permission selection · allow option',
+    STANDING_DENY:'Standing permission decision · deny',
+    DENIED:'Permission denied',
+    UNAVAILABLE:'Permission unavailable',
+    INVALID:'Permission invalid',
+    CANCELLED:'Permission request cancelled',
+  };
+  if(event.eventName==='interaction.resolved'){
+    const message=interaction[event.reasonCode]??'Question outcome reported (details in debug)';
+    return {message,alert:!['INTERACTION_ANSWERED'].includes(event.reasonCode)};
+  }
+  if(event.eventName==='permission.resolved'||event.eventName==='permission.expired'){
+    const message=permission[event.reasonCode]??'Permission outcome reported (details in debug)';
+    return {message,alert:!['ALLOW','DENY','STANDING_ALLOW','STANDING_DENY'].includes(event.reasonCode)};
+  }
+}
+
 /** @import {ControlNotice} from './local-control.js' */
 /** @import {Operation} from '../core/operation.js' */
 /** @import {PresentationMode, PresentationTone} from './presentation.js' */
@@ -89,7 +124,20 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
         }
         return;
       }
-      if(notice.channel==='execution'&&notice.event.eventName==='attempt.dispatched'&&notice.fact?.attemptId){
+      const resolution=notice.channel==='execution'&&mode!=='debug'?cliRequestOutcome(notice.event):undefined;
+      if(resolution){
+        // A source can be trusted at attempt scope, but not tied to a specific
+        // pending form/permission alias: the event carries no native requestId.
+        const identity=notice.fact?.attemptId?factLabel(notice.fact):
+          notice.event.attemptId?'Attempt '+boundedText(notice.event.attemptId,80):'Unattributed request';
+        currentSource=undefined;
+        await print([
+          {text:'\n'+(resolution.alert?'! ':'? '),tone:resolution.alert?'error':'accent'},
+          {text:identity+' · ',tone:'muted'},
+          {text:resolution.message,tone:'neutral'},
+          ...(mode==='detailed'?[{text:' · request ID not in execution event',tone:'muted'}]:[]),
+        ]);
+      }else if(notice.channel==='execution'&&notice.event.eventName==='attempt.dispatched'&&notice.fact?.attemptId){
         const fact=notice.fact,alias=factLabel(fact);
         currentSource=fact.attemptId;
         const route=[fact.modelSelector?'selector='+fact.modelSelector:undefined,
@@ -108,8 +156,7 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
         // These are technical lifecycle records already represented by native
         // input or the authoritative answer/summary; keep raw names in debug.
         const hidden=mode!=='debug'&&notice.channel==='execution'&&
-          ['operation.accepted','operation.finished','interaction.requested','interaction.resolved',
-            'permission.requested','permission.resolved'].includes(notice.event.eventName);
+          ['operation.accepted','operation.finished','interaction.requested','permission.requested'].includes(notice.event.eventName);
         let text=hidden?undefined:notice.channel==='execution'?formatExecution(notice.event,mode,notice.fact):
           notice.channel==='activity'?formatActivity(notice.event,mode):'[Delivery gap] '+notice.droppedCount+' notices dropped';
         if(text&&notice.channel==='execution'&&mode==='compact'&&notice.event.attemptId){

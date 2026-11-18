@@ -104,7 +104,7 @@ function assertTranscript(output,profile){
   assert.match(output,new RegExp('● Controller #1 · '+profile));
   assert.match(output,new RegExp('Thinking · Controller #1 · '+profile+'\\n  Inspect the commit\\.\\n  Read the diff\\.'));
   assert.equal((output.match(/git show HEAD/g)??[]).length,1);
-  assert.match(output,/◇ \[T1\] git show HEAD · in_progress\n  ✓ \[T1\] · completed/);
+  assert.match(output,/◇ \[T1\] git show HEAD · in_progress\n  ■ \[T1\] · completed/);
   assert.match(output,/◇ \[T2\] Read package\.json · in_progress\n  ✗ \[T2\] · failed/);
   assert.match(output,new RegExp('Thinking · Controller #1 · '+profile+'\\n  Version only\\.'));
   assert.doesNotMatch(output,/tool_call_update · completed/);

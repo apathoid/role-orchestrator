@@ -69,7 +69,9 @@ export function createCliTools(){
       const content=detail(view,mode),changed=content!==prior?.shownDetail;
       const status=view.completionReported?'item completion reported (status not supplied'+
         (view.status?'; last status='+view.status:'')+')':view.status;
-      const mark=view.status==='completed'&&!view.completionReported?'✓':view.status==='failed'&&!view.completionReported?'✗':'◇';
+      // A provider's "completed" ends the tool call; it is not verification
+      // that the command or its side effects succeeded.
+      const mark=view.status==='completed'&&!view.completionReported?'■':view.status==='failed'&&!view.completionReported?'✗':'◇';
       const alias=view.alias!==undefined?'[T'+view.alias+']':'';
       const header=mode==='debug'||changed||!prior?.rendered?content:'';
       const fallback=!header&&view.alias===undefined?content:'';
@@ -78,7 +80,7 @@ export function createCliTools(){
         (status?' · '+status:'')+(outOfOrder?' · out-of-order report':conflict?' · conflicting status report':'')+
         (mode==='debug'?' ['+[field(event.nativeKind),field(event.nativeId),'seq='+event.sequence].filter(Boolean).join(' ')+']':'');
       /** @type {PresentationTone} */
-      const tone=outOfOrder||conflict||mark==='✗'?'error':mark==='✓'?'success':'tool';
+      const tone=outOfOrder||conflict||mark==='✗'?'error':mark==='■'?'neutral':'tool';
       if(outOfOrder||conflict)return {text,tone};
       const duplicate=mode!=='debug'&&!!prior&&prior.status===view.status&&
         prior.completionReported===view.completionReported&&content===prior.shownDetail;
