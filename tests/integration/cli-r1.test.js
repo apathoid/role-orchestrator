@@ -68,6 +68,8 @@ test('R1.2 actual native field metadata and choice options are segmented without
   assert.ok(parts.some(x=>x.text==='Approach'&&x.tone==='bold'));
   assert.ok(parts.some(x=>x.text==='Minimal patch'&&x.tone==='neutral'));
   assert.ok(parts.some(x=>x.text.includes('required')&&x.tone==='muted'));
+  // Numeric input is valid only after the initial native page reaches Writable.
+  await new Promise(resolve=>setImmediate(resolve));
   input.write('2\n');
   assert.deepEqual(await pending,{kind:'answered',payload:{action:'accept',content:{choice:'rewrite'}}});
   terminal.close();
@@ -151,6 +153,7 @@ test('R1.4 140-field form :details and independent permission remain responsive'
   output.on('data',chunk=>seen+=chunk.toString());
   const terminal=createCliInput(input,output,true,()=>{});
   const first=terminal.ask(form,new AbortController().signal),second=terminal.ask(permit,new AbortController().signal);
+  await new Promise(resolve=>setImmediate(resolve));
   input.write('#1 :details 1\n#2 1\n');
   assert.deepEqual(await second,{kind:'answered',payload:{optionId:'deny'}});
   assert.match(seen,/Current native field details/);
