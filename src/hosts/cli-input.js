@@ -52,7 +52,8 @@ export function createCliInput(input, output, interactive, interrupt) {
   /** @typedef {{entry:PendingInput,finish:(result:InputResult)=>void,epoch:number,
    * form?:ReturnType<typeof projectForm>,draft?:ReturnType<typeof createFormDraft>,
    * signal:AbortSignal,validating?:boolean,validationAbort?:AbortController,
-   * shownPermissionPages?:Set<number>,shownFormPages?:Set<number>}} PendingLine
+   * shownPermissionPages?:Set<number>,shownFormPages?:Set<number>,
+   * formViewGeneration?:number}} PendingLine
    * @type {Map<string,PendingLine>} */
   const pending = new Map();
   /** Known invocation identity from the existing presentation facts, when delivered.
@@ -221,6 +222,35 @@ export function createCliInput(input, output, interactive, interrupt) {
     return form?[...formIntroView(form,label,source,tone),...formFieldView(form,0)]:
       [{text:label+' · '+source+' · Native interaction unavailable',tone:'error'}];
   }
+  /** A page is eligible for numeric selection only after the Writable
+   * completes successfully. The generation guards a *rendering*, not just the
+   * field index: a late callback from an earlier visit to the same field must
+   * not confirm a newer view.
+   * @param {string} label @param {PendingLine} state
+   * @param {readonly {text:string,tone?:PresentationTone}[]} view
+   * @param {number} offset
+   */
+  function showChoicePage(label,state,view,offset){
+    const fieldIndex=state.draft?.index;
+    const generation=state.formViewGeneration;
+    void print(view).then(()=>{
+      if(pending.get(label)!==state)return;
+      if(state.entry.kind==='permission'){
+        if(state.shownPermissionPages)rememberPage(state.shownPermissionPages,offset);
+      }else if(state.draft?.index===fieldIndex &&
+          state.formViewGeneration===generation && state.shownFormPages){
+        rememberPage(state.shownFormPages,offset);
+      }
+    }).catch(()=>{}); // broken() already settles pending requests as unavailable
+  }
+  /** Begin a different display generation of a projected form field.
+   * @param {string} label @param {PendingLine} state */
+  function showCurrentFormField(label,state){
+    if(!state.form||!state.draft)return;
+    state.shownFormPages=new Set();
+    state.formViewGeneration=(state.formViewGeneration??0)+1;
+    showChoicePage(label,state,formFieldView(state.form,state.draft.index),0);
+  }
   /** Bounded diagnostic preview of the current form field or native
    * permission metadata. It does not claim to be the complete raw request.
    * @param {PendingLine} state @param {number} page */
@@ -240,12 +270,16 @@ export function createCliInput(input, output, interactive, interrupt) {
     const form=state.form,draft=state.draft;
     if(!form||!draft)return;
     if(draft.index<form.fields.length){
-      state.shownFormPages=new Set([0]);
-      void print(formFieldView(form,draft.index)).catch(()=>{});
+      showCurrentFormField(label,state);
       return;
     }
     const issue=validateFormContent(form,draft.content);
-    if(issue){void report('Invalid form '+label+': '+issue,'error');draft.index=0;return;}
+    if(issue){
+      void report('Invalid form '+label+': '+issue,'error');
+      draft.index=0;
+      showCurrentFormField(label,state);
+      return;
+    }
     state.finish({kind:'answered',payload:{action:'accept',content:{...draft.content}}});
   }
   /** @param {string} label @param {PendingLine} state @param {Record<string,unknown>} content @param {()=>void} finish */
@@ -324,15 +358,7 @@ export function createCliInput(input, output, interactive, interrupt) {
           const n=/^[1-9]\d*$/.test(position)?Number(position):NaN;
           if(!Number.isSafeInteger(n)||n>state.entry.request.options.length){
             void report('Invalid choice position for '+label+'. Use :choices N with an offered position.','error');
-          }else {
-            // The page is considered displayed only after this terminal
-            // Writable has acknowledged it. A pasted ":choices N\nN" cannot
-            // approve a still-unrendered broad-scope option.
-            void print(permissionChoicesView(state.entry.request,n-1)).then(()=>{
-              if(pending.get(label??'')===state&&state.shownPermissionPages)
-                rememberPage(state.shownPermissionPages,n-1);
-            }).catch(()=>{});
-          }
+          }else showChoicePage(label??'',state,permissionChoicesView(state.entry.request,n-1),n-1);
         }else{
           const numbered=/^(?:option )?([1-9]\d*)$/.exec(raw);
           const position=numbered?Number(numbered[1]):NaN;
@@ -356,17 +382,10 @@ export function createCliInput(input, output, interactive, interrupt) {
           const num=/^[1-9]\d*$/.test(position)?Number(position):NaN;
           if(!field?.options||!Number.isSafeInteger(num)||num<1||num>field.options.length){
             void report('Invalid choice page: enter :choices N for an offered choice position.');
-          }else {
-            const shownIndex=draft.index;
-            void print(formFieldView(form,shownIndex,num-1)).then(()=>{
-              if(pending.get(label??'')===state&&state.draft?.index===shownIndex&&state.shownFormPages)
-                rememberPage(state.shownFormPages,num-1);
-            }).catch(()=>{});
-          }
+          }else showChoicePage(label??'',state,formFieldView(form,draft.index,num-1),num-1);
         }else if(raw===':back'){
           draft.index=Math.max(0,draft.index-1);
-          state.shownFormPages=new Set([0]);
-          void print(formFieldView(form,draft.index)).catch(()=>{});
+          showCurrentFormField(label??'',state);
         }else if(raw===':skip'){
           const field=form.fields[draft.index];
           if(field?.required)void report('Required field '+label+': cannot skip.');
@@ -451,11 +470,13 @@ export function createCliInput(input, output, interactive, interrupt) {
       const abort = () => finish({kind:'cancelled'});
       const form=entry.kind==='input'?projectForm(entry.request):undefined;
       pending.set(label,{entry,finish,epoch:++epoch,signal,
-        ...(entry.kind==='permission'?{shownPermissionPages:new Set([0])}:{shownFormPages:new Set([0])}),
+        ...(entry.kind==='permission'?{shownPermissionPages:new Set()}:
+          {shownFormPages:new Set(),formViewGeneration:0}),
         ...(form&&{form,draft:createFormDraft(form)})});
       signal.addEventListener('abort',abort,{once:true});
       if (signal.aborted) { abort(); return; }
-      void print(initialView(entry,label)).catch(()=>{});
+      const state=pending.get(label);
+      if(state)showChoicePage(label,state,initialView(entry,label),0);
       prompt();
     });
   }
