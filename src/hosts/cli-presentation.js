@@ -8,6 +8,7 @@ import { formatActivity, formatExecution, formatOperation, formatFindingRecords,
  * @param {import('../core/diagnostics.js').DiagnosticEvent} event
  * @returns {{message:string,alert:boolean}|undefined} */
 export function cliRequestOutcome(event){
+  /** @type {Record<string,string>} */
   const interaction={
     INTERACTION_ANSWERED:'Question response recorded by broker (provider ACK not confirmed)',
     INTERACTION_CANCELLED:'Question cancelled',
@@ -16,6 +17,7 @@ export function cliRequestOutcome(event){
     INTERACTION_INVALID:'Question invalid',
     INTERACTION_ERROR:'Question error reported',
   };
+  /** @type {Record<string,string>} */
   const permission={
     ALLOW:'Permission selection recorded · allow option (provider ACK not confirmed)',
     DENY:'Permission selection recorded · deny option (provider ACK not confirmed)',
@@ -127,18 +129,20 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
         return;
       }
       const resolution=notice.channel==='execution'&&mode!=='debug'?cliRequestOutcome(notice.event):undefined;
-      if(resolution){
+      if(notice.channel==='execution'&&resolution){
         // A source can be trusted at attempt scope, but not tied to a specific
         // pending form/permission alias: the event carries no native requestId.
         const identity=notice.fact?.attemptId?factLabel(notice.fact):
           notice.event.attemptId?'Attempt '+boundedText(notice.event.attemptId,80):'Unattributed request';
         currentSource=undefined;
-        await print([
+        /** @type {{text:string,tone?:PresentationTone}[]} */
+        const segments=[
           {text:'\n'+(resolution.alert?'! ':'? '),tone:resolution.alert?'error':'accent'},
           {text:identity+' · ',tone:'muted'},
           {text:resolution.message,tone:'neutral'},
-          ...(mode==='detailed'?[{text:' · request ID not in execution event',tone:'muted'}]:[]),
-        ]);
+        ];
+        if(mode==='detailed')segments.push({text:' · request ID not in execution event',tone:'muted'});
+        await print(segments);
       }else if(notice.channel==='execution'&&notice.event.eventName==='attempt.dispatched'&&notice.fact?.attemptId){
         const fact=notice.fact,alias=factLabel(fact);
         currentSource=fact.attemptId;
