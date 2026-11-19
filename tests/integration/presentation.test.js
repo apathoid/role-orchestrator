@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { executionFact } from '../../src/application/execution-facts.js';
 import { test } from 'node:test';
 import { acpActivity, acpAccepted, acpExecutionInline, acpExecutionNotices, formatAcpExecution, acpFindingText, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer, factLabel, formatOperation } from '../../src/hosts/presentation.js';
 
@@ -387,4 +388,20 @@ test('R2 same compact visibility for inline and notices, findings unaffected by 
   assert.ok(notices[0].description.includes('    Subject: forged'));
   assert.equal(acpExecutionInline({...event,eventName:'operation.finished'},[],'compact',
     {kind:'operation.finished',hasModelAnswer:true}).length,0);
+});
+
+test('R2 final presence is a read-only fact, not a Host success judgement',()=>{
+  const state={attempts:[],events:[]};
+  const report=answer=>({kind:'operation.finished',operationId:'op',eventId:'finish',
+    assessment:{author:'model',overall:'partial',answer}});
+  for(const [answer,expected] of [['# Real final',true],['',false],[undefined,false]]){
+    const fact=executionFact(state,report(answer));
+    assert.equal(fact.hasModelAnswer,expected);
+    const text=formatAcpExecution({eventName:'operation.finished',operationId:'op',
+      eventId:'finish',sequence:1,level:'info'},'compact',fact);
+    if(expected)assert.equal(text,undefined);
+    else assert.match(text,/no final answer text available/);
+  }
+  assert.match(formatAcpExecution({eventName:'operation.finished',operationId:'op',
+    eventId:'finish',sequence:1,level:'info'},'compact'),/availability unconfirmed/);
 });

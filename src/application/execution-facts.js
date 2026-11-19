@@ -46,7 +46,7 @@ export function executionFact(state,event) {
     ...(event.kind==='attempt.outcome'&&{terminal:event.outcome.terminal,effect:event.outcome.effect,
       dispatchCertainty:event.dispatchCertainty,late:event.late}),
     ...(event.kind==='operation.finished'&&{assessmentOverall:event.assessment.overall,
-      hasModelAnswer:typeof event.assessment.answer==='string'}),
+      hasModelAnswer:typeof event.assessment.answer==='string'&&event.assessment.answer.length>0}),
     ...(event.kind==='operation.waiting'&&{waitingKind:event.waiting.kind}),
     ...(event.kind==='controller.invalid_proposal'&&{invalidPath:event.reason.path,expected:event.reason.expected}),
     ...((event.kind==='attempt.cancel_requested'||event.kind==='action.cancelled'||event.kind==='operation.cancelled')&&{cancellation:event.source}),

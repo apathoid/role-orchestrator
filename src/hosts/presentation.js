@@ -290,7 +290,9 @@ export function formatAcpExecution(event,mode,fact) {
   }else if(name==='operation.finished'){
     // Only omit this decoration when a final message exists in the recorded assessment.
     if(mode==='compact'&&fact?.hasModelAnswer)return;
-    body=mode==='compact'?'Model assessment recorded; no final answer text available':
+    body=mode==='compact'?(fact?.hasModelAnswer===false?
+      'Model assessment recorded; no final answer text available':
+      'Model assessment recorded; final text availability unconfirmed'):
       'Model assessment recorded'+(fact?.assessmentOverall?' · overall='+fact.assessmentOverall:'');
   }else if(name==='operation.waiting'){
     body=fact?.waitingKind==='question'?'Waiting for input':'Operation waiting'+

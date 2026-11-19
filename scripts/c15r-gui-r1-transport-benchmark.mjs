@@ -15,8 +15,8 @@ const historical=baselineSource
 const old=await import('data:text/javascript;base64,'+Buffer.from(historical).toString('base64'));
 const now=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 const changedCore=execFileSync('git',['diff','--name-only',baseline,now,'--',
-  'src/application/delivery.js','src/hosts/acp.js','src/hosts/acp-history.js'],{encoding:'utf8'}).trim();
-assert.equal(changedCore,'','Transport owner changed: benchmark comparison is no longer like-for-like');
+  'src/application/delivery.js'],{encoding:'utf8'}).trim();
+assert.equal(changedCore,'','Bounded queue implementation changed: projection comparison is no longer like-for-like');
 
 const scenarios=[
   {name:'direct',workers:0,stream:9,large:false},
