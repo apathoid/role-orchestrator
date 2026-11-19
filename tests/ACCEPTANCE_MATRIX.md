@@ -486,16 +486,16 @@ Corrective scope **не меняет** A101–A108 и исходный C15R-UX. 
 
 **Planning baseline:** `bf117d405bf31cfc577021cb6cb12e2091df2b4b`; historical C15R.6R [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) covers only its original A94–A99, **not** C15R-UX. A100/A93/A86/A81 and other earlier native obligations remain UNVERIFIED.
 
-## C15R-GUI — graphical standard ACP implementation (engineering regression added; native UNVERIFIED)
+## C15R-GUI — graphical standard ACP implementation (engineering CI PASS; native UNVERIFIED)
 
-Baseline `420358abeea67a4cf40cfb7ae4fa433cd34914e9`; code and tests implemented on `feature/interactive-ux`. Historical C15R-UX evidence alone is not acceptance. New SDK and projection regressions: `tests/integration/presentation.test.js`, `tests/integration/host-acp.test.js`; preexisting `activity.test.js`, `delivery.test.js`, `acp-history.test.js` and permission/cancel test suites. [Status and exact SHA CI](../docs/roadmap/STATUS.md); [roadmap](../docs/roadmap/C15R_GUI_GRAPHICAL_ACP_PRESENTATION.md).
+Baseline `420358abeea67a4cf40cfb7ae4fa433cd34914e9`; code and tests implemented on `feature/interactive-ux`. Historical C15R-UX evidence alone is not acceptance. Full [CI 44519422152](https://github.com/apathoid/role-orchestrator/actions/runs/44519422152) SUCCESS at `c0299bec` (546 root, 14 PTY, Nix/package/release); this verification-only documentation follow-up must be separately checked. New SDK and projection regressions: `tests/integration/presentation.test.js`, `tests/integration/host-acp.test.js`; preexisting `activity.test.js`, `delivery.test.js`, `acp-history.test.js` and permission/cancel test suites. [Status and exact SHA CI](../docs/roadmap/STATUS.md); [roadmap](../docs/roadmap/C15R_GUI_GRAPHICAL_ACP_PRESENTATION.md).
 
 | ID | Требования | Проверяемое наблюдение | Уровень / статус |
 |---|---|---|---|
-| A116 | R02,R03,R18,R19 | Native Controller plan forwarded in all modes, absent/Worker-only/retry/empty passthrough; SDK session/load does not reconstruct native plan | C/I implemented, exact final CI pending; Zed UNVERIFIED |
-| A117 | R11,R13,R18,R19,R21 | Typed compact progress, report vs verdict, arbitrary roles/profiles/attempts, debug metadata, original final once | C/I implemented, exact final CI pending; native UNVERIFIED |
-| A118 | R08,R11,R18,R19,R21 | No builder/parser; native model Markdown final untouched on live SDK and history; bounded RO-owned escaped labels/claim/objective/notices | C/I implemented, exact final CI pending; actual Zed Markdown UNVERIFIED |
-| A119 | R11,R12,R13,R18,R21 | Only committed model claims, original author/uncertainty/support/supersedes, no Host severity/confidence/verified, finding identity metadata | C/I implemented, exact final CI pending; real model UNVERIFIED |
-| A120 | R03,R08,R14,R16,R18,R19,R21,R23,R26 | Existing bounded ACP queue, gaps, native thought/tools/permission/forms, inline/notices, cancellation/independent Workers unaffected | C/I existing+added, exact final CI pending; before/after latency/loss metrics and native UNVERIFIED |
-| A121 | R11,R14,R15,R18,R19,R21,R28 | A→B→A, old Worker/late outcome/history classification, repeated load, no native reconstruction/replay/duplicate answer | C/I existing+added, exact final CI pending; real Zed UNVERIFIED |
-| A122 | R03,R08,R13,R18,R19,R21,R27,R30,R31 | Exact final SHA full mandatory Node24/Nix/PTY CI and installed Zed client comparison | CI pending; Zed and second graphical client UNVERIFIED |
+| A116 | R02,R03,R18,R19 | Native Controller plan forwarded in all modes, absent/Worker-only/retry/empty passthrough; SDK session/load does not reconstruct native plan | C/I PASS c0299bec; Zed UNVERIFIED |
+| A117 | R11,R13,R18,R19,R21 | Typed compact progress, report vs verdict, arbitrary roles/profiles/attempts, debug metadata, original final once | C/I PASS c0299bec; native UNVERIFIED |
+| A118 | R08,R11,R18,R19,R21 | No builder/parser; native model Markdown final untouched on live SDK and history; bounded RO-owned escaped labels/claim/objective/notices | C/I PASS c0299bec; actual Zed Markdown UNVERIFIED |
+| A119 | R11,R12,R13,R18,R21 | Only committed model claims, original author/uncertainty/support/supersedes, no Host severity/confidence/verified, finding identity metadata | C/I PASS c0299bec; real model UNVERIFIED |
+| A120 | R03,R08,R14,R16,R18,R19,R21,R23,R26 | Existing bounded ACP queue, gaps, native thought/tools/permission/forms, inline/notices, cancellation/independent Workers unaffected | C/I PASS c0299bec; historical benchmark mixed, exact planning A/B drops/latency and native UNVERIFIED |
+| A121 | R11,R14,R15,R18,R19,R21,R28 | A→B→A, old Worker/late outcome/history classification, repeated load, no native reconstruction/replay/duplicate answer | C/I PASS c0299bec; real Zed UNVERIFIED |
+| A122 | R03,R08,R13,R18,R19,R21,R27,R30,R31 | Exact final SHA full mandatory Node24/Nix/PTY CI and installed Zed client comparison | CI PASS c0299bec; later docs-only SHA pending; Zed/second graphical client UNVERIFIED |
