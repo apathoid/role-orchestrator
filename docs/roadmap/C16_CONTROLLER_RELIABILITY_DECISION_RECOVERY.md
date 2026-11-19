@@ -2,8 +2,8 @@
 
 **Repo:** `apathoid/role-orchestrator`  
 **Branch:** `feature/interactive-ux`  
-**Baseline HEAD:** `465e82aa5e16f83459e8b41a38fe8dc3411b66cd`  
-**Status:** PLANNED → IMPLEMENTATION. C16 code/tests/native acceptance are not implemented or verified.  
+**Baseline HEAD:** `22d06008d74616acb9be04645aaccab7f986853e` (pre-implementation; original planning baseline `465e82aa5e16f83459e8b41a38fe8dc3411b66cd`)  
+**Status:** Engineering code/tests implemented on `feature/interactive-ux`; exact-final-SHA CI pending, native controlled quality comparison UNVERIFIED. Actual outcomes and CI provenance are in [STATUS](STATUS.md). This file remains the approved scope/acceptance plan, not a substitute for measured verification.  
 **Scope:** Controller user-turn delivery, Decision v1 reference, error diagnostics, bounded correction 5/10. **No active-operation steering.**
 
 ## 1. Purpose and baseline observations
