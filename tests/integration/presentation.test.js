@@ -26,8 +26,15 @@ test('ACP mapping uses actual native standard fields and scoped IDs without synt
   assert.notEqual(acpActivity({...tool,attemptId:'b'},'compact',false).toolCallId,acpActivity(tool,'compact',false).toolCallId);
   const plan = native('plan',{sessionUpdate:'plan',entries:[{content:'Native plan',priority:'medium',status:'pending'}]});
   assert.equal(acpActivity(plan,'detailed',false),undefined);
-  assert.equal(acpActivity(plan,'compact',true),undefined);
-  assert.deepEqual(acpActivity(plan,'detailed',true).entries,plan.payload.entries);
+  for(const mode of ['compact','detailed','debug']){
+    const nativePlan=acpActivity(plan,mode,true);
+    assert.deepEqual(nativePlan.entries,plan.payload.entries);
+    assert.deepEqual(nativePlan._meta.roleOrchestratorSource,{operationId:'op',attemptId:'a',
+      profileId:'reviewer',providerId:'provider',sequence:1,source:'provider_activity'});
+    assert.equal(nativePlan.messageId,undefined);
+    assert.notEqual(nativePlan.entries,undefined);
+  }
+  assert.deepEqual(plan.payload.entries,[{content:'Native plan',priority:'medium',status:'pending'}]);
   const thought = native('reasoning',{sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'original'}});
   assert.deepEqual(acpActivity(thought,'compact',false).content,thought.payload.content);
   assert.equal(acpActivity(native('reasoning',{type:'item.updated',item:{type:'reasoning',text:'snapshot'}},{nativeKind:'item.updated'}),'compact',true),undefined);
@@ -90,4 +97,25 @@ test('C15R.3 summary distinguishes attempts, distinct actions, dispatch and char
   assert.match(compact,/Operation partial/);assert.match(compact,/1 Controller attempt · 2 Worker attempts \(1 distinct Action\)/);
   assert.match(compact,/Unknown effects\/outcomes remain/);assert.match(detail,/dispatch records 2\/3 · budget charged 2\/5/);
   assert.doesNotMatch(compact,/invocations 3/);
+});
+
+test('A116 native Controller plan remains opaque across modes and attempts, never constructed from text',()=>{
+  const entries=[{content:'Model-authored **step**',priority:'high',status:'in_progress'},
+    {content:'Retry when model decides',priority:'low',status:'pending'}];
+  const plan=native('plan',{sessionUpdate:'plan',entries,_meta:{providerTrace:'kept'}},
+    {attemptId:'controller-1',invocationKind:'controller',nativeKind:'plan'});
+  const retry={...plan,attemptId:'controller-2',sequence:7};
+  for(const mode of ['compact','detailed','debug']){
+    const first=acpActivity(plan,mode,true), second=acpActivity(retry,mode,true);
+    assert.deepEqual(first.entries,entries);
+    assert.deepEqual(second.entries,entries);
+    assert.equal(first._meta.providerTrace,'kept');
+    assert.equal(first._meta.roleOrchestratorSource.attemptId,'controller-1');
+    assert.equal(second._meta.roleOrchestratorSource.attemptId,'controller-2');
+    assert.equal(acpActivity(plan,mode,false),undefined);
+    assert.equal(acpActivity({...plan,kind:'reasoning',payload:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'## Plan'}}},mode,true),undefined);
+    assert.equal(acpActivity({...plan,payload:{sessionUpdate:'plan',entries:[]}},mode,true).entries.length,0);
+    assert.equal(acpActivity({...plan,payload:{sessionUpdate:'plan'}},mode,true).entries,undefined);
+  }
+  assert.deepEqual(plan.payload.entries,entries);
 });

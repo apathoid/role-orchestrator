@@ -253,7 +253,7 @@ export function acpActivity(event, mode, controller) {
       typeof update.toolCallId === 'string') {
     return { ...update, _meta, toolCallId: scopedNativeId(event.attemptId, update.toolCallId) };
   }
-  if (event.kind === 'plan' && mode !== 'compact' && controller && update.sessionUpdate === 'plan') return { ...update,_meta };
+  if (event.kind === 'plan' && controller && update.sessionUpdate === 'plan') return { ...update,_meta };
 }
 
 /** Standard ACP notices are presentation only, never session history.
