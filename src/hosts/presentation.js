@@ -266,20 +266,32 @@ export function formatAcpExecution(event,mode,fact) {
   if(['operation.accepted','permission.requested','permission.resolved',
     'interaction.requested','interaction.resolved'].includes(name))return;
   const source=fact?.attemptId?factLabel(fact):event.actionId?'Action '+boundedText(event.actionId,80).replace(/[\n\t]/g,' '):'Operation';
+  // For compact only, avoid a redundant first-Controller counter. Do not infer roles.
+  const compactSource=fact?.invocationKind==='controller'&&fact.attemptOrdinal===1?
+    source.replace(/^Controller #1(?= · |$)/,'Controller'):source;
   const reason=event.reasonCode?' · '+boundedText(event.reasonCode,120).replace(/[\n\t]/g,' '):'';
   let body;
   if(name==='attempt.dispatched') {
-    body='Dispatched'+(fact?.objective?' · '+boundedText(fact.objective,480):'');
+    body=mode==='compact'?'started':'Dispatched'+(fact?.objective?' · '+boundedText(fact.objective,480):'');
     if(mode!=='compact'&&fact?.modelSelector)body+=' · model selector='+boundedText(fact.modelSelector,120);
     if(mode!=='compact'&&fact?.reasoning?.mode==='selectable')body+=' · requested reasoning level='+boundedText(fact.reasoning.level,80);
   }else if(['attempt.outcome','attempt.late_outcome','attempt.outcome_discrepancy','attempt.historical_outcome_report'].includes(name)){
+    // Routine completed reports are already accounted for by the model response.
+    // Unknown effects, failures, late/conflicting and unclassified reports are not.
+    if(mode==='compact'&&name==='attempt.outcome'&&fact?.terminal==='completed'&&
+      (fact.effect==='confirmed'||fact.effect==='none'))return;
     const title=name==='attempt.outcome'?'Attempt outcome reported':
       name==='attempt.late_outcome'?'Late outcome report':
       name==='attempt.outcome_discrepancy'?'Outcome discrepancy':'Historical outcome report (classification not recorded)';
-    body=title+(fact?.terminal?' · terminal='+fact.terminal:'')+(fact?.effect?' · effect='+fact.effect:'')+
+    body=mode==='compact'&&name==='attempt.outcome'&&fact?.terminal==='completed'&&fact.effect==='unknown'?
+      'invocation completed; effect unknown':
+      title+(fact?.terminal?' · terminal='+fact.terminal:'')+(fact?.effect?' · effect='+fact.effect:'')+
       (mode==='detailed'?reason:'');
   }else if(name==='operation.finished'){
-    body='Model assessment recorded'+(fact?.assessmentOverall?' · overall='+fact.assessmentOverall:'');
+    // Only omit this decoration when a final message exists in the recorded assessment.
+    if(mode==='compact'&&fact?.hasModelAnswer)return;
+    body=mode==='compact'?'Model assessment recorded; no final answer text available':
+      'Model assessment recorded'+(fact?.assessmentOverall?' · overall='+fact.assessmentOverall:'');
   }else if(name==='operation.waiting'){
     body=fact?.waitingKind==='question'?'Waiting for input':'Operation waiting'+
       (fact?.waitingKind==='technical'?' · technical':'');
@@ -299,7 +311,7 @@ export function formatAcpExecution(event,mode,fact) {
   const debug=mode==='debug'?' · event='+boundedText(event.eventId??'',120)+
     ' seq='+event.sequence+' reason='+boundedText(event.reasonCode??'',120)+
     (fact?.attemptId||event.attemptId?' attempt='+boundedText(fact?.attemptId??event.attemptId??'',120):''):'';
-  return terminalText('['+source+'] '+body+debug);
+  return mode==='compact'?terminalText(compactSource+' — '+body):terminalText('['+source+'] '+body+debug);
 }
 
 /** Display-only projection of a committed model finding; the label is not a verdict.
@@ -373,8 +385,10 @@ export function acpOwnMessage(text,source,identity){
     _meta:{roleOrchestratorSource:source}};
 }
 
-/** @param {string} operationId @param {string} requestId @param {boolean} continuing @param {ProgressDisplay} display @param {boolean} [historical] @returns {SessionUpdate} */
-export function acpAccepted(operationId,requestId,continuing,display,historical=false){
+/** @param {string} operationId @param {string} requestId @param {boolean} continuing @param {ProgressDisplay} display @param {boolean} [historical] @param {PresentationMode} [mode] @returns {SessionUpdate|undefined} */
+export function acpAccepted(operationId,requestId,continuing,display,historical=false,mode='compact'){
+  // Existing client progress already owns request liveness; keep durable Request unchanged.
+  if(mode==='compact')return;
   const title=continuing?'Request continued':'Operation accepted';
   const source={source:'request',operationId,requestId,eventName:continuing?'operation.continued':'operation.accepted',...(historical&&{recovered:true})};
   return display==='inline'?acpOwnMessage(title+' · '+operationId,source,requestId):

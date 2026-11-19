@@ -9,7 +9,7 @@
  * dispatchCertainty?:import('../core/operation.js').DispatchCertainty,
  * cancellation?:import('../core/contracts.js').CancellationSource,
  * invalidPath?:string, expected?:string,
- * late?:true, assessmentOverall?:import('../core/contracts.js').Assessment['overall'], waitingKind?:'question'|'technical'
+ * late?:true, assessmentOverall?:import('../core/contracts.js').Assessment['overall'], hasModelAnswer?:boolean, waitingKind?:'question'|'technical'
  * }} ExecutionFact */
 
 /** Read-only technical projection of a committed transition; no state retained.
@@ -45,7 +45,8 @@ export function executionFact(state,event) {
     ...(action&&{roleId:action.roleId,objective:action.objective}),
     ...(event.kind==='attempt.outcome'&&{terminal:event.outcome.terminal,effect:event.outcome.effect,
       dispatchCertainty:event.dispatchCertainty,late:event.late}),
-    ...(event.kind==='operation.finished'&&{assessmentOverall:event.assessment.overall}),
+    ...(event.kind==='operation.finished'&&{assessmentOverall:event.assessment.overall,
+      hasModelAnswer:typeof event.assessment.answer==='string'}),
     ...(event.kind==='operation.waiting'&&{waitingKind:event.waiting.kind}),
     ...(event.kind==='controller.invalid_proposal'&&{invalidPath:event.reason.path,expected:event.reason.expected}),
     ...((event.kind==='attempt.cancel_requested'||event.kind==='action.cancelled'||event.kind==='operation.cancelled')&&{cancellation:event.source}),

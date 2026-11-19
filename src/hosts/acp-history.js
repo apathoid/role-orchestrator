@@ -212,7 +212,8 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
       }
       await replayText(range.text,true,emit,signal);
       if(signal?.aborted)return;
-      if(inline)await emit(acpAccepted(id,durableId,range.continuing,'inline',true));
+      if(inline){const accepted=acpAccepted(id,durableId,range.continuing,'inline',true,mode);
+        if(accepted)await emit(accepted);}
       const response=historicalReply(operation,durableId,request.responseEventId);
       const end=response?response.index+1:range.end;
       if(inline)for(let i=range.start;!signal?.aborted&&i<end;i++)for(const update of journalUpdates(operation,i,mode,reports)){

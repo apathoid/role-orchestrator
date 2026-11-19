@@ -242,7 +242,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
             const enqueue=update=>{
               if(update&&canDisplay())transport?.enqueue({update},Buffer.byteLength(JSON.stringify({sessionId,update}))+128);
             };
-            if(ownProgress)enqueue(acpAccepted(id,durableRequestId,continuing,progressDisplay));
+            if(ownProgress)enqueue(acpAccepted(id,durableRequestId,continuing,progressDisplay,false,mode));
             unsubscribe = api.subscribeActivity({operationId:id}, event => {
               if (!canDisplay()) return;
               enqueue(event.kind==='gap'?acpProgressGap(id,event.droppedCount,event.reason,progressDisplay,notices,event.attemptId):
