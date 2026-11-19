@@ -33,7 +33,8 @@
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
  *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly Observation[], findings?: readonly Finding[], late?: true} |
  *   {kind: 'controller.responded', decision: Decision, attemptId?: string, admissions?: readonly Admission[]} |
- *   {kind: 'controller.invalid_proposal', attemptId: string, decisionId?: string, reason: FieldError} |
+ *   {kind: 'controller.invalid_proposal', attemptId: string, decisionId?: string, reason: FieldError,
+ *     category?: 'invalid_json' | 'non_object' | 'depth' | 'schema_invalid' | 'admission_invalid'} |
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string, category?: ActionFailureCategory} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
@@ -215,7 +216,8 @@ function diagnosticContext(event) {
     case 'action.rejected':
       return { details: { subject: 'action', next: 'controller_replan', ...(event.category && {category:event.category}) } };
     case 'controller.invalid_proposal':
-      return { details: { subject: 'decision', next: 'controller_correction', category: 'contract' } };
+      return { details: { subject: 'decision', next: 'controller_correction',
+        category: event.category ?? 'unknown' } };
     case 'action.cancelled':
       return { details: { subject: 'action', next: 'inspect' } };
     case 'attempt.cancel_requested':
