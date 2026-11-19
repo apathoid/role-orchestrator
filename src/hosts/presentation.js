@@ -256,6 +256,74 @@ export function acpActivity(event, mode, controller) {
   if (event.kind === 'plan' && controller && update.sessionUpdate === 'plan') return { ...update,_meta };
 }
 
+/** Only trusted execution fields drive graphical progress; no model text parsing.
+ * The CLI's existing formatter remains independent of this ACP-only projection.
+ * @param {DiagnosticEvent} event @param {PresentationMode} mode @param {ExecutionFact} [fact]
+ */
+export function formatAcpExecution(event,mode,fact) {
+  if(mode==='debug')return formatExecution(event,'debug',fact);
+  const name=event.eventName;
+  // Native question/permission UI and the initial acceptance already have owners.
+  if(['operation.accepted','permission.requested','permission.resolved',
+    'interaction.requested','interaction.resolved'].includes(name))return;
+  const source=fact?.attemptId?factLabel(fact):event.actionId?'Action '+boundedText(event.actionId,80).replace(/[\n\t]/g,' '):'Operation';
+  const reason=event.reasonCode?' · '+boundedText(event.reasonCode,120).replace(/[\n\t]/g,' '):'';
+  let body;
+  if(name==='attempt.dispatched') {
+    body='Dispatched'+(fact?.objective?' · '+boundedText(fact.objective,480):'');
+    if(mode==='detailed'&&fact?.modelSelector)body+=' · selected model='+boundedText(fact.modelSelector,120);
+    if(mode==='detailed'&&fact?.reasoning?.mode==='selectable')body+=' · selected effort='+boundedText(fact.reasoning.level,80);
+  }else if(['attempt.outcome','attempt.late_outcome','attempt.outcome_discrepancy','attempt.historical_outcome_report'].includes(name)){
+    const title=name==='attempt.outcome'?'Attempt outcome reported':
+      name==='attempt.late_outcome'?'Late outcome report':
+      name==='attempt.outcome_discrepancy'?'Outcome discrepancy':'Historical outcome report (classification not recorded)';
+    body=title+(fact?.terminal?' · terminal='+fact.terminal:'')+(fact?.effect?' · effect='+fact.effect:'')+
+      (mode==='detailed'?reason:'');
+  }else if(name==='operation.finished'){
+    body='Model assessment recorded'+(fact?.assessmentOverall?' · overall='+fact.assessmentOverall:'');
+  }else if(name==='operation.waiting'){
+    body=fact?.waitingKind==='question'?'Waiting for input':'Operation waiting'+
+      (fact?.waitingKind==='technical'?' · technical':'');
+    if(mode==='detailed')body+=reason;
+  }else if(name==='controller.invalid_proposal'){
+    body='Invalid model proposal'+(fact?.invalidPath?' · '+boundedText(fact.invalidPath,180).replace(/[\n\t]/g,' '):'')+
+      (fact?.expected?' · expected '+boundedText(fact.expected,180).replace(/[\n\t]/g,' '):'');
+  }else if(name==='attempt.cancel_requested'||name==='operation.cancelled'||name==='action.cancelled'){
+    body=(lifecycleLabels[name]??name)+(fact?.cancellation?' · source='+fact.cancellation:'');
+  }else if(['action.rejected','action.deferred','operation.recovered','operation.continued',
+    'permission.expired','attempt.outcome_discrepancy'].includes(name)) {
+    body=lifecycleLabels[name]??name;
+    if(mode==='detailed')body+=reason;
+  }else if(event.level==='error'||event.level==='warn'){
+    body=(lifecycleLabels[name]??name)+reason;
+  }else return;
+  return terminalText('['+source+'] '+body);
+}
+
+/** Display-only projection of a committed model finding; the label is not a verdict.
+ * @param {import('../core/finding.js').Finding} finding @param {PresentationMode} mode
+ */
+export function acpFindingText(finding,mode){
+  const author=boundedText(finding.author,120).replace(/[\n\t]/g,' ');
+  const lines=['Finding · '+author+(mode==='debug'?' · id='+boundedText(finding.findingId,120):''),
+    'Claim: '+boundedText(finding.claim,4096),'Subject: '+boundedText(finding.subject,1024)];
+  if(finding.uncertainties.length)lines.push('Uncertainties: '+boundedText(finding.uncertainties.join('; '),2048));
+  if(finding.supports.length)lines.push('Supports: '+boundedText(finding.supports.join(', '),2048));
+  if(finding.supersedes)lines.push('Supersedes: '+boundedText(finding.supersedes,160));
+  return lines.join('\n');
+}
+
+/** Technical attribution is already committed; metadata does not confer authority.
+ * @param {ExecutionFact|undefined} fact
+ */
+function acpFactSource(fact){
+  if(!fact)return {};
+  return {...(fact.roleId!==undefined&&{roleId:fact.roleId}),
+    ...(fact.profileId!==undefined&&{profileId:fact.profileId}),
+    ...(fact.attemptOrdinal!==undefined&&{attemptOrdinal:fact.attemptOrdinal}),
+    ...(fact.invocationKind!==undefined&&{invocationKind:fact.invocationKind})};
+}
+
 /** Standard ACP notices are presentation only, never session history.
  * @param {DiagnosticEvent} event @param {readonly import('../core/finding.js').Finding[]|undefined} findings @param {PresentationMode} mode @param {ExecutionFact} [fact]
  * @returns {SessionUpdate[]}
@@ -263,16 +331,13 @@ export function acpActivity(event, mode, controller) {
 export function acpExecutionNotices(event,findings,mode,fact) {
   /** @type {SessionUpdate[]} */
   const notices=[];
-  const title=formatExecution(event,mode,fact);
-  const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,eventId:event.eventId,sequence:event.sequence};
+  const title=formatAcpExecution(event,mode,fact);
+  const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,eventId:event.eventId,sequence:event.sequence,...acpFactSource(fact)};
   if(title) notices.push({sessionUpdate:'notice',title,severity:event.level==='error'?'error':event.level==='warn'?'warning':'info',
     _meta:{roleOrchestratorSource:{...source,source:'execution',eventName:event.eventName,reasonCode:event.reasonCode}}});
   for(const finding of findings??[]) notices.push({sessionUpdate:'notice',severity:'info',
-    title:'Recorded finding '+finding.findingId+' · '+finding.author,
-    description:finding.claim+' — '+finding.subject+
-      (finding.uncertainties.length?'\nUncertainty: '+boundedText(finding.uncertainties.join('; '),2048):'')+
-      (mode!=='compact'&&finding.supports.length?'\nSupports: '+boundedText(finding.supports.join(', '),2048):'')+
-      (finding.supersedes?'\nSupersedes: '+finding.supersedes:''),
+    title:'Finding · '+boundedText(finding.author,120).replace(/[\n\t]/g,' '),
+    description:acpFindingText(finding,mode),
     _meta:{roleOrchestratorSource:{...source,source:'recorded_finding',findingId:finding.findingId,author:finding.author}}});
   return notices;
 }
@@ -307,13 +372,14 @@ export function acpAccepted(operationId,requestId,continuing,display,historical=
 export function acpExecutionInline(event,findings,mode,fact,historical=false){
   /** @type {SessionUpdate[]} */
   const updates=[];
-  const displayMode=mode==='debug'?'detailed':mode;
-  const text=formatExecution(event,displayMode,fact);
+  const text=formatAcpExecution(event,mode,fact);
   const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,
-    eventId:fact?.journalEventId??event.eventId,eventName:event.eventName,reasonCode:event.reasonCode,...(historical&&{recovered:true})};
+    eventId:fact?.journalEventId??event.eventId,eventName:event.eventName,reasonCode:event.reasonCode,
+    ...acpFactSource(fact),...(historical&&{recovered:true})};
   if(text) updates.push(acpOwnMessage(text,{...source,source:fact?'journal':'execution'},source.eventId));
-  for(const finding of formatFindingRecords(findings??[],displayMode)){
-    updates.push(acpOwnMessage(finding.text,{...source,source:'recorded_finding',findingId:finding.id,author:finding.author},finding.id));
+  for(const finding of findings??[]){
+    updates.push(acpOwnMessage(acpFindingText(finding,mode),
+      {...source,source:'recorded_finding',findingId:finding.findingId,author:finding.author},finding.findingId));
   }
   return updates;
 }

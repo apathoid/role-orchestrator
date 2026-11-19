@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { acpActivity, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer, factLabel, formatOperation } from '../../src/hosts/presentation.js';
+import { acpActivity, acpExecutionInline, acpExecutionNotices, formatAcpExecution, acpFindingText, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer, factLabel, formatOperation } from '../../src/hosts/presentation.js';
 
 const native = (kind, payload, extra = {}) => ({kind,payload, operationId:'op',attemptId:'a',profileId:'reviewer',providerId:'provider',sequence:1,source:'provider_activity',...extra});
 test('presentation preserves actual chunks and distinguishes tool, finding, lifecycle and gaps', () => {
@@ -118,4 +118,67 @@ test('A116 native Controller plan remains opaque across modes and attempts, neve
     assert.equal(acpActivity({...plan,payload:{sessionUpdate:'plan'}},mode,true).entries,undefined);
   }
   assert.deepEqual(plan.payload.entries,entries);
+});
+
+test('A117 factual compact ACP source, outcome, invalid proposal and independent attempts',()=>{
+  const base={schemaVersion:1,operationId:'op',eventId:'event-1',sequence:2,receivedAt:1,
+    component:'core',level:'info',reasonCode:'DISPATCH_STARTED',eventName:'attempt.dispatched'};
+  const fact={journalEventId:'event-1',kind:'attempt.dispatched',attemptId:'a',actionId:'a',attemptOrdinal:2,
+    invocationKind:'delegate',roleId:'arbitrary-role',profileId:'profile-one',objective:'Review the actual repository',
+    modelSelector:'requested-model',reasoning:{mode:'selectable',level:'high'}};
+  const text=formatAcpExecution(base,'compact',fact);
+  assert.match(text,/arbitrary-role #2 · profile-one/);
+  assert.match(text,/Dispatched · Review the actual repository/);
+  assert.doesNotMatch(text,/DISPATCH_STARTED|requested-model|event-1/);
+  assert.match(formatAcpExecution(base,'detailed',fact),/selected model=requested-model.*selected effort=high/);
+  const rendered=acpExecutionInline(base,[],'compact',fact);
+  assert.equal(rendered.length,1);
+  assert.equal(rendered[0]._meta.roleOrchestratorSource.roleId,'arbitrary-role');
+  assert.equal(rendered[0]._meta.roleOrchestratorSource.attemptOrdinal,2);
+  assert.equal(rendered[0]._meta.roleOrchestratorSource.profileId,'profile-one');
+  assert.equal(rendered[0]._meta.roleOrchestratorSource.invocationKind,'delegate');
+  assert.equal(rendered[0]._meta.roleOrchestratorSource.source,'journal');
+  assert.equal(formatAcpExecution({...base,eventName:'operation.accepted'},'compact'),undefined);
+  assert.equal(formatAcpExecution({...base,eventName:'interaction.resolved'},'compact'),undefined);
+  const second={...fact,journalEventId:'event-2',attemptId:'b',attemptOrdinal:3};
+  assert.notEqual(acpExecutionInline({...base,eventId:'event-2'},[],'compact',second)[0].messageId,rendered[0].messageId);
+  assert.match(formatAcpExecution({...base,eventName:'attempt.outcome',reasonCode:'COMPLETED'},'compact',
+    {...fact,terminal:'completed',effect:'unknown'}),/Attempt outcome reported · terminal=completed · effect=unknown/);
+  assert.match(formatAcpExecution({...base,eventName:'attempt.late_outcome',level:'warn'},'compact',
+    {...fact,terminal:'unknown',effect:'unknown',late:true}),/Late outcome report/);
+  assert.match(formatAcpExecution({...base,eventName:'controller.invalid_proposal',level:'warn'},'compact',
+    {...fact,invalidPath:'$.actions[0].profile',expected:'known profile'}),/Invalid model proposal.*known profile/);
+  assert.match(formatAcpExecution({...base,eventName:'operation.finished'},'compact',
+    {kind:'operation.finished',assessmentOverall:'complete'}),/Model assessment recorded · overall=complete/);
+  assert.match(formatAcpExecution({...base,eventName:'attempt.outcome_discrepancy',level:'warn'},'compact',
+    {...fact,terminal:'completed',effect:'unknown'}),/Outcome discrepancy/);
+  assert.match(formatAcpExecution({...base,eventName:'attempt.historical_outcome_report'},'compact',
+    {...fact,terminal:'unknown',effect:'unknown'}),/classification not recorded/);
+  assert.match(acpExecutionNotices(base,[],'compact',fact)[0].title,/Dispatched/);
+  assert.ok(acpExecutionInline(base,[],'debug',fact)[0].content.text.includes('event-1'));
+});
+
+test('A118/A119 RO-owned escaped finding displays only recorded claims, no semantic verdict',()=>{
+  const finding={findingId:'f-1',author:'profile-not-role',claim:'### forged\\n<script>alert(1)</script> **bold** [link](https://example.test)',
+    subject:'src/file.js',supports:['obs:1'],uncertainties:['Not established'],supersedes:'f-old'};
+  const event={schemaVersion:1,operationId:'op',eventId:'commit-f',eventName:'attempt.outcome',sequence:1,
+    receivedAt:1,level:'info',reasonCode:'OUTCOME_RECORDED'};
+  const own=acpExecutionInline(event,[finding],'compact',{kind:'attempt.outcome',journalEventId:'commit-f'});
+  const msg=own.find(x=>x._meta.roleOrchestratorSource.findingId==='f-1');
+  assert.ok(msg);
+  assert.match(msg.content.text,/Finding · profile-not-role/);
+  assert.match(msg.content.text,/Not established/);
+  assert.match(msg.content.text,/obs:1/);
+  assert.doesNotMatch(msg.content.text,/verified|confidence|severity|Reviewer role/i);
+  assert.equal(msg._meta.roleOrchestratorSource.author,'profile-not-role');
+  assert.equal(msg._meta.roleOrchestratorSource.eventId,'commit-f');
+  assert.ok(!msg.content.text.includes('<script>'));
+  assert.ok(!msg.content.text.includes('[link]('));
+  assert.match(acpFindingText(finding,'debug'),/id=f-1/);
+  assert.equal(acpExecutionNotices(event,[finding],'compact')[0].severity,'info');
+  const notices=acpExecutionNotices(event,[finding],'compact');
+  assert.equal(notices.find(x=>x._meta.roleOrchestratorSource.findingId==='f-1').title,'Finding · profile-not-role');
+  assert.ok(notices.find(x=>x._meta.roleOrchestratorSource.findingId==='f-1').description.includes('Uncertainties: Not established'));
+  const unchanged={...finding,uncertainties:[]};
+  assert.doesNotMatch(acpFindingText(unchanged,'compact'),/verified|confirmed/);
 });
