@@ -453,8 +453,11 @@ for (const resolvedByLookup of [false,true]) {
               {terminal:'completed',effect:'confirmed'})};
           },
         }:{}),
-        respond: () => {
-          throw new Error('No model or Worker invocation is authorized to replay a dispatched unknown effect');
+        respond(invocation) {
+          // Do not turn an unexpected replay into a Provider failure. Assert
+          // the invocation count at the Orchestrator boundary instead.
+          return {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId),
+            output:'unexpected replay'};
         },
       });
       api = fixture.api;
@@ -550,8 +553,19 @@ for (const sample of [
       assert.equal(decisionRecovery(failed).totalRejected,1);
       assert.equal(decisionRecovery(failed).consecutiveIdentical,1);
       assert.equal(resourceSnapshot(failed).charged,1);
-      assert.equal(JSON.stringify(failed).includes('C16R_REJECTED_PAYLOAD_'),false,
-        'the rejected message must not be retained in the durable Operation');
+      // The existing provider-output Observation is authoritative evidence.
+      // C16 must not copy the rejected body into an additional error record
+      // or recovery counter. Removing that original observation would be a
+      // source-of-truth regression, not a fix.
+      const originalOutputs = failed.events.flatMap(event=>event.kind==='attempt.outcome'
+        ? (event.observations??[]).filter(item=>typeof item.value==='string' &&
+          item.value.includes('C16R_REJECTED_PAYLOAD_')) : []);
+      assert.equal(originalOutputs.length,1);
+      assert.equal(originalOutputs[0].ref,'controller-output:'+parserReports[0].attemptId);
+      assert.equal(originalOutputs[0].source,'model_claim');
+      assert.equal(originalOutputs[0].provenance.kind,'model');
+      assert.equal(JSON.stringify(invalid[0]).includes('C16R_REJECTED_PAYLOAD_'),false);
+      assert.equal(JSON.stringify(decisionRecovery(failed)).includes('C16R_REJECTED_PAYLOAD_'),false);
       assert.equal(decodeSnapshot(encodeSnapshot(failed)).kind,'accepted');
 
       await firstApi.close();
@@ -598,7 +612,11 @@ for (const sample of [
       assert.equal(resourceSnapshot(restored).charged,2);
       assert.equal(resourceSnapshot(restored).remaining,2);
       assert.equal(restored.events.filter(e=>e.kind==='operation.recovered').length,1);
-      assert.equal(JSON.stringify(restored).includes('C16R_REJECTED_PAYLOAD_'),false);
+      const restoredOutputs = restored.events.flatMap(event=>event.kind==='attempt.outcome'
+        ? (event.observations??[]).filter(item=>typeof item.value==='string' &&
+          item.value.includes('C16R_REJECTED_PAYLOAD_')) : []);
+      assert.deepEqual(restoredOutputs,originalOutputs,
+        'restart preserves the original provider Observation without duplicating rejected output');
       assert.equal(decodeSnapshot(encodeSnapshot(restored)).kind,'accepted');
     } finally {
       await secondApi?.close();
