@@ -55,21 +55,35 @@ test('C16.0 RED: after a question, a correlated new user turn stays a literal me
 });
 
 test('C16.0 RED: five identical rejected Controller Decisions enter technical waiting without a sixth reservation', async () => {
+  const corrections = [];
   const { api, invocations } = setup({ maxInvocations: 15, respond(invocation) {
     const host = hostOf(invocation);
     if (invocations.length > 1) {
       const correction = invocation.context.find(item => item.ref === 'host:decision-error')?.value;
-      assert.equal(correction.category, 'invalid_json');
-      assert.equal(correction.attemptId, invocations.at(-2).attemptId);
-      assert.equal(correction.totalRejected, invocations.length - 1);
-      assert.equal(correction.consecutiveIdentical, invocations.length - 1);
-      assert.equal(host.decisionRecovery.totalRejected, invocations.length - 1);
+      // Capture actual transport facts without turning a missing field into
+      // a provider failure; threshold behavior is asserted independently.
+      corrections.push({
+        category: correction?.category,
+        attemptId: correction?.attemptId,
+        previousAttemptId: invocations.at(-2).attemptId,
+        totalRejected: correction?.totalRejected,
+        consecutiveIdentical: correction?.consecutiveIdentical,
+        hostTotal: host?.decisionRecovery?.totalRejected,
+      });
     }
     return { ...final(invocation), output: '{', decisionTextError: 'invalid_json' };
   } });
   try {
     const state = await (await api.submit(request())).completion;
     assert.equal(invocations.length, 5);
+    assert.equal(corrections.length, 4);
+    for (const [index, correction] of corrections.entries()) {
+      assert.equal(correction.category, 'invalid_json');
+      assert.equal(correction.attemptId, correction.previousAttemptId);
+      assert.equal(correction.totalRejected, index + 1);
+      assert.equal(correction.consecutiveIdentical, index + 1);
+      assert.equal(correction.hostTotal, index + 1);
+    }
     assert.equal(state.events.filter(item => item.kind === 'controller.invalid_proposal').length, 5);
     assert.equal(state.status, 'waiting');
     assert.equal(state.waiting.kind, 'technical');
