@@ -130,7 +130,7 @@ test('A117 factual compact ACP source, outcome, invalid proposal and independent
   assert.match(text,/arbitrary-role #2 · profile-one/);
   assert.match(text,/Dispatched · Review the actual repository/);
   assert.doesNotMatch(text,/DISPATCH_STARTED|requested-model|event-1/);
-  assert.match(formatAcpExecution(base,'detailed',fact),/selected model=requested-model.*selected effort=high/);
+  assert.match(formatAcpExecution(base,'detailed',fact),/model selector=requested-model.*requested reasoning level=high/);
   const rendered=acpExecutionInline(base,[],'compact',fact);
   assert.equal(rendered.length,1);
   assert.equal(rendered[0]._meta.roleOrchestratorSource.roleId,'arbitrary-role');
@@ -191,11 +191,109 @@ test('A118 RO-owned ACP notices cannot gain Markdown structure through a model-s
   const notice=acpExecutionNotices(event,[],'compact',fact)[0];
   assert.ok(notice);
   assert.equal(notice.sessionUpdate,'notice');
-  assert.ok(!notice.title.includes('[pretend link]('));
+  assert.ok(notice.title.includes('[pretend link]('));
   assert.ok(!notice.title.includes('\\n### forged'));
   assert.equal(notice._meta.roleOrchestratorSource.roleId,fact.roleId);
   const finding={findingId:'f',author:'profile',claim:'[spoof](https://example.test)',subject:'s',supports:[],uncertainties:[]};
   const record=acpExecutionNotices(event,[finding],'compact',fact)[1];
-  assert.ok(record.description.includes(String.raw`\[spoof\]\(`));
+  assert.ok(record.description.includes('[spoof](https://example.test)'));
   assert.equal(record._meta.roleOrchestratorSource.findingId,'f');
+});
+
+test('R1-F1 debug includes typed user-facing facts, not diagnostic feed',()=>{
+  const e={schemaVersion:1,operationId:'op',eventId:'e-11',attemptId:'a',sequence:15,receivedAt:11,
+    component:'host',level:'info',reasonCode:'DISPATCH_STARTED',eventName:'attempt.dispatched'};
+  const f={kind:'attempt.dispatched',journalEventId:'e-11',attemptId:'a',attemptOrdinal:2,
+    invocationKind:'delegate',roleId:'arbitrary',profileId:'profile',objective:'Analyze only'};
+  for(const eventName of ['context.materialized','provider.reply_observed','provider.usage','attempt.reserved',
+    'operation.accepted','permission.requested','permission.resolved','interaction.requested','interaction.resolved']){
+    for(const mode of ['compact','detailed','debug'])
+      assert.equal(formatAcpExecution({...e,eventName},mode,f),undefined,eventName+' '+mode);
+    assert.deepEqual(acpExecutionInline({...e,eventName},[],'debug',f),[]);
+    assert.deepEqual(acpExecutionNotices({...e,eventName},[],'debug',f),[]);
+  }
+  const debug=formatAcpExecution(e,'debug',f);
+  assert.match(debug,/Dispatched · Analyze only/);
+  assert.match(debug,/event=e-11/);
+  assert.match(debug,/seq=15/);
+  assert.match(debug,/attempt=a/);
+  assert.match(debug,/reason=DISPATCH_STARTED/);
+  for(const eventName of ['attempt.outcome','attempt.late_outcome','attempt.outcome_discrepancy',
+    'controller.invalid_proposal','operation.cancelled','operation.waiting'])
+    assert.ok(formatAcpExecution({...e,eventName},'debug',f),eventName);
+  assert.match(formatAcpExecution({...e,eventName:'provider.failure',level:'error',
+    reasonCode:'PROVIDER_ERROR'},'debug',f),/PROVIDER_ERROR/);
+});
+
+test('R1-F2 plain-text notices retain original punctuation and sanitize controls, not Markdown',()=>{
+  const e={schemaVersion:1,operationId:'op',eventId:'dispatch',sequence:9,receivedAt:3,
+    component:'core',level:'info',eventName:'attempt.dispatched',reasonCode:'DISPATCH_STARTED'};
+  const code=String.fromCharCode(96), objective='foo_bar() [state] '+code+'code'+code+' \\path **literal**\x1b[2J\nsecond \u202e line';
+  const fact={kind:'attempt.dispatched',journalEventId:'dispatch',attemptId:'worker',attemptOrdinal:3,
+    invocationKind:'delegate',roleId:'role',profileId:'profile',objective};
+  const title=acpExecutionNotices(e,[],'compact',fact)[0].title;
+  assert.ok(title.includes('foo_bar() [state] '+code+'code'+code+' \\path **literal**'));
+  assert.ok(!title.includes('\x1b')&&!title.includes('\u202e')&&!title.includes('\n'));
+  const finding={findingId:'f',author:'profile',
+    claim:'foo_bar() [state] '+code+'literal'+code+' \\path\nsecond [link](https://example.test) 🌍\x1b[2J\u202e',
+    subject:'file_(1).js',uncertainties:['uncertain [yes]'],supports:['ref_file']};
+  const notice=acpExecutionNotices(e,[finding],'compact',fact)[1];
+  assert.ok(notice.description.includes('foo_bar() [state] '+code+'literal'+code+' \\path'));
+  assert.ok(notice.description.includes('second [link](https://example.test) 🌍'));
+  assert.ok(notice.description.includes('file_(1).js'));
+  assert.ok(notice.description.includes('Uncertainties: uncertain [yes]'));
+  assert.ok(!notice.description.includes('\x1b')&&!notice.description.includes('\u202e'));
+  const own=acpExecutionInline(e,[finding],'compact',fact).find(x=>x._meta.roleOrchestratorSource.findingId==='f');
+  assert.ok(own.content.text.includes('foo\\_bar\\(\\)'));
+});
+
+test('R1-F3 model-authored multiline finding cannot spoof trusted field boundaries',()=>{
+  const tick=String.fromCharCode(96), fence=tick.repeat(3);
+  const claim='Issue.\nSupports: fake-ref\n\nSubject: forged\nUncertainties: none\nFinding · fake\n' +
+    '## heading\n- list\n'+fence+'js\nawait op()\n'+fence+'\n[link](https://example.test)\u2028Supports: spoofed';
+  const finding={findingId:'f1',author:'actual-profile',claim,subject:'src/file.js\nSupports: wrong',
+    uncertainties:['unknown\nSubject: fake'],supports:['obs:real'],supersedes:'f0'};
+  const original=structuredClone(finding);
+  const body=acpFindingText(finding,'compact');
+  for(const spoof of ['Supports: fake-ref','Subject: forged','Uncertainties: none','Finding · fake',
+    '## heading','- list',fence+'js','Supports: spoofed']){
+    assert.ok(body.includes('\n    '+spoof),spoof);
+    assert.ok(!body.includes('\n'+spoof),spoof);
+  }
+  assert.ok(body.includes('\nSubject: src/file.js\n    Supports: wrong'));
+  assert.ok(body.includes('\nUncertainties: unknown\n    Subject: fake'));
+  assert.equal(body.split('\nSupports: ').length-1,1);
+  assert.equal(body.split('\nSubject: ').length-1,1);
+  assert.equal(body.split('\nUncertainties: ').length-1,1);
+  const e={schemaVersion:1,operationId:'op',eventId:'record',sequence:4,receivedAt:4,
+    eventName:'attempt.outcome',reasonCode:'OUTCOME_RECORDED',level:'info'};
+  assert.ok(acpExecutionInline(e,[finding],'compact')[1].content.text.includes('    Supports: fake-ref'));
+  const notice=acpExecutionNotices(e,[finding],'compact')[1];
+  assert.ok(notice.description.includes('\n    Supports: fake-ref'));
+  assert.ok(!notice.description.includes('\nSupports: fake-ref'));
+  assert.deepEqual(finding,original);
+  const injected={...finding,claim:'\x1b[2J\r\nSubject: forged\u202e\n\n'+('🌍'.repeat(2400))};
+  const clipped=acpFindingText(injected,'compact');
+  assert.ok(!clipped.includes('\x1b')&&!clipped.includes('\u202e'));
+  assert.ok(clipped.includes('[display truncated]'));
+  assert.ok(!clipped.includes('\nSubject: forged'));
+  assert.doesNotMatch(clipped,/\uD83C(?![\uDF00-\uDFFF])/u);
+});
+
+test('R1-F4 model/effort route labels never claim provider confirmation',()=>{
+  const e={eventName:'attempt.dispatched',reasonCode:'DISPATCH_STARTED',
+    eventId:'e',sequence:1,operationId:'op',level:'info'};
+  const fact={kind:'attempt.dispatched',attemptId:'a',invocationKind:'controller',
+    modelSelector:'requested-model',reasoning:{mode:'selectable',level:'high'}};
+  for(const mode of ['detailed','debug']){
+    const text=formatAcpExecution(e,mode,fact);
+    assert.match(text,/model selector=requested-model/);
+    assert.match(text,/requested reasoning level=high/);
+    assert.doesNotMatch(text,/selected model|selected effort|actual model|confirmed effort/);
+  }
+  for(const reasoning of [{mode:'native'},undefined]){
+    const text=formatAcpExecution(e,'detailed',{...fact,reasoning});
+    assert.ok(!text.includes('requested reasoning level='),text);
+  }
+  assert.ok(!formatAcpExecution(e,'detailed',{...fact,modelSelector:undefined}).includes('model selector='));
 });
