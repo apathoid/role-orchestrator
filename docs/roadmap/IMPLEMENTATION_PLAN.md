@@ -1,5 +1,13 @@
 # Активный план реализации и приёмки
 
+## C16 — Controller Reliability & Decision Recovery (PLANNED → IMPLEMENTATION)
+
+**Handoff:** [C16_CONTROLLER_RELIABILITY_DECISION_RECOVERY.md](C16_CONTROLLER_RELIABILITY_DECISION_RECOVERY.md). **Planning baseline:** `465e82aa5e16f83459e8b41a38fe8dc3411b66cd` on `feature/interactive-ux`. Это утверждённый scope для агента-исполнителя; реализация C16 ещё не началась, инженерная и нативная приёмка **UNVERIFIED**.
+
+**Задача:** без Host intent classifier обеспечить видимость последовательных пользовательских turns, сохранив первоначальный `objective` как исторический request, исходные provenance и полный доступ к реальному окружению. Улучшить краткую справку Decision v1 (один корректный JSON-пример), технические причины отказов и bounded recovery **5 идентичных / 10 суммарных**. Счётчики — из Operation journal, остановка через существующее technical waiting, пользовательское возобновление — без сброса общего бюджета. Никакого steering active operation, нового scheduler/workflow, Host-generated семантики, запрета native tools/skills/scripts или provider-specific адаптаций Core.
+
+**Порядок:** C16.0 baseline/RED → C16.1 user turn delivery → C16.3 diagnostic continuity → C16.4 5/10 recovery → C16.2 prompt A/B → C16.5 integration → C16.6 native quality comparison → C16.7 docs/exact-SHA CI. Нормативные контракты, acceptance matrix и STATUS исправлять по **фактически реализованному** поведению, а не предвосхищать PASS.
+
 **Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A122 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
