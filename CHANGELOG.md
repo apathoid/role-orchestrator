@@ -4,6 +4,12 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-GUI — graphical standard ACP presentation (real Zed UNVERIFIED)
+- Forward only actual typed Controller native ACP v1 `plan` in compact/detailed/debug; no synthetic planning or Worker-plan merging.
+- RO-owned compact progress now projects journal-backed dispatch/attempt outcomes, errors, waiting and model assessments with true scope. Registered findings retain model authorship, uncertainties and evidence references without inferred severity or verification.
+- Preserve original model messages/Markdown, typed Thinking/tools/forms/permissions, bounded ACP delivery, session/load history, CLI and execution. Deliberately **no Markdown builder/parser**; only fixed RO message/notice escaping.
+- Protocol and deterministic SDK tests plus exact CI results recorded in [STATUS](docs/roadmap/STATUS.md). Actual Zed client, second client and comparative latency/loss measurement UNVERIFIED.
+
 ### C15R-UX-P1 — interactive terminal transcript outer spacing (real native UNVERIFIED)
 - Add consistent decorative left margin to interactive CLI progress, native form/permission displays, streaming Thinking, controller/worker blocks, findings/summary and human TTY authoritative final output. Keep existing internal indentation, colors and readline input behavior; adapt margin for 120/80/40/24-column terminals.
 - Do not rewrite model Markdown, apply artificial wrapping, promise a fixed right margin, or modify redirected stdout, JSON, ACP, persisted answers, provider tools or execution semantics.

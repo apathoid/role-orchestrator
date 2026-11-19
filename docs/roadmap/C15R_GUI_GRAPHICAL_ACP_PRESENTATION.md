@@ -1,7 +1,7 @@
 # C15R-GUI — Graphical ACP Presentation Refinement
 
-**Статус:** PLANNED; engineering/native acceptance — NOT RUN.
-**Ветка:** `feature/interactive-ux`. **Planning baseline:** `ddba0917cffd3a018a0ae4a07724fa32401fe74e`.
+**Статус:** IMPLEMENTED; exact final-SHA engineering CI pending; external native Zed acceptance — UNVERIFIED.
+**Ветка:** `feature/interactive-ux`. **Planning baseline:** `420358abeea67a4cf40cfb7ae4fa433cd34914e9` (includes approved planning document).
 **Область:** standard external ACP Host presentation, необходимые tests/docs. CLI и execution не перерабатывать. **Не merge в master.**
 
 ## Цель и исходный контракт
@@ -93,3 +93,9 @@ Attempt outcome — технический результат попытки, а
 По итогам реализации обновить `STATUS.md`, `IMPLEMENTATION_PLAN.md`, этот roadmap, actual tests/единственную acceptance matrix, применимые normative docs/DECISIONS/CHANGELOG **только по реальным изменениям**, без дублирующих спек. Приложить baseline/final SHA, commits, changed paths, протокольный mapping, результаты исследования клиентского Markdown (или обоснованный отказ от builder), plan regression, оригинальность model output, provenance findings, queue loss/latency, live/history integrity, exact-SHA CI, Zed/screenshots/second client или UNVERIFIED.
 
 **Exit:** реальный Controller plan доставляется в compact, компактный factual progress, оригинальное model content и native capabilities не изменены, никаких Host semantic gates или выдуманных widgets/планов, существенной transport regression нет. Визуальное поведение конкретного клиента считается подтверждённым только после реального наблюдения. **Без merge в master.**
+
+## Implementation disposition (2026-11-19)
+
+GUI.0 SDK/source inspection: pinned ACP SDK 2.4.0/v1; official v1 `plan` is a standard typed update, not the v2 `plan_update`. Zed Markdown behavior and screenshots were **not** observed; no formatter/parser or Zed-specific branch was introduced. Source events: native Controller `plan` and reasoning/tools/messages via existing scoped ACP updates; own progress via existing execution subscription; finding only from committed record; original final from `operationReply`; history from `session.requests` + journal. Live native events are never recreated on load. Only RO-owned notices/inline messages are escaped. Exact event/source mapping is tested in `tests/integration/presentation.test.js`, `host-acp.test.js`; bounded delivery, cancellation, input, and A→B→A remain covered by existing integration suites.
+
+GUI.1–GUI.5 code: `src/hosts/presentation.js` only. GUI.6: `src/hosts/acp.js`, `acp-relay.js`, `acp-history.js`, `application/execution-facts.js`, provider/core/CLI unchanged. GUI.7: A116–A122 tests and specification range updated, CI link/SHA tracked in [STATUS](STATUS.md). GUI.8: status, single acceptance matrix, architecture decision and changelog updated. A real Zed external-client visual comparison, exact client version/negotiation and redacted before/after wire logs, alternate client, and latency/queue byte-loss measurement remain **UNVERIFIED**. No synthetic ACP plan reset or inferred confirmation is claimed. Native test instructions are in [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md).
