@@ -66,7 +66,7 @@ async function sample(view,scenario,mode,display,clientKind){
     for(const update of display==='inline'?view.acpExecutionInline(event,finding,mode,fact):
       view.acpExecutionNotices(event,finding,mode,fact))push(update);
   };
-  push(view.acpAccepted('op','request',false,display));
+  push(view.acpAccepted('op','request',false,display,false,mode));
   let seq=0;
   const operationId='op';
   for(let index=0;index<=scenario.workers;index++){
@@ -112,7 +112,7 @@ async function sample(view,scenario,mode,display,clientKind){
   }
   progress({schemaVersion:1,operationId,eventId:'done',sequence:++seq,receivedAt:seq,
     level:'info',eventName:'operation.finished',reasonCode:'ASSESSMENT_RECORDED'},[],
-    {kind:'operation.finished',assessmentOverall:'complete'});
+    {kind:'operation.finished',assessmentOverall:'complete',hasModelAnswer:true});
   const productionMs=performance.now()-started;
   const drainStart=performance.now();
   const lost=await transport.finish(180);

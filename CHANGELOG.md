@@ -4,6 +4,12 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-GUI-R2 — compact graphical ACP transcript
+- Avoid the UUID-heavy initial accepted line and routine completed/confirmed or no-effect attempts in compact; show source/role/profile and attempt retry identity on genuine dispatch. Preserve unknown effects, failed/unknown terminals, late/conflicting outcomes, waiting, cancellation, errors, gaps and committed model findings.
+- Do not precede the original model final with `Model assessment recorded` when its nonempty text is present in the committed Assessment. Missing/empty/unconfirmed answers remain explicitly distinguishable; detailed/debug retain their technical facts without a full diagnostics dump.
+- Same policy for inline/negotiated notices and `session/load`. No changes to native plans/Thinking/tools/permissions, answer bytes, model strategy, core/Coordinator, bounded transport, provider adapters, CLI or permanent operation journal.
+- ACP SDK/history regressions and exact-R1-baseline deterministic throughput comparison added to mandatory CI. Engineering and native limitations are tracked in [STATUS](docs/roadmap/STATUS.md).
+
 ### C15R-GUI-R1 — ACP presentation corrective fidelity (real Zed UNVERIFIED)
 - Debug external ACP transcript now uses the same typed lifecycle selection as compact/detailed; additional IDs/reasons do not replay unfiltered diagnostics into user conversation.
 - ACP v1 notices preserve literal punctuation as bounded plain text; RO own inline messages retain separate Markdown-safe escaping. Multiline finding values are visibly nested beneath fixed trusted labels, without inspecting model text semantics.
