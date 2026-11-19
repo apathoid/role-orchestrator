@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setup, final } from '../fixtures/application.js';
-import { request } from '../fixtures/core.js';
+import { request, outcome } from '../fixtures/core.js';
 
 const hostOf = invocation => invocation.context.find(item => item.ref === 'host:invocation-context')?.value;
 const userOf = (invocation, ref) => invocation.context.find(item => item.ref === ref);
@@ -253,4 +253,47 @@ test('C16.5: the literal latest user message remains mandatory under a long opti
   });
   assert.equal(host.userTurns.initial.ref, 'request-1');
   assert.ok(!JSON.stringify(host.userTurns).includes('User context'));
+});
+
+
+test('C16.5: Controller reaching the rejection threshold does not cancel independently accepted running Workers', {timeout:5000}, async () => {
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const waiting = Promise.withResolvers();
+  const action = { actionId:'independent', kind:'delegate', profileId:'primary',
+    objective:'Complete independent work', contextRefs:[], dependsOn:[], expectedResult:'Report' };
+  let controllers = 0;
+  const { api, invocations, cancellations } = setup({maxInvocations:12,maxConcurrentInvocations:2,
+    committedDiagnostic(diag) {
+      if(diag.eventName === 'operation.waiting' && diag.reasonCode === 'INVALID_PROPOSAL') waiting.resolve();
+    },
+    async respond(invocation) {
+      if(invocation.kind === 'delegate') {
+        started.resolve();
+        await release.promise;
+        return {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId),output:'Independent report'};
+      }
+      if(++controllers === 1) return final(invocation, {
+        finalAssessment:undefined, additions:[action], nextController:{continue:true},
+      });
+      return {...final(invocation),output:'{',decisionTextError:'invalid_json'};
+    },
+  });
+  try {
+    const run = await api.submit(request());
+    await started.promise;
+    await waiting.promise;
+    const during = await api.inspect(run.operation.operationId);
+    assert.equal(during.status,'waiting');
+    assert.equal(during.waiting.reason.code,'INVALID_PROPOSAL');
+    assert.equal(during.events.filter(e=>e.kind==='controller.invalid_proposal').length,5);
+    const worker = during.attempts.find(item=>item.actionId==='independent');
+    assert.equal(worker.status,'dispatched');
+    assert.equal(cancellations.length,0);
+    release.resolve();
+    const complete = await run.completion;
+    assert.equal(complete.status,'waiting');
+    assert.equal(complete.attempts.find(item=>item.actionId==='independent').outcome.terminal,'completed');
+    assert.equal(invocations.filter(item=>item.kind==='controller').length,6);
+  } finally { release.resolve(); await api.close(); }
 });
