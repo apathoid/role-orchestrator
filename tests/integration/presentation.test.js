@@ -128,9 +128,10 @@ test('A117 factual compact ACP source, outcome, invalid proposal and independent
     modelSelector:'requested-model',reasoning:{mode:'selectable',level:'high'}};
   const text=formatAcpExecution(base,'compact',fact);
   assert.match(text,/arbitrary-role #2 · profile-one/);
-  assert.match(text,/Dispatched · Review the actual repository/);
+  assert.match(text,/arbitrary-role #2 · profile-one — started/);
+  assert.doesNotMatch(text,/Review the actual repository/);
   assert.doesNotMatch(text,/DISPATCH_STARTED|requested-model|event-1/);
-  assert.match(formatAcpExecution(base,'detailed',fact),/model selector=requested-model.*requested reasoning level=high/);
+  assert.match(formatAcpExecution(base,'detailed',fact),/Dispatched · Review the actual repository.*model selector=requested-model.*requested reasoning level=high/);
   const rendered=acpExecutionInline(base,[],'compact',fact);
   assert.equal(rendered.length,1);
   assert.equal(rendered[0]._meta.roleOrchestratorSource.roleId,'arbitrary-role');
@@ -143,18 +144,18 @@ test('A117 factual compact ACP source, outcome, invalid proposal and independent
   const second={...fact,journalEventId:'event-2',attemptId:'b',attemptOrdinal:3};
   assert.notEqual(acpExecutionInline({...base,eventId:'event-2'},[],'compact',second)[0].messageId,rendered[0].messageId);
   assert.match(formatAcpExecution({...base,eventName:'attempt.outcome',reasonCode:'COMPLETED'},'compact',
-    {...fact,terminal:'completed',effect:'unknown'}),/Attempt outcome reported · terminal=completed · effect=unknown/);
+    {...fact,terminal:'completed',effect:'unknown'}),/invocation completed; effect unknown/);
   assert.match(formatAcpExecution({...base,eventName:'attempt.late_outcome',level:'warn'},'compact',
     {...fact,terminal:'unknown',effect:'unknown',late:true}),/Late outcome report/);
   assert.match(formatAcpExecution({...base,eventName:'controller.invalid_proposal',level:'warn'},'compact',
     {...fact,invalidPath:'$.actions[0].profile',expected:'known profile'}),/Invalid model proposal.*known profile/);
   assert.match(formatAcpExecution({...base,eventName:'operation.finished'},'compact',
-    {kind:'operation.finished',assessmentOverall:'complete'}),/Model assessment recorded · overall=complete/);
+    {kind:'operation.finished',assessmentOverall:'complete',hasModelAnswer:true}),undefined);
   assert.match(formatAcpExecution({...base,eventName:'attempt.outcome_discrepancy',level:'warn'},'compact',
     {...fact,terminal:'completed',effect:'unknown'}),/Outcome discrepancy/);
   assert.match(formatAcpExecution({...base,eventName:'attempt.historical_outcome_report'},'compact',
     {...fact,terminal:'unknown',effect:'unknown'}),/classification not recorded/);
-  assert.match(acpExecutionNotices(base,[],'compact',fact)[0].title,/Dispatched/);
+  assert.match(acpExecutionNotices(base,[],'compact',fact)[0].title,/started/);
   assert.ok(acpExecutionInline(base,[],'debug',fact)[0].content.text.includes('event-1'));
 });
 
@@ -188,7 +189,7 @@ test('A118 ACP plain-text notices retain literal Markdown punctuation without ph
     sequence:1,receivedAt:1,level:'info',reasonCode:'DISPATCH_STARTED'};
   const fact={kind:'attempt.dispatched',attemptId:'attempt',attemptOrdinal:1,invocationKind:'delegate',
     roleId:'role\\n# forged',profileId:'profile',objective:'[pretend link](https://example.test)\\n### forged'};
-  const notice=acpExecutionNotices(event,[],'compact',fact)[0];
+  const notice=acpExecutionNotices(event,[],'detailed',fact)[0];
   assert.ok(notice);
   assert.equal(notice.sessionUpdate,'notice');
   assert.ok(notice.title.includes('[pretend link]('));
@@ -231,7 +232,7 @@ test('R1-F2 plain-text notices retain original punctuation and sanitize controls
   const code=String.fromCharCode(96), objective='foo_bar() [state] '+code+'code'+code+' \\path **literal**\x1b[2J\nsecond \u202e line';
   const fact={kind:'attempt.dispatched',journalEventId:'dispatch',attemptId:'worker',attemptOrdinal:3,
     invocationKind:'delegate',roleId:'role',profileId:'profile',objective};
-  const title=acpExecutionNotices(e,[],'compact',fact)[0].title;
+  const title=acpExecutionNotices(e,[],'detailed',fact)[0].title;
   assert.ok(title.includes('foo_bar() [state] '+code+'code'+code+' \\path **literal**'));
   assert.ok(!title.includes('\x1b')&&!title.includes('\u202e')&&!title.includes('\n'));
   const finding={findingId:'f',author:'profile',

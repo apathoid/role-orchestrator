@@ -5,7 +5,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createBoundedDelivery } from '../src/application/delivery.js';
 import * as current from '../src/hosts/presentation.js';
 
-const baseline='420358abeea67a4cf40cfb7ae4fa433cd34914e9';
+const baseline=process.argv.includes('--r2')?'6617c0b924a7a4dc1b248772aedaef0e0b3dea37':
+  '420358abeea67a4cf40cfb7ae4fa433cd34914e9';
 const baselineSource=execFileSync('git',['show',baseline+':src/hosts/presentation.js'],{encoding:'utf8'});
 // Import the exact historical presentation projection against unchanged core modules.
 const historical=baselineSource

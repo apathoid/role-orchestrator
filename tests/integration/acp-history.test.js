@@ -60,7 +60,8 @@ test('C15.6 large repeated history streams exact Unicode, stops on disconnect an
     assert.equal(reads,1);
     const raw=plain(updates);assert.equal(raw.at(-2)+raw.at(-1),big);
     assert.equal(raw.filter(s=>s.startsWith('turn ')).length,120);
-    assert.equal(updates.filter(u=>u._meta?.roleOrchestratorSource?.eventName==='operation.finished').length,120);
+    assert.equal(updates.filter(u=>u._meta?.roleOrchestratorSource?.eventName==='operation.finished').length,0);
+    assert.equal(raw.filter(text=>text.startsWith('answer ')).length,119);
   }
   t.diagnostic('C15_HISTORY '+JSON.stringify({turns:120,passes:3,answerCodeUnits:big.length,elapsedMs:timings}));
   const stop=new AbortController();let reads=0,emitted=0;
@@ -97,7 +98,7 @@ test('C15R.4 historical classifications match actual applied ordinary, late and 
   assert.equal(reports.get('conflict').eventName,'attempt.outcome_discrepancy');
   const session={sessionId:'session',cwd:'/tmp',operations:['A'],requests:[entry('r','A','cancel')]};
   const updates=[];
-  await replayHistory(session,async()=>state,async u=>updates.push(u),'compact','inline');
+  await replayHistory(session,async()=>state,async u=>updates.push(u),'detailed','inline');
   for(const name of ['ordinary','late','enrich','conflict']){
     const u=updates.find(item=>item._meta?.roleOrchestratorSource?.eventId===name);
     assert.equal(u._meta.roleOrchestratorSource.eventName,reports.get(name).eventName);
@@ -106,7 +107,7 @@ test('C15R.4 historical classifications match actual applied ordinary, late and 
   }
   assert.match(updates.find(u=>u._meta?.roleOrchestratorSource?.eventId==='conflict').content.text,/Outcome discrepancy/);
   const legacy={...state,revision:state.revision+1};const fallback=[];
-  await replayHistory(session,async()=>legacy,async u=>fallback.push(u),'compact','inline');
+  await replayHistory(session,async()=>legacy,async u=>fallback.push(u),'detailed','inline');
   assert.match(fallback.find(u=>u._meta?.roleOrchestratorSource?.eventId==='ordinary').content.text,/Historical outcome report/);
 });
 

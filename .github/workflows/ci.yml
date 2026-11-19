@@ -73,6 +73,8 @@ jobs:
           nix develop --no-update-lock-file --command node scripts/c15-presentation-benchmark.mjs --c15r
       - name: C15R-GUI-R1 planning baseline versus corrected ACP transport fixture
         run: nix develop --no-update-lock-file --command node scripts/c15r-gui-r1-transport-benchmark.mjs
+      - name: C15R-GUI-R2 deterministic R1 versus compact UX bounded transport
+        run: nix develop --no-update-lock-file --command node scripts/c15r-gui-r1-transport-benchmark.mjs --r2
       - name: C15R.6 baseline permission and form red/green evidence
         run: nix develop --no-update-lock-file --command node scripts/c15r6-interaction-baseline.mjs
       - name: C15R.6R provider pattern red subprocess and bounded green worker

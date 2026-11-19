@@ -563,9 +563,9 @@ test('C15.4 standard ACP inline default emits compact attributed facts, native f
       await prompt(host.agent,sessionId,'notice-delegate');
       const updates=host.messages.map(x=>x.update);
       const own=updates.filter(x=>x.sessionUpdate==='agent_message_chunk'&&x.messageId?.startsWith('ro:'));
-      assert.ok(own.length>=4);
+      assert.ok(own.length>=2);
       assert.ok(own.every(x=>x.content.text.includes('RO ·')&&x._meta.roleOrchestratorSource.operationId));
-      assert.equal(own[0]._meta.roleOrchestratorSource.eventName,'operation.accepted');
+      assert.equal(own.filter(x=>x._meta.roleOrchestratorSource.eventName==='operation.accepted').length,0);
       assert.ok(own.some(x=>x._meta.roleOrchestratorSource.eventName==='attempt.dispatched'));
       assert.ok(own.some(x=>x._meta.roleOrchestratorSource.findingId==='notice-finding'));
       assert.equal(new Set(own.map(x=>x.messageId)).size,own.length);
@@ -585,7 +585,7 @@ test('C15.5 ACP history preserves A B A user order and exact historical retry af
     ({sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]}));
     const first={roleOrchestrator:{requestId:'r1'}};
     await prompt(host.agent,sessionId,'clarify',first);
-    operationA=host.messages.find(x=>x.update._meta?.roleOrchestratorSource?.eventName==='operation.accepted').update._meta.roleOrchestratorSource.operationId;
+    operationA=host.messages.find(x=>x.update._meta?.roleOrchestratorSource?.eventName==='attempt.dispatched').update._meta.roleOrchestratorSource.operationId;
     assert.equal(host.messages.at(-1).update.content.text,'What scope?');
     await prompt(host.agent,sessionId,'B',{roleOrchestrator:{requestId:'b',newOperation:true}});
     await prompt(host.agent,sessionId,'scope',{roleOrchestrator:{requestId:'r2',continueOperationId:operationA}});
@@ -656,7 +656,7 @@ test('C15R SDK session.load preserves actual reducer report classifications and 
   }finally{await store.close();}
   await writeFile(join(directory,'client-session-'+sessionId+'.json'),JSON.stringify({sessionId,cwd,operations:[operationId],
     requests:[{requestId:'r',fingerprint:'fixture',operationId,responseEventId:'cancel',progressDisplay:'inline'}]}));
-  const host=launch(cwd,config);
+  const host=launch(cwd,config,app=>app,['--presentation','detailed']);
   try{
     await initialize(host.agent);
     const load=()=>host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
@@ -754,4 +754,72 @@ test('A118/A121 client SDK receives original Markdown answer after RO-owned prog
     assert.deepEqual(replay.filter(x=>x.sessionUpdate==='agent_message_chunk'&&!x._meta?.roleOrchestratorSource).map(x=>x.content.text),[expected]);
     assert.deepEqual(replay.filter(x=>x.sessionUpdate==='user_message_chunk').map(x=>x.content.text),[input]);
   }finally{await host.close();}
+}));
+
+test('R2 real ACP SDK compact omits accepted/assessment decoration and keeps native Controller/Workers',
+  {timeout:30000},()=>withOwnedRun('C15R-GUI-R2-native-compact',async cwd=>{
+  const config=await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,
+    args:[fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url)),'host-native-ux']}}},plugins:[]});
+  for(const mode of ['compact','detailed','debug']){
+    const host=launch(cwd,config,app=>app,['--presentation',mode]);
+    try{
+      await initialize(host.agent);
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      const reply=await prompt(host.agent,sessionId,'Check sources');
+      assert.equal(reply.stopReason,'end_turn');
+      const updates=host.messages.map(x=>x.update);
+      const owned=updates.filter(x=>x._meta?.roleOrchestratorSource?.eventName);
+      const names=owned.map(x=>x._meta.roleOrchestratorSource.eventName);
+      assert.equal(names.includes('operation.accepted'),mode!=='compact',mode);
+      assert.equal(names.includes('operation.finished'),mode!=='compact',mode);
+      assert.ok(names.includes('attempt.dispatched'),mode);
+      assert.equal(updates.filter(x=>x.sessionUpdate==='plan').length>=1,true,mode);
+      assert.ok(updates.some(x=>x.sessionUpdate==='agent_thought_chunk'),mode);
+      assert.ok(updates.some(x=>x.sessionUpdate==='tool_call_update'),mode);
+      assert.deepEqual(updates.filter(x=>x.sessionUpdate==='agent_message_chunk'&&!x._meta?.roleOrchestratorSource)
+        .map(x=>x.content.text),['Native final once']);
+      if(mode==='compact'){
+        const dispatch=owned.filter(x=>x._meta.roleOrchestratorSource.eventName==='attempt.dispatched');
+        assert.ok(dispatch.length>=3);
+        assert.ok(dispatch.some(x=>x.content.text.includes('Controller · primary — started')));
+        assert.ok(dispatch.some(x=>x.content.text.includes('Worker (role unknown)')));
+        assert.ok(dispatch.every(x=>!x.content.text.includes('Dispatched ·')));
+      }
+      const before=host.messages.length;
+      await host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+      const replay=host.messages.slice(before).map(x=>x.update);
+      const recovered=replay.filter(x=>x._meta?.roleOrchestratorSource?.eventName);
+      assert.equal(recovered.some(x=>x._meta.roleOrchestratorSource.eventName==='operation.accepted'),
+        mode!=='compact',mode);
+      assert.equal(recovered.some(x=>x._meta.roleOrchestratorSource.eventName==='operation.finished'),
+        mode!=='compact',mode);
+      assert.equal(replay.filter(x=>x.sessionUpdate==='plan'||x.sessionUpdate==='agent_thought_chunk'||
+        x.sessionUpdate==='tool_call').length,0,mode);
+      assert.deepEqual(replay.filter(x=>x.sessionUpdate==='agent_message_chunk'&&!x._meta?.roleOrchestratorSource)
+        .map(x=>x.content.text).filter(x=>x==='Native final once'),['Native final once'],mode);
+    }finally{await host.close();}
+  }
+}));
+
+test('R2 ACP notices use same compact visibility with negotiated capability and no Markdown transformations',
+  {timeout:20000},()=>withOwnedRun('C15R-GUI-R2-notices',async cwd=>{
+  const config=await fixture(cwd);
+  for(const enabled of [true,false]){
+    const host=launch(cwd,config,app=>app,['--presentation','compact','--progress-display','notices']);
+    try{
+      await host.agent.request(a.initialize,{protocolVersion:PROTOCOL_VERSION,
+        clientCapabilities:enabled?{session:{notices:{}}}:{}});
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      await prompt(host.agent,sessionId,'notice-delegate');
+      const notices=host.messages.map(x=>x.update).filter(x=>x.sessionUpdate==='notice');
+      assert.equal(notices.length>0,enabled);
+      assert.ok(notices.every(x=>x._meta?.roleOrchestratorSource?.eventName!=='operation.accepted'));
+      assert.ok(notices.every(x=>x._meta?.roleOrchestratorSource?.eventName!=='operation.finished'));
+      if(enabled){
+        assert.ok(notices.some(x=>x._meta.roleOrchestratorSource.findingId==='notice-finding'));
+        assert.ok(notices.some(x=>x._meta.roleOrchestratorSource.eventName==='attempt.dispatched'));
+      }
+      assert.equal(host.messages.filter(x=>x.update.content?.text==='Notice final').length,1);
+    }finally{await host.close();}
+  }
 }));
