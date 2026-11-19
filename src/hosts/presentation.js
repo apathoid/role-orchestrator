@@ -288,11 +288,13 @@ export function formatAcpExecution(event,mode,fact) {
       title+(fact?.terminal?' · terminal='+fact.terminal:'')+(fact?.effect?' · effect='+fact.effect:'')+
       (mode==='detailed'?reason:'');
   }else if(name==='operation.finished'){
-    // Only omit this decoration when a final message exists in the recorded assessment.
-    if(mode==='compact'&&fact?.hasModelAnswer)return;
-    body=mode==='compact'?(fact?.hasModelAnswer===false?
-      'Model assessment recorded; no final answer text available':
-      'Model assessment recorded; final text availability unconfirmed'):
+    // A nonempty answer does not erase a model-authored partial/unresolved assessment.
+    // Suppress only redundant complete-with-answer decoration, never change the Assessment.
+    if(mode==='compact'&&fact?.assessmentOverall==='complete'&&fact.hasModelAnswer===true)return;
+    body=mode==='compact'?
+      'Model assessment recorded'+(fact?.assessmentOverall?' · overall='+fact.assessmentOverall:'')+
+        (fact?.hasModelAnswer===false?'; no final answer text available':
+          fact?.hasModelAnswer===undefined?'; final text availability unconfirmed':''):
       'Model assessment recorded'+(fact?.assessmentOverall?' · overall='+fact.assessmentOverall:'');
   }else if(name==='operation.waiting'){
     body=fact?.waitingKind==='question'?'Waiting for input':'Operation waiting'+
