@@ -31,23 +31,28 @@ const code=String.fromCharCode(96);
 async function sample(view,scenario,mode,display,clientKind){
   const started=performance.now();
   const counts={attempted:0,attemptedNative:0,attemptedOwn:0,delivered:0,deliveredNative:0,
-    deliveredOwn:0,attemptedBytes:0,deliveredBytes:0};
+    deliveredOwn:0,attemptedBytes:0,deliveredBytes:0,
+    droppedByQueue:0,gapsDelivered:0,notificationFailures:0};
   let firstMs=null,firstNativeMs=null,disconnected=false,transport;
   const delivered=[];
   transport=createBoundedDelivery(async entry=>{
     if(disconnected)return;
     if(clientKind==='slow')await delay(2);
-    if(clientKind==='broken'&&counts.delivered>=8)throw Error('synthetic-notification-failure');
+    if(clientKind==='broken'&&counts.delivered>=8){counts.notificationFailures++;throw Error('synthetic-notification-failure');}
     const update=entry.update;
     counts.delivered++;
     counts.deliveredBytes+=Buffer.byteLength(JSON.stringify(update));
     if(nativeKinds.includes(update.sessionUpdate)){counts.deliveredNative++;firstNativeMs??=performance.now()-started;}
     else counts.deliveredOwn++;
+    if(update._meta?.roleOrchestratorSource?.source==='delivery')counts.gapsDelivered++;
     firstMs??=performance.now()-started;
     delivered.push(update.sessionUpdate);
     if(clientKind==='disconnect'&&counts.delivered>=7){disconnected=true;transport.close();}
-  },(prior,_dropped)=>({count:(prior?.count??0)+1,
-    update:view.acpProgressGap('op',(prior?.count??0)+1,'overflow',display,true)}));
+  },(prior,_dropped)=>{
+    counts.droppedByQueue++;
+    return {count:(prior?.count??0)+1,
+      update:view.acpProgressGap('op',(prior?.count??0)+1,'overflow',display,true)};
+  });
   const push=update=>{
     if(!update)return;
     counts.attempted++;
@@ -132,13 +137,16 @@ for(const scenario of scenarios)for(const mode of modes)for(const display of dis
       'Only Controller native plan may be newly available in compact');
   }
   const numeric=['attempted','attemptedNative','attemptedOwn','delivered','deliveredNative','deliveredOwn',
-    'attemptedBytes','deliveredBytes','notConfirmed','firstMs','firstNativeMs','productionMs','drainMs','totalMs'];
+    'droppedByQueue','gapsDelivered','notificationFailures','attemptedBytes','deliveredBytes',
+    'notConfirmed','firstMs','firstNativeMs','productionMs','drainMs','totalMs'];
   const summarize=xs=>Object.fromEntries(numeric.map(key=>[key,
     xs.some(x=>x[key]===null)?null:round(median(xs.map(x=>x[key])))]));
   out.push({scenario:scenario.name,mode,display,client:clientKind,
     baseline:summarize(before),corrected:summarize(after)});
 }
+for(const result of out)console.log('C15R_GUI_R1_CASE '+JSON.stringify(result));
 console.log('C15R_GUI_R1_TRANSPORT '+JSON.stringify({
-  baseline,current:now,node:process.version,rounds:3,scope:'deterministic ACP presentation+bounded-delivery fixture, not a real Zed/LLM',
-  results:out,
+  baseline,current:now,node:process.version,rounds:3,caseCount:out.length,
+  scope:'deterministic ACP presentation+bounded-delivery fixture, not a real Zed/LLM',
+  counts:'droppedByQueue counts overflow; notConfirmed from finish can overlap pending gap/failures',
 }));
