@@ -6,6 +6,7 @@ import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions, pendingControllerHistoryRequest } from './controller-context.js';
+import { decisionRecovery } from './decision-recovery.js';
 import { handoffContext, materializeSkillInstructions, prepareHandoff } from './handoff.js';
 import { workerRequestHash } from './worker-request-identity.js';
 import { findingHistory } from './finding-history.js';
@@ -280,6 +281,13 @@ export function createOrchestrator(deps) {
   /** @param {Operation} state @param {Reason} reason */
   function technicalWait(state, reason) {
     return transition(state, { kind: 'operation.waiting', waiting: { kind: 'technical', reason } });
+  }
+
+  /** @param {Operation} state @param {Extract<Event, {kind: 'controller.invalid_proposal'}>} rejected @returns {Reason} */
+  function decisionRecoveryReason(state, rejected) {
+    return { code: 'INVALID_PROPOSAL', operationId: state.operationId,
+      attemptId: rejected.attemptId, actionId: rejected.attemptId,
+      resource: 'controller_decision_recovery' };
   }
 
   /** @param {Operation} state @returns {Submission} */
@@ -1127,6 +1135,12 @@ export function createOrchestrator(deps) {
         const result = await serialize(async () => {
           const state = await inspect(operationId);
           if (closing || stop.aborted) return {state};
+          // Crash-gap guard: a durable threshold rejection may precede its
+          // technical wait commit. Never reserve another Controller in that gap.
+          if (!actionId && state.status === 'active') {
+            const threshold = decisionRecovery(state).thresholdRejection;
+            if (threshold) return {state: await technicalWait(state, decisionRecoveryReason(state, threshold))};
+          }
           const available = reservationAvailability(state, actionId);
           if (available.kind === 'denied') return {state};
           if (available.kind === 'known') return {state, known:true};
@@ -1425,9 +1439,11 @@ export function createOrchestrator(deps) {
         // The decoder's path can contain an arbitrary unknown key. Keep the
         // technical correction bounded; never persist the rejected body here.
         correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
-        return transition(state, {kind:'controller.invalid_proposal', attemptId,
+        const rejectedState = await transition(state, {kind:'controller.invalid_proposal', attemptId,
           decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined,
           category:rejectionCategory, reason:correction});
+        const threshold = decisionRecovery(rejectedState).thresholdRejection;
+        return threshold ? technicalWait(rejectedState, decisionRecoveryReason(rejectedState, threshold)) : rejectedState;
       }).finally(() => releaseAttempt(attemptId));
       if (next.status !== 'active') {
         if (controllerFailureWaiting(next)) {
