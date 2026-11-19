@@ -183,7 +183,7 @@ test('A118/A119 RO-owned escaped finding displays only recorded claims, no seman
   assert.doesNotMatch(acpFindingText(unchanged,'compact'),/verified|confirmed/);
 });
 
-test('A118 RO-owned ACP notices cannot gain Markdown structure through a model-supplied objective',()=>{
+test('A118 ACP plain-text notices retain literal Markdown punctuation without physical line injection',()=>{
   const event={schemaVersion:1,operationId:'op',eventId:'notice-id',eventName:'attempt.dispatched',
     sequence:1,receivedAt:1,level:'info',reasonCode:'DISPATCH_STARTED'};
   const fact={kind:'attempt.dispatched',attemptId:'attempt',attemptOrdinal:1,invocationKind:'delegate',

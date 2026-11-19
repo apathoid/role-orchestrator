@@ -4,6 +4,12 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-GUI-R1 — ACP presentation corrective fidelity (real Zed UNVERIFIED)
+- Debug external ACP transcript now uses the same typed lifecycle selection as compact/detailed; additional IDs/reasons do not replay unfiltered diagnostics into user conversation.
+- ACP v1 notices preserve literal punctuation as bounded plain text; RO own inline messages retain separate Markdown-safe escaping. Multiline finding values are visibly nested beneath fixed trusted labels, without inspecting model text semantics.
+- Dispatch route labels distinguish a requested model selector/reasoning level from provider-confirmed actual values. No changes to native model output/plans/tools/permissions, core/Coordinator/CLI/transport or saved journal.
+- Added RED/GREEN regression and mandatory planning-SHA deterministic bounded transport comparison. Exact CI and remaining real Zed/native verification are tracked in [STATUS](docs/roadmap/STATUS.md).
+
 ### C15R-GUI — graphical standard ACP presentation (real Zed UNVERIFIED)
 - Forward only actual typed Controller native ACP v1 `plan` in compact/detailed/debug; no synthetic planning or Worker-plan merging.
 - RO-owned compact progress now projects journal-backed dispatch/attempt outcomes, errors, waiting and model assessments with true scope. Registered findings retain model authorship, uncertainties and evidence references without inferred severity or verification.
