@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { acpActivity, acpExecutionInline, acpExecutionNotices, formatAcpExecution, acpFindingText, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer, factLabel, formatOperation } from '../../src/hosts/presentation.js';
+import { acpActivity, acpAccepted, acpExecutionInline, acpExecutionNotices, formatAcpExecution, acpFindingText, formatActivity, formatExecution, formatRecordedFindings, scopedNativeId, terminalText, createTerminalSanitizer, factLabel, formatOperation } from '../../src/hosts/presentation.js';
 
 const native = (kind, payload, extra = {}) => ({kind,payload, operationId:'op',attemptId:'a',profileId:'reviewer',providerId:'provider',sequence:1,source:'provider_activity',...extra});
 test('presentation preserves actual chunks and distinguishes tool, finding, lifecycle and gaps', () => {
@@ -296,4 +296,94 @@ test('R1-F4 model/effort route labels never claim provider confirmation',()=>{
     assert.ok(!text.includes('requested reasoning level='),text);
   }
   assert.ok(!formatAcpExecution(e,'detailed',{...fact,modelSelector:undefined}).includes('model selector='));
+});
+
+test('R2 compact hides accepted UUID and redundant finish, but shows missing final and unknown effect',()=>{
+  assert.equal(acpAccepted('op-uuid','request-uuid',false,'inline',false,'compact'),undefined);
+  assert.equal(acpAccepted('op-uuid','request-uuid',true,'inline',true,'compact'),undefined);
+  assert.equal(acpAccepted('op-uuid','request-uuid',false,'notices',false,'compact'),undefined);
+  for(const mode of ['detailed','debug']){
+    const accepted=acpAccepted('op-uuid','request-uuid',false,'inline',false,mode);
+    assert.equal(accepted._meta.roleOrchestratorSource.operationId,'op-uuid');
+  }
+  const e={eventName:'operation.finished',operationId:'op-uuid',eventId:'finish',
+    sequence:7,reasonCode:'ASSESSMENT_RECORDED',level:'info'};
+  assert.equal(formatAcpExecution(e,'compact',{kind:'operation.finished',assessmentOverall:'complete',hasModelAnswer:true}),undefined);
+  assert.deepEqual(acpExecutionInline(e,[],'compact',{kind:'operation.finished',hasModelAnswer:true}),[]);
+  assert.deepEqual(acpExecutionNotices(e,[],'compact',{kind:'operation.finished',hasModelAnswer:true}),[]);
+  assert.match(formatAcpExecution(e,'compact',{kind:'operation.finished',assessmentOverall:'complete',
+    hasModelAnswer:false}),/no final/i);
+  assert.match(formatAcpExecution(e,'detailed',{kind:'operation.finished',assessmentOverall:'complete',
+    hasModelAnswer:true}),/Model assessment recorded · overall=complete/);
+  const outcome={...e,eventName:'attempt.outcome',eventId:'outcome'};
+  const fact={kind:'attempt.outcome',attemptId:'a',invocationKind:'controller',attemptOrdinal:1,
+    profileId:'local-small',terminal:'completed',effect:'unknown'};
+  assert.match(formatAcpExecution(outcome,'compact',fact),/Controller.*invocation completed.*effect unknown/);
+  assert.equal(formatAcpExecution(outcome,'compact',{...fact,effect:'confirmed'}),undefined);
+  assert.equal(formatAcpExecution(outcome,'compact',{...fact,effect:'none'}),undefined);
+  for(const terminal of ['failed','cancelled','unknown']){
+    assert.match(formatAcpExecution(outcome,'compact',{...fact,terminal,effect:'none'}),new RegExp(terminal));
+  }
+  assert.match(formatAcpExecution({...outcome,eventName:'attempt.late_outcome'},'compact',{...fact,effect:'confirmed'}),/Late outcome/);
+  assert.match(formatAcpExecution({...outcome,eventName:'attempt.outcome_discrepancy'},'compact',{...fact,effect:'confirmed'}),/Outcome discrepancy/);
+  assert.match(formatAcpExecution({...outcome,eventName:'attempt.historical_outcome_report'},'compact',{...fact,effect:'confirmed'}),/classification not recorded/);
+});
+
+test('R2 compact has one short truthful Controller/Worker dispatch, preserving source metadata',()=>{
+  const e={schemaVersion:1,operationId:'op',eventId:'dispatch-1',eventName:'attempt.dispatched',
+    sequence:1,receivedAt:1,level:'info',reasonCode:'DISPATCH_STARTED'};
+  const controller={kind:'attempt.dispatched',journalEventId:'dispatch-1',attemptId:'a',attemptOrdinal:1,
+    invocationKind:'controller',profileId:'local-small',modelSelector:'selector-not-actual',objective:'Run task'};
+  const d=formatAcpExecution(e,'compact',controller);
+  assert.equal(d,'Controller · local-small — started');
+  assert.doesNotMatch(d,/Run task|selector|#1|\[/);
+  const own=acpExecutionInline(e,[],'compact',controller);
+  assert.equal(own.length,1);
+  assert.equal(own[0]._meta.roleOrchestratorSource.attemptOrdinal,1);
+  assert.equal(own[0]._meta.roleOrchestratorSource.profileId,'local-small');
+  assert.ok(own[0].content.text.includes('Controller · local-small'));
+  const worker={...controller,attemptId:'b',attemptOrdinal:2,invocationKind:'delegate',
+    roleId:'arbitrary-reviewer',profileId:'review-profile',objective:'Check thing'};
+  assert.equal(formatAcpExecution(e,'compact',worker),'arbitrary-reviewer #2 · review-profile — started');
+  const retry={...controller,attemptId:'c',attemptOrdinal:3};
+  assert.equal(formatAcpExecution(e,'compact',retry),'Controller #3 · local-small — started');
+  const unknown={...worker,roleId:undefined};
+  assert.match(formatAcpExecution(e,'compact',unknown),/Worker \(role unknown\) #2/);
+  assert.match(formatAcpExecution(e,'detailed',controller),/Run task.*model selector=selector-not-actual/);
+  assert.match(formatAcpExecution(e,'debug',worker),/event=dispatch-1.*seq=1/);
+  assert.equal(acpExecutionNotices(e,[],'compact',worker)[0].title,'arbitrary-reviewer #2 · review-profile — started');
+});
+
+test('R2 warning, error, accepted-only and no-dispatch failure retain visible truth',()=>{
+  const e={eventName:'operation.waiting',operationId:'op',eventId:'waiting',sequence:1,reasonCode:'PROVIDER_ERROR',level:'warn'};
+  assert.match(formatAcpExecution(e,'compact',{kind:'operation.waiting',waitingKind:'technical'}),/waiting/);
+  assert.match(formatAcpExecution({...e,eventName:'controller.invalid_proposal'},'compact',
+    {kind:'controller.invalid_proposal',invalidPath:'$.actions[0]',expected:'profile'}),/Invalid model proposal/);
+  assert.match(formatAcpExecution({...e,eventName:'operation.cancelled'},'compact',
+    {kind:'operation.cancelled',cancellation:'client'}),/cancelled/i);
+  assert.match(formatAcpExecution({...e,eventName:'provider.error',level:'error',reasonCode:'PROVIDER_ERROR'},'compact'),
+    /PROVIDER_ERROR/);
+  assert.match(formatAcpExecution({...e,eventName:'operation.recovered'},'compact'),/Operation recovered/);
+  assert.equal(formatAcpExecution({...e,eventName:'provider.usage',level:'info'},'debug'),undefined);
+  assert.equal(acpAccepted('id','req',false,'inline',false,'compact'),undefined);
+  assert.match(formatAcpExecution({...e,eventName:'operation.finished'},'compact',
+    {kind:'operation.finished',assessmentOverall:'partial'}),/final/i);
+});
+
+test('R2 same compact visibility for inline and notices, findings unaffected by suppressed outcome',()=>{
+  const event={eventName:'attempt.outcome',operationId:'op',eventId:'result',sequence:11,level:'info',reasonCode:'OUTCOME_RECORDED'};
+  const fact={kind:'attempt.outcome',journalEventId:'result',terminal:'completed',effect:'confirmed',
+    attemptId:'a',invocationKind:'delegate',roleId:'any-role',profileId:'x'};
+  const finding={findingId:'f',author:'model-profile',claim:'Observed issue\nSubject: forged',
+    subject:'file',supports:['obs:1'],uncertainties:['not certain']};
+  const inline=acpExecutionInline(event,[finding],'compact',fact);
+  const notices=acpExecutionNotices(event,[finding],'compact',fact);
+  assert.equal(inline.length,1);
+  assert.equal(notices.length,1);
+  assert.equal(inline[0]._meta.roleOrchestratorSource.source,'recorded_finding');
+  assert.equal(notices[0]._meta.roleOrchestratorSource.findingId,'f');
+  assert.ok(inline[0].content.text.includes('    Subject: forged'));
+  assert.ok(notices[0].description.includes('    Subject: forged'));
+  assert.equal(acpExecutionInline({...event,eventName:'operation.finished'},[],'compact',
+    {kind:'operation.finished',hasModelAnswer:true}).length,0);
 });
