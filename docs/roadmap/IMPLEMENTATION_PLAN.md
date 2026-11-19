@@ -1,6 +1,14 @@
 # Активный план реализации и приёмки
 
-## C16 — Controller Reliability & Decision Recovery (CODE GREEN at 59751950; final-SHA CI and native quality pending)
+## C16R — follow-up regression completion (code verified; final-doc-SHA CI pending)
+
+**Review baseline:** `8e8f55212ef5070b8c0a9624770821b4a505b683`, [baseline full CI #44624794657](https://github.com/apathoid/role-orchestrator/actions/runs/44624794657) SUCCESS. Only `tests/integration/c16-controller-reliability.test.js` changed in production/test portion. C16R.1 added a real local StateStore restart test for an accepted unsent reserved independent Worker (same attemptId/budget/threshold) and two dispatched unknown-effect cases with and without negotiated lookup; no blind replay. C16R.2 added parser `non_object` and `depth` via declared ProviderResult, Application, persisted rejection and snapshot, lost commit-ACK crash gap and restarted correction; explicit Provider failure without a completed Decision does not count. C16R.3 corrected a test-only mistake requiring removal of original model output evidence; no production defect was found. No steering, runtime policy, schema, prompt or new scheduler.
+
+**Code/tests GREEN:** `d930af087209551bade0b77d3cc89fd351c9bc26` [CI #44629076306](https://github.com/apathoid/role-orchestrator/actions/runs/44629076306) **SUCCESS**: 577 root/475 integration/14 PTY, Node 24 specification/checkJs/contracts/ACP/C15 comparators, full locked Nix/package/NixOS/release/lock checks. Previous parser-test false-negative [#44628672064](https://github.com/apathoid/role-orchestrator/actions/runs/44628672064), 2 failures, was fixture-only and corrected at `d930af08`. Final docs-only commit must get its own exact-SHA full CI; do not transfer the code-SHA PASS to it. Native C16.6 real model/provider comparison and graphical client verification remain **UNVERIFIED**. Full evidence and environment limitations: [STATUS](STATUS.md), [A124/A125](../../tests/ACCEPTANCE_MATRIX.md).
+
+**Next:** verify the final documentation SHA with mandatory Actions; separately perform C16.6 real provider comparison. Do not extend the implementation into active-operation steering or Decision prompt tuning.
+
+## C16 — Controller Reliability & Decision Recovery (ENGINEERING VERIFIED at 8e8f5521; C16R follow-up above)
 
 **Approved scope:** [C16_CONTROLLER_RELIABILITY_DECISION_RECOVERY.md](C16_CONTROLLER_RELIABILITY_DECISION_RECOVERY.md). Actual pre-change baseline `22d06008d74616acb9be04645aaccab7f986853e` on `feature/interactive-ux`, CI [44619859886](https://github.com/apathoid/role-orchestrator/actions/runs/44619859886) SUCCESS. Previous planning baseline `465e82aa5e16f83459e8b41a38fe8dc3411b66cd`.
 
@@ -8,7 +16,7 @@
 
 **Verification:** C16.5 integration [44622240562](https://github.com/apathoid/role-orchestrator/actions/runs/44622240562) at `ac47ea3` recorded 466 PASS / 2 FAIL solely in the old tests' hard-coded requirement-entry example assumptions, fixed at `3b4846e`. Full Node24/checkJs/root/ACP/CLI/PTy/Nix/package/release [CI 44623424777](https://github.com/apathoid/role-orchestrator/actions/runs/44623424777) SUCCESS on `59751950` (571 root / 14 PTY). Final fixture+docs SHA CI remains **PENDING**, and native C16.6 quality comparison (baseline vs Host fixes old prompt vs Host fixes new prompt), authenticated Zed, second real provider and `llamacpp/small` remain **UNVERIFIED**. Synthetics and CI cannot certify their output quality. For evidence and remaining steps use [STATUS](STATUS.md) and [A05/A06/A21/A24/A121/A123–A125](../../tests/ACCEPTANCE_MATRIX.md).
 
-**Next:** run and inspect exact final-SHA full CI, report verification distinctions and any failing assertions; if available, rerun canceled isolated test-only RED CI. Perform controlled real provider comparison when the native environment becomes accessible; revise or revert prompt-only C16.2 if model task quality/tool autonomy is worse. Active-operation steering remains explicitly excluded.
+**Original C16 exact-SHA verification:** [CI #44624794657](https://github.com/apathoid/role-orchestrator/actions/runs/44624794657) SUCCESS at `8e8f5521` (571 root/14 PTY). C16R extends that evidence above. Remaining work is controlled C16.6 native provider/model comparison; revise prompt-only C16.2 only if real quality evidence warrants. Active-operation steering remains explicitly excluded.
 
 ## C15R-GUI-R2F — preserve model Assessment status in compact (ENGINEERING CODE GREEN; native UNVERIFIED)
 
