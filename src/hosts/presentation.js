@@ -328,7 +328,7 @@ function acpFactSource(fact){
  * @param {string} text @param {number} [limit]
  */
 function escapedOwnText(text,limit=16000){
-  return boundedText(text,limit).replace(/[\\\x60*_{}\[\]()<>#!|~]/g,'\\/** Standard ACP notices are presentation only, never session history.').replace(/\n/g,'\n  ');
+  return boundedText(text,limit).replace(/[\\\x60*_{}\[\]()<>#!|~]/g,'\\$&').replace(/\n/g,'\n  ');
 }
 
 /** Standard ACP notices are presentation only, never session history.
