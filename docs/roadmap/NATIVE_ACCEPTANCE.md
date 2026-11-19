@@ -1,5 +1,10 @@
 # C12.3–C12.4: протокол нативной приёмки
 
+## C15R-GUI — planned graphical ACP verification (UNVERIFIED)
+
+See [C15R-GUI](C15R_GUI_GRAPHICAL_ACP_PRESENTATION.md), [A116–A122](../../tests/ACCEPTANCE_MATRIX.md). Record installed RO exact SHA, real Zed version, pinned ACP SDK v1, provider/model, capabilities and redacted actual `session/update`; compare before/after for native Controller plan in compact (not Host plan), interleaved parallel Workers, source/finding uncertainty, original Markdown/final, permission/form, cancel/unknown and A→B→A `session/load`. **Probe client Markdown rendering before building an own formatter.** Measure bounded native delivery/gaps/latency separately with deterministic fixtures. Report actual RO-wire PASS, client-render PASS, client limitation or UNVERIFIED. A second compatible ACP client if available. Do not publish credentials/private prompts/paths, fabricate native results, add special client branches or change authority.
+
+
 ## C15R-UX-R1.7 — native corrective acceptance (UNVERIFIED)
 
 **Текущий результат: UNVERIFIED.** В GitHub CI нет установленного и авторизованного реального user provider/config/workspace, отдельного графического Zed клиента, фактически выбранной модели и подтверждённых native permissions. Прогон synthetic SDK и настоящего Linux PTY фиксирует только Host/CLI transport, не настоящие решения LLM. A115 и исторические A108/A100/A93/A86/A81 не закрывать.

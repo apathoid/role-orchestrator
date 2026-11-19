@@ -1,5 +1,8 @@
 # C15 — Rich Presentation & ACP Transcript
 
+**Planned narrow amendment — not yet implemented:** [C15R-GUI](C15R_GUI_GRAPHICAL_ACP_PRESENTATION.md) intentionally removes the compact-mode filter for an **actually received Controller native plan** in the external graphical ACP Host. This supersedes only the historic C14/C15 plan-visibility-by-verbosity choice when implemented. It does not create/require a plan, merge Worker plans, change the Controller plan slot, execution, CLI or model prompts. Original model-authored Markdown/answers remain unparsed and unchanged. The historical C15 behavior and evidence below describe their own implementation period.
+
+
 **Follow-up:** C15 engineering completed, but user native compact visual acceptance NOT ACCEPTED. Active corrective implementation is [C15R — Presentation Quality & Fidelity](C15R_PRESENTATION_QUALITY.md); exact current step in [STATUS](STATUS.md). C15 constraints remain in force; historical verification is not C15R PASS.
 
 **Задание агенту-исполнителю.** Ветка feature/interactive-ux. Baseline проектирования: b302ffa41d77ce0e12fe948bd8651e53b2138a8f. Последний подтверждённый engineering checkpoint C13R/C14R: b1ae0c88c54fdb99c3c39ecc01c97bf3288c329d, [CI 43691063762](https://github.com/apathoid/role-orchestrator/actions/runs/43691063762), 455/455 root tests + 4/4 actual Linux PTY. Native/comparative obligations остаются OPEN / UNVERIFIED. Актуальный следующий шаг — [STATUS](STATUS.md). Не merge в master без отдельного поручения.

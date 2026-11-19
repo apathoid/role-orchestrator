@@ -1,8 +1,12 @@
 # Активный план реализации и приёмки
 
-**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A115 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
+**Источник требований:** [PRODUCT](../PRODUCT.md), [ARCHITECTURE](../ARCHITECTURE.md), [CONTRACTS](../CONTRACTS.md), [единственная матрица R01–R33/A01–A122 и M01–M04](../../tests/ACCEPTANCE_MATRIX.md).
 
 Ранее реализованы C00–C11 и C11R с исправлениями ревью. Эти кластеры — история реализации, а не обязательный runtime workflow. Старые cluster plans и отчёты остаются **только в Git history** после удаления `development/`; актуальное поведение задают предметные `docs/` и тесты. Текущее положение и CI provenance — исключительно в [STATUS](STATUS.md).
+
+## C15R-GUI — Graphical ACP Presentation Refinement (PLANNED)
+
+**Current next step:** follow [C15R-GUI.0–.8](C15R_GUI_GRAPHICAL_ACP_PRESENTATION.md) from baseline `ddba0917cffd3a018a0ae4a07724fa32401fe74e` on `feature/interactive-ux`. Scope: standard ACP Host presentation only, actual Controller native plan visible in compact, minimal own RO messages conditioned on actual client probe, attributed model findings, bounded transport, live/history and A116–A122 regression/native acceptance. No code or tests have been implemented by this planning change. Original model Markdown and plan autonomy, native tools/skills, CLI, provider/core/coordinator, environment and permissions remain unchanged. Full exact-SHA CI and actual graphical client observation separate; no merge in master. See [STATUS](STATUS.md).
 
 ## C15R-UX-P1 — terminal-only transcript outer spacing
 

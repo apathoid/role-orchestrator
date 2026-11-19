@@ -485,3 +485,17 @@ Corrective scope **не меняет** A101–A108 и исходный C15R-UX. 
 **R2.0–.6 targeted follow-up:** [RED CI 44265635274](https://github.com/apathoid/role-orchestrator/actions/runs/44265635274), [GREEN exact implementation SHA CI 44267481834](https://github.com/apathoid/role-orchestrator/actions/runs/44267481834) `5bb46f79cdf9d439933704741faf05d659e612ed` (528 root, 12 actual Linux PTY, Nix); R2 reuses A109/A110/A112/A114, so no new IDs. Real native A115 **UNVERIFIED**. A docs-only follow-up SHA requires separate verification.
 
 **Planning baseline:** `bf117d405bf31cfc577021cb6cb12e2091df2b4b`; historical C15R.6R [CI 44035000221](https://github.com/apathoid/role-orchestrator/actions/runs/44035000221) covers only its original A94–A99, **not** C15R-UX. A100/A93/A86/A81 and other earlier native obligations remain UNVERIFIED.
+
+## C15R-GUI — planned graphical standard ACP acceptance (NOT RUN)
+
+Planning baseline `ddba0917cffd3a018a0ae4a07724fa32401fe74e`. Implement the tests during C15R-GUI; these rows are *requirements*, not regression PASS. [Roadmap](../docs/roadmap/C15R_GUI_GRAPHICAL_ACP_PRESENTATION.md), [STATUS](../docs/roadmap/STATUS.md). Historical C15R/C15R-UX CI does not verify new implementation.
+
+| ID | Требования | Проверяемое наблюдение | Уровень / статус |
+|---|---|---|---|
+| A116 | R02,R03,R18,R19 | Real native Controller plan reaches ACP compact/detailed/debug unchanged; absent plan, Worker plan, retries and session/load never synthesize/reattribute a Controller plan or require model planning | C/I NOT RUN |
+| A117 | R11,R13,R18,R19,R21 | Own compact lifecycle/dispatch/terminal/unknown/error readable from actual facts; parallel Workers distinguishable, no false actual model/effort, no fake tool/thought or duplicate final; detailed/debug preserve appropriate provenance | C/I NOT RUN |
+| A118 | R08,R11,R18,R19,R21 | Client Markdown probe precedes any own builder; no model output parser/reassembly/clipping; original model-authored Markdown/Assessment.answer byte-equivalent; untrusted RO label/claim/objective/HTML/link/bidi injection cannot spoof structure | C/I/N NOT RUN |
+| A119 | R11,R12,R13,R18,R21 | Findings are actual model claims with original author/uncertainty/support/supersedes; no Host confidence/severity/confirmation/rewrite; live report, durable finding, final Assessment distinct; identity-based dedup only | U/C/I NOT RUN |
+| A120 | R03,R08,R14,R16,R18,R19,R21,R23,R26 | Native thoughts/tools and own progress share bounded delivery without material dropped/latency regression; inline/notices capability, gap, slow/throwing client, cancellation, permission/form ACK, turn fencing and independent Workers preserved | C/I/E NOT RUN |
+| A121 | R11,R14,R15,R18,R19,R21,R28 | A→B→A, late old Worker, repeated load/reconnect, missing response boundary and classification preserve known journal facts without reconstructed native thinking/tools/plan, effect replay, invented chronology or duplicate answer | C/I/E NOT RUN |
+| A122 | R03,R08,R13,R18,R19,R21,R27,R30,R31 | Full exact-SHA CI, actual installed Zed before/after plan/Workers/finding/question/final/history and capabilities; second compatible ACP client when available; wire PASS vs client render PASS vs limitation/UNVERIFIED clearly separated | E/N NOT RUN |

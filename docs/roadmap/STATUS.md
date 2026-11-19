@@ -1,5 +1,12 @@
 # Role Orchestrator — оперативный статус
 
+## C15R-GUI — graphical standard ACP presentation (PLANNED; engineering/native UNVERIFIED)
+
+**Planning baseline:** `ddba0917cffd3a018a0ae4a07724fa32401fe74e`, `feature/interactive-ux`. **Next implementation:** [C15R-GUI.0–.8](C15R_GUI_GRAPHICAL_ACP_PRESENTATION.md). Этот checkpoint меняет только документацию/план, не product code и не тесты. Historical C15/C15R/C15R-UX CI не означает C15R-GUI PASS.
+
+Сначала проверить actual Zed/ACP Markdown mapping; только при подтверждённой пользе оформлять собственные технические RO messages фиксированными шаблонами, **не парсить и не изменять model output**. Минимально разблокировать реальный Controller native `plan` в compact, сохранив modes для own technical progress, оригинальные native tools/Thinking/forms/permissions, attributable findings без Host-вердикта, bounded transport и journal history. A116–A122 — planned NOT RUN. CLI/Coordinator/core/provider model semantics и tools/skills/environment не менять ради GUI; никакого нового GUI/extension/Host scheduler. Native Zed и второй client: observed либо UNVERIFIED. Full exact-SHA CI после кода. Не merge в master.
+
+
 **Ветка:** `feature/interactive-ux`. **Base:** master merge PR #2, `50cffa4f0ab4151871beb36529be27e33f2c1d11`. Исторический baseline перед C12: `cbd8e70baca3ab380a2ed3d43ae1fdd667616412`.
 
 ## C15R-UX-P1 — CLI Transcript Spacing & Terminal Layout (ENGINEERING CI PASS; REAL NATIVE UNVERIFIED)
