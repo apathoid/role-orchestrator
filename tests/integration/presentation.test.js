@@ -192,7 +192,7 @@ test('A118 RO-owned ACP notices cannot gain Markdown structure through a model-s
   assert.ok(notice);
   assert.equal(notice.sessionUpdate,'notice');
   assert.ok(notice.title.includes('[pretend link]('));
-  assert.ok(!notice.title.includes('\\n### forged'));
+  assert.ok(!notice.title.includes('\n### forged'));
   assert.equal(notice._meta.roleOrchestratorSource.roleId,fact.roleId);
   const finding={findingId:'f',author:'profile',claim:'[spoof](https://example.test)',subject:'s',supports:[],uncertainties:[]};
   const record=acpExecutionNotices(event,[finding],'compact',fact)[1];
