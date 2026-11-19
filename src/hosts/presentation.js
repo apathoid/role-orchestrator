@@ -309,6 +309,7 @@ export function acpFindingText(finding,mode){
   const author=boundedText(finding.author,120).replace(/[\n\t\u2028\u2029]/g,' ');
   // Every continuation belongs visually to its model-authored field, never to a trusted label.
   // This is display-only: no interpretation or rewrite of the stored Finding.
+  /** @param {string} label @param {string} value @param {number} limit */
   const field=(label,value,limit)=>label+': '+boundedText(value,limit).replace(/[\n\u2028\u2029]/g,'\n    ');
   const lines=['Finding · '+author+(mode==='debug'?' · id='+boundedText(finding.findingId,120).replace(/[\n\t\u2028\u2029]/g,' '):''),
     field('Claim',finding.claim,4096),field('Subject',finding.subject,1024)];
