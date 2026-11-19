@@ -1356,6 +1356,10 @@ export function createOrchestrator(deps) {
             invalid_json: 'valid JSON', non_object: 'a JSON object', depth: 'JSON nesting depth at most 16',
           }[response.decisionTextError],
         }} : decodeDecision(response.output);
+        // Category is taken from the actual parser/decoder/admission boundary.
+        // It is not inferred from the natural-language Controller output.
+        const rejectionCategory = response.decisionTextError ??
+          (parsed.kind === 'rejected' ? 'schema_invalid' : 'admission_invalid');
         correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
         if (parsed.kind === 'accepted') {
           const refs = evidenceRefs(state.request.requestId, state.events);
@@ -1422,7 +1426,8 @@ export function createOrchestrator(deps) {
         // technical correction bounded; never persist the rejected body here.
         correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
         return transition(state, {kind:'controller.invalid_proposal', attemptId,
-          decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined, reason:correction});
+          decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined,
+          category:rejectionCategory, reason:correction});
       }).finally(() => releaseAttempt(attemptId));
       if (next.status !== 'active') {
         if (controllerFailureWaiting(next)) {
