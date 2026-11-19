@@ -311,6 +311,13 @@ export function pendingControllerHistoryRequest(state, attemptId) {
  */
 export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor = 0) {
   const [request, ...history] = operationHistory(state);
+  // References point to the original user ContextItems. Chronology is a
+  // transport fact, not a Host decision about the current task or priority.
+  const latestUser = history.findLast(item => item.provenance?.kind === 'user') ?? request;
+  const userTurns = {
+    initial: { ref: request.ref, receivedSequence: request.receivedSequence },
+    latest: { ref: latestUser.ref, receivedSequence: latestUser.receivedSequence },
+  };
   const previous = state.events.findLast(item => item.kind === 'operation.finished');
   const unresolved = previous?.assessment.requirements.flatMap(({ requirementId, status }) =>
     status === 'fulfilled' ? [] : [{ requirementId, status }]);
@@ -388,7 +395,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     ref: 'host:invocation-context', source: /** @type {const} */ ('host_observed'),
     completeness: /** @type {const} */ ('complete'),
     value: {
-      operationId: state.operationId, contextCursor: state.revision,
+      operationId: state.operationId, contextCursor: state.revision, userTurns,
       catalog: catalog.map(item => {
         if (item.kind !== 'skill') return item;
         const { instructions: _instructions, ...metadata } = item.value;
