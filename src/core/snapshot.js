@@ -90,6 +90,7 @@ const event = tagged('kind', {
   }),
   'controller.invalid_proposal': record({
     ...eventFields, kind: oneOf('controller.invalid_proposal'), attemptId: id, decisionId: optional(id),
+    category: optional(oneOf('invalid_json','non_object','depth','schema_invalid','admission_invalid')),
     reason: record({code: oneOf('INVALID_PROPOSAL'), path: id, expected: id}),
   }),
   'action.rejected': record({
