@@ -4,9 +4,14 @@
 
 ## Unreleased — C12–C15 integration and delivery
 
+### C15R-GUI-R2F — preserve model partial/unresolved status in compact
+- Compact `operation.finished` now omits a redundant notice only for a model-recorded `overall=complete` with nonempty answer. It still displays `partial/unresolved` as a model assessment even with a final response, and preserves known status alongside missing/unconfirmed final text.
+- No change to detailed/debug, original `Assessment.answer`/Markdown, native ACP plan/Thinking/tool streams, unknown attempt effect, history journal, provider execution or permissions. Additional ACP updates only when significant model status needs to remain visible.
+- Exact RED/GREEN SDK/session-history regressions and mandatory CI are recorded in [STATUS](docs/roadmap/STATUS.md); real Zed visual verification remains UNVERIFIED.
+
 ### C15R-GUI-R2 — compact graphical ACP transcript
 - Avoid the UUID-heavy initial accepted line and routine completed/confirmed or no-effect attempts in compact; show source/role/profile and attempt retry identity on genuine dispatch. Preserve unknown effects, failed/unknown terminals, late/conflicting outcomes, waiting, cancellation, errors, gaps and committed model findings.
-- Do not precede the original model final with `Model assessment recorded` when its nonempty text is present in the committed Assessment. Missing/empty/unconfirmed answers remain explicitly distinguishable; detailed/debug retain their technical facts without a full diagnostics dump.
+- Do not precede the original model final with `Model assessment recorded` for `overall=complete` when its nonempty text is present; significant model `partial/unresolved` remains visible (R2F). Missing/empty/unconfirmed answers remain explicitly distinguishable; detailed/debug retain their technical facts without a full diagnostics dump.
 - Same policy for inline/negotiated notices and `session/load`. No changes to native plans/Thinking/tools/permissions, answer bytes, model strategy, core/Coordinator, bounded transport, provider adapters, CLI or permanent operation journal.
 - ACP SDK/history regressions and exact-R1-baseline deterministic throughput comparison added to mandatory CI. Engineering and native limitations are tracked in [STATUS](docs/roadmap/STATUS.md).
 
