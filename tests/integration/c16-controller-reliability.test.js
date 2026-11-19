@@ -6,6 +6,7 @@ import { applyEvent, acceptedWorkerAllowed, createOperation, resourceSnapshot } 
 import { encodeSnapshot, decodeSnapshot } from '../../src/core/snapshot.js';
 import { createLocalStateStore } from '../../src/adapters/state/local-store.js';
 import { decisionRecovery } from '../../src/application/decision-recovery.js';
+import { parseDecisionText } from '../../src/adapters/invocation-prompt.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -484,3 +485,153 @@ for (const resolvedByLookup of [false,true]) {
     }
   });
 }
+
+
+for (const sample of [
+  {category:'non_object', wire:JSON.stringify('C16R_REJECTED_PAYLOAD_non_object'),
+    expected:'a JSON object'},
+  {category:'depth', wire:'{"nested":'.repeat(17)+
+    '"C16R_REJECTED_PAYLOAD_depth"'+'}'.repeat(17),
+    expected:'JSON nesting depth at most 16'},
+]) {
+  test('C16R.2: text parser '+sample.category+' → Application → durable journal → restart → correction',
+    {timeout:10000}, async () => {
+    const directory = await mkdtemp(join(tmpdir(),'role-orchestrator-c16r-parser-'));
+    const firstStore = createLocalStateStore(directory);
+    const secondStore = createLocalStateStore(directory);
+    let firstApi, secondApi;
+    try {
+      await firstStore.open();
+      const parserReports = [];
+      let ambiguousCommitReported = false;
+      // Only the commit acknowledgement is lost, AFTER the journal event
+      // is durably persisted. This separates Provider output failure from
+      // snapshot recovery without crashing or re-running an external process.
+      const ambiguousStore = {
+        ...firstStore,
+        async commit(operationId, revision, next) {
+          const result = await firstStore.commit(operationId,revision,next);
+          if (result.kind === 'committed' && !ambiguousCommitReported &&
+              next.events.at(-1)?.kind === 'controller.invalid_proposal') {
+            ambiguousCommitReported = true;
+            return {kind:'unavailable'};
+          }
+          return result;
+        },
+      };
+      const first = setup({store:ambiguousStore,maxInvocations:4,
+        respond(invocation) {
+          const reported = parseDecisionText(sample.wire);
+          parserReports.push({attemptId:invocation.attemptId, ...reported});
+          return {...final(invocation),...reported};
+        },
+      });
+      firstApi = first.api;
+      const started = await firstApi.submit(request({requestId:'c16r-parser-'+sample.category}));
+      const operationId = started.operation.operationId;
+      await assert.rejects(started.completion,error => error.code === 'STORE_UNAVAILABLE');
+      assert.equal(ambiguousCommitReported,true);
+      assert.equal(first.invocations.length,1);
+      assert.equal(first.respondErrors.length,0);
+      assert.equal(parserReports.length,1);
+      assert.equal(parserReports[0].decisionTextError,sample.category);
+      const failed = await firstStore.load(operationId);
+      assert.equal(failed.status,'active');
+      assert.equal(failed.attempts.length,1);
+      assert.equal(failed.attempts[0].outcome.terminal,'completed');
+      assert.equal(failed.events.filter(e=>e.kind==='controller.responded').length,0);
+      const invalid = failed.events.filter(e=>e.kind==='controller.invalid_proposal');
+      assert.equal(invalid.length,1);
+      assert.equal(invalid[0].attemptId,parserReports[0].attemptId);
+      assert.equal(invalid[0].category,sample.category);
+      assert.deepEqual(invalid[0].reason,{
+        code:'INVALID_PROPOSAL',path:'$',expected:sample.expected,
+      });
+      assert.equal(decisionRecovery(failed).totalRejected,1);
+      assert.equal(decisionRecovery(failed).consecutiveIdentical,1);
+      assert.equal(resourceSnapshot(failed).charged,1);
+      assert.equal(JSON.stringify(failed).includes('C16R_REJECTED_PAYLOAD_'),false,
+        'the rejected message must not be retained in the durable Operation');
+      assert.equal(decodeSnapshot(encodeSnapshot(failed)).kind,'accepted');
+
+      await firstApi.close();
+      firstApi=undefined;
+      await firstStore.close();
+      await secondStore.open();
+      const corrections=[];
+      const second = setup({store:secondStore,idPrefix:'c16r-correction-',maxInvocations:4,
+        respond(invocation) {
+          const error = invocation.context.find(item=>item.ref==='host:decision-error')?.value;
+          const history = invocation.context.find(item=>item.ref==='host:invocation-context')?.value?.decisionRecovery;
+          corrections.push({kind:invocation.kind,attemptId:invocation.attemptId,
+            correction:error,history});
+          return final(invocation); // a valid Decision must complete normally
+        },
+      });
+      secondApi = second.api;
+      const restored = await (await secondApi.resume(operationId)).completion;
+      assert.equal(restored.status,'finished',second.respondErrors.map(String).join('\n'));
+      assert.equal(second.respondErrors.length,0);
+      assert.equal(corrections.length,1);
+      assert.equal(corrections[0].kind,'controller');
+      assert.deepEqual({
+        category:corrections[0].correction?.category,
+        stage:corrections[0].correction?.stage,
+        attemptId:corrections[0].correction?.attemptId,
+        path:corrections[0].correction?.path,
+        expected:corrections[0].correction?.expected,
+        totalRejected:corrections[0].correction?.totalRejected,
+        consecutiveIdentical:corrections[0].correction?.consecutiveIdentical,
+      },{
+        category:sample.category,stage:'parser',attemptId:parserReports[0].attemptId,
+        path:'$',expected:sample.expected,totalRejected:1,consecutiveIdentical:1,
+      });
+      assert.equal(corrections[0].history?.totalRejected,1);
+      assert.equal(corrections[0].history?.consecutiveIdentical,1);
+      assert.equal(corrections[0].history?.lastRejection?.category,sample.category);
+      assert.equal(corrections[0].history?.lastRejection?.stage,'parser');
+      assert.equal(corrections[0].history?.lastRejection?.scope,'current_user_turn');
+      assert.equal(corrections[0].history?.lastRejection?.attemptId,parserReports[0].attemptId);
+      assert.equal(restored.events.filter(e=>e.kind==='controller.invalid_proposal').length,1);
+      assert.equal(restored.events.filter(e=>e.kind==='controller.responded').length,1);
+      assert.equal(restored.attempts.length,2);
+      assert.equal(resourceSnapshot(restored).charged,2);
+      assert.equal(resourceSnapshot(restored).remaining,2);
+      assert.equal(restored.events.filter(e=>e.kind==='operation.recovered').length,1);
+      assert.equal(JSON.stringify(restored).includes('C16R_REJECTED_PAYLOAD_'),false);
+      assert.equal(decodeSnapshot(encodeSnapshot(restored)).kind,'accepted');
+    } finally {
+      await secondApi?.close();
+      await firstApi?.close();
+      await secondStore.close();
+      await firstStore.close();
+      await rm(directory,{recursive:true,force:true});
+    }
+  });
+}
+
+test('C16R.2: a noncompleted Provider attempt without a declared Decision never counts as a rejected proposal',
+  async () => {
+  const attempts=[];
+  const {api,respondErrors}=setup({maxInvocations:3,
+    respond(invocation) {
+      attempts.push(invocation.attemptId);
+      return {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId,{
+        terminal:'failed',effect:'unknown',diagnostics:[{code:'PROVIDER_DISCONNECTED'}],
+      })};
+    },
+  });
+  try {
+    const state = await (await api.submit(request({requestId:'c16r-provider-failure'}))).completion;
+    assert.equal(respondErrors.length,0);
+    assert.equal(state.status,'waiting');
+    assert.equal(state.waiting.reason.code,'PROVIDER_DISCONNECTED');
+    assert.equal(state.attempts.length,1);
+    assert.equal(attempts.length,1);
+    assert.equal(state.events.filter(e=>e.kind==='controller.invalid_proposal').length,0);
+    assert.equal(decisionRecovery(state).totalRejected,0);
+    assert.equal(decisionRecovery(state).consecutiveIdentical,0);
+    assert.equal(resourceSnapshot(state).charged,1);
+    assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
+  } finally { await api.close(); }
+});
