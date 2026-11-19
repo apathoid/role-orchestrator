@@ -58,6 +58,7 @@ export function createProvider({ providerId }) {
       }
       let answer = latest === 'cwd' ? invocation.workspaceContext?.cwd : latest === 'delegate' ? 'Delegated result' : latest==='notice-delegate'?'Notice final': 'Ответ: ' + latest;
       if (latest === 'settings') answer = JSON.stringify([invocation.profile.profileId, invocation.timeoutMs]);
+      if (latest === 'partial-markdown') answer = '### Partial answer\n**original** [link](https://example.test) 🌍';
       if (latest === 'permission'||latest === 'permission-paged') {
         const options=latest==='permission-paged'
           ?Array.from({length:30},(_,i)=>({
@@ -72,7 +73,7 @@ export function createProvider({ providerId }) {
         answer = permission.kind === 'selected' ? permission.option : permission.kind;
       }
       return final(invocation, { finalAssessment: assessment({
-        author: invocation.profile.profileId, answer, overall: latest === 'partial' ? 'partial' : 'complete',
+        author: invocation.profile.profileId, answer, overall: latest === 'partial'||latest === 'partial-markdown' ? 'partial' : latest === 'unresolved' ? 'unresolved' : 'complete',
       }) });
     },
     async cancel() {},

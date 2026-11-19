@@ -176,3 +176,43 @@ test('C15R.6R.4 inline/notices replay the same known orphan continuations withou
     }
   }
 });
+
+test('R2F-A121 replayHistory retains partial/unresolved model assessments, Markdown and stable no-duplicate turns',async()=>{
+  const original='### Assessment answer\n**model** [link](https://example.test) 🌍';
+  const items=[
+    {id:'complete',overall:'complete',answer:original},
+    {id:'partial',overall:'partial',answer:original},
+    {id:'unresolved',overall:'unresolved',answer:original},
+    {id:'no-answer',overall:'partial',answer:''},
+  ];
+  const operations=new Map(items.map(item=>[item.id,operation(item.id,item.id,'Ask '+item.id,[
+    event(item.id,'finished-'+item.id,'operation.finished',{assessment:{
+      ...assessment(item.answer),overall:item.overall,
+    }}),
+  ])]));
+  const session={sessionId:'session',cwd:'/tmp',operations:[...operations.keys()],
+    requests:items.map(item=>entry(item.id,item.id,'finished-'+item.id))};
+  const all=[];
+  for(let pass=0;pass<2;pass++){
+    const updates=[];
+    await replayHistory(session,async id=>operations.get(id),async update=>updates.push(update),'compact','inline');
+    all.push(updates);
+    for(const item of items){
+      const progress=updates.filter(update=>update._meta?.roleOrchestratorSource?.eventId==='finished-'+item.id);
+      assert.equal(progress.length,item.id==='complete'?0:1,item.id);
+      if(progress.length){
+        assert.match(progress[0].content.text,new RegExp('overall='+item.overall));
+        assert.equal(progress[0]._meta.roleOrchestratorSource.recovered,true);
+        assert.equal(progress[0]._meta.roleOrchestratorSource.operationId,item.id);
+        if(!item.answer)assert.match(progress[0].content.text,/no final answer text available/);
+      }
+      const replies=updates.filter(update=>!update._meta?.roleOrchestratorSource &&
+        update.sessionUpdate==='agent_message_chunk'&&update.content.text===item.answer);
+      if(item.answer)assert.equal(replies.length,3,'all three identical original answers are unchanged');
+      else assert.equal(replies.length,1,'empty answer is reproduced once');
+    }
+    assert.deepEqual(plain(updates),items.flatMap(item=>['Ask '+item.id,item.answer]));
+    assert.equal(updates.filter(update=>update.sessionUpdate==='plan'||update.sessionUpdate==='agent_thought_chunk'||update.sessionUpdate==='tool_call').length,0);
+  }
+  assert.deepEqual(all[1],all[0]);
+});

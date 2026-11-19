@@ -825,3 +825,49 @@ test('R2 ACP notices use same compact visibility with negotiated capability and 
     }finally{await host.close();}
   }
 }));
+
+test('R2F live ACP SDK preserves non-complete assessments and original model answers across load',
+  {timeout:30000},()=>withOwnedRun('C15R-GUI-R2F-partial-live',async cwd=>{
+  const config=await fixture(cwd);
+  for(const display of ['inline','notices']){
+    const host=launch(cwd,config,app=>app,['--presentation','compact','--progress-display',display]);
+    try{
+      await host.agent.request(a.initialize,{protocolVersion:PROTOCOL_VERSION,
+        clientCapabilities:display==='notices'?{session:{notices:{}}}:{}});
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      const cases=[
+        {input:'ordinary',status:'complete',answer:'Ответ: ordinary'},
+        {input:'partial-markdown',status:'partial',answer:'### Partial answer\n**original** [link](https://example.test) 🌍'},
+        {input:'unresolved',status:'unresolved',answer:'Ответ: unresolved'},
+      ];
+      for(const item of cases){
+        const before=host.messages.length;
+        assert.equal((await prompt(host.agent,sessionId,item.input,{roleOrchestrator:{newOperation:true}})).stopReason,'end_turn');
+        const updates=host.messages.slice(before).map(msg=>msg.update);
+        const originals=updates.filter(update=>update.sessionUpdate==='agent_message_chunk'&&!update._meta?.roleOrchestratorSource);
+        assert.deepEqual(originals.map(update=>update.content.text),[item.answer]);
+        const progress=updates.filter(update=>update._meta?.roleOrchestratorSource?.eventName==='operation.finished');
+        assert.equal(progress.length,item.status==='complete'?0:1,display+' '+item.status);
+        if(progress.length){
+          const text=progress[0].sessionUpdate==='notice'?progress[0].title:progress[0].content.text;
+          assert.match(text,new RegExp('Model assessment recorded.*overall='+item.status));
+          assert.equal(progress[0]._meta.roleOrchestratorSource.source,display==='notices'?'execution':'journal');
+        }
+      }
+      const before=host.messages.length;
+      await host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+      const history=host.messages.slice(before).map(message=>message.update);
+      assert.deepEqual(history.filter(update=>update.sessionUpdate==='agent_message_chunk'&&!update._meta?.roleOrchestratorSource)
+        .map(update=>update.content.text),cases.map(item=>item.answer));
+      if(display==='inline'){
+        const status=history.filter(update=>update._meta?.roleOrchestratorSource?.eventName==='operation.finished');
+        assert.deepEqual(status.map(update=>update.content.text.match(/overall=(partial|unresolved)/)?.[1]),
+          ['partial','unresolved']);
+        assert.ok(status.every(update=>update._meta.roleOrchestratorSource.recovered===true));
+      }else assert.equal(history.some(update=>update.sessionUpdate==='notice'),false);
+      const next=host.messages.length;
+      await host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+      assert.deepEqual(host.messages.slice(next).map(msg=>msg.update),history);
+    }finally{await host.close();}
+  }
+}));

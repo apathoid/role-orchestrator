@@ -399,9 +399,67 @@ test('R2 final presence is a read-only fact, not a Host success judgement',()=>{
     assert.equal(fact.hasModelAnswer,expected);
     const text=formatAcpExecution({eventName:'operation.finished',operationId:'op',
       eventId:'finish',sequence:1,level:'info'},'compact',fact);
-    if(expected)assert.equal(text,undefined);
+    if(expected)assert.match(text,/Model assessment recorded · overall=partial/);
     else assert.match(text,/no final answer text available/);
   }
   assert.match(formatAcpExecution({eventName:'operation.finished',operationId:'op',
     eventId:'finish',sequence:1,level:'info'},'compact'),/availability unconfirmed/);
+});
+
+test('R2F-A117 compact preserves recorded non-complete assessment statuses with model answer',()=>{
+  const event={schemaVersion:1,operationId:'op',eventId:'finish-1',sequence:11,receivedAt:22,
+    eventName:'operation.finished',reasonCode:'ASSESSMENT_RECORDED',component:'core',level:'info'};
+  const original='### Original model Markdown\n**bold** [link](https://example.test) 🌍';
+  for(const overall of ['complete','partial','unresolved']){
+    for(const answer of [original,'']){
+      const state={attempts:[],events:[]};
+      const recorded={kind:'operation.finished',operationId:'op',eventId:'finish-1',
+        assessment:{author:'model-profile',overall,answer,requirements:[],
+          observationRefs:[],findingRefs:[],unresolvedQuestions:[]}};
+      const snapshot=structuredClone(recorded);
+      const fact=executionFact(state,recorded);
+      assert.equal(fact.assessmentOverall,overall);
+      assert.equal(fact.hasModelAnswer,Boolean(answer));
+      const text=formatAcpExecution(event,'compact',fact);
+      const expected=answer.length>0&&overall==='complete'?0:1;
+      if(expected){
+        assert.match(text,/Model assessment recorded · overall=/);
+        assert.ok(text.includes('overall='+overall));
+        if(!answer)assert.ok(text.includes('no final answer text available'));
+        else assert.ok(!text.includes('no final answer text available'));
+      }else assert.equal(text,undefined);
+      const inline=acpExecutionInline(event,[],'compact',fact);
+      const notices=acpExecutionNotices(event,[],'compact',fact);
+      assert.equal(inline.length,expected,overall+' inline '+Boolean(answer));
+      assert.equal(notices.length,expected,overall+' notices '+Boolean(answer));
+      if(expected){
+        assert.equal(inline[0]._meta.roleOrchestratorSource.eventName,'operation.finished');
+        assert.equal(inline[0]._meta.roleOrchestratorSource.eventId,'finish-1');
+        assert.equal(notices[0].title,text);
+        assert.equal(notices[0].severity,'info');
+        assert.ok(inline[0].content.text.includes('overall='+overall));
+      }
+      for(const mode of ['detailed','debug']){
+        const technical=formatAcpExecution(event,mode,fact);
+        assert.match(technical,new RegExp('Model assessment recorded.*overall='+overall));
+        if(mode==='debug')assert.match(technical,/event=finish-1.*seq=11/);
+      }
+      assert.deepEqual(recorded,snapshot);
+      assert.equal(recorded.assessment.answer,answer);
+    }
+  }
+  const unknown={kind:'operation.finished',hasModelAnswer:true};
+  const unknownText=formatAcpExecution(event,'compact',unknown);
+  assert.match(unknownText,/Model assessment recorded/);
+  assert.doesNotMatch(unknownText,/overall=(complete|partial|unresolved)/);
+  assert.match(formatAcpExecution(event,'compact',{kind:'operation.finished',hasModelAnswer:false}),
+    /no final answer text available/);
+  assert.match(formatAcpExecution(event,'compact',{kind:'operation.finished'}),
+    /final text availability unconfirmed/);
+  const outcome={...event,eventName:'attempt.outcome',eventId:'outcome-1'};
+  const reported={kind:'attempt.outcome',attemptId:'a',invocationKind:'controller',attemptOrdinal:1,
+    terminal:'completed',effect:'unknown'};
+  assert.match(formatAcpExecution(outcome,'compact',reported),/effect unknown/);
+  assert.match(formatAcpExecution(event,'compact',
+    {kind:'operation.finished',assessmentOverall:'partial',hasModelAnswer:true}),/overall=partial/);
 });
