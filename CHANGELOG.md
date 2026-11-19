@@ -2,7 +2,12 @@
 
 Публичные изменения и основные продуктовые вехи (не журнал всех коммитов). Текущий operational status и доказательства исполнения — [roadmap STATUS](docs/roadmap/STATUS.md).
 
-## Unreleased — C12–C15 integration and delivery
+## Unreleased — C12–C16 integration and delivery
+
+### C16 — Controller Reliability & Decision Recovery (native quality UNVERIFIED)
+- Controller Invocation now identifies original and latest accepted user turns by immutable journal ContextItem references and positions. Initial `objective` and literal user messages retain their original text and provenance; Controller decides whether a new message is an answer, clarification, extra context or changed task.
+- Rejected Decisions retain the actual parser/decoder/admission category and bounded technical diagnostics. Controller retry automatically enters existing local technical waiting on the fifth identical consecutive or tenth total invalid Decision during the accepted user turn, including crash-gap recovery without extra invocation allowance. Independent accepted Workers, native tools/skills and unknown-effect safeguards are unchanged.
+- Model-facing Decision v1 transport reference shortened to one valid shape-only example; no runtime schema relaxation, synthetic planning, user intent classifier, forced workflow, provider-specific rules or active-operation steering. Synthetic tests and engineering CI status are in [STATUS](docs/roadmap/STATUS.md); real provider quality comparison and Zed are UNVERIFIED.
 
 ### C15R-GUI-R2F — preserve model partial/unresolved status in compact
 - Compact `operation.finished` now omits a redundant notice only for a model-recorded `overall=complete` with nonempty answer. It still displays `partial/unresolved` as a model assessment even with a final response, and preserves known status alongside missing/unconfirmed final text.
