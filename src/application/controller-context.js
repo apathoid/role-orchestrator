@@ -1,4 +1,5 @@
 import { decisionContract } from './decision-instructions.js';
+import { decisionRecovery } from './decision-recovery.js';
 import { compactContext, defaultContextMaxBytes } from './context-bundle.js';
 /** @import {Catalog, CatalogEntry} from '../core/ports.js' */
 /** @import {ContextItem} from '../core/observation.js' */
@@ -319,6 +320,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     initial: { ref: request.ref, receivedSequence: request.receivedSequence },
     latest: { ref: latestUser.ref, receivedSequence: latestUser.receivedSequence },
   };
+  const recovery = decisionRecovery(state);
   const previous = state.events.findLast(item => item.kind === 'operation.finished');
   const unresolved = previous?.assessment.requirements.flatMap(({ requirementId, status }) =>
     status === 'fulfilled' ? [] : [{ requirementId, status }]);
@@ -397,6 +399,12 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     completeness: /** @type {const} */ ('complete'),
     value: {
       operationId: state.operationId, contextCursor: state.revision, userTurns,
+      decisionRecovery: {
+        totalRejected: recovery.totalRejected,
+        consecutiveIdentical: recovery.consecutiveIdentical,
+        limits: recovery.limits,
+        ...(recovery.lastRejection && { lastRejection: recovery.lastRejection }),
+      },
       catalog: catalog.map(item => {
         if (item.kind !== 'skill') return item;
         const { instructions: _instructions, ...metadata } = item.value;
@@ -582,6 +590,16 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   /** @type {ContextItem[]} */
   const items = [request, host, ...bounded.context.reverse()];
   if (correction) items.push({ref:'host:decision-error',source:'host_observed',
-    completeness:'complete',value:correction});
+    completeness:'complete',value: {
+      ...correction,
+      ...(recovery.lastRejection?.scope === 'current_user_turn' && {
+        attemptId: recovery.lastRejection.attemptId,
+        category: recovery.lastRejection.category,
+        stage: recovery.lastRejection.stage,
+        consecutiveIdentical: recovery.consecutiveIdentical,
+        totalRejected: recovery.totalRejected,
+        thresholds: recovery.limits,
+      }),
+    }});
   return items;
 }
