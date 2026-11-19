@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setup, final } from '../fixtures/application.js';
-import { request, outcome } from '../fixtures/core.js';
+import { request, outcome, decision } from '../fixtures/core.js';
+import { applyEvent, acceptedWorkerAllowed, createOperation, resourceSnapshot } from '../../src/core/operation.js';
+import { encodeSnapshot, decodeSnapshot } from '../../src/core/snapshot.js';
+import { createLocalStateStore } from '../../src/adapters/state/local-store.js';
+import { decisionRecovery } from '../../src/application/decision-recovery.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const hostOf = invocation => invocation.context.find(item => item.ref === 'host:invocation-context')?.value;
 const userOf = (invocation, ref) => invocation.context.find(item => item.ref === ref);
@@ -311,3 +318,169 @@ test('C16.5: Controller reaching the rejection threshold does not cancel indepen
     assert.equal(invocations.filter(item=>item.kind==='controller').length,6);
   } finally { release.resolve(); await api.close(); }
 });
+
+
+/**
+ * Build an authentic reducer-validated journal, then persist it through the
+ * production local StateStore. The Worker reservation is intentionally
+ * before the external dispatch boundary: an interrupted process cannot
+ * manufacture an observation or claim a successful invocation.
+ * @param {ReturnType<typeof createLocalStateStore>} store
+ * @param {boolean} dispatched
+ */
+async function seedC16RejectedControllerWithWorker(store, dispatched) {
+  const limits = { maxInvocations: 9, maxConcurrentInvocations: 2 };
+  let state = createOperation('c16r-operation', request({requestId:'c16r-initial-request'}),
+    'fixture-authority', limits, 1);
+  assert.deepEqual(await store.commit(state.operationId, null, state), {kind:'committed'});
+  let serial = 0;
+  const append = async data => {
+    const event = {eventId:'c16r-seed-'+(++serial), operationId:state.operationId,
+      receivedAt:serial+1, ...data};
+    const transition = applyEvent(state, event);
+    assert.equal(transition.kind, 'applied', JSON.stringify(transition.reason));
+    assert.deepEqual(await store.commit(state.operationId, state.revision, transition.state), {kind:'committed'});
+    state = transition.state;
+  };
+  const route = {configurationRef:'test-config',profileId:'primary',providerId:'fixture',model:'fake'};
+  const worker = {kind:'delegate', actionId:'independent-worker', profileId:'primary',
+    objective:'Complete independent work', contextRefs:[], dependsOn:[], expectedResult:'Worker report'};
+  const initial = 'controller-initial';
+  await append({kind:'attempt.reserved',attemptId:initial,actionId:initial});
+  await append({kind:'attempt.dispatched',attemptId:initial,route});
+  await append({kind:'attempt.outcome',outcome:outcome(initial),dispatchCertainty:'sent'});
+  const accepted = decision({decisionId:'accepted-worker-decision',operationId:state.operationId,
+    contextCursor:state.revision, additions:[worker],finalAssessment:undefined,
+    nextController:{continue:true}});
+  await append({kind:'controller.responded',attemptId:initial,decision:accepted,
+    admissions:[{kind:'accepted',action:worker}]});
+  const workerAttemptId = 'original-worker-attempt';
+  await append({kind:'attempt.reserved',attemptId:workerAttemptId,actionId:worker.actionId});
+  if (dispatched) await append({kind:'attempt.dispatched',attemptId:workerAttemptId,route});
+  for (let index=0; index<5; index++) {
+    const attemptId = 'rejected-controller-'+index;
+    await append({kind:'attempt.reserved',attemptId,actionId:attemptId,
+      ...(index===0 ? {reasoningDecisionId:'accepted-worker-decision'} : {})});
+    await append({kind:'attempt.dispatched',attemptId,route});
+    await append({kind:'attempt.outcome',outcome:outcome(attemptId),dispatchCertainty:'sent'});
+    await append({kind:'controller.invalid_proposal',attemptId,category:'schema_invalid',
+      reason:{code:'INVALID_PROPOSAL',path:'$.schemaVersion',expected:'1'}});
+  }
+  const lastController = 'rejected-controller-4';
+  await append({kind:'operation.waiting',waiting:{kind:'technical',
+    reason:{code:'INVALID_PROPOSAL',operationId:state.operationId,
+      attemptId:lastController,actionId:lastController,resource:'controller_decision_recovery'}}});
+  const snapshot = decodeSnapshot(encodeSnapshot(state));
+  assert.equal(snapshot.kind,'accepted');
+  assert.equal(snapshot.value.status,'waiting');
+  assert.equal(snapshot.value.attempts.length,7);
+  assert.equal(resourceSnapshot(snapshot.value).charged,7);
+  assert.equal(decisionRecovery(snapshot.value).totalRejected,5);
+  assert.equal(decisionRecovery(snapshot.value).consecutiveIdentical,5);
+  assert.equal(acceptedWorkerAllowed(snapshot.value,worker.actionId),true);
+  return {operationId:state.operationId,worker,workerAttemptId,lastController,limits};
+}
+
+test('C16R.1A: after restart a reserved unsent independent Worker reuses its identity and budget under Controller technical waiting', {timeout:10000}, async () => {
+  const dir = await mkdtemp(join(tmpdir(),'role-orchestrator-c16r-reserved-'));
+  const before = createLocalStateStore(dir);
+  const after = createLocalStateStore(dir);
+  let api;
+  try {
+    await before.open();
+    const seed = await seedC16RejectedControllerWithWorker(before,false);
+    const persistedBefore = await before.load(seed.operationId);
+    assert.equal(persistedBefore.attempts.find(a=>a.attemptId===seed.workerAttemptId).status,'reserved');
+    assert.equal(persistedBefore.attempts.find(a=>a.attemptId===seed.workerAttemptId).dispatchCertainty,'not_sent');
+    await before.close(); // release the old process's single-writer ownership
+    await after.open(); // model a new Host instance on the same durable directory
+    const calls = [];
+    const fixture = setup({store:after,idPrefix:'c16r-reserved-restarted-',...seed.limits,
+      respond(invocation) {
+        calls.push({kind:invocation.kind,actionId:invocation.actionId,attemptId:invocation.attemptId});
+        return {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId),output:'Original worker result'};
+      },
+    });
+    api = fixture.api;
+    const {completion} = await api.resume(seed.operationId);
+    const restored = await completion;
+    assert.deepEqual(calls,[{kind:'delegate',actionId:seed.worker.actionId,attemptId:seed.workerAttemptId}]);
+    assert.equal(restored.status,'waiting');
+    assert.equal(restored.waiting.kind,'technical');
+    assert.equal(restored.waiting.reason.resource,'controller_decision_recovery');
+    assert.equal(restored.waiting.reason.attemptId,seed.lastController);
+    assert.equal(restored.attempts.length,7);
+    assert.equal(resourceSnapshot(restored).charged,7);
+    assert.equal(resourceSnapshot(restored).remaining,2);
+    assert.equal(restored.attempts.find(a=>a.attemptId===seed.workerAttemptId).status,'terminal');
+    assert.equal(restored.attempts.find(a=>a.attemptId===seed.workerAttemptId).outcome.terminal,'completed');
+    assert.equal(restored.events.filter(e=>e.kind==='attempt.reserved'&&e.actionId===seed.worker.actionId).length,1);
+    assert.equal(restored.events.filter(e=>e.kind==='attempt.outcome'&&e.outcome.attemptId===seed.workerAttemptId).length,1);
+    assert.equal(restored.events.filter(e=>e.kind==='operation.continued').length,0);
+    assert.equal(restored.events.filter(e=>e.kind==='operation.recovered').length,1);
+    assert.equal(decisionRecovery(restored).totalRejected,5);
+    assert.equal(decisionRecovery(restored).consecutiveIdentical,5);
+    assert.equal(decodeSnapshot(encodeSnapshot(restored)).kind,'accepted');
+  } finally {
+    await api?.close();
+    await after.close();
+    await before.close();
+    await rm(dir,{recursive:true,force:true});
+  }
+});
+
+for (const resolvedByLookup of [false,true]) {
+  test('C16R.1B: dispatched unknown-effect Worker is not replayed after restart'+
+    (resolvedByLookup?' and trusted lookup may settle it':' without a supported lookup'),
+    {timeout:10000}, async () => {
+    const dir = await mkdtemp(join(tmpdir(),'role-orchestrator-c16r-unknown-'));
+    const before = createLocalStateStore(dir);
+    const after = createLocalStateStore(dir);
+    let api;
+    try {
+      await before.open();
+      const seed = await seedC16RejectedControllerWithWorker(before,true);
+      await before.close();
+      await after.open();
+      const observedLookups=[];
+      const fixture = setup({store:after,idPrefix:'c16r-unknown-restarted-',...seed.limits,
+        ...(resolvedByLookup?{
+          capabilities:{'attempt.status':{support:'supported',source:'negotiated'}},
+          lookupStatus(query) {
+            observedLookups.push(query.attemptId);
+            return {dispatchCertainty:'unknown',outcome:outcome(query.attemptId,
+              {terminal:'completed',effect:'confirmed'})};
+          },
+        }:{}),
+        respond: () => {
+          throw new Error('No model or Worker invocation is authorized to replay a dispatched unknown effect');
+        },
+      });
+      api = fixture.api;
+      const {completion} = await api.resume(seed.operationId);
+      const restored = await completion;
+      const worker = restored.attempts.find(a=>a.attemptId===seed.workerAttemptId);
+      assert.equal(fixture.invocations.length,0);
+      assert.deepEqual(observedLookups,resolvedByLookup?[seed.workerAttemptId]:[]);
+      assert.equal(restored.status,'waiting');
+      assert.equal(restored.waiting.reason.resource,'controller_decision_recovery');
+      assert.equal(restored.waiting.reason.attemptId,seed.lastController);
+      assert.equal(worker.status,'terminal');
+      assert.equal(worker.dispatchCertainty,'unknown');
+      assert.equal(worker.outcome.terminal,resolvedByLookup?'completed':'unknown');
+      assert.equal(worker.outcome.effect,resolvedByLookup?'confirmed':'unknown');
+      assert.equal(restored.events.filter(e=>e.kind==='controller.invalid_proposal').length,5);
+      assert.equal(restored.events.filter(e=>e.kind==='operation.continued').length,0);
+      assert.equal(restored.events.filter(e=>e.kind==='action.cancelled').length,0);
+      assert.equal(restored.events.filter(e=>e.kind==='attempt.reserved'&&e.actionId===seed.worker.actionId).length,1);
+      assert.equal(resourceSnapshot(restored).charged,7);
+      assert.equal(decisionRecovery(restored).totalRejected,5);
+      assert.equal(decodeSnapshot(encodeSnapshot(restored)).kind,'accepted');
+    } finally {
+      await api?.close();
+      await after.close();
+      await before.close();
+      await rm(dir,{recursive:true,force:true});
+    }
+  });
+}
