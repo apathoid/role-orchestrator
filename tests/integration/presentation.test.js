@@ -311,8 +311,8 @@ test('R2 compact hides accepted UUID and redundant finish, but shows missing fin
   const e={eventName:'operation.finished',operationId:'op-uuid',eventId:'finish',
     sequence:7,reasonCode:'ASSESSMENT_RECORDED',level:'info'};
   assert.equal(formatAcpExecution(e,'compact',{kind:'operation.finished',assessmentOverall:'complete',hasModelAnswer:true}),undefined);
-  assert.deepEqual(acpExecutionInline(e,[],'compact',{kind:'operation.finished',hasModelAnswer:true}),[]);
-  assert.deepEqual(acpExecutionNotices(e,[],'compact',{kind:'operation.finished',hasModelAnswer:true}),[]);
+  assert.deepEqual(acpExecutionInline(e,[],'compact',{kind:'operation.finished',assessmentOverall:'complete',hasModelAnswer:true}),[]);
+  assert.deepEqual(acpExecutionNotices(e,[],'compact',{kind:'operation.finished',assessmentOverall:'complete',hasModelAnswer:true}),[]);
   assert.match(formatAcpExecution(e,'compact',{kind:'operation.finished',assessmentOverall:'complete',
     hasModelAnswer:false}),/no final/i);
   assert.match(formatAcpExecution(e,'detailed',{kind:'operation.finished',assessmentOverall:'complete',
@@ -387,7 +387,7 @@ test('R2 same compact visibility for inline and notices, findings unaffected by 
   assert.ok(inline[0].content.text.includes('    Subject: forged'));
   assert.ok(notices[0].description.includes('    Subject: forged'));
   assert.equal(acpExecutionInline({...event,eventName:'operation.finished'},[],'compact',
-    {kind:'operation.finished',hasModelAnswer:true}).length,0);
+    {kind:'operation.finished',assessmentOverall:'complete',hasModelAnswer:true}).length,0);
 });
 
 test('R2 final presence is a read-only fact, not a Host success judgement',()=>{
