@@ -1,5 +1,13 @@
 # Role Orchestrator — оперативный статус
 
+## C16 — Controller Reliability & Decision Recovery (PLANNED; implementation UNVERIFIED)
+
+**Branch:** `feature/interactive-ux`. **Planning baseline:** `465e82aa5e16f83459e8b41a38fe8dc3411b66cd`. **Executor handoff:** [C16_CONTROLLER_RELIABILITY_DECISION_RECOVERY.md](C16_CONTROLLER_RELIABILITY_DECISION_RECOVERY.md); roadmap pointer in [IMPLEMENTATION_PLAN](IMPLEMENTATION_PLAN.md). Этот статус фиксирует **только подготовку документации для реализации**, не изменение production behavior и не подтверждение тестов C16.
+
+**Next:** исполнитель фиксирует актуальный checkout/CI, воспроизводит A→B и серию INVALID_PROPOSAL (C16.0 RED), затем исправляет техническое представление user turns без Host-классификации намерений, сохраняет Decision v1 и native tool/skill autonomy; добавляет адресную ошибку и 5/10 bounded recovery через существующее waiting без глобальной остановки независимых Workers. **Active-operation steering исключён.**
+
+**Verification:** C16 implementation / regression / native provider acceptance **UNVERIFIED**. Прежние C15R-GUI-R2F evidence и результаты CI относятся только к собственным точным SHA и не подтверждают C16. Для инженерной приёмки C16 потребуются полный root Node24/checkJs/contracts/ACP/CLI/Nix/package/release CI на конечном SHA и отдельная нативная проверка качества.
+
 ## C15R-GUI-R2F — retain model partial/unresolved Assessment in compact (ENGINEERING CI PASS, real Zed UNVERIFIED)
 
 **Review baseline:** `b68302ee5684d0536ee8116a813284c6febf047b` on `feature/interactive-ux`. Single confirmed P2: `formatAcpExecution()` dropped every `operation.finished` compact update with nonempty `Assessment.answer`, masking the model's recorded `overall=partial|unresolved`. Only production change: `src/hosts/presentation.js`; no new fact, reducer, state, message reconstruction, scheduler, or changed source of truth. Existing `executionFact()` provides exactly recorded `assessmentOverall` and answer-presence.
