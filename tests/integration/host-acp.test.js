@@ -703,3 +703,55 @@ test('C15R.6 external ACP SDK retains native form and permission schema without 
     assert.equal(final.length,1);assert.match(final[0].content.text,/Choice: stop/);
   }finally{await host.close();}
 }));
+
+test('A116/A120 standard ACP SDK delivers real Controller plan in every mode without Worker plans or history synthesis',
+  {timeout:30000},()=>withOwnedRun('C15R-GUI-native-plan',async cwd=>{
+  const config=await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,
+    args:[fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url)),'host-native-ux']}}},plugins:[]});
+  for(const mode of ['compact','detailed','debug']){
+    const host=launch(cwd,config,app=>app,['--presentation',mode]);
+    try{
+      await initialize(host.agent);
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      assert.equal((await prompt(host.agent,sessionId,'native plan')).stopReason,'end_turn');
+      const updates=host.messages.map(x=>x.update);
+      const plans=updates.filter(x=>x.sessionUpdate==='plan');
+      assert.ok(plans.length>=1,mode);
+      assert.ok(plans.every(x=>x.entries.length===1&&x.entries[0].content.startsWith('Native plan ')),mode);
+      assert.ok(plans.every(x=>x._meta.roleOrchestratorSource.invocationKind==='controller'),mode);
+      assert.ok(plans.every(x=>!x.entries.some(row=>row.content.includes('worker-'))),mode);
+      assert.equal(updates.filter(x=>x.sessionUpdate==='agent_message_chunk'&&!x._meta?.roleOrchestratorSource).map(x=>x.content.text).join(''),'Native final once');
+      assert.ok(updates.filter(x=>x.sessionUpdate==='agent_thought_chunk').length>=3,mode);
+      assert.ok(updates.filter(x=>x.sessionUpdate==='tool_call').length>=3,mode);
+      const before=host.messages.length;
+      await host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+      const replay=host.messages.slice(before).map(x=>x.update);
+      assert.equal(replay.filter(x=>x.sessionUpdate==='plan').length,0,mode);
+      assert.equal(replay.filter(x=>x.sessionUpdate==='agent_thought_chunk').length,0,mode);
+      assert.equal(replay.filter(x=>x.sessionUpdate==='tool_call').length,0,mode);
+      assert.equal(replay.filter(x=>x.sessionUpdate==='agent_message_chunk'&&!x._meta?.roleOrchestratorSource).map(x=>x.content.text).join(''),'Native final once');
+    }finally{await host.close();}
+  }
+}));
+
+test('A118/A121 client SDK receives original Markdown answer after RO-owned progress and repeated load',
+  {timeout:12000},()=>withOwnedRun('C15R-GUI-markdown',async cwd=>{
+  const config=await fixture(cwd);
+  const input='### markdown\\n**bold** \`code\` [link](https://example.test) 🌍';
+  const expected='Ответ: '+input;
+  const host=launch(cwd,config);
+  let sessionId;
+  try{
+    await initialize(host.agent);
+    ({sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]}));
+    assert.equal((await prompt(host.agent,sessionId,input)).stopReason,'end_turn');
+    const plain=host.messages.filter(x=>x.update.sessionUpdate==='agent_message_chunk'&&!x.update._meta?.roleOrchestratorSource);
+    assert.deepEqual(plain.map(x=>x.update.content.text),[expected]);
+    assert.ok(host.messages.some(x=>x.update.messageId?.startsWith('ro:')));
+    const before=host.messages.length;
+    await host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+    const replay=host.messages.slice(before).map(x=>x.update);
+    assert.deepEqual(replay.filter(x=>x.sessionUpdate==='agent_message_chunk'&&!x._meta?.roleOrchestratorSource).map(x=>x.content.text),[expected]);
+    assert.deepEqual(replay.filter(x=>x.sessionUpdate==='user_message_chunk').map(x=>x.content.text),[input]);
+  }finally{await host.close();}
+}));
