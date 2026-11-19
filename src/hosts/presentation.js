@@ -324,6 +324,13 @@ function acpFactSource(fact){
     ...(fact.invocationKind!==undefined&&{invocationKind:fact.invocationKind})};
 }
 
+/** Escape RO-owned display copies only. Native/model output never passes through this helper.
+ * @param {string} text @param {number} [limit]
+ */
+function escapedOwnText(text,limit=16000){
+  return boundedText(text,limit).replace(/[\\\x60*_{}\[\]()<>#!|~]/g,'\\/** Standard ACP notices are presentation only, never session history.').replace(/\n/g,'\n  ');
+}
+
 /** Standard ACP notices are presentation only, never session history.
  * @param {DiagnosticEvent} event @param {readonly import('../core/finding.js').Finding[]|undefined} findings @param {PresentationMode} mode @param {ExecutionFact} [fact]
  * @returns {SessionUpdate[]}
@@ -333,11 +340,11 @@ export function acpExecutionNotices(event,findings,mode,fact) {
   const notices=[];
   const title=formatAcpExecution(event,mode,fact);
   const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,eventId:event.eventId,sequence:event.sequence,...acpFactSource(fact)};
-  if(title) notices.push({sessionUpdate:'notice',title,severity:event.level==='error'?'error':event.level==='warn'?'warning':'info',
+  if(title) notices.push({sessionUpdate:'notice',title:escapedOwnText(title,2048).replace(/\n/g,' '),severity:event.level==='error'?'error':event.level==='warn'?'warning':'info',
     _meta:{roleOrchestratorSource:{...source,source:'execution',eventName:event.eventName,reasonCode:event.reasonCode}}});
   for(const finding of findings??[]) notices.push({sessionUpdate:'notice',severity:'info',
-    title:'Finding · '+boundedText(finding.author,120).replace(/[\n\t]/g,' '),
-    description:acpFindingText(finding,mode),
+    title:'Finding · '+escapedOwnText(finding.author,120).replace(/[\n\t]/g,' '),
+    description:escapedOwnText(acpFindingText(finding,mode)),
     _meta:{roleOrchestratorSource:{...source,source:'recorded_finding',findingId:finding.findingId,author:finding.author}}});
   return notices;
 }
@@ -354,7 +361,7 @@ export function acpDeliveryGap(operationId,count,reason,attemptId) {
  * @returns {SessionUpdate}
  */
 export function acpOwnMessage(text,source,identity){
-  const safe=boundedText(text,16000).replace(/[\\\x60*_{}\[\]()<>#!|~]/g,'\\$&').replace(/\n/g,'\n  ');
+  const safe=escapedOwnText(text);
   return {sessionUpdate:'agent_message_chunk',content:{type:'text',text:'\n\nRO · '+safe+'\n\n'},
     ...(identity!==undefined&&{messageId:'ro:'+JSON.stringify([source.operationId,source.source,identity])}),
     _meta:{roleOrchestratorSource:source}};

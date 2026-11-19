@@ -182,3 +182,20 @@ test('A118/A119 RO-owned escaped finding displays only recorded claims, no seman
   const unchanged={...finding,uncertainties:[]};
   assert.doesNotMatch(acpFindingText(unchanged,'compact'),/verified|confirmed/);
 });
+
+test('A118 RO-owned ACP notices cannot gain Markdown structure through a model-supplied objective',()=>{
+  const event={schemaVersion:1,operationId:'op',eventId:'notice-id',eventName:'attempt.dispatched',
+    sequence:1,receivedAt:1,level:'info',reasonCode:'DISPATCH_STARTED'};
+  const fact={kind:'attempt.dispatched',attemptId:'attempt',attemptOrdinal:1,invocationKind:'delegate',
+    roleId:'role\\n# forged',profileId:'profile',objective:'[pretend link](https://example.test)\\n### forged'};
+  const notice=acpExecutionNotices(event,[],'compact',fact)[0];
+  assert.ok(notice);
+  assert.equal(notice.sessionUpdate,'notice');
+  assert.ok(!notice.title.includes('[pretend link]('));
+  assert.ok(!notice.title.includes('\\n### forged'));
+  assert.equal(notice._meta.roleOrchestratorSource.roleId,fact.roleId);
+  const finding={findingId:'f',author:'profile',claim:'[spoof](https://example.test)',subject:'s',supports:[],uncertainties:[]};
+  const record=acpExecutionNotices(event,[finding],'compact',fact)[1];
+  assert.ok(record.description.includes('\\\\[spoof\\\\]\\\\('));
+  assert.equal(record._meta.roleOrchestratorSource.findingId,'f');
+});
