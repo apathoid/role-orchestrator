@@ -261,7 +261,6 @@ export function acpActivity(event, mode, controller) {
  * @param {DiagnosticEvent} event @param {PresentationMode} mode @param {ExecutionFact} [fact]
  */
 export function formatAcpExecution(event,mode,fact) {
-  if(mode==='debug')return formatExecution(event,'debug',fact);
   const name=event.eventName;
   // Native question/permission UI and the initial acceptance already have owners.
   if(['operation.accepted','permission.requested','permission.resolved',
@@ -271,8 +270,8 @@ export function formatAcpExecution(event,mode,fact) {
   let body;
   if(name==='attempt.dispatched') {
     body='Dispatched'+(fact?.objective?' · '+boundedText(fact.objective,480):'');
-    if(mode==='detailed'&&fact?.modelSelector)body+=' · selected model='+boundedText(fact.modelSelector,120);
-    if(mode==='detailed'&&fact?.reasoning?.mode==='selectable')body+=' · selected effort='+boundedText(fact.reasoning.level,80);
+    if(mode!=='compact'&&fact?.modelSelector)body+=' · model selector='+boundedText(fact.modelSelector,120);
+    if(mode!=='compact'&&fact?.reasoning?.mode==='selectable')body+=' · requested reasoning level='+boundedText(fact.reasoning.level,80);
   }else if(['attempt.outcome','attempt.late_outcome','attempt.outcome_discrepancy','attempt.historical_outcome_report'].includes(name)){
     const title=name==='attempt.outcome'?'Attempt outcome reported':
       name==='attempt.late_outcome'?'Late outcome report':
@@ -291,25 +290,31 @@ export function formatAcpExecution(event,mode,fact) {
   }else if(name==='attempt.cancel_requested'||name==='operation.cancelled'||name==='action.cancelled'){
     body=(lifecycleLabels[name]??name)+(fact?.cancellation?' · source='+fact.cancellation:'');
   }else if(['action.rejected','action.deferred','operation.recovered','operation.continued',
-    'permission.expired','attempt.outcome_discrepancy'].includes(name)) {
+    'permission.expired'].includes(name)) {
     body=lifecycleLabels[name]??name;
     if(mode==='detailed')body+=reason;
   }else if(event.level==='error'||event.level==='warn'){
-    body=(lifecycleLabels[name]??name)+reason;
+    body=(lifecycleLabels[name]??name)+(mode==='debug'?'':reason);
   }else return;
-  return terminalText('['+source+'] '+body);
+  const debug=mode==='debug'?' · event='+boundedText(event.eventId??'',120)+
+    ' seq='+event.sequence+' reason='+boundedText(event.reasonCode??'',120)+
+    (fact?.attemptId||event.attemptId?' attempt='+boundedText(fact?.attemptId??event.attemptId??'',120):''):'';
+  return terminalText('['+source+'] '+body+debug);
 }
 
 /** Display-only projection of a committed model finding; the label is not a verdict.
  * @param {import('../core/finding.js').Finding} finding @param {PresentationMode} mode
  */
 export function acpFindingText(finding,mode){
-  const author=boundedText(finding.author,120).replace(/[\n\t]/g,' ');
-  const lines=['Finding · '+author+(mode==='debug'?' · id='+boundedText(finding.findingId,120):''),
-    'Claim: '+boundedText(finding.claim,4096),'Subject: '+boundedText(finding.subject,1024)];
-  if(finding.uncertainties.length)lines.push('Uncertainties: '+boundedText(finding.uncertainties.join('; '),2048));
-  if(finding.supports.length)lines.push('Supports: '+boundedText(finding.supports.join(', '),2048));
-  if(finding.supersedes)lines.push('Supersedes: '+boundedText(finding.supersedes,160));
+  const author=boundedText(finding.author,120).replace(/[\n\t\u2028\u2029]/g,' ');
+  // Every continuation belongs visually to its model-authored field, never to a trusted label.
+  // This is display-only: no interpretation or rewrite of the stored Finding.
+  const field=(label,value,limit)=>label+': '+boundedText(value,limit).replace(/[\n\u2028\u2029]/g,'\n    ');
+  const lines=['Finding · '+author+(mode==='debug'?' · id='+boundedText(finding.findingId,120).replace(/[\n\t\u2028\u2029]/g,' '):''),
+    field('Claim',finding.claim,4096),field('Subject',finding.subject,1024)];
+  if(finding.uncertainties.length)lines.push(field('Uncertainties',finding.uncertainties.join('; '),2048));
+  if(finding.supports.length)lines.push(field('Supports',finding.supports.join(', '),2048));
+  if(finding.supersedes)lines.push(field('Supersedes',finding.supersedes,160));
   return lines.join('\n');
 }
 
@@ -340,11 +345,11 @@ export function acpExecutionNotices(event,findings,mode,fact) {
   const notices=[];
   const title=formatAcpExecution(event,mode,fact);
   const source={operationId:event.operationId,attemptId:event.attemptId,actionId:event.actionId,eventId:event.eventId,sequence:event.sequence,...acpFactSource(fact)};
-  if(title) notices.push({sessionUpdate:'notice',title:escapedOwnText(title,2048).replace(/\n/g,' '),severity:event.level==='error'?'error':event.level==='warn'?'warning':'info',
+  if(title) notices.push({sessionUpdate:'notice',title:boundedText(title,2048).replace(/[\n\t\u2028\u2029]/g,' '),severity:event.level==='error'?'error':event.level==='warn'?'warning':'info',
     _meta:{roleOrchestratorSource:{...source,source:'execution',eventName:event.eventName,reasonCode:event.reasonCode}}});
   for(const finding of findings??[]) notices.push({sessionUpdate:'notice',severity:'info',
-    title:'Finding · '+escapedOwnText(finding.author,120).replace(/[\n\t]/g,' '),
-    description:escapedOwnText(acpFindingText(finding,mode)),
+    title:'Finding · '+boundedText(finding.author,120).replace(/[\n\t\u2028\u2029]/g,' '),
+    description:boundedText(acpFindingText(finding,mode)),
     _meta:{roleOrchestratorSource:{...source,source:'recorded_finding',findingId:finding.findingId,author:finding.author}}});
   return notices;
 }
