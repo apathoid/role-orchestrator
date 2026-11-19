@@ -149,7 +149,7 @@ test('A117 factual compact ACP source, outcome, invalid proposal and independent
     {...fact,terminal:'unknown',effect:'unknown',late:true}),/Late outcome report/);
   assert.match(formatAcpExecution({...base,eventName:'controller.invalid_proposal',level:'warn'},'compact',
     {...fact,invalidPath:'$.actions[0].profile',expected:'known profile'}),/Invalid model proposal.*known profile/);
-  assert.match(formatAcpExecution({...base,eventName:'operation.finished'},'compact',
+  assert.equal(formatAcpExecution({...base,eventName:'operation.finished'},'compact',
     {kind:'operation.finished',assessmentOverall:'complete',hasModelAnswer:true}),undefined);
   assert.match(formatAcpExecution({...base,eventName:'attempt.outcome_discrepancy',level:'warn'},'compact',
     {...fact,terminal:'completed',effect:'unknown'}),/Outcome discrepancy/);

@@ -782,7 +782,9 @@ test('R2 real ACP SDK compact omits accepted/assessment decoration and keeps nat
         const dispatch=owned.filter(x=>x._meta.roleOrchestratorSource.eventName==='attempt.dispatched');
         assert.ok(dispatch.length>=3);
         assert.ok(dispatch.some(x=>x.content.text.includes('Controller · primary — started')));
-        assert.ok(dispatch.some(x=>x.content.text.includes('Worker (role unknown)')));
+        assert.ok(dispatch.some(x=>x._meta.roleOrchestratorSource.invocationKind==='delegate'&&
+          x._meta.roleOrchestratorSource.profileId==='primary'));
+        assert.ok(dispatch.every(x=>!x.content.text.includes('Attempt outcome reported')));
         assert.ok(dispatch.every(x=>!x.content.text.includes('Dispatched ·')));
       }
       const before=host.messages.length;
