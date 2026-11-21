@@ -6,11 +6,12 @@ import { emitDiagnostic } from '../core/diagnostics.js';
 /** @typedef {Record<string,string|number|boolean|null>} Details */
 /** @typedef {(invocation:Invocation, phase:string, details:Details, prompt?:string)=>void} PromptReporter */
 
-// At most 16 Ki code units (64 KiB UTF-8 before redaction). Never copy a
-// large prompt into the diagnostic queue. The full raw hash is observational.
-const maxCaptureUnits = 16 * 1024;
-/** @param {{diagnostics:DiagnosticPort, privateDiagnostics?:DiagnosticPort, clock:Clock, ids:IdFactory, captureBodies?:boolean}} options @returns {PromptReporter} */
-export function createPromptReporter({diagnostics, privateDiagnostics, clock, ids, captureBodies}) {
+// The raw source cap is independent of provider and history budgets.
+const defaultCaptureBytes = 16 * 1024;
+const maximumCaptureBytes = 1024 * 1024;
+/** @param {{diagnostics:DiagnosticPort, privateDiagnostics?:DiagnosticPort, clock:Clock, ids:IdFactory, captureBodies?:boolean, promptCaptureMaxBytes?:number}} options @returns {PromptReporter} */
+export function createPromptReporter({diagnostics, privateDiagnostics, clock, ids, captureBodies, promptCaptureMaxBytes=defaultCaptureBytes}) {
+  const captureLimit=Math.min(maximumCaptureBytes,Math.max(1,promptCaptureMaxBytes));
   let sequence = 0;
   return (invocation, phase, details, prompt) => {
     try {
@@ -27,8 +28,19 @@ export function createPromptReporter({diagnostics, privateDiagnostics, clock, id
       if (prompt === undefined || !captureBodies || !privateDiagnostics) return;
       // A partial final line may contain half a credential. Retain only
       // completed lines, and conservatively omit lines containing a known sensitive key name.
-      const end = prompt.length <= maxCaptureUnits ? prompt.length :
-        Math.max(0, prompt.lastIndexOf('\n',maxCaptureUnits-1)+1);
+      // UTF-8 prefix boundary; do not retain a partial JSON line or a
+      // partial credential at the truncation boundary. Search only up to
+      // the configured number of code units (UTF-8 is never smaller).
+      let end=prompt.length;
+      if (Number(measured.serializedPromptBytes)>captureLimit) {
+        let low=0,high=Math.min(prompt.length,captureLimit);
+        while(low<high){
+          const mid=Math.ceil((low+high)/2);
+          if(Buffer.byteLength(prompt.slice(0,mid))<=captureLimit)low=mid;
+          else high=mid-1;
+        }
+        end=low===0?0:prompt.lastIndexOf('\n',low-1)+1;
+      }
       const sample = prompt.slice(0,end);
       const body = sample.split('\n').map(line =>
         /(?:password|secret|credential|token|api[_-]?key|authorization|cookie|private[_-]?key)/i.test(line)
@@ -36,7 +48,8 @@ export function createPromptReporter({diagnostics, privateDiagnostics, clock, id
       emitDiagnostic(privateDiagnostics,{...identity,eventName:'adapter.prompt.capture',eventId:ids.newId(),
         sequence:++sequence,details:{...measured,prompt:body,captureSourceBytes:Buffer.byteLength(sample),
           captureCompleteness:end===0?'unavailable':end===prompt.length?'complete_before_redaction':'partial',
-          representation:'redacted_text', captureLimitUnits:maxCaptureUnits}});
+          representation:'redacted_text', captureLimitBytes:captureLimit, captureStartBytes:0,
+          captureEndBytes:Buffer.byteLength(sample)}});
     } catch { /* Diagnostics never affect dispatch. */ }
   };
 }

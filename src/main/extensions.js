@@ -44,7 +44,8 @@ function pluginSpecifier(specifier, directory) {
 export async function loadExtensions(configuration, { directory, clock, ids, diagnostics = noopDiagnostics, privateDiagnostics, projectText, launchOptions, acp }) {
   configuration = structuredClone(configuration);
   const promptReporter = createPromptReporter({diagnostics,privateDiagnostics,clock,ids,
-    captureBodies:configuration.diagnostics?.captureBodies});
+    captureBodies:configuration.diagnostics?.captureBodies,
+    promptCaptureMaxBytes:configuration.diagnostics?.promptCaptureMaxBytes});
   /** @type {Map<string, string>} */
   const pluginFailures = new Map();
   /** @type {Map<string, Plugin>} */

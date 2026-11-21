@@ -51,7 +51,8 @@ export async function openRuntime(options, onStoreOpen) {
     directory: resolve(directory, 'diagnostics'),
     maxFileBytes: config.value.diagnostics?.maxFileBytes,
     retainedFiles: config.value.diagnostics?.retainedFiles,
-  }), { secrets: secretValues, captureBodies: config.value.diagnostics?.captureBodies });
+  }), { secrets: secretValues, captureBodies: config.value.diagnostics?.captureBodies,
+    maxPrivateRecordBytes: Math.min(config.value.diagnostics?.maxFileBytes ?? 1048576, 8 * 1024 * 1024) });
   if (config.value.diagnostics?.captureBodies) {
     try { process.stderr.write('Warning: diagnostic prompt capture is enabled; arbitrary prompt text may contain sensitive data.\n'); } catch { /* Best effort warning. */ }
   }

@@ -15,7 +15,7 @@
  *   context?: {maxBytes?: number, controllerMaxBytes?: number, handoffMaxBytes?: number, fetchMaxBytes?: number,
  *     captureMaxBytes?: number, skillInstructionsMaxBytes?: number, toolOutputMaxBytes?: number},
  *   storage?: {directory: string, artifactRetention?: import('../../core/ports.js').ArtifactRetention},
- *   diagnostics?: {level?: 'debug' | 'info' | 'warn' | 'error', maxFileBytes?: number, retainedFiles?: number, captureBodies?: boolean},
+ *   diagnostics?: {level?: 'debug' | 'info' | 'warn' | 'error', maxFileBytes?: number, retainedFiles?: number, captureBodies?: boolean, promptCaptureMaxBytes?: number},
  *   permissions?: {standing?: import('./permissions.js').StandingDecision[]},
  *   plugins?: {id: string, module: string, enabled?: boolean}[],
  *   skills?: {id: string, source: string}[],
