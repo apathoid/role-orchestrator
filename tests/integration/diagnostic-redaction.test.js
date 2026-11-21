@@ -42,4 +42,5 @@ test('C11.3 explicit capture still redacts known credentials', () => {
   assert.equal(result.prompt, 'My prompt');
   assert.equal(result.token, '[REDACTED]');
   assert.equal(result.body, 'Bearer [REDACTED]');
+  assert.deepEqual(redactDiagnostic({inputTokens:12,outputTokens:null,token:0}),{inputTokens:12,outputTokens:null,token:'[REDACTED]'});
 });

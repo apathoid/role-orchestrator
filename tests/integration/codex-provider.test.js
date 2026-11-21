@@ -431,6 +431,7 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id']) {
       if (mode === 'invalid') {
         assert.match(final.value, /^```json/);
         assert.equal(invalid[0].reason.expected, 'valid JSON');
+        assert.deepEqual(invalid[0].result,{ref:final.ref,representation:'reported_text'});
         assert.equal(invalid[0].attemptId, first);
       } else {
         const submitted = JSON.parse(selected.value);
