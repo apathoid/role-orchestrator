@@ -13,14 +13,14 @@ for(const kind of ['cancelled','waiting']){
     const cancellation=kind==='cancelled';
     const waiting={kind:'technical',reason:{code:'DEADLINE_EXCEEDED',operationId:'op'}};
     if(cancellation)await renderer.notice(notice('attempt.cancel_requested',{attemptId:'a',cancellation:'client'},'CANCELLED','cancel-request'));
-    await renderer.notice(notice('operation.'+kind,cancellation?{cancellation:'client'}:{waitingKind:'technical'},
+    await renderer.notice(notice('operation.'+kind,cancellation?{cancellation:'client',unsettledAttempts:1}:{waitingKind:'technical'},
       cancellation?'CANCELLED':'DEADLINE_EXCEEDED'));
     assert.doesNotMatch(lines.join('\n'),/Operation cancelled|Operation waiting/);
     const final=state(cancellation?{kind:'operation.cancelled',source:'client'}:{kind:'operation.waiting',waiting},
       cancellation?{cancellation:'client'}:{waiting});
     renderer.finish(final);renderer.finish(final);
     assert.equal((lines.join('\n').match(cancellation?/Operation cancelled/g:/Operation waiting/g)??[]).length,1);
-    if(cancellation)assert.match(lines.join('\n'),/Cancellation requested/);
+    if(cancellation){assert.match(lines.join('\n'),/Cancellation requested/);assert.match(lines.join('\n'),/Cancellation recorded · source=client · unsettled attempts: 1/);}
     assert.doesNotMatch(lines.join('\n'),/Unknown effects\/outcomes remain/);
     await renderer.notice({...notice('attempt.outcome',{attemptId:'a',terminal:'unknown',effect:'unknown',late:true},'PROVIDER_ERROR','late'),
       event:{...notice('attempt.outcome',{},'PROVIDER_ERROR','late').event,eventName:'attempt.late_outcome'}});

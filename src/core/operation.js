@@ -218,7 +218,7 @@ function diagnosticContext(event) {
       return { details: { subject: 'action', next: 'controller_replan', ...(event.category && {category:event.category}) } };
     case 'controller.invalid_proposal':
       return { details: { subject: 'decision', next: 'controller_correction',
-        category: event.category ?? 'unknown' } };
+        category: event.category ?? 'unknown', stage: event.category === 'invalid_json' || event.category === 'non_object' || event.category === 'depth' ? 'parser' : event.category === 'schema_invalid' ? 'decoder' : event.category === 'admission_invalid' ? 'admission' : 'unknown' } };
     case 'action.cancelled':
       return { details: { subject: 'action', next: 'inspect' } };
     case 'attempt.cancel_requested':

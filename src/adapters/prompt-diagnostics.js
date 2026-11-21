@@ -28,7 +28,7 @@ export function createPromptReporter({diagnostics, privateDiagnostics, clock, id
       // A partial final line may contain half a credential. Retain only
       // completed lines, and conservatively omit lines containing a known sensitive key name.
       const end = prompt.length <= maxCaptureUnits ? prompt.length :
-        Math.max(0, prompt.lastIndexOf('\n',maxCaptureUnits)+1);
+        Math.max(0, prompt.lastIndexOf('\n',maxCaptureUnits-1)+1);
       const sample = prompt.slice(0,end);
       const body = sample.split('\n').map(line =>
         /(?:password|secret|credential|token|api[_-]?key|authorization|cookie|private[_-]?key)/i.test(line)

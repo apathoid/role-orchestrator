@@ -983,7 +983,7 @@ export function createOrchestrator(deps) {
             ? hostFacts.historyBudget : undefined;
           trace(dispatched, 'context.host_prepared', 'SERIALIZED', attemptId, {
             details: { kind: handoff ? 'delegate' : 'controller', serializedContextBytes: contextBytes,
-              recordCount: context.context.length, profileId:profile.profileId,
+              recordCount: context.context.length, profileId:selectedProfile.profileId,
               excerptCount:context.context.filter(item=>item.excerpt!==undefined).length,
               unavailableCount:context.context.filter(item=>item.completeness==='unavailable').length,
               ...(map && typeof map === 'object' && 'total' in map && 'represented' in map && 'omitted' in map
@@ -1050,7 +1050,7 @@ export function createOrchestrator(deps) {
       } else {
         ({ dispatchCertainty: certainty, output, findings: reportedFindings, decisionTextError } = reply);
         trace(state, 'provider.reply_observed', 'PROVIDER_REPLIED', attemptId, {
-          details: { profileId:profile.profileId, dispatchCertainty: certainty, terminal: reply.outcome.terminal,
+          details: { profileId:selectedProfile.profileId, dispatchCertainty: certainty, terminal: reply.outcome.terminal,
             outputRefs: reply.outcome.outputRefs.length,
             reportedInputCount: reply.outcome.usage.inputTokens,
             reportedOutputCount: reply.outcome.usage.outputTokens,

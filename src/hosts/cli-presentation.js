@@ -114,7 +114,11 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
         ((notice.event.eventName==='operation.cancelled'&&notice.fact.kind==='operation.cancelled'&&notice.fact.cancellation)||
         (notice.event.eventName==='operation.waiting'&&notice.fact.kind==='operation.waiting'&&notice.fact.waitingKind==='technical'))){
         await flushTerminal();pendingTerminal=notice;
-        if(notice.event.eventName==='operation.cancelled')tools.clear();
+        if(notice.event.eventName==='operation.cancelled'){
+          tools.clear();
+          const unsettled=notice.fact.unsettledAttempts??0;
+          if(unsettled>0){currentSource=undefined;await print('\nCancellation recorded · source='+notice.fact.cancellation+' · unsettled attempts: '+unsettled,'neutral');}
+        }
         return;
       }
       if(pendingTerminal&&(notice.channel==='gap'||(notice.channel==='execution'&&
