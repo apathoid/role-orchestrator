@@ -130,9 +130,10 @@ test('C17R recovery reserve precedes default work previews and chronological pro
 
 test('C17R cross-attempt reference falls back and late cancelled result cannot replace a durable rejection',{timeout:5000},async()=>{
   const reached=Promise.withResolvers(),release=Promise.withResolvers(),late=Promise.withResolvers();
-  let firstRef,secondRef,lateAttempt,firstAttempt;
+  let firstRef,secondRef,lateAttempt,firstAttempt,cancellationRevision;
   const {api,invocations}=setup({maxInvocations:5,committedDiagnostic(event){
-    if(event.eventName==='attempt.late_outcome')late.resolve();
+    if(event.eventName==='attempt.late_outcome'&&event.attemptId===lateAttempt&&
+      cancellationRevision!==undefined&&event.sequence>cancellationRevision)late.resolve();
   },async respond(invocation,count,observe){
     const reply=final(invocation);
     if(count===1){
@@ -168,6 +169,9 @@ test('C17R cross-attempt reference falls back and late cancelled result cannot r
     await api.cancel(initial.operationId,'client');
     const terminal=await run.completion;
     assert.equal(terminal.status,'cancelled');
+    // The cancellation settlement itself may classify as late_outcome. Wait
+    // for a newly committed receipt strictly after that terminal revision.
+    cancellationRevision=terminal.revision;
     release.resolve();
     await late.promise;
     const settled=await api.inspect(initial.operationId);
