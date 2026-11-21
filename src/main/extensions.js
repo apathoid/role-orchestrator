@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createPromptReporter } from '../adapters/prompt-diagnostics.js';
 import { createAcpProvider } from '../adapters/acp/provider.js';
 import { createCodexProvider } from '../adapters/cli/codex-provider.js';
 import { compileExternalTool, createExternalToolPort } from '../application/configuration/external-tools.js';
@@ -37,11 +38,13 @@ function pluginSpecifier(specifier, directory) {
  * orchestrators using this registry have stopped. A new trusted config gets a
  * new registry, while the StateStore remains with the calling Host.
  * @param {Configuration} configuration
- * @param {{directory?: string, clock: Clock, ids: IdFactory, diagnostics?: DiagnosticPort,
+ * @param {{directory?: string, clock: Clock, ids: IdFactory, diagnostics?: DiagnosticPort, privateDiagnostics?: DiagnosticPort,
  *   projectText?: string, launchOptions?: unknown, acp?: Pick<Parameters<typeof createAcpProvider>[0], 'bridge' | 'bridgeCapabilities' | 'extensionRelay'>}} options
  */
-export async function loadExtensions(configuration, { directory, clock, ids, diagnostics = noopDiagnostics, projectText, launchOptions, acp }) {
+export async function loadExtensions(configuration, { directory, clock, ids, diagnostics = noopDiagnostics, privateDiagnostics, projectText, launchOptions, acp }) {
   configuration = structuredClone(configuration);
+  const promptReporter = createPromptReporter({diagnostics,privateDiagnostics,clock,ids,
+    captureBodies:configuration.diagnostics?.captureBodies});
   /** @type {Map<string, string>} */
   const pluginFailures = new Map();
   /** @type {Map<string, Plugin>} */
@@ -93,7 +96,8 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       }
     }
     for (const [id, endpoint] of Object.entries(configuration.providers)) {
-      const factory = builtins.get(endpoint.adapter) ?? plugins.get(endpoint.adapter)?.createProvider;
+      const builtin = builtins.get(endpoint.adapter);
+      const factory = builtin ?? plugins.get(endpoint.adapter)?.createProvider;
       if (!factory) {
         const reason = pluginFailures.get(endpoint.adapter) ?? 'PROVIDER_FACTORY_UNAVAILABLE';
         unavailable.set(id, reason);
@@ -109,6 +113,7 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       }
       try {
         const value = await factory({
+          ...(builtin && {promptReporter}),
           ...(endpoint.adapter === 'acp' && acp),
           providerId: id, configuration: structuredClone(endpoint),
           onClose(dispose) {

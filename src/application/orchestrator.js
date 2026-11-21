@@ -983,7 +983,9 @@ export function createOrchestrator(deps) {
             ? hostFacts.historyBudget : undefined;
           trace(dispatched, 'context.host_prepared', 'SERIALIZED', attemptId, {
             details: { kind: handoff ? 'delegate' : 'controller', serializedContextBytes: contextBytes,
-              recordCount: context.context.length,
+              recordCount: context.context.length, profileId:profile.profileId,
+              excerptCount:context.context.filter(item=>item.completeness==='truncated').length,
+              unavailableCount:context.context.filter(item=>item.completeness==='unavailable').length,
               ...(map && typeof map === 'object' && 'total' in map && 'represented' in map && 'omitted' in map
                 ? { workTotal: Number(map.total), workRepresented: Number(map.represented),
                   workOmitted: Number(map.omitted) } : {}),
@@ -1046,8 +1048,10 @@ export function createOrchestrator(deps) {
       } else {
         ({ dispatchCertainty: certainty, output, findings: reportedFindings, decisionTextError } = reply);
         trace(state, 'provider.reply_observed', 'PROVIDER_REPLIED', attemptId, {
-          details: { dispatchCertainty: certainty, terminal: reply.outcome.terminal,
+          details: { profileId:profile.profileId, dispatchCertainty: certainty, terminal: reply.outcome.terminal,
             outputRefs: reply.outcome.outputRefs.length,
+            reportedInputCount: reply.outcome.usage.inputTokens,
+            reportedOutputCount: reply.outcome.usage.outputTokens,
             inputTokens: reply.outcome.usage.inputTokens,
             outputTokens: reply.outcome.usage.outputTokens,
             cost: reply.outcome.usage.cost,

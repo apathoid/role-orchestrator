@@ -55,6 +55,11 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
   }
   return {
     emit,
+    // Explicit diagnostic bodies are sink-only, never execution notices or ACP output.
+    /** @param {DiagnosticEvent} event */
+    emitPrivate(event) {
+      if (!closed) emitDiagnostic(sink, /** @type {DiagnosticEvent} */ (redactDiagnostic(event, redaction)));
+    },
     flush: () => sink.flush(),
     /** @param {EventListener} listener @param {ActivityScope} [scope] */
     subscribe(listener, scope) {

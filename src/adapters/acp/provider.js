@@ -6,6 +6,7 @@ import { capturePrefix } from '../capture-prefix.js';
 import { startCliProcess } from '../cli/owned-process.js';
 import { launchEnvironment } from '../launch-environment.js';
 import { bridgeName, retrievalDetail, startMcpBridge } from '../mcp-bridge.js';
+import { reportPrompt } from '../prompt-diagnostics.js';
 import { parseDecisionText, renderInvocationPrompt } from '../invocation-prompt.js';
 import { attachmentBlocks, configureReasoning, configureSession, modelOption } from './input.js';
 
@@ -42,11 +43,12 @@ function resultFor(invocation, code, terminal = 'failed', certainty = 'not_sent'
  * before dispatch, but the agent is started only when invocation cwd is available.
  * @param {{providerId: string, configuration: ProviderConfig, defaultCwd?: string, environment?: NodeJS.ProcessEnv,
  *   resolveAttachment?: ResolveAttachment, bridge?: Bridge, extensionRelay?: ExtensionRelay,
+ *   promptReporter?: import('../prompt-diagnostics.js').PromptReporter,
  *   bridgeCapabilities?: (operationId: string) => {terminal?: boolean, fs?: {readTextFile?: boolean, writeTextFile?: boolean}}}} options
  * @returns {ProviderPort}
  */
 export function createAcpProvider({ providerId, configuration, defaultCwd = process.cwd(), environment = process.env,
-  resolveAttachment, bridge: suppliedBridge, bridgeCapabilities, extensionRelay }) {
+  resolveAttachment, bridge: suppliedBridge, bridgeCapabilities, extensionRelay, promptReporter }) {
   const bridge = { ...suppliedBridge };
   const configuredFs = { readTextFile: !!bridge['fs/read_text_file'], writeTextFile: !!bridge['fs/write_text_file'] };
   const terminalMethods = /** @type {const} */ (['terminal/create', 'terminal/output', 'terminal/release', 'terminal/wait_for_exit', 'terminal/kill']);
@@ -465,12 +467,18 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
               // The nativeValue stays in the trusted route, never the model context.
             }});
         }
+        const preparationStarted=performance.now();
         const prompt = renderInvocationPrompt(invocation, retrievalDetail(Boolean(mcp && invocation.contextAccess)));
+        reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length},prompt);
         signal.throwIfAborted();
         active = true;
         sent = true;
+        const sendStarted=performance.now();
+        reportPrompt(promptReporter,invocation,'send_attempted',{transport:'acp',nativeSessionId:sessionId});
         const reply = await agent.request(a.session.prompt, { sessionId, prompt: [{ type: 'text', text: prompt }, ...blocks] });
         const stopReason = reply?.stopReason;
+        reportPrompt(promptReporter,invocation,'reply',{transport:'acp',nativeSessionId:sessionId,
+          elapsedMs:performance.now()-sendStarted,stopReason:stopReason??null,observedToolCount:tools.size});
         clearTimeout(cancelDeadline);
         active = false;
         permissionStop.abort();

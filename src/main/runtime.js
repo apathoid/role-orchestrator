@@ -52,6 +52,9 @@ export async function openRuntime(options, onStoreOpen) {
     maxFileBytes: config.value.diagnostics?.maxFileBytes,
     retainedFiles: config.value.diagnostics?.retainedFiles,
   }), { secrets: secretValues, captureBodies: config.value.diagnostics?.captureBodies });
+  if (config.value.diagnostics?.captureBodies) {
+    try { process.stderr.write('Warning: diagnostic prompt capture is enabled; arbitrary prompt text may contain sensitive data.\n'); } catch { /* Best effort warning. */ }
+  }
   const store = createLocalStateStore(directory);
   const clock = { now: Date.now, monotonicNow: () => performance.now() };
   const ids = { newId: randomUUID };
@@ -66,7 +69,8 @@ export async function openRuntime(options, onStoreOpen) {
   try {
     await onStoreOpen?.();
     const registry = extensions = await loadExtensions(config.value, {
-      directory: options.configurationDirectory, clock, ids, diagnostics, launchOptions: options.launch, acp: options.acp,
+      directory: options.configurationDirectory, clock, ids, diagnostics,
+      privateDiagnostics:{emit:diagnostics.emitPrivate,flush:()=>{}}, launchOptions: options.launch, acp: options.acp,
     });
     const { selection, catalog } = registry;
     /** @param {typeof selection} resolved */
