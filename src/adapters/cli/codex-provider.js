@@ -95,8 +95,11 @@ export function createCodexProvider({ providerId, configuration, environment = p
         }
         if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
         const preparationStarted=performance.now();
-        const prompt = renderCodexPrompt(request, interactiveApprovalDetail, Boolean(mcp && request.contextAccess));
-        reportPrompt(promptReporter,request,'prepared',{transport:'codex-cli',preparationMs:performance.now()-preparationStarted},prompt);
+        /** @type {Record<string,number>} */
+        let componentSizes={};
+        const prompt = renderCodexPrompt(request, interactiveApprovalDetail, Boolean(mcp && request.contextAccess),
+          promptReporter?sizes=>{componentSizes=sizes;}:undefined);
+        reportPrompt(promptReporter,request,'prepared',{transport:'codex-cli',preparationMs:performance.now()-preparationStarted,...componentSizes},prompt);
         const launch = prepareCodexLaunch(configuration, {
           model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt, mcpUrl: mcp?.url,
           reasoning: request.reasoning,
@@ -120,7 +123,9 @@ export function createCodexProvider({ providerId, configuration, environment = p
         state.process = process;
         const finished=await process.finished;
         reportPrompt(promptReporter,request,'reply',{transport:'codex-cli',elapsedMs:performance.now()-sendStarted,
-          providerTurnObserved:finished.execution.sent,stopReason:finished.execution.terminal??null});
+          providerTurnObserved:finished.execution.sent,stopReason:finished.execution.terminal??null,
+          nativeSessionId:finished.execution.threadId??null,observedToolCompletions:finished.execution.toolCompletions,
+          reportedInputCount:finished.execution.usage.inputTokens,reportedOutputCount:finished.execution.usage.outputTokens});
         return receiveCodexResult(finished, request, observe);
       } catch (error) {
         if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');

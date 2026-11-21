@@ -468,8 +468,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             }});
         }
         const preparationStarted=performance.now();
-        const prompt = renderInvocationPrompt(invocation, retrievalDetail(Boolean(mcp && invocation.contextAccess)));
-        reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length},prompt);
+        /** @type {Record<string,number>} */
+        let componentSizes={};
+        const prompt = renderInvocationPrompt(invocation, retrievalDetail(Boolean(mcp && invocation.contextAccess)),
+          promptReporter?sizes=>{componentSizes=sizes;}:undefined);
+        reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length,...componentSizes},prompt);
         signal.throwIfAborted();
         active = true;
         sent = true;

@@ -352,7 +352,7 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id']) {
     const { api } = codexSetup('const mode = ' + JSON.stringify(mode) + ';\n' + `
       if (invocation.kind === 'delegate') {
         assert.ok(!invocation.instructions.includes(decisionContract));
-        assert.ok(!prompt.slice(0, boundary).includes('final Controller message'));
+        assert.ok(!prompt.slice(0, prompt.indexOf('Invocation (JSON):')).includes('final Controller message'));
         message('Native Worker ' + invocation.actionId, 'worker-result');
         complete();
       } else {

@@ -21,7 +21,9 @@ export function createCodexExecution() {
   let bytes=0, omitted=0, omittedDeclines=0;
   /** @type {number[]} */
   const firstOmitted=[];
-  let sent=false, invalidSequence=false;
+  let sent=false, invalidSequence=false, toolCompletions=0;
+  /** @type {string|undefined} */
+  let threadId;
   /** @type {'turn.completed'|'turn.failed'|undefined} */
   let terminal;
   /** @type {Frame|undefined} */
@@ -40,6 +42,7 @@ export function createCodexExecution() {
     /** @param {number} line @param {CodexEnvelope} event @param {number} size */
     accept(line,event,size) {
       const frame={line,event};
+      if(event.type==='thread.started'&&typeof event.thread_id==='string') threadId=event.thread_id.slice(0,256);
       if(event.type==='turn.started') { if(sent) invalidSequence=true; sent=true; }
       else if(event.type==='turn.completed'||event.type==='turn.failed') {
         if(terminal)invalidSequence=true;
@@ -56,6 +59,7 @@ export function createCodexExecution() {
       if(terminal||typeof item?.id!=='string'||!item.id.trim()||typeof item.type!=='string') {
         invalidSequence=true;return;
       }
+      if(item.type==='command_execution'||item.type==='file_change'||item.type==='mcp_tool_call'||item.type==='web_search'||item.type==='collab_tool_call') toolCompletions++;
       if(item.type==='agent_message') {
         if(typeof item.text!=='string'){invalidSequence=true;return;}
         message=frame;retain(frame,size);
@@ -68,7 +72,7 @@ export function createCodexExecution() {
       const recovered=new Set();
       for(const extra of [message,providerError])if(extra&&!frames.includes(extra)){frames.push(extra);recovered.add(extra.line);}
       frames.sort((a,b)=>a.line-b.line);
-      return {frames,sent,terminal,invalidSequence,usage,message,omitted:omitted-recovered.size,
+      return {frames,sent,terminal,invalidSequence,usage,message,threadId,toolCompletions,omitted:omitted-recovered.size,
         firstOmittedLine:firstOmitted.find(line=>!recovered.has(line))??0,retainedBytes:bytes,omittedDeclines};
     }
   };

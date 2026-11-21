@@ -2,8 +2,9 @@
 
 import { decisionContract } from '../application/decision-instructions.js';
 
-/** @param {Invocation} request @param {string} transportDetail */
-export function renderInvocationPrompt(request, transportDetail) {
+/** @param {Invocation} request @param {string} transportDetail
+ * @param {(sizes:Record<string,number>)=>void} [measure] */
+export function renderInvocationPrompt(request, transportDetail, measure) {
   const { kind, operationId, attemptId, actionId, profile: { profileId }, objective,
     instructions, skillInstructions, userConstraints, context, expectedResult, continuationReference } = request;
   const output = kind === 'controller' ? 'Return exactly one JSON object as the final Controller message, with no Markdown fences. Intermediate progress and native tool calls are allowed.' :
@@ -24,7 +25,7 @@ export function renderInvocationPrompt(request, transportDetail) {
   const last = context.at(-1);
   const correction = last?.ref === 'host:decision-error' && last.source === 'host_observed' ? last : undefined;
   const history = correction ? context.slice(0, -1) : context;
-  return [
+  const sections = [
     prefix,
     'Controller Invocation (sectioned JSON):',
     '## Invocation identity\n' + JSON.stringify({kind, operationId, attemptId, actionId, profileId}),
@@ -34,7 +35,16 @@ export function renderInvocationPrompt(request, transportDetail) {
     '## Remaining role instructions and materialized skills\n' + JSON.stringify({instructions: after, skillInstructions}),
     '## Orchestration context and history (RO-managed Catalog is not native capability inventory)\n' + jsonRecords(history),
     ...(correction ? ['## Active technical correction\n' + JSON.stringify(correction)] : []),
-  ].join('\n\n');
+  ];
+  if (measure) {
+    try {
+      const sizes=sections.map(section=>Buffer.byteLength(section,'utf8'));
+      measure({transportPrefixBytes:sizes[0],sectionMarkerBytes:sizes[1],identityBytes:sizes[2],
+        objectiveBytes:sizes[3],instructionBytes:sizes[4]+sizes[5]+sizes[6],historyBytes:sizes[7],
+        correctionBytes:sizes[8]??0,separatorBytes:(sections.length-1)*2});
+    } catch { /* Observation cannot change the emitted prompt. */ }
+  }
+  return sections.join('\n\n');
 }
 
 /** @param {readonly unknown[]} records */

@@ -984,13 +984,15 @@ export function createOrchestrator(deps) {
           trace(dispatched, 'context.host_prepared', 'SERIALIZED', attemptId, {
             details: { kind: handoff ? 'delegate' : 'controller', serializedContextBytes: contextBytes,
               recordCount: context.context.length, profileId:profile.profileId,
-              excerptCount:context.context.filter(item=>item.completeness==='truncated').length,
+              excerptCount:context.context.filter(item=>item.excerpt!==undefined).length,
               unavailableCount:context.context.filter(item=>item.completeness==='unavailable').length,
               ...(map && typeof map === 'object' && 'total' in map && 'represented' in map && 'omitted' in map
                 ? { workTotal: Number(map.total), workRepresented: Number(map.represented),
                   workOmitted: Number(map.omitted) } : {}),
               ...(budget && typeof budget === 'object' && 'omitted' in budget
-                ? { historyOmitted: Number(budget.omitted) } : {}),
+                ? { historyOmitted: Number(budget.omitted),
+                  ...('excerpted' in budget&&{historyExcerpted:Number(budget.excerpted)}),
+                  ...('unrepresented' in budget&&{historyUnrepresented:Number(budget.unrepresented)}) } : {}),
             },
           });
           mayHaveSent = true;

@@ -26,12 +26,12 @@ export function createPromptReporter({diagnostics, privateDiagnostics, clock, id
         sequence:++sequence,details:measured});
       if (prompt === undefined || !captureBodies || !privateDiagnostics) return;
       // A partial final line may contain half a credential. Retain only
-      // completed lines, and omit any line with a known sensitive JSON key.
+      // completed lines, and conservatively omit lines containing a known sensitive key name.
       const end = prompt.length <= maxCaptureUnits ? prompt.length :
         Math.max(0, prompt.lastIndexOf('\n',maxCaptureUnits)+1);
       const sample = prompt.slice(0,end);
       const body = sample.split('\n').map(line =>
-        /"(?:[^"\\]|\\.){0,120}(?:password|secret|credential|token|api[_-]?key|authorization|cookie|private[_-]?key)(?:[^"\\]|\\.){0,120}"\s*:/i.test(line)
+        /(?:password|secret|credential|token|api[_-]?key|authorization|cookie|private[_-]?key)/i.test(line)
           ? '[LINE OMITTED: SENSITIVE FIELD]' : line).join('\n');
       emitDiagnostic(privateDiagnostics,{...identity,eventName:'adapter.prompt.capture',eventId:ids.newId(),
         sequence:++sequence,details:{...measured,prompt:body,captureSourceBytes:Buffer.byteLength(sample),
