@@ -623,16 +623,21 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id', 'prio
           assert.notEqual(selected.ref, tool.ref);
           assert.ok(receipt.outcome.outputRefs.some(x => x.ref === selected.ref));
           assert.equal(firstReply.outputObservationRef, selected.ref);
+          assert.equal(firstReply.outputObservationParsed,true);
         }
         const invalid = state.events.filter(e => e.kind === 'controller.invalid_proposal');
         assert.equal(invalid.length, expected.length ? 0 : 1);
         if (!expected.length) {
           assert.equal(firstReply.output, mode === 'invalid' ? 'not JSON' : '');
           assert.equal(firstReply.decisionTextError, 'invalid_json');
-          if (mode === 'invalid') assert.equal(final.value, 'not JSON');
+          if (mode === 'invalid') {
+            assert.equal(final.value, 'not JSON');
+            assert.deepEqual(invalid[0].result,{ref:final.ref,representation:'reported_text'});
+          }
           else {
             assert.equal(final, undefined);
             assert.equal(firstReply.outputObservationRef, undefined);
+            assert.equal(firstReply.outputObservationParsed,undefined);
           }
           assert.equal(invalid[0].reason.expected, 'valid JSON');
           assert.equal(invalid[0].attemptId, firstAttempt);

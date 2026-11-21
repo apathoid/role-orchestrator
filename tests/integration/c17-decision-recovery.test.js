@@ -115,12 +115,66 @@ test('C17R recovery reserve precedes default work previews and chronological pro
     assert.ok(recovered?.excerpt||recovered?.value,'recovery should precede previews');
     const host=small.find(i=>i.ref==='host:invocation-context').value;
     assert.ok(host.workMap.omitted>0);
+    assert.ok(host.workMap.represented>0,'recovery excerpt and minimal work identity can coexist');
     const requested=history.find(i=>i.ref==='later-a');
     const selected=controllerContext(prefix,[],rejection.reason,undefined,6500,undefined,[requested]);
     assert.ok(selected.some(i=>i.ref==='later-a'));
-    const explicit=controllerContext(prefix,[],rejection.reason,undefined,6500,undefined,[],{revision:prefix.events.length,index:0});
-    assert.ok(explicit.find(i=>i.ref==='host:invocation-context').value.workMap.represented>0);
+    for(const cursor of [0,{revision:prefix.events.length,index:0}]){
+      const explicit=controllerContext(prefix,[],rejection.reason,undefined,6500,undefined,[],cursor);
+      assert.ok(explicit.find(i=>i.ref==='host:invocation-context').value.workMap.represented>0);
+    }
     const once=controllerContext(prefix,[],rejection.reason,undefined,65536,undefined,[source]);
     assert.equal(once.filter(i=>i.ref===rejectedRef).length,1);
   }finally{await api.close();}
+});
+
+test('C17R cross-attempt reference falls back and late cancelled result cannot replace a durable rejection',{timeout:5000},async()=>{
+  const reached=Promise.withResolvers(),release=Promise.withResolvers(),late=Promise.withResolvers();
+  let firstRef,secondRef,lateAttempt,firstAttempt;
+  const {api,invocations}=setup({maxInvocations:5,committedDiagnostic(event){
+    if(event.eventName==='attempt.late_outcome')late.resolve();
+  },async respond(invocation,count,observe){
+    const reply=final(invocation);
+    if(count===1){
+      firstAttempt=invocation.attemptId;
+      firstRef=observe({kind:'model',ref:'first',sourceId:'native',completeness:'complete',value:'# draft'});
+      return {...reply,outcome:{...reply.outcome,outputRefs:[{ref:firstRef,kind:'output',source:'model_claim'}]},
+        outputObservationRef:firstRef};
+    }
+    if(count===2){
+      secondRef=observe({kind:'model',ref:'second',sourceId:'native',completeness:'complete',value:'# draft'});
+      return {...reply,...parseDecisionText('# draft'),outputObservationRef:firstRef,
+        outcome:{...reply.outcome,outputRefs:[{ref:secondRef,kind:'output',source:'model_claim'}]}};
+    }
+    if(count===3){
+      lateAttempt=invocation.attemptId;reached.resolve();await release.promise;
+      const ref=observe({kind:'model',ref:'late',sourceId:'native',completeness:'complete',value:'# late draft'});
+      return {...reply,...parseDecisionText('# late draft'),outputObservationRef:ref,
+        outcome:{...reply.outcome,outputRefs:ref?[{ref,kind:'output',source:'model_claim'}]:[]}};
+    }
+    return reply;
+  }});
+  try{
+    const initial=await(await api.submit(request())).completion;
+    assert.equal(initial.status,'finished');
+    const run=await api.resume(initial.operationId,{requestId:'next-turn',text:'another task'});
+    await reached.promise;
+    const active=await api.inspect(initial.operationId);
+    const rejected=active.events.find(e=>e.kind==='controller.invalid_proposal');
+    assert.notEqual(rejected.attemptId,firstAttempt);
+    assert.deepEqual(rejected.result,{ref:'controller-output:'+rejected.attemptId,representation:'declared_value'});
+    assert.notEqual(rejected.result.ref,firstRef);
+    assert.notEqual(rejected.result.ref,secondRef);
+    await api.cancel(initial.operationId,'client');
+    const terminal=await run.completion;
+    assert.equal(terminal.status,'cancelled');
+    release.resolve();
+    await late.promise;
+    const settled=await api.inspect(initial.operationId);
+    assert.equal(settled.status,'cancelled');
+    assert.equal(settled.events.filter(e=>e.kind==='controller.invalid_proposal').length,1);
+    assert.ok(settled.events.some(e=>e.kind==='attempt.outcome'&&e.late&&e.outcome.attemptId===lateAttempt));
+    assert.deepEqual(settled.events.find(e=>e.kind==='controller.invalid_proposal').result,rejected.result);
+    assert.equal(invocations.length,3);
+  }finally{release.resolve();await api.close();}
 });

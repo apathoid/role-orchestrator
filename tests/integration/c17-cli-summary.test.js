@@ -45,3 +45,16 @@ test('C17.7 unmatched or disconnected terminal facts are not suppressed; detaile
   assert.match(lines.join('\n'),/Operation partial/);
   renderer.close();
 });
+
+test('C17R compact gap flushes waiting facts; unresolved assessment remains explicit',async()=>{
+  const lines=[],renderer=cliPresentation('compact',async value=>{lines.push(typeof value==='string'?value:value.map(v=>v.text).join(''));});
+  const waiting={kind:'technical',reason:{code:'DEADLINE_EXCEEDED',operationId:'op'}};
+  await renderer.notice(notice('operation.waiting',{waitingKind:'technical'},'DEADLINE_EXCEEDED'));
+  await renderer.notice({channel:'gap',droppedCount:2,reason:'overflow'});
+  assert.match(lines.join('\n'),/Operation waiting.*DEADLINE_EXCEEDED/);
+  assert.match(lines.join('\n'),/Delivery gap/);
+  renderer.finish(state({kind:'operation.finished'},{status:'finished',assessment:{overall:'unresolved',answer:'original incomplete answer'}}));
+  assert.match(lines.join('\n'),/Operation unresolved/);
+  assert.doesNotMatch(lines.join('\n'),/Operation complete/);
+  renderer.close();
+});
