@@ -5,6 +5,7 @@ import { createLocalStateStore } from '../adapters/state/local-store.js';
 import { loadProjectPreferences } from '../adapters/configuration/project-file.js';
 import { createAuthorityGrant } from '../application/configuration/authority.js';
 import { decodeConfiguration } from '../application/configuration/decode-config.js';
+import { createInteractionBroker } from '../application/interactions.js';
 import { createPermissionBroker } from '../application/configuration/permissions.js';
 import { createOrchestrator } from '../application/orchestrator.js';
 import { createEventStream } from '../application/events.js';
@@ -23,7 +24,8 @@ import { RuntimeError } from './runtime-error.js';
  *   project?: {cwd?: string, path?: string}, launch?: unknown,
  *   diagnostics?: DiagnosticPort, authority?: AuthorityPort,
  *   acp?: NonNullable<Parameters<typeof loadExtensions>[1]['acp']>,
- *   permissions?: Omit<Parameters<typeof createPermissionBroker>[0], 'authority' | 'ids'>
+ *   permissions?: Omit<Parameters<typeof createPermissionBroker>[0], 'authority' | 'ids'>,
+ *   interactions?: Omit<Parameters<typeof createInteractionBroker>[0], 'ids'>
  * }} RuntimeOptions
  */
 
@@ -98,9 +100,10 @@ export async function openRuntime(options, onStoreOpen) {
     const permissions = createPermissionBroker({
       standing: config.value.permissions?.standing, ...options.permissions, authority, ids,
     });
+    const interactions = createInteractionBroker({ ...options.interactions, ids });
     const coordinator = createOrchestrator({
       store, resolveExecution, providerFor: registry.providerFor,
-      clock, ids, authority, permissions, configurationRef, diagnostics, tools: registry.tools,
+      clock, ids, authority, permissions, interactions: options.interactions ? interactions : undefined, configurationRef, diagnostics, committedDiagnostic:diagnostics.emit, tools: registry.tools,
       context: base.context, limits: {
         maxInvocations: base.resources.maxInvocationsPerOperation,
         maxConcurrentInvocations: base.resources.maxConcurrentInvocations,
@@ -118,13 +121,14 @@ export async function openRuntime(options, onStoreOpen) {
         }
       });
     }
-    const { submit, resume, inspect, inspectFinding, findRequest, cancel } = coordinator;
+    const { submit, resume, inspect, inspectFinding, findRequest, cancel, subscribeActivity } = coordinator;
     /** @param {string} operationId */
     const trace = async operationId => operationTrace(await inspect(operationId), { secrets: secretValues });
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel,
       trace,
-      subscribe: diagnostics.subscribe, configurationRef, close });
-    return { api, coordinator, permissions, configurationRef, directory, catalog, close };
+      subscribe: diagnostics.subscribe, subscribeExecution: (/** @type {import('../core/ports.js').ActivityScope} */ scope, /** @type {import('../application/events.js').EventListener} */ listener) => diagnostics.subscribe(listener, scope), subscribeActivity, pendingInteractions: interactions.pending,
+      respondInteraction: interactions.respond, configurationRef, close });
+    return { api, coordinator, permissions, interactions, configurationRef, directory, catalog, close };
   } catch (error) {
     try { await extensions?.close(); }
     finally {

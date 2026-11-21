@@ -1,29 +1,47 @@
-// Model-facing reference for Decision v1. The core decoder and admission
-// remain authoritative; this is documentation, not a second schema/validator.
-export const decisionExample = '{"schemaVersion":1,"decisionId":"example-decision","operationId":"example-operation","contextCursor":0,"additions":[],"cancellations":[],"finalAssessment":{"author":"example-profile","overall":"partial","requirements":[{"requirementId":"example-requirement","status":"unverified","observationRefs":[],"findingRefs":[],"reason":"Not checked"}],"observationRefs":[],"findingRefs":[],"unresolvedQuestions":[],"answer":"Example answer"}}';
+// Model-facing transport reference only. src/core/contracts.js and admission
+// remain authoritative; this is neither a Host schema nor a strategy template.
+export const decisionExample = '{"schemaVersion":1,"decisionId":"example-decision","operationId":"example-operation","contextCursor":0,"additions":[],"cancellations":[],"finalAssessment":{"author":"example-profile","overall":"complete","requirements":[],"observationRefs":[],"findingRefs":[],"unresolvedQuestions":[],"answer":"Example answer"}}';
 
-export const decisionContract = `Decision v1 (fields marked ? are optional; omit when absent):
-  schemaVersion: 1, decisionId: fresh string id, operationId: invocation.operationId,
-  contextCursor: host:invocation-context.value.contextCursor (number), additions: Action[], cancellations: string[],
-  acceptedActionIds?: string[], waitPolicy?: {kind: "all_requested" | "next_completion", targets: {kind: "action" | "attempt", id: string}[]},
-  clarification?: {question: string}, finalAssessment?: Assessment, findings?: Finding[],
-  nextController?: {reasoningLevel?: string, continue?: true, contextRequest?: {refs?: (string|{revision:number,index:number}|{ref:string|{revision:number,index:number},offset:number})[], cursor?:0|{revision:number,index:number}, workCursor?:0|{revision:number,index:number}}}
-Action: {actionId: string, kind: "delegate", objective: string, profileId: string, contextRefs: string[],
-  dependsOn: {actionId: string, kind: "after_terminal" | "after_model_acceptance"}[], expectedResult: string,
-  roleId?: string, reasoningLevel?: string, skills?: string[], requiredCapabilities?: string[], continuationReference?: string,
-  retryOf?: string, retryBasis?: "no_effect" | "provider_idempotency" | "user_approval"}
+export const decisionContract = `Decision v1 — declared result of a completed Controller invocation, not a format for native thoughts, plans, tools, progress, Worker results or the user's answer.
+Required fields: {schemaVersion: 1, decisionId: fresh non-empty string, operationId: invocation.operationId,
+  contextCursor: observed host:invocation-context.value.contextCursor (number), additions: Action[], cancellations: string[]}.
+Optional fields (omit when absent; do not use null): acceptedActionIds: string[],
+  waitPolicy: {kind: "all_requested" | "next_completion", targets: {kind: "action" | "attempt", id: string}[]},
+  clarification: {question: non-empty string}, finalAssessment: Assessment, findings: Finding[],
+  nextController: {reasoningLevel?: string, continue?: true,
+    contextRequest?: {refs?: (string|{revision:number,index:number}|{ref:string|{revision:number,index:number},offset:number})[],
+      cursor?:0|{revision:number,index:number}, workCursor?:0|{revision:number,index:number}}}.
+Action: {actionId: fresh string, kind: "delegate", objective: string, profileId: string,
+  contextRefs: string[], dependsOn: {actionId: string, kind: "after_terminal" | "after_model_acceptance"}[],
+  expectedResult: string, roleId?: string, reasoningLevel?: string, skills?: string[],
+  requiredCapabilities?: string[], continuationReference?: string,
+  retryOf?: string, retryBasis?: "no_effect" | "provider_idempotency" | "user_approval"}.
 Assessment: {author: current profileId, overall: "complete" | "partial" | "unresolved",
   requirements: {requirementId: string, status: "fulfilled" | "partial" | "unverified" | "unavailable",
-    observationRefs: string[], findingRefs: string[], reason?: string}[],
-  observationRefs: string[], findingRefs: string[], unresolvedQuestions: string[], answer: string}
+    observationRefs: string[], findingRefs: string[], reason?: non-empty string}[],
+  observationRefs: string[], findingRefs: string[], unresolvedQuestions: string[], answer: string}.
 Finding: {findingId: string, author: current profileId, claim: string, subject: string,
-  supports: string[], uncertainties: string[], supersedes?: string}
-Each finalAssessment.requirements[] entry needs its own observationRefs and findingRefs arrays, even when the Assessment-level arrays are present; use empty arrays when there are no corresponding refs. Omit absent optional fields; null is allowed only for explicitly nullable types. requirements[].reason is an optional non-empty string (not whitespace-only); omit it when not needed.
-Use only the named fields. Include a finalAssessment, clarification, wait policy, addition, cancellation, or nextController.continue:true.
-Additions require a wait policy or continue:true. Wait targets must be nonempty; no waitPolicy with continue:true or clarification.
-Do not combine nextController with finalAssessment or clarification. finalAssessment cannot accompany new additions or clarification.
-A retryOf and retryBasis must appear together. Use fresh action ids and available references; acceptedActionIds refer to terminal actions.
-A contextRequest requires continue:true and at least one ref or a cursor/workCursor; refs must be unique. History cursor and workCursor are independent: 0 starts a new traversal; copy that directory/map's nextCursor exactly. Nonzero numeric offsets are not valid continuation cursors. For saved byte chunks copy nextOffset into offset; positional refs are distinct from page cursors. Decision.contextCursor is the observed numeric Decision revision, not a page cursor. ReasoningLevel alone needs another reason for a next turn.
-Decision is submitted through the Controller invocation's declared result contract. Ordinary tool results and files do not submit it. Model messages do not submit on arrival; only the declared result at invocation completion does. A text adapter may select an earlier message if no later message is supplied. Additions propose Host-managed Actions: admission may accept or reject a proposal; accepted work may be deferred and is not necessarily dispatched. Dispatch is not completion or proof of success; the Host reports its actual lifecycle. Wait targets refer to specified Actions/Attempts; continue:true is an alternative to waiting. Use the native structured output contract if supplied; otherwise return one JSON object without fences as the final Controller message. Decision is a transport envelope, not the user's requested output format. Put the user's result in finalAssessment.answer as a string, retaining its requested content and formatting (including Markdown or JSON text). Worker results follow their own task/provider contract.
-Example of shape only (not a suggested strategy, status or choice of empty/nonempty arrays; use actual invocation operationId and profileId (profile.profileId on ProviderPort) and observed contextCursor, not these placeholders):
+  supports: string[], uncertainties: string[], supersedes?: string}.
+
+Decision fields describe transport, not an obligatory workflow: a direct finalAssessment, optional delegation,
+wait for accepted Actions, clarification, cancellation, findings or explicit nextController.continue are all valid.
+Include at least one effective action: finalAssessment, clarification, waitPolicy, additions with waitPolicy/continue,
+cancellations or nextController.continue:true. No clarification with waitPolicy.
+Do not combine finalAssessment with additions, clarification or nextController. No nextController with clarification.
+Wait targets must be nonempty. acceptedActionIds must name terminal Actions.
+retryOf and retryBasis appear together; a new Action uses a fresh actionId.
+contextRequest needs continue:true plus a ref or cursor/workCursor. Requested refs must be unique;
+0 starts a traversal; a subsequent page uses the returned {revision,index}, not a numeric offset.
+Decision.contextCursor is the observed Decision revision, not a history/page cursor.
+Assessment requirements each have their own observationRefs and findingRefs, even when empty; reason, if present,
+must be a non-empty string. Use actual observed refs; never invent tool/observation evidence.
+
+The final user-facing response is the exact finalAssessment.answer string, including requested Markdown, Unicode,
+or JSON text. A text adapter returns a single JSON object without Markdown fences as the final Controller message;
+the native structured result contract may be used where available. Ordinary tool results, files, intermediate
+messages and native subagents do not submit a Decision. Admission may reject proposed Host Actions; accepted work
+is not necessarily dispatched or completed. Host Catalog skills are distinct from provider-native tools/skills.
+
+Shape-only JSON example below: not a suggested task strategy, status, refusal to delegate, or advice to ignore
+user requirements. Replace ids, author, contextCursor and content with actual invocation data:
 ${decisionExample}`;

@@ -33,7 +33,8 @@
  *   {kind: 'attempt.cancel_requested', attemptId: string, source: CancellationSource} |
  *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly Observation[], findings?: readonly Finding[], late?: true} |
  *   {kind: 'controller.responded', decision: Decision, attemptId?: string, admissions?: readonly Admission[]} |
- *   {kind: 'controller.invalid_proposal', attemptId: string, decisionId?: string, reason: FieldError} |
+ *   {kind: 'controller.invalid_proposal', attemptId: string, decisionId?: string, reason: FieldError,
+ *     category?: 'invalid_json' | 'non_object' | 'depth' | 'schema_invalid' | 'admission_invalid'} |
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string, category?: ActionFailureCategory} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
@@ -183,6 +184,25 @@ export function resolveOutcome(prior, event) {
   return { outcome: { ...base, terminal, effect, usage, outputRefs }, dispatchCertainty: certainty };
 }
 
+/** Shared technical classification of a report against its actual prior Attempt.
+ * Exact previously recorded event detection remains the caller's responsibility.
+ * No authority, effects, or admission decisions are made here.
+ * @param {Attempt} prior @param {Extract<Event,{kind:'attempt.outcome'}>} event
+ * @param {boolean} cancelled @param {number} generation
+ */
+export function classifyOutcomeReport(prior,event,cancelled,generation) {
+  if(prior.status==='terminal'&&sameRecord(prior.outcome,event.outcome)&&prior.dispatchCertainty===event.dispatchCertainty){
+    return event.observations?.length||event.findings?.length?
+      {kind:/** @type {const} */('observations'),eventName:'attempt.late_outcome',reasonCode:'OBSERVATIONS_RECEIVED'}:
+      {kind:/** @type {const} */('duplicate')};
+  }
+  const resolved=resolveOutcome(prior,event);
+  if(!resolved)return {kind:/** @type {const} */('discrepancy'),eventName:'attempt.outcome_discrepancy',reasonCode:'IDENTITY_CONFLICT'};
+  return {kind:/** @type {const} */('resolved'),resolved,
+    eventName:prior.status==='terminal'||cancelled||prior.generation!==generation?'attempt.late_outcome':'attempt.outcome',
+    reasonCode:event.outcome.diagnostics[0]?.code??event.outcome.terminal.toUpperCase()};
+}
+
 /**
  * Subject and next technical route for transitions that can stop, defer or
  * resume work. IDs stay in the event's dedicated correlation fields.
@@ -196,7 +216,8 @@ function diagnosticContext(event) {
     case 'action.rejected':
       return { details: { subject: 'action', next: 'controller_replan', ...(event.category && {category:event.category}) } };
     case 'controller.invalid_proposal':
-      return { details: { subject: 'decision', next: 'controller_correction', category: 'contract' } };
+      return { details: { subject: 'decision', next: 'controller_correction',
+        category: event.category ?? 'unknown' } };
     case 'action.cancelled':
       return { details: { subject: 'action', next: 'inspect' } };
     case 'attempt.cancel_requested':
@@ -328,12 +349,11 @@ export function applyEvent(state, event) {
           item.dispatchCertainty === event.dispatchCertainty && sameRecord(item.outcome, event.outcome) &&
           sameRecord(item.observations, event.observations) && sameRecord(item.findings, event.findings));
         if (recorded) return duplicate;
-        if (sameRecord(attempt.outcome, event.outcome) && attempt.dispatchCertainty === event.dispatchCertainty) {
-          return (event.observations?.length || event.findings?.length) ? apply({}, 'OBSERVATIONS_RECEIVED', [], 'attempt.late_outcome') : duplicate;
-        }
       }
-      const resolved = resolveOutcome(attempt, event);
-      if (!resolved) return apply({}, 'IDENTITY_CONFLICT', [], 'attempt.outcome_discrepancy');
+      const report=classifyOutcomeReport(attempt,event,state.status==='cancelled',state.generation);
+      if(report.kind==='duplicate')return duplicate;
+      if(report.kind!=='resolved')return apply({},report.reasonCode,[],report.eventName);
+      const resolved=report.resolved;
       if ((attempt.status === 'reserved' && resolved.dispatchCertainty !== 'not_sent') ||
           (resolved.dispatchCertainty === 'not_sent' && resolved.outcome.effect !== 'none')) {
         return reject('INVALID_PROPOSAL');
@@ -347,9 +367,7 @@ export function applyEvent(state, event) {
           ...state.waiting.reason, dispatchCertainty: resolved.dispatchCertainty, effect: resolved.outcome.effect,
         } };
       }
-      return apply(patch, event.outcome.diagnostics[0]?.code ?? event.outcome.terminal.toUpperCase(), [],
-      attempt.status === 'terminal' || state.status === 'cancelled' || attempt.generation !== state.generation
-        ? 'attempt.late_outcome' : 'attempt.outcome');
+      return apply(patch,report.reasonCode,[],report.eventName);
     }
     case 'controller.invalid_proposal':
       if (state.status !== 'active' || attempt?.actionId !== event.attemptId ||

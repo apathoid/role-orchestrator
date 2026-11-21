@@ -1,10 +1,12 @@
-import { admitFindings, checkAssessment, evidenceRefs, findings, recordObservationRefs } from '../core/finding.js';
+import { executionFact } from './execution-facts.js';
+import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions, pendingControllerHistoryRequest } from './controller-context.js';
+import { decisionRecovery } from './decision-recovery.js';
 import { handoffContext, materializeSkillInstructions, prepareHandoff } from './handoff.js';
 import { workerRequestHash } from './worker-request-identity.js';
 import { findingHistory } from './finding-history.js';
@@ -13,6 +15,7 @@ import { defaultContextBudgets, maximumContextBudgetBytes } from './context-bund
 import { lookupAttempt } from './recovery.js';
 import { resolveRequestedReasoning, unavailableCapabilities } from './configuration/catalog.js';
 import { runActionRound } from './action-round.js';
+import { createActivityStream } from './activity.js';
 import { bindAssessmentEvidence, bindFindingEvidence, bindOutcomeEvidence, evidenceAliases, providerEvidenceRef,
   reservedEvidenceRef, scopedEvidenceAliases } from './evidence-identity.js';
 import { decodeSummaryReport, observation, receiveProviderObservation } from '../core/observation.js';
@@ -26,7 +29,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {Lookup, LookupStatus} from './recovery.js' */
 /** @import {PendingAction} from './action-round.js' */
 /** @import {Handoff} from './handoff.js' */
-/** @import {AttemptPermissions, AuthorityPort, Catalog, ContextShare, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
+/** @import {AttemptInteractions, AttemptPermissions, AuthorityPort, Catalog, ContextShare, InteractionPort, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
  * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number}} Execution
@@ -37,7 +40,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
  *     captureMaxBytes?: number, skillInstructionsMaxBytes?: number, toolOutputMaxBytes?: number}, allowContextShare?: ContextShare,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
  *   approveRetry?: RetryApproval, tools?: import('../core/ports.js').ToolPort,
- *   diagnostics?: DiagnosticPort, authority: AuthorityPort, permissions?: PermissionPort, configurationRef: string,
+ *   diagnostics?: DiagnosticPort, committedDiagnostic?:(diagnostic:DiagnosticEvent,findings:readonly import('../core/finding.js').Finding[],fact?:()=>import('./execution-facts.js').ExecutionFact)=>void, authority: AuthorityPort, permissions?: PermissionPort, interactions?: InteractionPort, configurationRef: string,
  *   schedule?: (timeoutMs: number, expire: () => void) => () => void
  * } & (Execution & {resolveExecution?: undefined} | {resolveExecution: ResolveExecution})} Dependencies
  * @typedef {{operation: Operation, completion: Promise<Operation>}} Submission
@@ -84,7 +87,7 @@ function notifyAccepted(listener, id) {
 /** @param {Dependencies} deps */
 export function createOrchestrator(deps) {
   const {
-    store, clock, ids, limits, authority, permissions, configurationRef,
+    store, clock, ids, limits, authority, permissions, interactions, configurationRef,
     allowContextShare,
     diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry, tools,
     providerFor = selected => !deps.resolveExecution && selected.providerId === deps.profile.providerId ? deps.provider : undefined,
@@ -93,6 +96,7 @@ export function createOrchestrator(deps) {
       deps.invocationTimeoutMs > 2_147_483_647)) {
     throw new RangeError('invocationTimeoutMs must be an integer from 1 to 2147483647');
   }
+  const activity = createActivityStream();
   const suppliedBudgets = deps.context ?? {};
   if (suppliedBudgets.maxBytes !== undefined && suppliedBudgets.controllerMaxBytes !== undefined) {
     throw new RangeError('context.maxBytes and context.controllerMaxBytes cannot both be set');
@@ -221,7 +225,11 @@ export function createOrchestrator(deps) {
       const retry = await commit(result.state, observed.revision, attemptId);
       if (retry) throw retry.error;
     }
-    if (result.kind === 'applied') emitDiagnostic(diagnostics, result.diagnostic);
+    if (result.kind === 'applied') {
+      if(deps.committedDiagnostic) {
+        try {deps.committedDiagnostic(result.diagnostic,eventFindings(event)??[],()=>executionFact(result.state,event));} catch { /* Presentation cannot change commit. */ }
+      } else emitDiagnostic(diagnostics, result.diagnostic);
+    }
     return result.state;
   }
 
@@ -273,6 +281,13 @@ export function createOrchestrator(deps) {
   /** @param {Operation} state @param {Reason} reason */
   function technicalWait(state, reason) {
     return transition(state, { kind: 'operation.waiting', waiting: { kind: 'technical', reason } });
+  }
+
+  /** @param {Operation} state @param {Extract<Event, {kind: 'controller.invalid_proposal'}>} rejected @returns {Reason} */
+  function decisionRecoveryReason(state, rejected) {
+    return { code: 'INVALID_PROPOSAL', operationId: state.operationId,
+      attemptId: rejected.attemptId, actionId: rejected.attemptId,
+      resource: 'controller_decision_recovery' };
   }
 
   /** @param {Operation} state @returns {Submission} */
@@ -550,6 +565,7 @@ export function createOrchestrator(deps) {
 
   function close() {
     shuttingDown.abort('shutdown');
+    activity.close();
     return closing ??= (async () => {
       await writes;
       const active = [...new Set([...running.keys(), ...workers.keys()])].filter(id =>
@@ -573,6 +589,7 @@ export function createOrchestrator(deps) {
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {Action} [action]
    */
   async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs }, correction, handoff, executor = provider, lookups, action) {
+    const deadline = interactions ? clock.monotonicNow() + invocationTimeoutMs : 0;
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal, shuttingDown.signal]);
     const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
@@ -582,6 +599,8 @@ export function createOrchestrator(deps) {
     let session;
     /** @type {AttemptPermissions | undefined} */
     let boundPermissions;
+    /** @type {AttemptInteractions | undefined} */
+    let boundInteractions;
     let mayHaveSent = false;
     let contextCursor = state.revision;
     /** @type {'PERMISSION_DENIED' | 'REVOKED' | 'RETRY_NOT_AUTHORIZED' | undefined} */
@@ -589,6 +608,7 @@ export function createOrchestrator(deps) {
     /** @type {Observation[]} */
     const observations = [];
     let acceptingObservations = true;
+    let acceptingActivity = true;
     let contextOpen = false;
     const toolStop = new AbortController();
     /** @type {Observation[]} */
@@ -656,6 +676,7 @@ export function createOrchestrator(deps) {
 
     /** @param {ProviderResult} reply @returns {ProviderResult | undefined} */
     function acceptReply(reply) {
+      acceptingActivity = false;
       if (!reply) return undefined;
       const parsed = decodeOutcome(reply.outcome);
       if (parsed.kind === 'rejected' || parsed.value.attemptId !== attemptId ||
@@ -894,6 +915,10 @@ export function createOrchestrator(deps) {
         contextOpen = true;
         const isActive = () => contextOpen && !signal.aborted &&
           authority.authorize(dispatched.authorityRef, selectedProfile.profileId) === 'ALLOWED';
+        boundInteractions = interactions?.bind({ operationId: state.operationId, attemptId, profileId: selectedProfile.profileId,
+          signal, isActive, deadline, clock, schedule, report: (event, reason) => trace(dispatched, event, reason, attemptId) });
+        const reportActivity = activity.bind({ operationId: state.operationId, attemptId,
+          profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, actionId:context.actionId, invocationKind:context.kind }, () => acceptingActivity && isActive());
         const contextAccess = bindContextAccess({
           state: dispatched, store, maxBytes: fetchMaxBytes, captureMaxBytes, profileId: selectedProfile.profileId, attemptId,
           selected, allowShare: allowContextShare, newId: () => ids.newId(), now: () => clock.now(), receive,
@@ -950,6 +975,7 @@ export function createOrchestrator(deps) {
           return executor.invoke(owned, {
           ...context, reasoning, isActive, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
+          interactions: boundInteractions ? { request: boundInteractions.request, supports: boundInteractions.supports } : undefined,
         }, item => {
           if (!acceptingObservations) return;
           const summary = item && typeof item === 'object' && 'kind' in item && item.kind === 'model_summary';
@@ -987,7 +1013,7 @@ export function createOrchestrator(deps) {
             }
           }
           trace(dispatched, 'attempt.observation_invalid', 'PROTOCOL_ERROR', attemptId);
-        });
+        }, reportActivity);
         })().then(acceptReply)) };
       });
       const reply = await invocation.response;
@@ -1028,9 +1054,11 @@ export function createOrchestrator(deps) {
       // Decisions stop at abort. Facts remain attributable until the adapter
       // acknowledges detachment of this invocation's owned session.
       contextOpen = false;
+      acceptingActivity = false;
       toolStop.abort();
       acceptingObservations = signal.aborted && mayHaveSent;
       boundPermissions?.close();
+      boundInteractions?.close();
       clear();
       signal.removeEventListener('abort', abort);
       if (opening) {
@@ -1107,6 +1135,12 @@ export function createOrchestrator(deps) {
         const result = await serialize(async () => {
           const state = await inspect(operationId);
           if (closing || stop.aborted) return {state};
+          // Crash-gap guard: a durable threshold rejection may precede its
+          // technical wait commit. Never reserve another Controller in that gap.
+          if (!actionId && state.status === 'active') {
+            const threshold = decisionRecovery(state).thresholdRejection;
+            if (threshold) return {state: await technicalWait(state, decisionRecoveryReason(state, threshold))};
+          }
           const available = reservationAvailability(state, actionId);
           if (available.kind === 'denied') return {state};
           if (available.kind === 'known') return {state, known:true};
@@ -1336,6 +1370,10 @@ export function createOrchestrator(deps) {
             invalid_json: 'valid JSON', non_object: 'a JSON object', depth: 'JSON nesting depth at most 16',
           }[response.decisionTextError],
         }} : decodeDecision(response.output);
+        // Category is taken from the actual parser/decoder/admission boundary.
+        // It is not inferred from the natural-language Controller output.
+        const rejectionCategory = response.decisionTextError ??
+          (parsed.kind === 'rejected' ? 'schema_invalid' : 'admission_invalid');
         correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
         if (parsed.kind === 'accepted') {
           const refs = evidenceRefs(state.request.requestId, state.events);
@@ -1401,8 +1439,11 @@ export function createOrchestrator(deps) {
         // The decoder's path can contain an arbitrary unknown key. Keep the
         // technical correction bounded; never persist the rejected body here.
         correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
-        return transition(state, {kind:'controller.invalid_proposal', attemptId,
-          decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined, reason:correction});
+        const rejectedState = await transition(state, {kind:'controller.invalid_proposal', attemptId,
+          decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined,
+          category:rejectionCategory, reason:correction});
+        const threshold = decisionRecovery(rejectedState).thresholdRejection;
+        return threshold ? technicalWait(rejectedState, decisionRecoveryReason(rejectedState, threshold)) : rejectedState;
       }).finally(() => releaseAttempt(attemptId));
       if (next.status !== 'active') {
         if (controllerFailureWaiting(next)) {
@@ -1420,5 +1461,5 @@ export function createOrchestrator(deps) {
     return inspect(operationId);
   }
 
-  return { submit, resume, inspect, inspectFinding, findRequest, cancel, close };
+  return { submit, resume, inspect, inspectFinding, findRequest, cancel, subscribeActivity: activity.subscribe, close };
 }

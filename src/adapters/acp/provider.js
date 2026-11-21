@@ -16,6 +16,9 @@ import { attachmentBlocks, configureReasoning, configureSession, modelOption } f
 /** @import {ProviderConfig} from '../../application/configuration/decode-config.js' */
 /** @typedef {{attemptId: string, operationId: string, authorityRef: string, signal: AbortSignal, lifecycleSignal: AbortSignal}} ToolScope */
 /** @typedef {Partial<{[M in keyof ClientRequestParamsByMethod]: (params: ClientRequestParamsByMethod[M], scope: ToolScope) => Promise<ClientRequestResponsesByMethod[M]>}>} Bridge */
+/** @typedef {{capabilities: (operationId: string) => {requests: string[], notifications: string[]},
+ * request: (method: string, params: Record<string, unknown>, scope: ToolScope) => Promise<unknown>,
+ * notify: (method: string, params: Record<string, unknown>, scope: ToolScope) => Promise<void>}} ExtensionRelay */
 /** @typedef {{attemptId: string, stop: AbortController, result: Promise<ProviderResult>}} Call */
 /** @typedef {{profile: Profile, call?: Call, closing?: Promise<void>}} Session */
 
@@ -38,12 +41,12 @@ function resultFor(invocation, code, terminal = 'failed', certainty = 'not_sent'
  * One process and one native session per invocation. The local handle is allocated
  * before dispatch, but the agent is started only when invocation cwd is available.
  * @param {{providerId: string, configuration: ProviderConfig, defaultCwd?: string, environment?: NodeJS.ProcessEnv,
- *   resolveAttachment?: ResolveAttachment, bridge?: Bridge,
+ *   resolveAttachment?: ResolveAttachment, bridge?: Bridge, extensionRelay?: ExtensionRelay,
  *   bridgeCapabilities?: (operationId: string) => {terminal?: boolean, fs?: {readTextFile?: boolean, writeTextFile?: boolean}}}} options
  * @returns {ProviderPort}
  */
 export function createAcpProvider({ providerId, configuration, defaultCwd = process.cwd(), environment = process.env,
-  resolveAttachment, bridge: suppliedBridge, bridgeCapabilities }) {
+  resolveAttachment, bridge: suppliedBridge, bridgeCapabilities, extensionRelay }) {
   const bridge = { ...suppliedBridge };
   const configuredFs = { readTextFile: !!bridge['fs/read_text_file'], writeTextFile: !!bridge['fs/write_text_file'] };
   const terminalMethods = /** @type {const} */ (['terminal/create', 'terminal/output', 'terminal/release', 'terminal/wait_for_exit', 'terminal/kill']);
@@ -80,7 +83,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       sessions.set(handle, { profile: { ...profile } });
       return handle;
     },
-    async invoke(handle, invocation, observe) {
+    async invoke(handle, invocation, observe, activity) {
       const state = sessions.get(handle);
       const selected = invocation.profile;
       if (!state || state.closing || state.call || selected.providerId !== providerId ||
@@ -90,7 +93,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       const stop = new AbortController();
       const signal = AbortSignal.any([stop.signal, invocation.signal]);
       /** @type {Call} */
-      const call = { attemptId: invocation.attemptId, stop, result: Promise.resolve().then(() => run(invocation, signal, observe)) };
+      const call = { attemptId: invocation.attemptId, stop, result: Promise.resolve().then(() => run(invocation, signal, observe, activity)) };
       state.call = call;
       return call.result;
     },
@@ -113,15 +116,18 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     },
   };
 
-  /** @param {Invocation} invocation @param {AbortSignal} signal @param {Parameters<ProviderPort['invoke']>[2]} observe */
-  async function run(invocation, signal, observe) {
+  /** @param {Invocation} invocation @param {AbortSignal} signal @param {Parameters<ProviderPort['invoke']>[2]} observe @param {Parameters<ProviderPort['invoke']>[3]} [activity] */
+  async function run(invocation, signal, observe, activity) {
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const required = invocation.requiredCapabilities ?? [];
-    const { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } = await import('@agentclientprotocol/sdk');
+    const { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, CreateElicitationRequest, CreateElicitationResponse } = await import('@agentclientprotocol/sdk');
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const supported = new Set(['input.text', 'output.decision', 'cancel']);
     if (resolveAttachment) supported.add('input.image');
     const clientCapabilities = bridgeCapabilities?.(invocation.operationId);
+    const form = invocation.interactions?.supports('input') === true;
+    const extensions = extensionRelay?.capabilities(invocation.operationId);
+    const extensionMethods = { requests: new Set(extensions?.requests ?? []), notifications: new Set(extensions?.notifications ?? []) };
     const terminal = configuredTerminal && (!bridgeCapabilities || clientCapabilities?.terminal === true);
     const fsCapabilities = {
       readTextFile: configuredFs.readTextFile && (!bridgeCapabilities || clientCapabilities?.fs?.readTextFile === true),
@@ -208,6 +214,18 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     }
     /** @param {SessionUpdate} update */
     function receive(update) {
+      // Activity is independent of the accumulated execution output budget.
+      // Preserve the original native event, never classify result chunks as public messages.
+      if (activity && !signal.aborted) {
+        try {
+          const nativeKind = update.sessionUpdate;
+          if (nativeKind === 'agent_thought_chunk') activity({ kind: 'reasoning', nativeKind,
+            nativeId: update.messageId ?? undefined, payload: structuredClone(update) });
+          else if (nativeKind === 'plan') activity({ kind: 'plan', nativeKind, payload: structuredClone(update) });
+          else if (nativeKind === 'tool_call' || nativeKind === 'tool_call_update') activity({ kind: 'tool', nativeKind,
+            nativeId: update.toolCallId, payload: structuredClone(update) });
+        } catch { /* Activity delivery is not execution. */ }
+      }
       if (update.sessionUpdate !== 'agent_message_chunk' &&
           update.sessionUpdate !== 'tool_call' && update.sessionUpdate !== 'tool_call_update') return;
       const encoded = JSON.stringify(update);
@@ -266,6 +284,20 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       };
     }
 
+    /** @param {unknown} params @param {AbortSignal} requestSignal */
+    function extensionScope(params, requestSignal) {
+      if (!active || toolSignal.aborted || !sessionId || !params || typeof params !== 'object' || Array.isArray(params) ||
+          !('sessionId' in params) || params.sessionId !== sessionId || invocation.isActive?.() === false) {
+        throw RequestError.requestCancelled();
+      }
+      const scopeSignal = AbortSignal.any([toolSignal, requestSignal]);
+      scopeSignal.throwIfAborted();
+      return { input: /** @type {Record<string, unknown>} */ (params), scope: {
+        attemptId: invocation.attemptId, operationId: invocation.operationId, authorityRef: invocation.authorityRef,
+        signal: scopeSignal, lifecycleSignal: toolSignal,
+      } };
+    }
+
     const m = methods.client;
     const a = methods.agent;
     /** @type {NodeJS.Timeout | undefined} */
@@ -303,7 +335,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             const reply = await Promise.race([interrupted.promise, invocation.permissions.request({
               providerRequestId: JSON.stringify([sessionId, requestId]),
               resource: 'acp-tool:' + JSON.stringify([sessionId, tool.toolCallId]), options,
-              action: { source: 'provider_reported', title: title ?? undefined, kind: kind ?? undefined,
+              action: { source: 'provider_reported', title: title ?? undefined, kind: kind ?? undefined, nativeToolCallId: tool.toolCallId,
                 locations: locations?.map(({ path, line }) => ({ path, line: line ?? undefined })),
                 details: rawInput != null || content != null ? JSON.stringify({ rawInput, content }) : undefined },
             })]);
@@ -315,6 +347,24 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             return cancelled;
           } finally { listener[Symbol.dispose](); }
         })
+        .onRequest(m.elicitation.create, async ({ params, requestId, signal: requestSignal }) => {
+          if (!form || !invocation.interactions || !CreateElicitationRequest.isForm(params) || !('sessionId' in params)) {
+            throw RequestError.methodNotFound(m.elicitation.create);
+          }
+          if (!active || params.sessionId !== sessionId || toolSignal.aborted) return { action: 'cancel' };
+          const result = await invocation.interactions.request({ kind: 'input', nativeKind: m.elicitation.create,
+            providerRequestId: JSON.stringify([sessionId, requestId]), payload: params }, AbortSignal.any([toolSignal, requestSignal]));
+          if (result.kind === 'answered') {
+            const reply = /** @type {import('@agentclientprotocol/sdk').CreateElicitationResponse} */ (result.payload);
+            if (CreateElicitationResponse.isAccept(reply) || CreateElicitationResponse.isDecline(reply) || CreateElicitationResponse.isCancel(reply)) return reply;
+            throw new RequestError(-32602, 'Invalid elicitation reply');
+          }
+          if (result.kind === 'cancelled') return { action: 'cancel' };
+          if (result.kind === 'timed_out') throw new RequestError(-32001, 'Interaction deadline exceeded');
+          if (result.kind === 'error') throw new RequestError(result.code, result.message, result.data);
+          if (result.kind === 'invalid') throw new RequestError(-32602, 'Invalid interaction');
+          throw RequestError.methodNotFound(m.elicitation.create);
+        })
         .onRequest(m.fs.readTextFile, forward(m.fs.readTextFile, fsCapabilities.readTextFile))
         .onRequest(m.fs.writeTextFile, forward(m.fs.writeTextFile, fsCapabilities.writeTextFile))
         .onRequest(m.terminal.create, forward(m.terminal.create, terminal))
@@ -322,12 +372,34 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         .onRequest(m.terminal.release, forward(m.terminal.release, terminal))
         .onRequest(m.terminal.waitForExit, forward(m.terminal.waitForExit, terminal))
         .onRequest(m.terminal.kill, forward(m.terminal.kill, terminal));
+      if (extensionRelay) {
+        app.onRequest('*', async ({ method, params, signal: requestSignal }) => {
+          if (!method.startsWith('_') || !extensionMethods.requests.has(method)) throw RequestError.methodNotFound(method);
+          const { input, scope } = extensionScope(params, requestSignal);
+          const response = await extensionRelay.request(method, input, scope);
+          if (scope.signal.aborted || invocation.isActive?.() === false) throw RequestError.requestCancelled();
+          return response;
+        });
+        app.onNotification('*', async ({ method, params }) => {
+          // SDK wildcard notifications can also see known session/update events.
+          if (!method.startsWith('_') || !extensionMethods.notifications.has(method)) return;
+          try {
+            const { input, scope } = extensionScope(params, toolSignal);
+            await extensionRelay.notify(method, input, scope);
+          } catch { /* Notifications have no response. No retry or false ACK. */ }
+        });
+      }
       connection = app.connect(ndJsonStream(Writable.toWeb(owner.pipes.stdin), Readable.toWeb(owner.pipes.stdout),
         { maxMessageBytes: maxOutputBytes }));
       const agent = connection.agent;
       /** @type {InitializeResponse} */
       const initialized = await agent.request(a.initialize, {
-        protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: fsCapabilities, terminal },
+        protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: fsCapabilities, terminal,
+          ...(form && { elicitation: { form: {} } }),
+          ...(extensions && (extensions.requests.length || extensions.notifications.length) && {
+            _meta: { roleOrchestratorExtensions: extensions },
+          }),
+        },
       }, { cancellationSignal: signal, stopWaitingOnCancel: true });
       if (initialized.protocolVersion !== PROTOCOL_VERSION) return resultFor(invocation, 'PROTOCOL_ERROR');
       const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities, resolveAttachment, AbortSignal.any([signal, connection.signal]));

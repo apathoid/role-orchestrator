@@ -33,19 +33,25 @@ test('C12R.10 shared Decision example decodes and admits with actual invocation 
     const state=await (await api.submit(request())).completion;
     assert.equal(state.status,'finished');
     assert.equal(state.assessment.answer,answer);
-    assert.deepEqual(state.assessment.requirements[0].findingRefs,[]);
+    assert.deepEqual(state.assessment.requirements,[]);
   } finally { await api.close(); }
 });
 
 test('C12R.10R review: optional requirement reason follows the existing non-empty string decoder', () => {
-  for (const reason of [null, '', ' \t\n']) {
+  const withRequirement = () => {
     const value = JSON.parse(decisionExample);
+    value.finalAssessment.requirements.push({ requirementId: 'requirement', status: 'unverified',
+      observationRefs: [], findingRefs: [] });
+    return value;
+  };
+  for (const reason of [null, '', ' \t\n']) {
+    const value = withRequirement();
     value.finalAssessment.requirements[0].reason = reason;
     assert.deepEqual(decodeDecision(value), {kind:'rejected',reason:{
       code:'INVALID_PROPOSAL',path:'$.finalAssessment.requirements[0].reason',expected:'a non-empty string',
     }});
   }
-  const value = JSON.parse(decisionExample);
+  const value = withRequirement();
   delete value.finalAssessment.requirements[0].reason;
   assert.equal(decodeDecision(value).kind, 'accepted');
   value.finalAssessment.requirements[0].reason = '  valid explanation  ';

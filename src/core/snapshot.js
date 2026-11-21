@@ -2,7 +2,7 @@ import { admitFindings, eventFindings, evidenceRefs, findingRef, findings, recor
 import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
 import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
 import { contextItem } from './observation.js';
-import { resolveOutcome, sameRecord } from './operation.js';
+import { classifyOutcomeReport, resolveOutcome, sameRecord } from './operation.js';
 
 /** @import {Decoder, FieldError} from './decode.js' */
 /** @import {Attempt, Event, Operation} from './operation.js' */
@@ -90,6 +90,7 @@ const event = tagged('kind', {
   }),
   'controller.invalid_proposal': record({
     ...eventFields, kind: oneOf('controller.invalid_proposal'), attemptId: id, decisionId: optional(id),
+    category: optional(oneOf('invalid_json','non_object','depth','schema_invalid','admission_invalid')),
     reason: record({code: oneOf('INVALID_PROPOSAL'), path: id, expected: id}),
   }),
   'action.rejected': record({
@@ -117,7 +118,14 @@ const operation = record({
 
 /** @type {Decoder<Operation>} */
 function snapshot(input, path) {
-  const value = operation(input, path);
+  return validateSnapshot(operation(input,path),path);
+}
+
+/** Reuse the existing historical ledger validation, without decoding/copying the snapshot.
+ * @param {Operation} value @param {string} path
+ * @param {(eventId:string, report:{eventName:string,reasonCode:string})=>void} [onOutcome]
+ */
+function validateSnapshot(value,path,onOutcome) {
   if (value.revision !== value.events.length) invalid(path + '.revision', 'the committed event count');
   if ((value.status === 'waiting') !== Boolean(value.waiting)) invalid(path + '.waiting', 'a reason only for waiting');
   const final = value.events.findLast(item => item.kind === 'operation.finished');
@@ -152,6 +160,7 @@ function snapshot(input, path) {
   /** @type {Map<string, Attempt>} */
   const ledger = new Map();
   let generation = 0;
+  let cancelled=false;
   /** @type {{decisionId: string, reasoningLevel?: string} | undefined} */
   let pendingController;
   const decisions = new Map(value.events.flatMap(item => item.kind === 'controller.responded'
@@ -192,6 +201,8 @@ function snapshot(input, path) {
       recordObservationRefs(refs, item);
     }
     const batch = eventFindings(item);
+    if(item.kind==='operation.cancelled')cancelled=true;
+    if(item.kind==='operation.continued')cancelled=false;
     if (item.kind === 'operation.continued' || item.kind === 'operation.recovered') {
       generation++;
       // A crash/reopen is not a user decision to supersede an unconsumed choice.
@@ -289,6 +300,10 @@ function snapshot(input, path) {
           ...prior, status: 'dispatched', dispatchCertainty: 'unknown', dispatchedAt: item.receivedAt, route: item.route,
         });
       } else if (item.kind === 'attempt.outcome') {
+        if(onOutcome){
+          const report=classifyOutcomeReport(prior,item,cancelled,generation);
+          if(report.kind!=='duplicate')onOutcome(item.eventId,{eventName:report.eventName,reasonCode:report.reasonCode});
+        }
         const resolved = resolveOutcome(prior, item);
         if (!resolved) continue;
         if ((prior.status === 'reserved' && resolved.dispatchCertainty !== 'not_sent') ||
@@ -312,6 +327,20 @@ function snapshot(input, path) {
     }
   }
   return value;
+}
+
+/** Classify durable reports using the same validated historical prefix as snapshot decoding.
+ * No current configuration, journal replay effects, or additional Operation snapshot.
+ * Invalid/incomplete legacy history is explicitly unclassified.
+ * @param {Operation} value
+ */
+export function historicalOutcomeReports(value){
+  /** @type {Map<string,{eventName:string,reasonCode:string}>} */
+  const reports=new Map();
+  if(!value.events.some(event=>event.kind==='attempt.outcome'))return reports;
+  const checked=decode((_input,path)=>validateSnapshot(value,path,(id,report)=>reports.set(id,report)),value);
+  if(checked.kind==='rejected')reports.clear();
+  return reports;
 }
 
 export class SnapshotFormatError extends Error {

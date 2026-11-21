@@ -21,6 +21,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
         with:
@@ -56,10 +57,30 @@ jobs:
             exit "$status"
           fi
           tail -n 20 "$RUNNER_TEMP/orchestrator-integration.log"
+      - name: Actual Linux PTY transport fixture (not native LLM)
+        run: |
+          command -v script
+          nix develop --no-update-lock-file --command node --test tests/pty/cli.test.js
       - name: Acceptance regression
         run: nix develop --no-update-lock-file --command npm run test:acceptance
       - name: Full applicable suite from root
         run: nix develop --no-update-lock-file --command npm test
+      - name: C15 deterministic baseline presentation comparison
+        run: nix develop --no-update-lock-file --command node scripts/c15-presentation-benchmark.mjs
+      - name: C15R actual SDK transcript red/green and history comparison
+        run: |
+          nix develop --no-update-lock-file --command node scripts/c15r-transcript-probe.mjs
+          nix develop --no-update-lock-file --command node scripts/c15-presentation-benchmark.mjs --c15r
+      - name: C15R-GUI-R1 planning baseline versus corrected ACP transport fixture
+        run: nix develop --no-update-lock-file --command node scripts/c15r-gui-r1-transport-benchmark.mjs
+      - name: C15R-GUI-R2 deterministic R1 versus compact UX bounded transport
+        run: nix develop --no-update-lock-file --command node scripts/c15r-gui-r1-transport-benchmark.mjs --r2
+      - name: C15R.6 baseline permission and form red/green evidence
+        run: nix develop --no-update-lock-file --command node scripts/c15r6-interaction-baseline.mjs
+      - name: C15R.6R provider pattern red subprocess and bounded green worker
+        run: nix develop --no-update-lock-file --command node scripts/c15r6r-validation-probe.mjs
+      - name: C15R.6R-Final user cancellation during pending regex red/green
+        run: nix develop --no-update-lock-file --command node scripts/c15r6r-final-cancel-probe.mjs
       - name: Nix flake and locked package
         run: nix flake check --no-update-lock-file --print-build-logs
       - name: Install and exercise Nix package outside checkout

@@ -450,3 +450,152 @@ for (const mode of ['a', 'b', 'invalid', 'progress-b', 'only', 'prior-id']) {
     } finally { await api.close(); }
   });
 }
+
+
+test('C13 Codex JSONL activity arrives before exit and never alters execution frames', linux, async () => {
+  const { provider } = codexSetup(`
+    import { writeFile, access } from 'node:fs/promises';
+    import { setTimeout as sleep } from 'node:timers/promises';
+    message('ambiguous progress');
+    emit('item.completed', {item: {type:'reasoning', id:'thought', text:'native summary'}});
+    emit('item.started', {item: {type:'command_execution', id:'cmd', command:'echo x', aggregated_output:'', status:'in_progress'}});
+    emit('item.completed', {item: {type:'command_execution', id:'cmd', command:'echo x', aggregated_output:'x', status:'completed', exit_code:0}});
+    emit('item.updated', {item: {type:'todo_list', id:'plan', items:[{text:'inspect', completed:true}]}});
+    // No terminal result until the test has seen the activity callback.
+    for (;;) { try { await access(invocation.attemptId + '.release'); break; } catch { await sleep(10); } }
+    message('native result'); complete();
+  `);
+  const { withOwnedRun } = await import('../../scripts/owned-run.mjs');
+  const { writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  await withOwnedRun('C13-codex-activity', async cwd => {
+    const signal = new AbortController().signal;
+    const input = { attemptId: 'activity', operationId: 'op', actionId: 'action', kind: 'delegate', objective: 'task', profile,
+      instructions: [], context: [], userConstraints: [], authorityRef: 'grant', workspaceContext: { cwd }, timeoutMs: 5000, signal };
+    const observed = [], ready = Promise.withResolvers(), facts = [];
+    const handle = await provider.open(profile, signal);
+    try {
+      const completion = provider.invoke(handle, input, x => { facts.push(x); return x.ref; }, event => {
+        observed.push(event);
+        if (observed.length === 4) ready.resolve();
+        if (event.kind === 'tool') { event.payload.item.status = 'corrupt'; throw Error('consumer'); }
+      });
+      await Promise.race([ready.promise, completion.then(() => assert.fail('activity was not live'))]);
+      assert.deepEqual(observed.map(x => [x.kind, x.nativeKind, x.nativeId]), [
+        ['reasoning','item.completed','thought'], ['tool','item.started','cmd'], ['tool','item.completed','cmd'], ['plan','item.updated','plan'],
+      ]);
+      assert.deepEqual(facts, []);
+      await writeFile(join(cwd, 'activity.release'), '');
+      const result = await completion;
+      assert.equal(result.output, 'native result');
+      assert.equal(observed.length, 4);
+      const baseline = await provider.open(profile, signal);
+      const baselineFacts = [];
+      try {
+        assert.deepEqual(result, await provider.invoke(baseline, input, x => { baselineFacts.push(x); return x.ref; }));
+        assert.deepEqual(facts, baselineFacts);
+      } finally { await provider.close(baseline); }
+    } finally { await provider.close(handle); }
+  });
+});
+
+test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result capture',linux,async()=>{
+  const {provider}=codexSetup(`
+    for(let i=0;i<400;i++){
+      emit('item.completed',{item:{id:'thought-'+i,type:'reasoning',text:'x'.repeat(4096)}});
+      emit('item.updated',{item:{id:'tool',type:'command_execution',aggregated_output:'y'.repeat(4096)}});
+    }
+    for(let i=0;i<400;i++)emit('item.completed',{item:{id:'cmd-'+i,type:'command_execution',command:'fixture',aggregated_output:'z'.repeat(4096),status:'completed',exit_code:0}});
+    emit('item.completed',{item:{id:'late-deny',type:'command_execution',command:'fixture',aggregated_output:'z'.repeat(8192),status:'declined'}});
+    message('intermediate','first');message('final result','last');complete();
+  `);
+  const invoke=async activity=>{
+    const signal=new AbortController().signal,session=await provider.open(profile,signal),observations=[];
+    try{
+      const result=await provider.invoke(session,{attemptId:'attempt',operationId:'op',actionId:'worker',kind:'delegate',objective:'test',profile,instructions:[],context:[],userConstraints:[],authorityRef:'grant',timeoutMs:5000,signal},x=>{observations.push(x);return x.ref;},activity);
+      assert.equal(result.outcome.terminal,'completed');assert.equal(result.output,'final result');assert.deepEqual(result.outcome.usage,{inputTokens:12,outputTokens:0,cost:null});
+      const process=observations.find(x=>x.ref==='codex-process');
+      assert.equal(process.value.stdoutCapture.truncated,true);assert.ok(process.value.stdoutCapture.receivedBytes>1024*1024);
+      assert.ok(process.value.diagnostics.some(x=>x.reason==='STDOUT_LIMIT'&&x.code==='OUTPUT_TRUNCATED'));
+      assert.ok(observations.some(x=>x.ref==='codex-evidence-limit'&&x.completeness==='truncated'&&x.value.omittedDeclinedCommands===1));
+      assert.ok(result.outcome.diagnostics.some(x=>x.code==='PERMISSION_DENIED'&&x.ref==='codex-evidence-limit'));
+      assert.ok(observations.some(x=>x.sourceId==='last'&&x.value==='final result'));
+      return {result,observations};
+    }finally{await provider.close(session);}
+  };
+  const baseline=await invoke(undefined);let count=0;
+  const withActivity=await invoke(()=>{count++;throw Error('consumer');});
+  assert.equal(count,1201);assert.deepEqual(withActivity,baseline);
+  const {createActivityStream}=await import('../../src/application/activity.js');
+  for(const slow of [false,true]){
+    const stream=createActivityStream(),gate=Promise.withResolvers(),seen=[];
+    const sub=stream.subscribe({operationId:'op'},async event=>{seen.push(event);if(slow)await gate.promise;});
+    const emit=stream.bind({operationId:'op',attemptId:'attempt',profileId:profile.profileId,providerId:profile.providerId},()=>true);
+    try{
+      assert.deepEqual(await invoke(emit),baseline);
+      const omitted=await sub.finish();
+      if(slow)assert.ok(omitted>0);
+      assert.ok(seen.length>0);
+    }finally{gate.resolve();stream.close();}
+  }
+});
+
+
+test('C13R.4R small subprocess evidence survives journal, output refs and context retrieval',linux,async()=>{
+  const count=1100;
+  async function run(mode){
+  const {api}=codexSetup(`
+    if(invocation.kind==='delegate'){
+      let bytes=0;
+      for(let i=0;i<${count};i++){
+        const event={type:'item.completed',item:{id:'small-'+i,type:'command_execution',command:'fixture '+i,
+          aggregated_output:'result '+i,status:i===${count}-1?'failed':'completed',exit_code:i===${count}-1?9:0}};
+        bytes+=Buffer.byteLength(JSON.stringify(event)+'\\n');console.log(JSON.stringify(event));
+      }
+      assert.ok(bytes<1024*1024-4096);message('worker final','last');
+    }else if(!host.outcomes.length){
+      message(JSON.stringify(decision({additions:[{actionId:'many',kind:'delegate',objective:'many results',profileId:'primary',contextRefs:[],dependsOn:[],expectedResult:'facts'}],waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'many'}]}})));
+    }else{
+      message(JSON.stringify(decision({finalAssessment:assessment({answer:'done'})})));
+    }
+    complete();
+  `);
+  const gate=Promise.withResolvers();let subscription;
+  try{
+    const state=await (await api.submit(request(),id=>{
+      if(mode!=='none')subscription=api.subscribeActivity({operationId:id},()=>{
+        if(mode==='slow')return gate.promise;
+        if(mode==='throwing')throw Error('presentation');
+      });
+    })).completion;
+    gate.resolve();await subscription?.finish();
+    assert.equal(state.status,'finished');
+    const worker=state.attempts.find(x=>x.actionId==='many');
+    const receipt=state.events.find(x=>x.kind==='attempt.outcome'&&x.outcome.attemptId===worker.attemptId);
+    assert.equal(receipt.outcome.terminal,'completed');
+    assert.deepEqual(receipt.outcome.usage,{inputTokens:12,outputTokens:0,cost:null});
+    const tools=receipt.observations.filter(x=>x.provenance?.kind==='provider_tool');
+    assert.equal(tools.length,count,'all small command events fit the historical raw capture budget');
+    const last=tools.at(-1);
+    assert.equal(last.provenance.sourceId,'small-1099');
+    assert.deepEqual(last.provenance.exit,{kind:'tool_exit',code:9});
+    assert.equal(last.value.output,'result 1099');
+    assert.ok(tools.every(x=>x.completeness==='complete'&&x.source==='provider_reported'));
+    const refs=new Map(receipt.outcome.outputRefs.map(x=>[x.ref,x]));
+    assert.ok(tools.every(x=>refs.get(x.ref)?.kind==='tool_exit'&&refs.get(x.ref)?.source==='provider_reported'));
+    assert.equal(receipt.observations.some(x=>x.providerRef==='codex-evidence-limit'),false);
+    assert.equal(receipt.observations.find(x=>x.providerRef==='codex-process').value.stdoutCapture,undefined);
+    const {bindContextAccess}=await import('../../src/application/context-access.js');
+    const port=bindContextAccess({state,store:{},maxBytes:65536,profileId:'primary',attemptId:'read',isActive:()=>true,
+      newId:()=> 'unused',now:()=>100,receive:()=>{}});
+    const fetched=await port.fetch(last.ref);
+    assert.equal(fetched.kind,'available');assert.equal(fetched.item.value.output,'result 1099');
+    assert.deepEqual(fetched.item.provenance.exit,{kind:'tool_exit',code:9});
+    const restored=decodeSnapshot(encodeSnapshot(state));
+    assert.equal(restored.kind,'accepted');
+    return {outcome:receipt.outcome,observations:receipt.observations};
+  }finally{gate.resolve();await api.close();}
+  }
+  const baseline=await run('none');
+  for(const mode of ['fast','slow','throwing'])assert.deepEqual(await run(mode),baseline);
+});

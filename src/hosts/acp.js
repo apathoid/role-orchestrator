@@ -4,20 +4,22 @@ import { isAbsolute, join } from 'node:path';
 import { agent, methods, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
 import { decode, id, invalid as invalidField, optional, record } from '../core/decode.js';
 import { hostError } from './commands.js';
+import { acpActivity, acpExecutionNotices, acpExecutionInline, acpAccepted, acpProgressGap, acpOwnMessage } from './presentation.js';
 
-/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, StopReason} from '@agentclientprotocol/sdk' */
-/** @import {DiagnosticEvent} from '../core/diagnostics.js' */
-/** @import {Operation} from '../core/operation.js' */
+import { operationRequestId, operationReply, responseBoundary, historicalReply, replayHistory, turnRange } from './acp-history.js';
+import { createBoundedDelivery } from '../application/delivery.js';
+
+/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, SessionUpdate} from '@agentclientprotocol/sdk' */
+/** @import {ActivityListener, ActivityScope} from '../core/ports.js' */
+/** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
+/** @import {Session} from './acp-history.js' */
 /** @import {HostApi} from './commands.js' */
-/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribe: (listener: (event: DiagnosticEvent) => void) => () => void}} AcpApi */
-/** @typedef {{sessionId: string, cwd: string, operations: string[], requests: {requestId: string, fingerprint: string, operationId?: string}[]}} Session */
-/** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>}} Turn */
+/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
+/** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>, stopDisplay?:()=>void}} Turn */
 
 const a = methods.agent;
 const c = methods.client;
 
-/** @param {string} sessionId @param {string} requestId */
-const operationRequestId = (sessionId, requestId) => 'acp:' + sessionId + ':' + requestId;
 const turnOptions = record({
   requestId: optional(id), continueOperationId: optional(id), supersedeOperationId: optional(id),
   newOperation: optional((value, path) => typeof value === 'boolean' ? value : invalidField(path, 'a boolean')),
@@ -26,32 +28,8 @@ const turnOptions = record({
 /** @param {string} message @param {unknown} [data] */
 const invalid = (message, data) => new RequestError(-32602, message, data);
 
-/** @param {Operation} operation @returns {StopReason} */
-function stopReason(operation) {
-  if (operation.status === 'cancelled') return 'cancelled';
-  if (operation.waiting?.kind === 'technical') {
-    return operation.waiting.reason.code === 'RESOURCE_LIMIT' ? 'max_turn_requests' : 'refusal';
-  }
-  return 'end_turn';
-}
-
-/** @param {Operation} operation */
-function operationMessage(operation) {
-  if (operation.status === 'finished') return operation.assessment?.answer;
-  if (operation.waiting?.kind === 'question') return operation.waiting.question;
-  if (operation.waiting?.kind === 'technical') {
-    const reason = operation.waiting.reason;
-    return reason.profileId
-      ? 'Error: ' + reason.code + ' operation=' + operation.operationId +
-        ' profile=' + reason.profileId + ' reasoningLevel=' + (reason.reasoningLevel ?? '(default)') +
-        ' available=' + (reason.availableLevels ?? []).join(',') +
-        (reason.reasoningCause ? ' cause=' + reason.reasoningCause : '')
-      : 'Waiting: ' + reason.code;
-  }
-}
-
-/** @param {AcpApi} api @param {string} directory @param {Stream} stream */
-export function serveAcp(api, directory, stream) {
+/** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] @param {ProgressDisplay} [progressDisplay] */
+export function serveAcp(api, directory, stream, mode = 'compact', progressDisplay = 'inline') {
   /** @type {Map<string, Session>} */
   const sessions = new Map();
   /** @type {Map<string, Turn>} */
@@ -60,6 +38,26 @@ export function serveAcp(api, directory, stream) {
   let initialized = false;
   /** @type {ClientCapabilities} */
   let capabilities = {};
+  // Capture the declaration at the wire boundary before the SDK normalizes it.
+  // This is not negotiation or authority; only the accepted initialize is retained.
+  /** @type {unknown} */
+  let rawCapabilities;
+  /** @type {Map<unknown, unknown>} */
+  const declarations = new Map();
+  /** @type {TransformStream<import('@agentclientprotocol/sdk').AnyMessage, import('@agentclientprotocol/sdk').AnyMessage>} */
+  const capture = new TransformStream({
+    transform(message, controller) {
+      if (!initialized && message && typeof message === 'object' && 'method' in message &&
+          message.method === a.initialize && 'id' in message && 'params' in message) {
+        const params = message.params;
+        if (params && typeof params === 'object' && 'clientCapabilities' in params) {
+          if (declarations.size >= 8) declarations.delete(declarations.keys().next().value);
+          declarations.set(message.id, structuredClone(params.clientCapabilities));
+        }
+      }
+      controller.enqueue(message);
+    },
+  });
 
   /** @param {string} sessionId */
   function sessionPath(sessionId) {
@@ -86,23 +84,27 @@ export function serveAcp(api, directory, stream) {
     if (servers.length) throw invalid('Client-supplied MCP servers are unavailable');
   }
 
-  /** @param {AgentContext} client @param {string} sessionId @param {string} text @param {boolean} [user] */
-  async function message(client, sessionId, text, user = false) {
+  /** @param {AgentContext} client @param {string} sessionId @param {SessionUpdate} update */
+  async function sendUpdate(client,sessionId,update) {
     if (connection.signal.aborted) return;
     try {
       await client.notify(c.session.update, {
-        sessionId, update: { sessionUpdate: user ? 'user_message_chunk' : 'agent_message_chunk', content: { type: 'text', text } },
+        sessionId, update,
       });
     } catch (error) {
       if (!connection.signal.aborted) throw error;
     }
   }
 
+  /** @param {AgentContext} client @param {string} sessionId @param {string} text */
+  const message=(client,sessionId,text)=>sendUpdate(client,sessionId,{sessionUpdate:'agent_message_chunk',content:{type:'text',text}});
+
   /** @param {string} sessionId @param {'client' | 'superseded'} [source] */
   async function cancel(sessionId, source = /** @type {const} */ ('client')) {
     const turn = turns.get(sessionId);
     if (!turn) return;
     turn.cancelled = true;
+    turn.stopDisplay?.();
     if (turn.operationId) await api.cancel(turn.operationId, source).catch(error => {
       if (hostError(error).code !== 'INVALID_PROPOSAL') throw error;
     });
@@ -115,11 +117,13 @@ export function serveAcp(api, directory, stream) {
   }
 
   const app = agent()
-    .onRequest(a.initialize, ({ params }) => {
+    .onRequest(a.initialize, ({ params, requestId }) => {
       if (initialized) throw invalid('ACP connection is already initialized');
       if (params.protocolVersion !== PROTOCOL_VERSION) throw invalid('Unsupported ACP protocol version', { supported: PROTOCOL_VERSION });
       initialized = true;
       capabilities = params.clientCapabilities ?? {};
+      rawCapabilities = declarations.get(requestId);
+      declarations.clear();
       return {
         protocolVersion: PROTOCOL_VERSION, agentInfo: { name: 'role-orchestrator', version: '0.1.0-dev.0' },
         agentCapabilities: { loadSession: true, promptCapabilities: { image: false, audio: false, embeddedContext: false } },
@@ -144,24 +148,16 @@ export function serveAcp(api, directory, stream) {
         if (session.sessionId !== sessionId || !Array.isArray(session.operations) ||
             !session.operations.every(id => typeof id === 'string')) throw invalid('Invalid stored session');
         session.requests ??= [];
+        if(!Array.isArray(session.requests)||session.requests.some(request=>!request||typeof request.requestId!=='string'||typeof request.fingerprint!=='string'||
+          (request.operationId!==undefined&&!session.operations.includes(request.operationId))))throw invalid('Invalid stored session requests');
         for (const request of session.requests) {
           if (request.operationId) continue;
           const operation = await api.findRequest(operationRequestId(sessionId, request.requestId));
-          if (operation) attach(session, request, operation.operationId);
+          if (operation&&turnRange(operation,operationRequestId(sessionId,request.requestId))) attach(session, request, operation.operationId);
         }
         session.cwd = cwd;
         await save(session);
-        for (const operationId of session.operations) {
-          const operation = await api.inspect(operationId);
-          await message(client, sessionId, operation.request.text, true);
-          for (const event of operation.events) {
-            if (event.kind === 'operation.continued') await message(client, sessionId, event.input.text, true);
-            if (event.kind === 'operation.finished') await message(client, sessionId, event.assessment.answer);
-            if (event.kind === 'operation.waiting' && event.waiting.kind === 'question') {
-              await message(client, sessionId, event.waiting.question);
-            }
-          }
-        }
+        await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay,connection.signal);
         sessions.set(sessionId, session);
         return {};
       } finally { loading.delete(sessionId); }
@@ -196,12 +192,20 @@ export function serveAcp(api, directory, stream) {
       /** @type {Turn} */
       const turn = { cancelled: false, settled: settled.promise };
       turns.set(sessionId, turn);
-      const unsubscribe = api.subscribe(event => {
-        if (event.operationId !== turn.operationId || event.eventName !== 'controller.requested' || connection.signal.aborted) return;
-        return client.notify(c.session.update, { sessionId, update: {
-          sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Controller invocation started\n' },
-        } });
-      });
+      /** @type {(() => void) & {finish?:()=>Promise<number>}} */
+      let unsubscribe = () => {};
+      /** @type {(() => void) & {finish?:()=>Promise<number>}} */
+      let unsubscribeExecution = () => {};
+      const notices = capabilities.session?.notices != null;
+      const ownProgress=progressDisplay==='inline'||notices;
+      /** @typedef {{update?:SessionUpdate,count?:number}} TransportItem */
+      /** @type {ReturnType<typeof createBoundedDelivery<TransportItem,TransportItem>>|undefined} */
+      let transport;
+      let subscribed = false;
+      let displaying = true;
+      const stopDisplay = () => { displaying = false; unsubscribe(); unsubscribeExecution(); transport?.close(); };
+      turn.stopDisplay=stopDisplay;
+      connection.signal.addEventListener('abort',stopDisplay,{once:true});
       try {
         if (!request) {
           request = { requestId, fingerprint };
@@ -209,6 +213,7 @@ export function serveAcp(api, directory, stream) {
           await save(session);
         }
         let operation = await api.findRequest(durableRequestId);
+        const duplicate=operation!==undefined;
         if (!operation) {
           const last = session.operations.at(-1);
           if (continueOperationId && !session.operations.includes(continueOperationId)) throw invalid('Operation belongs to another session');
@@ -216,10 +221,37 @@ export function serveAcp(api, directory, stream) {
           const prior = target && await api.inspect(target);
           const workspaceContext = { cwd: session.cwd };
           const delivery = request;
+          const continuing=Boolean(prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished'));
           /** @param {string} id */
           const accepted = id => {
             turn.operationId = id;
             attach(session, delivery, id);
+            delivery.progressDisplay=progressDisplay;
+            if (subscribed||!displaying||turn.cancelled||connection.signal.aborted) return;
+            subscribed = true;
+            const canDisplay=()=>displaying&&!turn.cancelled&&!connection.signal.aborted&&turn.operationId===id&&turns.get(sessionId)===turn;
+            // One bounded transport consumer for native and own presentation.
+            // Producers never await the renderer; only the owning turn drains it.
+            transport=createBoundedDelivery(/** @param {TransportItem} item */ async item=>{
+              if(item.update&&canDisplay())await client.notify(c.session.update,{sessionId,update:item.update});
+            },(prior,_dropped)=>{
+              const count=(prior?.count??0)+1;
+              return {count,update:acpProgressGap(id,count,'overflow',progressDisplay,notices)};
+            });
+            /** @param {SessionUpdate|undefined} update */
+            const enqueue=update=>{
+              if(update&&canDisplay())transport?.enqueue({update},Buffer.byteLength(JSON.stringify({sessionId,update}))+128);
+            };
+            if(ownProgress)enqueue(acpAccepted(id,durableRequestId,continuing,progressDisplay,false,mode));
+            unsubscribe = api.subscribeActivity({operationId:id}, event => {
+              if (!canDisplay()) return;
+              enqueue(event.kind==='gap'?acpProgressGap(id,event.droppedCount,event.reason,progressDisplay,notices,event.attemptId):
+                acpActivity(event,mode,event.invocationKind==='controller'));
+            });
+            if (ownProgress && api.subscribeExecution) unsubscribeExecution=api.subscribeExecution({operationId:id},(event,findings,fact)=>{
+              if(!canDisplay())return;
+              for(const update of progressDisplay==='inline'?acpExecutionInline(event,findings,mode,fact):acpExecutionNotices(event,findings,mode,fact))enqueue(update);
+            });
           };
           const submission = prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished')
             ? await api.resume(prior.operationId, { requestId: durableRequestId, text, workspaceContext,
@@ -233,19 +265,46 @@ export function serveAcp(api, directory, stream) {
           // Retain ownership of a submitted operation even if the session journal write fails.
           await save(session).finally(() => submission.completion.then(() => {}, () => {}));
           operation = await submission.completion;
+          const boundary=responseBoundary(operation,durableRequestId);
+          if(boundary!==undefined){
+            delivery.responseEventId=boundary;
+            try{await save(session);}catch{
+              const update=acpOwnMessage('Historical response boundary could not be persisted; recovery may be incomplete',
+                {source:'history',operationId:operation.operationId,requestId:durableRequestId});
+              if(displaying&&!connection.signal.aborted&&progressDisplay==='inline')void client.notify(c.session.update,{sessionId,update}).catch(()=>{});
+            }
+          }
         } else {
           attach(session, request, operation.operationId);
           await save(session);
         }
-        const answer = operationMessage(operation);
-        if (answer !== undefined) await message(client, sessionId, answer);
-        return { stopReason: stopReason(operation) };
+        if (!turn.cancelled && !connection.signal.aborted) {
+          const [activityLost,executionLost]=await Promise.all([unsubscribe.finish?.(),unsubscribeExecution.finish?.()]);
+          const transportLost=await transport?.finish()??0;
+          const lost=(activityLost??0)+(executionLost??0)+transportLost;
+          if(lost&&ownProgress&&!turn.cancelled&&!connection.signal.aborted){
+            // Enqueue on the existing transport before final; never wait for an extra renderer acknowledgement.
+            const update=acpProgressGap(operation.operationId,lost,'finish_unconfirmed',progressDisplay,notices);
+            if(update)void client.notify(c.session.update,{sessionId,update}).catch(()=>{});
+          }
+        }
+        stopDisplay();
+        const recovered=duplicate?historicalReply(operation,durableRequestId,request.responseEventId):undefined;
+        if(duplicate&&!recovered){
+          await sendUpdate(client,sessionId,acpOwnMessage('Historical response boundary unavailable; original work was not replayed',
+            {source:'history',operationId:operation.operationId,requestId:durableRequestId},durableRequestId));
+          return {stopReason:'refusal'};
+        }
+        const reply=recovered?.reply??operationReply(operation);
+        if (reply.text !== undefined) await message(client, sessionId, reply.text);
+        return { stopReason: reply.stopReason };
       } catch (error) {
         const issue = hostError(error);
         if (error instanceof RequestError) throw error;
         throw new RequestError(-32000, issue.message, { code: issue.code, path: issue.path });
       } finally {
-        unsubscribe();
+        stopDisplay();
+        connection.signal.removeEventListener('abort',stopDisplay);
         turns.delete(sessionId);
         settled.resolve(undefined);
       }
@@ -253,7 +312,7 @@ export function serveAcp(api, directory, stream) {
     .onNotification(a.session.cancel, ({ params }) => cancel(params.sessionId));
 
   /** @type {AgentConnection} */
-  const connection = app.connect(stream);
+  const connection = app.connect({ writable: stream.writable, readable: stream.readable.pipeThrough(capture) });
   return {
     connection,
     async drain() {
@@ -266,7 +325,7 @@ export function serveAcp(api, directory, stream) {
         if (session.operations.includes(operationId)) {
           const turn = turns.get(sessionId);
           if (turn?.operationId === operationId && turn.cancelled) return undefined;
-          return { sessionId, client: connection.client, signal: connection.signal, capabilities };
+          return { sessionId, client: connection.client, signal: connection.signal, capabilities, rawCapabilities };
         }
       }
     },

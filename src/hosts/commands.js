@@ -21,20 +21,25 @@ export class HostError extends Error {
 /** @param {HostApi} api @param {Command} command @param {(id: string) => void} [accepted] */
 export async function dispatchCommand(api, command, accepted) {
   const { action, operationId, requestId, text, cwd, questionId, cancellationSource } = command;
+  // New dispatch notifies before launch; existing or synthetic submissions may
+  // return without invoking the callback. Preserve one acceptance in both cases.
+  let notified = false;
+  /** @param {string} id */
+  const notify = id => { if (!notified) { notified = true; accepted?.(id); } };
   if (action === 'run') {
     if (!text?.trim()) throw new HostError('INVALID_ARGUMENT', 'A nonempty request is required');
     const submission = await api.submit({
       schemaVersion: 1, requestId, text, attachments: [], userConstraints: [],
       configurationRef: api.configurationRef, ...(cwd && { workspaceContext: { cwd } }),
-    });
-    accepted?.(submission.operation.operationId);
+    }, notify);
+    notify(submission.operation.operationId);
     return submission.completion;
   }
   if (!operationId) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
   if (action === 'resume') {
     if (text !== undefined && !text.trim()) throw new HostError('INVALID_ARGUMENT', 'Follow-up text is empty');
-    const submission = await api.resume(operationId, text === undefined ? undefined : { requestId, text, questionId });
-    accepted?.(submission.operation.operationId);
+    const submission = await api.resume(operationId, text === undefined ? undefined : { requestId, text, questionId }, notify);
+    notify(submission.operation.operationId);
     return submission.completion;
   }
   if (action === 'cancel') return api.cancel(operationId, cancellationSource);

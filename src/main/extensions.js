@@ -38,7 +38,7 @@ function pluginSpecifier(specifier, directory) {
  * new registry, while the StateStore remains with the calling Host.
  * @param {Configuration} configuration
  * @param {{directory?: string, clock: Clock, ids: IdFactory, diagnostics?: DiagnosticPort,
- *   projectText?: string, launchOptions?: unknown, acp?: Pick<Parameters<typeof createAcpProvider>[0], 'bridge' | 'bridgeCapabilities'>}} options
+ *   projectText?: string, launchOptions?: unknown, acp?: Pick<Parameters<typeof createAcpProvider>[0], 'bridge' | 'bridgeCapabilities' | 'extensionRelay'>}} options
  */
 export async function loadExtensions(configuration, { directory, clock, ids, diagnostics = noopDiagnostics, projectText, launchOptions, acp }) {
   configuration = structuredClone(configuration);

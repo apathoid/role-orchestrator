@@ -2,6 +2,10 @@ import { open, link, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { terminalText } from './presentation.js';
+import { renderMarkdownAnswer } from './cli-markdown.js';
+import { createTerminalMargin, terminalMarginColumns } from './cli-layout.js';
+import { terminalColor } from './cli-styling.js';
 import { HostError, hostError, newRequestId, operationView } from './commands.js';
 
 /** @import {Command} from './commands.js' */
@@ -19,14 +23,14 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
   export-diagnostics ID   Write a redacted journal to --output PATH
 
 Common: --config FILE, --format text|json, --help
-Run: --cwd DIR, --profile ID, --skill ID (repeatable), --stdin, --request-id ID
-Resume: --question ID, --stdin, --request-id ID
+Run: --cwd DIR, --profile ID, --skill ID (repeatable), --stdin, --request-id ID, --presentation compact|detailed|debug
+Resume: --question ID, --stdin, --request-id ID, --presentation compact|detailed|debug
 `;
 
 const common = {
   config: { type: 'string' }, format: { type: 'string' }, help: { type: 'boolean', short: 'h' },
 };
-const continuation = { stdin: { type: 'boolean' }, 'request-id': { type: 'string' } };
+const continuation = { presentation: { type: 'string' }, stdin: { type: 'boolean' }, 'request-id': { type: 'string' } };
 const flags = {
   run: { ...continuation, cwd: { type: 'string' }, profile: { type: 'string' }, skill: { type: 'string', multiple: true } },
   resume: { ...continuation, question: { type: 'string' } },
@@ -47,6 +51,10 @@ export function parseCli(argv, cwd) {
   if (values.help) return { kind: /** @type {const} */ ('help') };
   const format = values.format ?? 'text';
   if (format !== 'text' && format !== 'json') throw new HostError('INVALID_ARGUMENT', 'Expected --format text or json');
+  const presentation = values.presentation;
+  if (presentation !== undefined && presentation !== 'compact' && presentation !== 'detailed' && presentation !== 'debug') {
+    throw new HostError('INVALID_ARGUMENT', 'Expected --presentation compact, detailed or debug');
+  }
   const needsId = commandName !== 'run' && commandName !== 'diagnose';
   const operationId = needsId ? positionals.shift() : undefined;
   if (needsId && !operationId?.trim()) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
@@ -65,7 +73,7 @@ export function parseCli(argv, cwd) {
     questionId: typeof values.question === 'string' ? values.question : undefined,
   };
   return {
-    kind: /** @type {const} */ ('command'), command, format, output,
+    kind: /** @type {const} */ ('command'), command, format, output, presentation: /** @type {import('./presentation.js').PresentationMode | undefined} */ (presentation),
     stdin: values.stdin === true || (commandName === 'run' && command.text === undefined),
     config: typeof values.config === 'string' ? resolve(cwd, values.config) : undefined,
     launch: {
@@ -123,8 +131,9 @@ async function readInput(input) {
  * @param {string[]} args
  * @param {{cwd: string, stdin: NodeJS.ReadableStream, stdout: NodeJS.WritableStream, stderr: NodeJS.WritableStream}} io
  * @param {(invocation: CliInvocation) => Promise<unknown>} execute
+ * @param {()=>void} [afterHuman] optional presentation callback after authoritative stdout write
  */
-export async function runCli(args, io, execute) {
+export async function runCli(args, io, execute, afterHuman) {
   try {
     const invocation = parseCli(args, io.cwd);
     if (invocation.kind === 'help') {
@@ -144,14 +153,23 @@ export async function runCli(args, io, execute) {
     if (result && typeof result === 'object' && 'request' in result && 'limits' in result && 'attempts' in result) {
       const view = operationView(/** @type {Operation} */ (result));
       if (invocation.format === 'text' && ['run', 'resume'].includes(invocation.command.action)) {
-        io.stdout.write((view.assessment?.answer ?? (view.waiting?.kind === 'question' ? view.waiting.question
+        const human = view.assessment?.answer ?? (view.waiting?.kind === 'question' ? view.waiting.question
           : view.waiting?.kind === 'technical'
             ? (view.waiting.reason.profileId ? 'Error: ' : 'Waiting: ') + view.waiting.reason.code +
               (view.waiting.reason.profileId ? ' profile=' + view.waiting.reason.profileId +
                 ' reasoningLevel=' + (view.waiting.reason.reasoningLevel ?? '(default)') +
                 ' available=' + (view.waiting.reason.availableLevels ?? []).join(',') +
                 (view.waiting.reason.reasoningCause ? ' cause=' + view.waiting.reason.reasoningCause : '') : '')
-            : view.status)) + '\n');
+            : view.status);
+        const tty='isTTY' in io.stdout && io.stdout.isTTY;
+        const answer=typeof view.assessment?.answer==='string';
+        const formatted=tty?(answer?renderMarkdownAnswer(human,terminalColor(io.stdout)):terminalText(human)):human;
+        // This last-mile layout applies only to an interactive terminal.
+        // Redirected stdout, JSON, --output and the assessment stay byte-exact.
+        const text=tty?createTerminalMargin().format(formatted+'\n',terminalMarginColumns(io.stdout)):
+          formatted+'\n';
+        if(afterHuman)io.stdout.write(text,error=>{if(!error)afterHuman();});
+        else io.stdout.write(text);
       } else io.stdout.write(JSON.stringify(view, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     } else io.stdout.write(JSON.stringify(result, null, invocation.format === 'text' ? 2 : undefined) + '\n');
     const failure = result && typeof result === 'object' && 'request' in result &&

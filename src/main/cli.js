@@ -2,16 +2,26 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { access, stat } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { constants, fstatSync } from 'node:fs';
 import { delimiter, isAbsolute, resolve } from 'node:path';
-import { cliPermissions } from '../hosts/cli-permissions.js';
+import { createCliInput } from '../hosts/cli-input.js';
+import { pollAttachedInputs } from '../hosts/attached-input.js';
+import { cliOwner } from '../hosts/cli-owner.js';
+import { cliPresentation } from '../hosts/cli-presentation.js';
 import { callControl, openControl, readDescriptor } from '../hosts/local-control.js';
 import { runCli } from '../hosts/cli.js';
 import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
 import { cliConfiguration } from './cli-config.js';
+import { controlStreams } from '../hosts/control-streams.js';
 import { openRuntime } from './runtime.js';
 
 const cwd = process.cwd();
+/** @type {(()=>void)|undefined} */
+let deferredSummary;
+function sharedTerminal(){
+  if(!process.stdout.isTTY||!process.stderr.isTTY)return false;
+  try{const a=fstatSync(1),b=fstatSync(2);return a.dev===b.dev&&a.ino===b.ino&&a.rdev===b.rdev;}catch{return false;}
+}
 
 /**
  * A static launch-path hint, not a promise that spawn will succeed.
@@ -71,9 +81,17 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
     const stop = new AbortController();
     const interrupt = () => stop.abort();
     process.on('SIGINT', interrupt);
+    const interactive = Boolean(process.stdin.isTTY && process.stderr.isTTY && !invocation.stdin);
+    const input = createCliInput(process.stdin,process.stderr,interactive,interrupt);
+    const clients = cliOwner(input);
+    const mode = invocation.presentation ?? (interactive && invocation.format === 'text' && ['run','resume'].includes(invocation.command.action) ? 'compact' : undefined);
+    const renderer = cliPresentation(mode,input.print,input.printChunk,input.resetPresentation);
+    input.setSourceResolver(renderer.sourceFor);
+    input.setSourceToneResolver(renderer.toneFor);
+    const deferSummary=invocation.format==='text'&&['run','resume'].includes(invocation.command.action)&&!invocation.output&&sharedTerminal();
+    /** @param {unknown} result */
+    const finishPresentation=result=>{deferredSummary=renderer.finish(result,deferSummary);};
     try {
-      const handleRequest = cliPermissions(process.stdin, process.stderr,
-        Boolean(process.stdin.isTTY && process.stderr.isTTY && !invocation.stdin), interrupt);
       const configurationRef = 'config:' + createHash('sha256').update(configuration).digest('hex');
       /** @param {(id: string) => Promise<unknown>} cancel */
       const onAccepted = cancel => /** @param {string} id */ id => {
@@ -86,11 +104,40 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
       for (;;) {
         const descriptor = await readDescriptor(stateDirectory);
         if (descriptor) {
-          const result = await callControl(descriptor, configurationRef, invocation.command, onAccepted(id =>
-            callControl(descriptor, configurationRef, {
-              action: 'cancel', operationId: id, requestId: randomUUID(), cancellationSource: 'client',
-            })), invocation.launch);
-          if (result !== undefined) return result;
+          const cancel = onAccepted(id => callControl(descriptor, configurationRef, {
+            action: 'cancel', operationId: id, requestId: randomUUID(), cancellationSource: 'client',
+          }));
+          /** @type {string | undefined} */
+          let reconnectKey;
+          let registered = false;
+          for (let connection = 0; connection < 2; connection++) {
+            const watch = new AbortController();
+            /** @type {Promise<void> | undefined} */
+            let polling;
+            try {
+              const result = await callControl(descriptor, configurationRef, invocation.command, (id,key) => {
+                if (!registered) { registered = true; cancel(id); renderer.accepted(id); }
+                if (!interactive) return;
+                if (!key) {
+                  void input.report('Interaction ownership unavailable for '+id+'; observing existing work only.');
+                  return;
+                }
+                reconnectKey = key;
+                if (polling) return;
+                polling = pollAttachedInputs({operationId:id,ownerRequestId:invocation.command.requestId,answerKey:key,
+                  signal:AbortSignal.any([watch.signal,stop.signal]),ask:input.ask,print:input.report,
+                  call:(command,signal)=>callControl(descriptor,configurationRef,command,undefined,undefined,{signal})});
+              }, invocation.launch, startsWork && (mode || interactive) ? {interactive,reconnectKey,notice:mode ? notice=>renderer.notice(notice) : undefined,onGap:count=>{void input.report('[Delivery gap] '+count+' notices not confirmed at finish');}} : undefined);
+              if (result !== undefined) { finishPresentation(result); return result; }
+              if (registered) throw new HostError('CONTROL_RESPONSE_LOST','Original live owner unavailable; work was not replayed');
+              break;
+            } catch(error) {
+              if (connection !== 0 || !reconnectKey || stop.signal.aborted || hostError(error).code !== 'CONTROL_RESPONSE_LOST') throw error;
+              const current = await readDescriptor(stateDirectory);
+              if (current?.token !== descriptor.token || current.path !== descriptor.path) throw error;
+              void input.report('Control connection lost; reconnecting the original work binding without replay.');
+            } finally { watch.abort(); await polling; }
+          }
         }
 
         /** @type {Awaited<ReturnType<typeof openControl>> | undefined} */
@@ -102,7 +149,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
         void readiness.promise.catch(() => {});
         try {
           runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
-            permissions: { handleRequest }, launch: invocation.launch,
+            permissions: { handleRequest:clients.handlePermission }, interactions: { available:clients.available,handleRequest:clients.handleInteraction }, launch: invocation.launch,
           }, startsWork ? async () => {
             const startupDeadline = performance.now() + 30_000;
             owner = await openControl(stateDirectory, configurationRef, async (command, accepted) => {
@@ -116,7 +163,8 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
                 ]);
                 return dispatchCommand(ready.api, command, accepted);
               } finally { timer.abort(); }
-            }, invocation.launch).catch(error => {
+            }, invocation.launch, { ...controlStreams(() => runtime?.api), pending:clients.pending,respond:clients.respond,
+              ownerAccepted:(id,requestId,enabled)=>clients.accept(id,requestId,true,enabled),ownerDetached:clients.detach }).catch(error => {
               if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
               process.stderr.write('CONTROL_UNAVAILABLE: local socket transport unavailable; this process retains writer ownership\n');
               return undefined;
@@ -127,7 +175,25 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             return { operationId: invocation.command.operationId, status: 'no_live_execution' };
           }
           const api = runtime.api;
-          return await dispatchCommand(api, invocation.command, onAccepted(id => api.cancel(id, 'client')));
+          const cancel = onAccepted(id => api.cancel(id, 'client'));
+          let detach = () => {};
+          /** @type {(()=>void) & {finish?:()=>Promise<number>}} */
+          let subscription = ()=>{};
+          try {
+            const result = await dispatchCommand(api, invocation.command,id=>{
+              cancel(id);
+              if (!startsWork) return;
+              renderer.accepted(id);
+              clients.accept(id,invocation.command.requestId,false,interactive);
+              const streams = controlStreams(()=>api);
+              subscription = mode ? streams.subscribe(id,notice=>renderer.notice(notice)) : ()=>{};
+              detach = ()=>{subscription();clients.detach(id,invocation.command.requestId);};
+            });
+            const omitted = await subscription.finish?.() ?? 0;
+            if (omitted) void input.report('[Delivery gap] '+omitted+' notices not confirmed at finish');
+            finishPresentation(result);
+            return result;
+          } finally { detach(); }
         } catch (error) {
           readiness.reject(error);
           if (runtime || hostError(error).code !== 'STATE_STORE_IN_USE') throw error;
@@ -140,5 +206,5 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
         }
         await delay(25);
       }
-    } finally { process.removeListener('SIGINT', interrupt); }
-  });
+    } finally { renderer.close(); input.close(); process.removeListener('SIGINT', interrupt); }
+  },()=>deferredSummary?.());

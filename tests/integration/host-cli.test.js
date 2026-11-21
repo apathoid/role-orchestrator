@@ -26,6 +26,19 @@ test('CLI validates arguments, accepts Unicode stdin outside Git and isolates JS
     assert.equal(run.status, 0, run.stderr);
     const { operationId, assessment } = JSON.parse(run.stdout);
     assert.equal(assessment.answer, 'Ответ: Привет, мир 🌍');
+    for (const mode of ['compact','detailed','debug']) {
+      const presented = call(['run','Привет, мир 🌍','--config',config,'--format','json','--presentation',mode]);
+      assert.equal(presented.status,0,presented.stderr);
+      assert.equal(JSON.parse(presented.stdout).assessment.answer,assessment.answer);
+      assert.match(presented.stderr,/✓ Operation complete\n  1 Controller attempt · 0 Worker attempts · 0 recorded findings/);
+    }
+    const raw = '\x1b[2JПривет 🌍\nLine\x1b]52;c;SECRET\x07\x9b31m!';
+    const redirected = call(['run','tty-control','--config',config]);
+    assert.equal(redirected.stdout, raw + '\n');
+    const json = call(['run','tty-control','--config',config,'--format','json']);
+    assert.equal(JSON.parse(json.stdout).assessment.answer,raw);
+    const question = call(['run','tty-question','--config',config]);
+    assert.equal(question.stdout,raw+'\n');
     const inspect = call(['inspect', operationId, '--config', config, '--format', 'json']);
     assert.equal(JSON.parse(inspect.stdout).status, 'finished');
     const trace = call(['trace', operationId, '--config', config, '--format', 'json']);

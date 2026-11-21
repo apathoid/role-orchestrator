@@ -71,14 +71,14 @@ test('ACP SDK intentional close preserves the exact reason through the subproces
     }
   }));
 
-async function invoke(endpoint, overrides = {}) {
+async function invoke(endpoint, overrides = {}, activity) {
   const signal = new AbortController().signal;
   const input = { attemptId: 'attempt-test', operationId: 'operation', actionId: 'action', kind: 'delegate',
     profile, objective: 'success', instructions: [], context: [], userConstraints: [], authorityRef: 'grant',
     timeoutMs: 5_000, signal, ...overrides };
   const handle = await endpoint.open(input.profile, signal);
   const observations = [];
-  const completion = endpoint.invoke(handle, input, item => { observations.push(item); return item.ref; });
+  const completion = endpoint.invoke(handle, input, item => { observations.push(item); return item.ref; }, activity);
   return { handle, completion, observations, close: () => endpoint.close(handle), [Symbol.asyncDispose]: () => endpoint.close(handle) };
 }
 
@@ -758,4 +758,29 @@ test('F2 ACP timeout retains its deadline classification and partial native evid
     assert.equal(fact.cancelRequested, false);
     assert.equal(fact.signal, 'SIGKILL');
     assert.equal(fact.exitCode, null);
+  }));
+
+
+test('C13 ACP native activity is delivered before terminal without changing result or observations', linux, () =>
+  withOwnedRun('C13-acp-activity', async cwd => {
+    const endpoint = provider(cwd, 'native-activity');
+    const observed = [], ready = Promise.withResolvers();
+    await using live = await invoke(endpoint, {}, event => {
+      observed.push(event);
+      if (observed.length === 4) ready.resolve();
+      if (event.kind === 'tool') { event.payload.status = 'corrupt'; throw Error('consumer'); }
+    });
+    await Promise.race([ready.promise, live.completion.then(() => assert.fail('activity was not live'))]);
+    assert.deepEqual(observed.map(x => [x.kind, x.nativeKind, x.nativeId]), [
+      ['reasoning', 'agent_thought_chunk', undefined], ['plan', 'plan', undefined],
+      ['tool', 'tool_call', 'shared'], ['tool', 'tool_call_update', 'shared'],
+    ]);
+    await writeFile(join(cwd, 'attempt-test.release'), '');
+    const result = await live.completion;
+    assert.equal(result.output, 'native result');
+    assert.equal(observed.length, 4);
+    await using baseline = await invoke(endpoint);
+    const baselineResult = await baseline.completion;
+    assert.deepEqual(result, baselineResult);
+    assert.deepEqual(live.observations, baseline.observations);
   }));

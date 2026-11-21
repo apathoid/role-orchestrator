@@ -1,16 +1,10 @@
+import { record, integer } from './codex-execution.js';
 import { parseDecisionText } from '../invocation-prompt.js';
 
 /** @import {ProviderPort, ProviderResult} from '../../core/ports.js' */
 /** @import {Outcome, ReasonCode} from '../../core/contracts.js' */
 /** @import {AdapterObservation} from '../../core/observation.js' */
 /** @typedef {Awaited<ReturnType<typeof import('./codex-output.js').startCodexProcess>['finished']>} CodexResult */
-
-/** @param {unknown} value @returns {Record<string, unknown> | undefined} */
-const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
-  ? /** @type {Record<string, unknown>} */ (value) : undefined;
-
-/** @param {unknown} value */
-const integer = value => typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined;
 
 /** @param {string} attemptId @param {ReasonCode} code @returns {ProviderResult} */
 export function unstartedCodexResult(attemptId, code) {
@@ -33,7 +27,8 @@ export function unstartedCodexResult(attemptId, code) {
  * @returns {ProviderResult}
  */
 export function receiveCodexResult(result, { attemptId, kind }, observe) {
-  const { process, stdout, stderr, frames, diagnostics } = result;
+  const { process, stdout, stderr, execution, diagnostics } = result;
+  const {frames,sent,terminal,usage,invalidSequence}=execution;
   /** @type {Outcome['outputRefs']} */
   const outputRefs = [];
   /** @type {Outcome['diagnostics']} */
@@ -50,35 +45,14 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
     return ref;
   }
 
-  let sent = false;
-  /** @type {'turn.completed' | 'turn.failed' | undefined} */
-  let terminal;
-  /** @type {string | undefined} */
+  /** @type {string|undefined} */
   let message;
+  /** @type {string|undefined} */
   let messageRef;
-  /** @type {Outcome['usage']} */
-  const usage = { inputTokens: null, outputTokens: null, cost: null };
-  let invalidSequence = false;
-  /** @type {string | undefined} */
+  /** @type {string|undefined} */
   let providerErrorRef;
-  for (const { line, event } of frames) {
-    const ref = 'codex-line-' + line;
-    if (event.type === 'turn.started') {
-      if (sent) invalidSequence = true;
-      sent = true;
-    } else if (event.type === 'turn.completed' || event.type === 'turn.failed') {
-      if (terminal) invalidSequence = true;
-      terminal = event.type;
-      sent = true;
-      if (event.type === 'turn.completed') {
-        const tokens = record(event.usage);
-        const input = integer(tokens?.input_tokens);
-        const output = integer(tokens?.output_tokens);
-        if (input !== undefined && input >= 0) usage.inputTokens = input;
-        if (output !== undefined && output >= 0) usage.outputTokens = output;
-      }
-    }
-
+  for(const {line,event} of frames) {
+    const ref='codex-line-'+line;
     if (event.type === 'error' || event.type === 'turn.failed') {
       const report = event.type === 'error' ? event.message : record(event.error)?.message;
       providerErrorRef = publish({ ref, kind: 'provider_report', sourceId: attemptId, completeness: 'complete',
@@ -86,17 +60,11 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
     }
     if (event.type !== 'item.completed') continue;
     const item = record(event.item);
-    if (terminal || typeof item?.id !== 'string' || !item.id.trim() || typeof item.type !== 'string') {
-      invalidSequence = true;
-      continue;
-    }
+    if (typeof item?.id !== 'string' || typeof item.type !== 'string') continue;
     if (item.type === 'agent_message') {
-      if (typeof item.text !== 'string') {
-        invalidSequence = true;
-        continue;
-      }
-      message = item.text;
-      messageRef = publish({ ref, kind: 'model', sourceId: item.id, completeness: 'complete', value: message });
+      if (typeof item.text !== 'string') continue;
+      const refValue=publish({ref,kind:'model',sourceId:item.id,completeness:'complete',value:item.text});
+      if(line===execution.message?.line) { message=item.text;messageRef=refValue; }
     } else if (item.type === 'error' && typeof item.message === 'string') {
       publish({ ref, kind: 'provider_report', sourceId: item.id, completeness: 'complete',
         value: { type: item.type, message: item.message } });
@@ -135,12 +103,18 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
     }
   }
 
+  if(execution.omitted) {
+    const omission=publish({ref:'codex-evidence-limit',kind:'host_transport',sourceId:attemptId,completeness:'truncated',
+    value:{reason:'EVIDENCE_LIMIT',omittedFrames:execution.omitted,firstOmittedLine:execution.firstOmittedLine,retainedBytes:execution.retainedBytes,omittedDeclinedCommands:execution.omittedDeclines}});
+    if(execution.omittedDeclines) permissionDiagnostics.push({code:'PERMISSION_DENIED',ref:omission});
+  }
   const processRef = publish({
     ref: 'codex-process', sourceId: attemptId, completeness: 'complete',
     ...(process.exitCode === null ? { kind: 'host_transport' } : { kind: 'agent_exit', exitCode: process.exitCode }),
     value: {
       started: process.started, reason: process.reason, signal: process.signal, errors: process.errors,
       diagnostics, invalidSequence, turn: terminal ?? null,
+      ...(stdout.truncated && {stdoutCapture:{receivedBytes:stdout.receivedBytes,retainedBytes:stdout.bytes.length,truncated:true}}),
     },
   });
 

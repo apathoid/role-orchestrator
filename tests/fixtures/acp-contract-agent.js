@@ -96,6 +96,48 @@ agent()
     const message = (messageId, text) => client.notify(c.session.update, { sessionId, update: {
       sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text },
     } });
+    if (scenario === 'c15r-transcript') {
+      if(objective==='hold'){await writeFile('c15r-hold-ready','');await stop.promise;return {stopReason:'cancelled'};}
+      const host=context.find(item=>item.ref==='host:invocation-context').value;
+      const notify=update=>client.notify(c.session.update,{sessionId,update});
+      const thought=text=>notify({sessionUpdate:'agent_thought_chunk',content:{type:'text',text}});
+      await thought('Inspect');await thought(' the commit.\nRead the diff.');
+      await notify({sessionUpdate:'tool_call',toolCallId:'shell',title:'shell',kind:'execute',status:'pending'});
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'shell',title:'git show HEAD',status:'in_progress'});
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'shell',title:'git show HEAD',status:'in_progress'});
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'shell',status:'completed'});
+      await notify({sessionUpdate:'tool_call',toolCallId:'read',title:'Read package.json',kind:'read',status:'in_progress'});
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'read',status:'failed'});
+      await thought('Version only.');
+      await message('final',JSON.stringify({schemaVersion:1,operationId,decisionId:attemptId+'-final',contextCursor:host.contextCursor,
+        additions:[],cancellations:[],finalAssessment:{author:profileId,overall:'complete',requirements:[],observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer:'Version updated.'}}));
+      return {stopReason:'end_turn'};
+    }
+    if (scenario === 'host-native-ux' || scenario === 'host-chunks') {
+      const host = context.find(item => item.ref === 'host:invocation-context')?.value;
+      const notify = update => client.notify(c.session.update,{sessionId,update});
+      await notify({sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'Native thought '+actionId}});
+      if(scenario==='host-chunks') await notify({sessionUpdate:'agent_thought_chunk',content:{type:'text',text:' continued'}});
+      await notify({sessionUpdate:'plan',entries:[{content:'Native plan '+actionId,priority:'medium',status:'pending'}]});
+      await notify({sessionUpdate:'tool_call',toolCallId:'shared',title:'Native read',kind:'read',status:'in_progress'});
+      await message('progress','Ambiguous progress must not reach client');
+      await notify({sessionUpdate:'tool_call_update',toolCallId:'shared',status:'completed'});
+      if (kind === 'delegate') {
+        if(scenario==='host-chunks'&&actionId==='worker-a'){
+          const reply=await client.request(c.session.requestPermission,{sessionId,toolCall:{toolCallId:'shared',title:'Native read'},options:[{optionId:'deny',name:'Deny',kind:'reject_once'}]});
+          assert.equal(reply.outcome.optionId,'deny');
+        }
+        await message('final','Worker result '+actionId);
+        return {stopReason:'end_turn'};
+      }
+      const decision = {schemaVersion:1,operationId,decisionId:attemptId+'-final',contextCursor:host.contextCursor,additions:[],cancellations:[]};
+      if (!host.outcomes.length) {
+        decision.additions = ['worker-a','worker-b'].map(actionId=>({kind:'delegate',actionId,profileId,objective:actionId,contextRefs:[],dependsOn:[],expectedResult:'Worker result'}));
+        decision.waitPolicy = {kind:'all_requested',targets:decision.additions.map(({actionId})=>({kind:'action',id:actionId}))};
+      } else decision.finalAssessment = {author:profileId,overall:'complete',requirements:[],observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer:'Native final once'};
+      await message('final',JSON.stringify(decision));
+      return {stopReason:'end_turn'};
+    }
     if (scenario === 'native-subagent-report') {
       assert.equal(kind, 'controller');
       const host = context.find(item => item.ref === 'host:invocation-context').value;
@@ -173,7 +215,94 @@ agent()
       await message('result','skills delivered');
       return {stopReason:'end_turn'};
     }
-    if (scenario === 'host-relay') {
+    if (scenario === 'c15r6-interaction') {
+      if(objective==='hold'){await writeFile('c15r6-hold-ready','');await stop.promise;return {stopReason:'cancelled'};}
+      const source={sessionId};
+      const permission=await client.request(c.session.requestPermission,{...source,
+        toolCall:{toolCallId:'native-interaction',title:'Native read permission',status:'pending'},
+        options:[{optionId:'deny',name:'Deny',kind:'reject_once'},
+          {optionId:'option 1',name:'Allow',kind:'allow_always'}]});
+      const selected=permission.outcome.outcome==='selected'?permission.outcome.optionId:'cancelled';
+      const ask=client.request(c.elicitation.create,{...source,mode:'form',message:'What should happen next?',
+        requestedSchema:{type:'object',title:'Next action',properties:{
+          choice:{type:'string',title:'Choose an action',pattern:'^(continue|stop)$',oneOf:[{const:'continue',title:'Continue work'},
+            {const:'stop',title:'Stop work'}]},
+          note:{type:'string',title:'Optional context',description:'Add details if needed'}
+        },required:['choice']}});
+      for(let i=0;i<30;i++){
+        await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'agent_thought_chunk',
+          content:{type:'text',text:'('+i+')'}}});
+        if(i%3===0)await sleep(2);
+      }
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call',
+        toolCallId:'tool-a',title:'Read config',kind:'read',status:'in_progress'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call',
+        toolCallId:'tool-b',title:'Read config',kind:'read',status:'in_progress'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call_update',
+        toolCallId:'tool-a',status:'completed'}});
+      await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'tool_call_update',
+        toolCallId:'tool-b',status:'failed'}});
+      const form=await ask;
+      const answer='### Native answer\nPermission: '+selected+'\nChoice: '+(form.action==='accept'?form.content.choice:form.action);
+      await message('final',JSON.stringify({schemaVersion:1,operationId,decisionId:attemptId+'-native',
+        contextCursor:context.find(x=>x.ref==='host:invocation-context').value.contextCursor,
+        additions:[],cancellations:[],finalAssessment:{author:profileId,overall:'complete',requirements:[],
+          observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer}}));
+      return {stopReason:'end_turn'};
+    }
+    if (scenario === 'host-elicitation') {
+      assert.equal(clientCapabilities?.elicitation?.url, undefined);
+      let text = 'unavailable';
+      const form = { mode: 'form', sessionId, message: 'Which value?', requestedSchema: {
+        type: 'object', properties: { value: { type: 'string' } }, required: ['value'],
+      } };
+      if (clientCapabilities?.elicitation?.form) {
+        assert.equal((await client.request(c.elicitation.create, { ...form, sessionId: 'wrong' })).action, 'cancel');
+        const reply = await client.request(c.elicitation.create, form);
+        text = reply.action === 'accept' ? reply.content.value : reply.action;
+      } else await assert.rejects(client.request(c.elicitation.create, form), error => error.code === -32601);
+      await message('result', JSON.stringify({ schemaVersion: 1, operationId, decisionId: 'elicitation-decision', contextCursor: 0,
+        additions: [], cancellations: [], finalAssessment: { author: profileId, overall: 'complete', requirements: [],
+          observationRefs: [], findingRefs: [], unresolvedQuestions: [], answer: text } }));
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'native-activity') {
+      await message('progress', 'ambiguous progress');
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'reasoning chunk' } } });
+      await client.notify(c.session.update, { sessionId: 'wrong', update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'foreign' } } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'plan', entries: [{ content: 'inspect', priority: 'medium', status: 'pending' }] } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 'shared', title: 'Read', kind: 'read', status: 'in_progress' } });
+      await client.notify(c.session.update, { sessionId, update: { sessionUpdate: 'tool_call_update', toolCallId: 'shared', status: 'completed' } });
+      for (;;) {
+        try { await access(attemptId + '.release'); break; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; await sleep(10); }
+      }
+      await message('final', 'native result');
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'host-extension') {
+      const advertised = clientCapabilities?._meta?.roleOrchestratorExtensions;
+      assert.equal(clientCapabilities?.fs?.readTextFile ?? false, false);
+      assert.equal(clientCapabilities?.terminal ?? false, false);
+      assert.equal(clientCapabilities?._meta?.unrelated, undefined);
+      let text = 'unavailable';
+      if (advertised?.requests.includes('_ro/echo')) {
+        assert.deepEqual(advertised, { requests: ['_ro/echo'], notifications: ['_ro/notice'] });
+        await assert.rejects(client.request('_ro/unknown', { sessionId }), error => error.code === -32601);
+        await assert.rejects(client.request('_ro/echo', { sessionId: 'wrong' }), error => error.code === -32800);
+        const payload = { sessionId, nested: { sessionId: 'opaque', arbitrary: [1, null] }, objective };
+        await client.notify('_ro/notice', payload);
+        const reply = await client.request('_ro/echo', payload);
+        text = reply.answer;
+      } else {
+        await assert.rejects(client.request('_ro/echo', { sessionId }), error => error.code === -32601);
+      }
+      await message('result', JSON.stringify({ schemaVersion: 1, operationId, decisionId: 'extension-decision', contextCursor: 0,
+        additions: [], cancellations: [], finalAssessment: { author: profileId, overall: 'complete', requirements: [],
+          observationRefs: [], findingRefs: [], unresolvedQuestions: [], answer: text } }));
+      return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'host-relay' || scenario === 'host-relay-concurrent') {
       if (objective === 'slow-relay') {
         await writeFile('relay-ready', '');
         while (true) {
@@ -189,6 +318,14 @@ agent()
       if (clientCapabilities?.fs?.readTextFile && text === 'allow') {
         const result = await client.request(c.fs.readTextFile, { sessionId, path: '/example' });
         text += ':' + result.content;
+      }
+      if(scenario==='host-relay-concurrent'){
+        const form=await client.request(c.elicitation.create,{sessionId,mode:'form',toolCallId:'shared-native-id',
+          message:'Old worker form',requestedSchema:{type:'object',properties:{value:{type:'string'}},required:['value']}});
+        assert.equal(form.action,'accept');text+=':'+form.content.value;
+        const payload={sessionId,objective,nested:{sessionId:'opaque'}};
+        await client.notify('_ro/notice',payload);
+        const ext=await client.request('_ro/echo',payload);text+=':'+ext.answer;
       }
       assert.equal(Boolean(clientCapabilities?.terminal), false);
       if (objective === 'slow-relay') await writeFile('relay-result', text);

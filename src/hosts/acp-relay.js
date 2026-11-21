@@ -1,4 +1,5 @@
-import { methods, RequestError } from '@agentclientprotocol/sdk';
+import { methods, RequestError, CreateElicitationRequest } from '@agentclientprotocol/sdk';
+import { scopedNativeId } from './presentation.js';
 
 /** @import {ClientRequestMethod, ClientRequestParamsByMethod, ClientRequestResponsesByMethod, RequestPermissionResponse} from '@agentclientprotocol/sdk' */
 /** @import {PermissionHandler} from '../application/configuration/permissions.js' */
@@ -7,8 +8,50 @@ import { methods, RequestError } from '@agentclientprotocol/sdk';
 
 const c = methods.client;
 
-/** @param {Route} route */
-export function createAcpRelay(route) {
+/** @param {Route} route @param {readonly string[]} [extensionMethods] */
+export function createAcpRelay(route, extensionMethods = []) {
+  const configuredExtensions = new Set(extensionMethods);
+  if (extensionMethods.some(method => !/^_[A-Za-z0-9][A-Za-z0-9_./-]*$/u.test(method))) {
+    throw new Error('Only explicit ACP extension method names may be relayed');
+  }
+
+  /** @param {string} operationId */
+  function extensionCapabilities(operationId) {
+    const declaration = route(operationId)?.capabilities._meta?.roleOrchestratorExtensions;
+    if (!declaration || typeof declaration !== 'object') return { requests: [], notifications: [] };
+    /** @param {unknown} names */
+    const allowed = names => Array.isArray(names) ? [...new Set(names.filter(name =>
+      typeof name === 'string' && configuredExtensions.has(name)))] : [];
+    return { requests: allowed('requests' in declaration ? declaration.requests : undefined),
+      notifications: allowed('notifications' in declaration ? declaration.notifications : undefined) };
+  }
+
+  /** @param {string} method @param {Record<string, unknown>} params @param {Scope} scope @param {'requests' | 'notifications'} kind */
+  function extensionDestination(method, params, scope, kind) {
+    const destination = route(scope.operationId);
+    if (!destination || scope.signal.aborted || destination.signal.aborted) throw RequestError.requestCancelled();
+    if (!extensionCapabilities(scope.operationId)[kind].includes(method)) throw RequestError.methodNotFound(method);
+    return { destination, input: { ...params, sessionId: destination.sessionId },
+      signal: AbortSignal.any([scope.signal, destination.signal]) };
+  }
+
+  const extensionRelay = {
+    capabilities: extensionCapabilities,
+    /** @param {string} method @param {Record<string, unknown>} params @param {Scope} scope */
+    async request(method, params, scope) {
+      const { destination, input, signal } = extensionDestination(method, params, scope, 'requests');
+      const response = await destination.client.request(method, input, { cancellationSignal: signal, stopWaitingOnCancel: true });
+      if (signal.aborted || route(scope.operationId)?.sessionId !== destination.sessionId) throw RequestError.requestCancelled();
+      return response;
+    },
+    /** @param {string} method @param {Record<string, unknown>} params @param {Scope} scope */
+    async notify(method, params, scope) {
+      const { destination, input, signal } = extensionDestination(method, params, scope, 'notifications');
+      signal.throwIfAborted();
+      await destination.client.notify(method, input);
+    },
+  };
+
   /** @type {PermissionHandler} */
   async function handleRequest(request, signal) {
     const destination = route(request.operationId);
@@ -18,8 +61,9 @@ export function createAcpRelay(route) {
     try {
       const response = /** @type {RequestPermissionResponse} */ (await client.request(c.session.requestPermission, {
         sessionId,
+        _meta: {roleOrchestratorSource:{operationId:request.operationId,attemptId:request.attemptId,profileId:request.profileId,requestId:request.requestId}},
         toolCall: {
-          toolCallId: request.requestId,
+          toolCallId: request.action?.nativeToolCallId === undefined ? request.requestId : scopedNativeId(request.attemptId, request.action.nativeToolCallId),
           title: request.action?.title ?? request.resource,
           status: 'pending',
           locations: request.action?.locations?.map(({ path, line }) => ({ path, line })),
@@ -96,8 +140,34 @@ export function createAcpRelay(route) {
     };
   }
 
+  /** @param {string} operationId */
+  function supportsInput(operationId) {
+    return route(operationId)?.capabilities.elicitation?.form != null;
+  }
+  /** @type {NonNullable<Parameters<typeof import('../application/interactions.js').createInteractionBroker>[0]['handleRequest']>} */
+  async function handleInteraction(request, signal) {
+    const destination = route(request.operationId);
+    if (!destination || !supportsInput(request.operationId)) return { kind: 'unavailable' };
+    const params = /** @type {import('@agentclientprotocol/sdk').CreateElicitationRequest} */ (request.payload);
+    if (request.nativeKind !== c.elicitation.create || !CreateElicitationRequest.isForm(params) || !('sessionId' in params)) return { kind: 'invalid' };
+    const stop = AbortSignal.any([signal, destination.signal]);
+    try {
+      const response = await destination.client.request(c.elicitation.create, {
+        ...params, sessionId: destination.sessionId,
+        _meta: {...params._meta,roleOrchestratorSource:{operationId:request.operationId,attemptId:request.attemptId,profileId:request.profileId,requestId:request.requestId}},
+        ...(params.toolCallId && { toolCallId: scopedNativeId(request.attemptId, params.toolCallId) }),
+      }, { cancellationSignal: stop, stopWaitingOnCancel: true });
+      if (stop.aborted || route(request.operationId)?.sessionId !== destination.sessionId) return { kind: 'cancelled' };
+      return { kind: 'answered', payload: response };
+    } catch (error) {
+      if (stop.aborted) return { kind: 'cancelled' };
+      if (error instanceof RequestError) return { kind: 'error', code: error.code, message: error.message, data: error.data };
+      return { kind: 'unavailable' };
+    }
+  }
+
   return {
-    handleRequest,
+    handleRequest, extensionRelay, supportsInput, handleInteraction,
     /** @param {string} operationId */
     bridgeCapabilities(operationId) { return route(operationId)?.capabilities ?? {}; },
     bridge: {

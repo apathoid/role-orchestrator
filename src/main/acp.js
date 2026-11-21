@@ -8,25 +8,34 @@ import { serveAcp } from '../hosts/acp.js';
 import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
 import { openControl } from '../hosts/local-control.js';
 import { cliConfiguration } from './cli-config.js';
+import { controlStreams } from '../hosts/control-streams.js';
 import { openRuntime } from './runtime.js';
 
 /** @param {string[]} args */
 export async function runAcpStdio(args) {
   try {
-    const { values } = parseArgs({ args, options: { config: { type: 'string' }, help: { type: 'boolean' }, 'relay-client-tools': { type: 'boolean' } } });
+    const { values } = parseArgs({ args, options: { config: { type: 'string' }, help: { type: 'boolean' }, presentation: { type: 'string' }, 'progress-display': { type: 'string' }, 'relay-client-tools': { type: 'boolean' }, 'relay-client-extension': { type: 'string', multiple: true } } });
     if (values.help) {
-      process.stdout.write('Usage: role-orchestrator acp [--config FILE] [--relay-client-tools]\n');
+      process.stdout.write('Usage: role-orchestrator acp [--config FILE] [--relay-client-tools] [--relay-client-extension METHOD] [--presentation compact|detailed|debug] [--progress-display inline|notices]\n');
       return 0;
     }
+    const mode = values.presentation ?? 'compact';
+    if (mode !== 'compact' && mode !== 'detailed' && mode !== 'debug') throw new HostError('INVALID_ARGUMENT','Expected --presentation compact, detailed or debug');
+    const progressDisplay=values['progress-display']??'inline';
+    if(progressDisplay!=='inline'&&progressDisplay!=='notices')throw new HostError('INVALID_ARGUMENT','Expected --progress-display inline or notices');
     // In this executable mode stdout is reserved for protocol frames.
     globalThis.console = new Console({ stdout: process.stderr, stderr: process.stderr });
     const options = await cliConfiguration(values.config && resolve(values.config));
     /** @type {ReturnType<typeof serveAcp> | undefined} */
     let host;
-    const relay = createAcpRelay(id => host?.route(id));
+    const relay = createAcpRelay(id => host?.route(id), values['relay-client-extension']);
     const runtime = await openRuntime({
       ...options, permissions: { handleRequest: relay.handleRequest },
-      acp: values['relay-client-tools'] ? relay : undefined,
+      interactions: { available: relay.supportsInput, handleRequest: relay.handleInteraction },
+      acp: {
+        ...(values['relay-client-tools'] && { bridge: relay.bridge, bridgeCapabilities: relay.bridgeCapabilities }),
+        ...(values['relay-client-extension']?.length && { extensionRelay: relay.extensionRelay }),
+      },
     });
     /** @type {Awaited<ReturnType<typeof openControl>> | undefined} */
     let owner;
@@ -43,12 +52,12 @@ export async function runAcpStdio(args) {
           throw new HostError('CONTROL_ACP_SESSION_REQUIRED', 'Use the owning ACP session to submit or continue work');
         }
         return dispatchCommand(runtime.api, command);
-      }).catch(error => {
+      }, undefined, controlStreams(() => runtime.api)).catch(error => {
         if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
         return undefined;
       });
       host = serveAcp(runtime.api, runtime.directory,
-        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: 1024 * 1024 }));
+        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: 1024 * 1024 }), mode, progressDisplay);
       const { connection } = host;
       const interrupt = () => {
         connection.close();

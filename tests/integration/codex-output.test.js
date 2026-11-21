@@ -3,6 +3,11 @@ import { test } from 'node:test';
 import { prepareCodexLaunch } from '../../src/adapters/cli/codex-launch.js';
 import { createCodexOutputCapture, startCodexProcess } from '../../src/adapters/cli/codex-output.js';
 
+function captureFrames(limits) {
+  const frames=[];
+  const capture=createCodexOutputCapture(limits,(event,line)=>frames.push({line,event}));
+  return {...capture,finish:()=>({...capture.finish(),frames})};
+}
 const frame = event => Buffer.from(JSON.stringify(event) + '\n');
 const diagnostic = (reason, firstLine, count = 1) => ({
   code: 'PROTOCOL_ERROR', stream: 'stdout', reason, count, firstLine,
@@ -13,7 +18,7 @@ test('JSONL framing survives every byte boundary including split UTF-8 and CRLF'
   const message = { type: 'item.completed', item: { type: 'agent_message', id: 'item_1', text: 'Привет 🧪' } };
   const bytes = Buffer.concat([Buffer.from(JSON.stringify(thread) + '\r\n'), frame(message)]);
   const warnings = Buffer.from('warning 🧪\n{"type":"error"}\n');
-  const capture = createCodexOutputCapture();
+  const capture = captureFrames();
 
   for (let i = 0; i < bytes.length; i++) {
     capture.write('stdout', bytes.subarray(i, i + 1));
@@ -28,7 +33,7 @@ test('JSONL framing survives every byte boundary including split UTF-8 and CRLF'
 });
 
 test('malformed frames are reported in bounded diagnostics and following events remain available', () => {
-  const capture = createCodexOutputCapture();
+  const capture = captureFrames();
   const invalidUtf8 = Buffer.concat([Buffer.from('{"type":"'), Buffer.from([0xff]), Buffer.from('"}\n')]);
   const valid = { type: 'future.event', payload: { id: 1 } };
   capture.write('stdout', Buffer.concat([
@@ -59,7 +64,7 @@ test('oversized JSONL frames do not consume the next frame or masquerade as acce
   const afterBytes = frame(after);
   const exactBytes = frame(atLimit);
   const bytes = Buffer.concat([beforeBytes, exactBytes, overBytes, afterBytes]);
-  const capture = createCodexOutputCapture({ maxFrameBytes: exactBytes.length - 1, maxStdoutBytes: 512, maxStderrBytes: 64 });
+  const capture = captureFrames({ maxFrameBytes: exactBytes.length - 1, maxStdoutBytes: 512, maxStderrBytes: 64 });
 
   const split = beforeBytes.length + exactBytes.length + overBytes.length - 1;
   capture.write('stdout', bytes.subarray(0, split));
@@ -71,13 +76,13 @@ test('oversized JSONL frames do not consume the next frame or masquerade as acce
   assert.deepEqual(result.stdout.bytes, bytes);
 });
 
-test('stdout exhaustion retains the raw prefix but cannot admit a JSON prefix without its delimiter', () => {
+test('stdout exhaustion retains raw prefix but parses later complete frames', () => {
   const first = { type: 'thread.started', thread_id: 'thread-1' };
   const clipped = { type: 'turn.completed' };
   const firstBytes = frame(first);
   const clippedBytes = frame(clipped);
   const maxStdoutBytes = firstBytes.length + clippedBytes.length - 1;
-  const capture = createCodexOutputCapture({ maxFrameBytes: 128, maxStdoutBytes, maxStderrBytes: 3 });
+  const capture = captureFrames({ maxFrameBytes: 128, maxStdoutBytes, maxStderrBytes: 3 });
   const bytes = Buffer.concat([firstBytes, clippedBytes]);
   capture.write('stdout', bytes.subarray(0, maxStdoutBytes));
   capture.write('stdout', bytes.subarray(maxStdoutBytes));
@@ -85,11 +90,12 @@ test('stdout exhaustion retains the raw prefix but cannot admit a JSON prefix wi
   capture.write('stdout', Buffer.from('more'));
 
   const result = capture.finish();
-  assert.deepEqual(result.frames, [{ line: 1, event: first }]);
+  assert.deepEqual(result.frames, [{ line: 1, event: first },{line:2,event:clipped}]);
   assert.deepEqual(result.stdout, { bytes: bytes.subarray(0, maxStdoutBytes), receivedBytes: bytes.length + 4, truncated: true });
   assert.deepEqual(result.stderr, { bytes: Buffer.from('éé\n').subarray(0, 3), receivedBytes: 5, truncated: true });
   assert.deepEqual(result.diagnostics, [
-    diagnostic('STDOUT_LIMIT', 2),
+    diagnostic('INCOMPLETE_FRAME', 3),
+    {code:'OUTPUT_TRUNCATED',stream:'stdout',reason:'STDOUT_LIMIT',count:1},
     { code: 'OUTPUT_TRUNCATED', stream: 'stderr', reason: 'STDERR_LIMIT', count: 1 },
   ]);
 });
@@ -97,7 +103,7 @@ test('stdout exhaustion retains the raw prefix but cannot admit a JSON prefix wi
 test('exact stream budgets do not mark complete frames or stderr as truncated', () => {
   const event = { type: 'turn.completed' };
   const bytes = frame(event);
-  const capture = createCodexOutputCapture({ maxFrameBytes: bytes.length - 1, maxStdoutBytes: bytes.length, maxStderrBytes: 3 });
+  const capture = captureFrames({ maxFrameBytes: bytes.length - 1, maxStdoutBytes: bytes.length, maxStderrBytes: 3 });
   capture.write('stdout', bytes);
   capture.write('stderr', Buffer.from('err'));
   const result = capture.finish();
@@ -127,12 +133,45 @@ test('the process adapter preserves JSONL events, partial output and the indepen
       });
     `, '--'] },
   }, { model: 'configured-model', prompt: '' }, process.env);
-  const owned = startCodexProcess(launch, { timeoutMs: 3_000, signal: new AbortController().signal });
+  const frames=[];
+  const owned = startCodexProcess(launch, { timeoutMs: 3_000, signal: new AbortController().signal,onFrame:(event,line)=>frames.push({event,line}) });
   const result = await owned.finished;
-  assert.deepEqual(result.frames, [{ line: 1, event }]);
+  assert.deepEqual(frames, [{ line: 1, event }]);
   assert.equal(result.process.exitCode, 6);
   assert.equal(result.stdout.bytes.toString(), bytes.toString() + '{"type":');
   assert.equal(result.stderr.bytes.toString(), 'native diagnostic\n');
   assert.deepEqual(result.diagnostics, [diagnostic('INCOMPLETE_FRAME', 2)]);
   assert.equal(await owned.close(), result);
+});
+
+
+test('C13R.4R byte-derived execution retention bound for tiny and large frames',()=>{
+  const max=1024*1024;
+  for(const [event,count] of [
+    [{type:'error'},80000],
+    [{type:'item.completed',item:{id:'large',type:'command_execution',aggregated_output:'x'.repeat(65536)}},40]
+  ]){
+    const capture=createCodexOutputCapture(),bytes=frame(event);
+    const size=bytes.length-1, retained=Math.floor(max/size);
+    capture.write('stdout',frame({type:'turn.started'}));
+    for(let i=0;i<count;i++)capture.write('stdout',bytes);
+    const final={type:'item.completed',item:{id:'last',type:'agent_message',text:'final'}};
+    capture.write('stdout',frame(final));
+    capture.write('stdout',frame({type:'turn.completed',usage:{input_tokens:1,output_tokens:2}}));
+    const result=capture.finish(),facts=result.execution;
+    const extraError=event.type==='error'?1:0;
+    assert.equal(facts.frames.filter(x=>x.event.type===event.type&&x.event.item?.id!=='last').length,retained+extraError);
+    assert.equal(facts.omitted,count-retained-extraError);
+    assert.equal(facts.firstOmittedLine,retained+2);
+    assert.ok(facts.retainedBytes<=max);
+    assert.ok(facts.frames.length<=Math.floor(max/16)+2);
+    assert.equal(facts.message.event.item.text,'final');
+    assert.equal(facts.terminal,'turn.completed');
+    assert.equal(facts.invalidSequence,false);
+    assert.deepEqual(facts.usage,{inputTokens:1,outputTokens:2,cost:null});
+    assert.equal(result.stdout.bytes.length,max);
+    assert.equal(result.stdout.truncated,true);
+    assert.ok(result.diagnostics.every(x=>x.code==='OUTPUT_TRUNCATED'));
+    assert.equal(result.diagnostics.find(x=>x.reason==='EVIDENCE_LIMIT').count,facts.omitted);
+  }
 });
