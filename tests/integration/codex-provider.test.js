@@ -15,11 +15,9 @@ function codexSetup(body, { nativeSettings, ...options } = {}) {
     import { readFileSync } from 'node:fs';
     import { decisionContract } from ${JSON.stringify(new URL('../../src/application/decision-instructions.js', import.meta.url).href)};
     import { controllerInstructions } from ${JSON.stringify(new URL('../../src/application/controller-context.js', import.meta.url).href)};
+    import { readInvocationPrompt } from ${JSON.stringify(new URL('../fixtures/read-invocation-prompt.js', import.meta.url).href)};
     const prompt = readFileSync(0, 'utf8');
-    const separator = ${JSON.stringify('\n\nInvocation (JSON):\n')};
-    const boundary = prompt.indexOf(separator);
-    assert.notEqual(boundary, -1);
-    const invocation = JSON.parse(prompt.slice(boundary + separator.length));
+    const invocation = readInvocationPrompt(prompt);
     const host = invocation.context.find(item => item.ref === 'host:invocation-context')?.value;
     const emit = (type, fields = {}) => console.log(JSON.stringify({type, ...fields}));
     const message = (text, id = 'msg') => emit('item.completed', {item: {type: 'agent_message', id, text}});

@@ -1,3 +1,4 @@
+import { readInvocationPrompt } from './read-invocation-prompt.js';
 import assert from 'node:assert/strict';
 import { retrieveContext } from './mcp-client.js';
 import { decisionContract } from '../../src/application/decision-instructions.js';
@@ -88,7 +89,7 @@ agent()
   .onRequest(a.session.prompt, async ({ params, client }) => {
     const prompt = params.prompt[0].text;
     const marker = '\n\nInvocation (JSON):\n';
-    const { objective, attemptId, actionId, kind, profileId, operationId, context, skillInstructions, instructions } = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length));
+    const { objective, attemptId, actionId, kind, profileId, operationId, context, skillInstructions, instructions } = readInvocationPrompt(prompt);
     if (scenario === 'controller-contract' && kind === 'controller') {
       assert.deepEqual(instructions, controllerInstructions);
       assert.equal(instructions.filter(x => x === decisionContract).length, 1);
