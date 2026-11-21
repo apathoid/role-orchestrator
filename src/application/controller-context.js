@@ -311,7 +311,9 @@ export function pendingControllerHistoryRequest(state, attemptId) {
  * @param {number | {revision: number, index: number}} [workCursor]
  * @returns {ContextItem[]}
  */
-export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor = 0) {
+export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor) {
+  const explicitWorkPage = workCursor !== undefined;
+  workCursor ??= 0;
   const [request, ...history] = operationHistory(state);
   // References point to the original user ContextItems. Chronology is a
   // transport fact, not a Host decision about the current task or priority.
@@ -323,13 +325,13 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   const recovery = decisionRecovery(state);
   const active = correction && recovery.lastRejection?.active ? recovery.lastRejection : undefined;
   const result = active?.result;
-  const source = result && history.find(item => item.ref === result.ref &&
-    item.attemptId === active?.attemptId && item.completeness !== 'unavailable' && item.value !== undefined);
+  const stored = result && history.find(item => item.ref === result.ref && item.attemptId === active?.attemptId);
+  const source = stored && stored.completeness !== 'unavailable' && stored.value !== undefined ? stored : undefined;
   // The stored body and the inline representation are separate facts. An
   // existing scoped request is optional; neither it nor MCP promises a full body.
   const resultDelivery = result ? {
     kind: 'reference', ...result,
-    storedCompleteness: source?.completeness ?? 'unknown',
+    storedCompleteness: stored?.completeness ?? 'unknown',
     retrieval: source ? 'bounded_context_request' : 'unknown',
     inline: 'duplicate_inline', // longest placeholder, reserved before packing
   } : undefined;
@@ -484,10 +486,33 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // rows. Reserve only the bytes its actual bounded materialization would
   // consume, not a fixed percentage or a per-role allocation.
   const baseBytes = byteLength(correctionItem ? [host, correctionItem] : [host]);
-  const requestedBudget = compactContext(requested, Math.max(0, maxBytes - baseBytes + 1), false);
-  const requestedBytes = byteLength(requestedBudget.context) - 2 +
-    (requestedBudget.context.length ? 1 : 0);
+  const requestedRefs = new Set(requested.map(item => item.ref));
+  const requestedPositions = new Set(requested.flatMap(item => item.receivedSequence
+    ? [JSON.stringify(item.receivedSequence)] : []));
+  const ordinary = history.filter(item => !requestedRefs.has(item.ref) &&
+    (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence))));
+  const prefer = source && ordinary.includes(source);
+  const candidates = deduplicateInlineResults([...requested, ...(prefer ? [source] : []),
+    ...ordinary.slice().reverse().filter(item => !prefer || item !== source)]);
+  // Reserve the actual bounded representation using the same packer/order
+  // as final delivery. Explicit work pages precede recovery; default map
+  // rows and legacy previews do not. No separate budget or percentage.
+  const digits = String(maxBytes).length;
+  const requestedCount = requested.length;
+  const priority = candidates.slice(0, requestedCount + (prefer ? 1 : 0));
+  const requestedBudget = compactContext(priority.slice(0, requestedCount),
+    Math.max(0, maxBytes - baseBytes + 1 - digits), false);
+  const reservedBytes = (/** @type {ContextItem[]} */ records) =>
+    records.length ? byteLength(records) - 1 : 0;
+  const requestedBytes = reservedBytes(requestedBudget.context);
   let used = baseBytes + requestedBytes;
+  function reserveRecovery() {
+    if (!prefer) return;
+    const bounded = compactContext(priority.slice(requestedCount),
+      Math.max(0, maxBytes - used + 1 - digits), false);
+    used += reservedBytes(bounded.context);
+  }
+  if (!explicitWorkPage) reserveRecovery();
   /** @param {unknown[]} target @param {unknown} value */
   function tryAdd(target, value) {
     const size = byteLength(value) + (target.length ? 1 : 0);
@@ -524,6 +549,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   if (cursorAvailable && represented === 0 && from < workRows.length) {
     host.value.workMap.unavailableReason = 'budget';
   }
+  if (explicitWorkPage) reserveRecovery();
   // Existing legacy technical fields remain short, budgeted previews.
   for (const value of facts.unresolvedAttempts) if (!tryAdd(host.value.unresolvedAttempts, value)) break;
   for (const value of facts.effectUncertainties) if (!tryAdd(host.value.effectUncertainties, value)) break;
@@ -575,17 +601,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   used = measureHost();
   // Explicitly requested records take precedence without duplicating their
   // original inline bodies from the ordinary newest-first history.
-  const requestedRefs = new Set(requested.map(item => item.ref));
-  const requestedPositions = new Set(requested.flatMap(item => item.receivedSequence
-    ? [JSON.stringify(item.receivedSequence)] : []));
-  const ordinary = history.reverse().filter(item => !requestedRefs.has(item.ref) &&
-    (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence))));
-  // Explicitly requested refs retain precedence; only prioritize the proven
-  // original within the existing optional history budget.
-  const prefer = source && ordinary.includes(source);
-  const candidates = [...requested, ...(prefer ? [source] : []),
-    ...ordinary.filter(item => !prefer || item !== source)];
-  const bounded = compactContext(deduplicateInlineResults(candidates),
+  const bounded = compactContext(candidates,
     Math.max(0, maxBytes - used + 1), false);
   host.value.historyBudget.omitted = bounded.omitted;
   host.value.historyBudget.excerpted = bounded.excerpted;
@@ -616,7 +632,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       (source?.receivedSequence && item.receivedSequence &&
         item.receivedSequence.revision === source.receivedSequence.revision &&
         item.receivedSequence.index === source.receivedSequence.index));
-    resultDelivery.inline = !delivered ? 'omitted' :
+    resultDelivery.inline = !delivered ? (stored && !source ? 'unavailable' : 'omitted') :
       delivered.duplicateOf ? 'duplicate_inline' : delivered.excerpt !== undefined ? 'excerpt' :
         delivered.completeness === 'unavailable' || delivered.value === undefined ? 'unavailable' : delivered.completeness;
   }
@@ -624,7 +640,14 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // measured technical bytes must describe the actual delivered host record.
   measureHost();
   /** @type {ContextItem[]} */
-  const items = [request, host, ...bounded.context.reverse()];
+  // Keep ordinary history in its journal order, independently of packing.
+  // Explicit materializations (including positional and byte chunks) keep
+  // the existing separate request projection and its ordering.
+  const ordinaryOrder = new Map(ordinary.map((item,index)=>[item.ref,index]));
+  const selectedHistory = bounded.context.filter(item=>ordinaryOrder.has(item.ref))
+    .sort((a,b)=>(ordinaryOrder.get(a.ref)??0)-(ordinaryOrder.get(b.ref)??0));
+  const selectedRequests = bounded.context.filter(item=>!ordinaryOrder.has(item.ref)).reverse();
+  const items = [request, host, ...selectedHistory, ...selectedRequests];
   if (correctionItem) items.push(correctionItem);
   return items;
 }

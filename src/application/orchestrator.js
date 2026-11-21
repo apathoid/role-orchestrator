@@ -719,8 +719,12 @@ export function createOrchestrator(deps) {
             !original.summary && parsed.value.outputRefs.filter(pointer =>
               pointer.ref === original.ref ||
               (pointer.ref === original.providerRef && !reservedEvidenceRef(original.providerRef ?? ''))).length === 1 &&
+            parsed.value.outputRefs.some(pointer => (pointer.ref === original.ref || pointer.ref === original.providerRef) &&
+              pointer.source === 'model_claim' && pointer.kind === 'output') &&
             (typeof original.value === 'string'
-              ? (typeof result.output !== 'string' || result.decisionTextError === 'non_object' || alreadyRecorded)
+              ? (alreadyRecorded || (reply.outputObservationParsed === true &&
+                (result.decisionTextError === 'non_object' ||
+                 (!result.decisionTextError && typeof result.output !== 'string'))))
               : sameRecord(original.value, result.output));
           const canonicalRef = (handoff ? 'attempt-output:' : 'controller-output:') + attemptId;
           if (!alreadyRecorded || (addressable && !originalProven)) receive(observation({

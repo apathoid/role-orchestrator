@@ -563,6 +563,7 @@ for (const sample of [
       assert.equal(originalOutputs.length,1);
       assert.equal(originalOutputs[0].ref,'controller-output:'+parserReports[0].attemptId);
       assert.equal(originalOutputs[0].source,'model_claim');
+      assert.deepEqual(invalid[0].result,{ref:originalOutputs[0].ref,representation:'declared_value'});
       assert.equal(originalOutputs[0].provenance.kind,'model');
       assert.equal(JSON.stringify(invalid[0]).includes('C16R_REJECTED_PAYLOAD_'),false);
       assert.equal(JSON.stringify(decisionRecovery(failed)).includes('C16R_REJECTED_PAYLOAD_'),false);
@@ -600,6 +601,8 @@ for (const sample of [
         category:sample.category,stage:'parser',attemptId:parserReports[0].attemptId,
         path:'$',expected:sample.expected,totalRejected:1,consecutiveIdentical:1,
       });
+      assert.deepEqual(corrections[0].correction.result.ref,invalid[0].result.ref);
+      assert.equal(corrections[0].correction.result.representation,'declared_value');
       assert.equal(corrections[0].history?.totalRejected,1);
       assert.equal(corrections[0].history?.consecutiveIdentical,1);
       assert.equal(corrections[0].history?.lastRejection?.category,sample.category);

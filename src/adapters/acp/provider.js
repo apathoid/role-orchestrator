@@ -500,6 +500,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         flushMessage(!truncated && result.outcome.terminal === 'completed');
         if (result.outcome.terminal === 'completed' && finalMessageRef) {
           result.outputObservationRef = finalMessageRef;
+          if (invocation.kind === 'controller') result.outputObservationParsed = true;
         }
         const stopRef=publish({ ref: 'acp-stop', sourceId: sessionId, kind: 'provider_report', completeness: 'complete',
           value: { stopReason: stopReason ?? null, truncated, cancelRequested: signal.aborted } });

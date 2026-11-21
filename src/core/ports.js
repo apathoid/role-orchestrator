@@ -29,7 +29,7 @@
  * @typedef {ActivityEvent | {kind: 'gap', operationId: string, attemptId?: string, droppedCount: number,
  *   reason: 'overflow', sequenceRange?: {first: number, last: number}}} ActivityNotice
  * @typedef {(event: ActivityNotice) => void | Promise<void>} ActivityListener
- * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
+ * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, outputObservationParsed?: true, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
  *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected',
  *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth'}} ProviderResult
  * @typedef {{
