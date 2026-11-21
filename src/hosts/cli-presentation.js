@@ -47,7 +47,9 @@ export function cliRequestOutcome(event){
 
 /** @param {PresentationMode | undefined} mode @param {(text:string|readonly {text:string,tone?:PresentationTone}[],tone?:PresentationTone)=>Promise<unknown>} print @param {(fragment:{source:string,header:string,text:string,indent?:string,headerTone?:PresentationTone,sourceHeaderLength?:number})=>Promise<unknown>} [printChunk] @param {()=>void} [resetChunks] */
 export function cliPresentation(mode, print, printChunk, resetChunks) {
-  let closed=false;
+  let closed=false, summarized=false;
+  /** @type {Extract<ControlNotice,{channel:'execution'}>|undefined} */
+  let pendingTerminal;
   const tools=createCliTools();
   /** @type {Map<string,string>} */
   const aliases=new Map();
@@ -71,6 +73,29 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
     return print([...(heading?[{text:heading,tone:tones.get(id)??'neutral'}]:[]),
       ...(typeof message==='string'?[{text:message,tone}]:message)]);
   }
+  // Hold at most one equivalent terminal decoration until the authoritative
+  // snapshot is returned. Preserve intermediate status changes, gaps and all
+  // attempt reports. This is presentation only, not a new lifecycle state.
+  /** @returns {Promise<unknown>|undefined} */
+  function flushTerminal(){
+    const pending=pendingTerminal;pendingTerminal=undefined;
+    if(!pending)return;
+    const text=formatExecution(pending.event,'compact',pending.fact);
+    if(text){currentSource=undefined;return print('\n'+text,'neutral');}
+  }
+  /** @param {Operation} state */
+  function summaryCovers(state){
+    const pending=pendingTerminal,fact=pending?.fact;
+    if(!pending||!fact||fact.operationId!==state.operationId)return false;
+    // Verify the last status transition, not a coincidentally identical label.
+    const last=state.events.findLast(event=>['operation.cancelled','operation.waiting','operation.finished','operation.continued','operation.recovered'].includes(event.kind));
+    if(!last||last.eventId!==fact.journalEventId||last.kind!==fact.kind)return false;
+    if(last.kind==='operation.cancelled')return state.status==='cancelled'&&state.cancellation===last.source&&fact.cancellation===last.source;
+    if(last.kind==='operation.waiting')return state.status==='waiting'&&last.waiting.kind==='technical'&&
+      state.waiting?.kind==='technical'&&fact.waitingKind==='technical'&&state.waiting.reason.code===last.waiting.reason.code&&
+      pending.event.reasonCode===last.waiting.reason.code;
+    return false;
+  }
   return {
     /** Trusted attempt identity established from execution facts, never guessed. */
     sourceFor: (/** @type {string} */ attemptId)=>aliases.get(attemptId),
@@ -85,6 +110,15 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
     /** @param {ControlNotice} notice */
     async notice(notice) {
       if(!mode||closed)return;
+      if(mode==='compact'&&!summarized&&notice.channel==='execution'&&notice.fact?.journalEventId&&
+        ((notice.event.eventName==='operation.cancelled'&&notice.fact.kind==='operation.cancelled'&&notice.fact.cancellation)||
+        (notice.event.eventName==='operation.waiting'&&notice.fact.kind==='operation.waiting'&&notice.fact.waitingKind==='technical'))){
+        await flushTerminal();pendingTerminal=notice;
+        if(notice.event.eventName==='operation.cancelled')tools.clear();
+        return;
+      }
+      if(pendingTerminal&&(notice.channel==='gap'||(notice.channel==='execution'&&
+        ['operation.continued','operation.recovered','operation.finished','operation.waiting','operation.cancelled','delivery.gap'].includes(notice.event.eventName))))await flushTerminal();
       if(notice.channel==='execution'&&notice.fact?.attemptId){
         if(aliases.size>=128&&!aliases.has(notice.fact.attemptId)){
           const first=aliases.keys().next().value;
@@ -185,7 +219,7 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
           const event=notice.channel==='execution'?notice.event:undefined;
           if(mode==='compact'&&fact&&event?.eventName==='attempt.outcome'&&fact.attemptId){
             const alias=factLabel(fact);
-            await sourcePrint(fact.attemptId,alias,indent('◇ Outcome reported · '+fact.terminal+' · effect='+fact.effect),
+            await sourcePrint(fact.attemptId,alias,indent((fact.late?'◇ Late outcome reported · ':'◇ Outcome reported · ')+fact.terminal+' · effect='+fact.effect),
               fact.terminal==='failed'||fact.terminal==='unknown'?'error':'neutral');
           }else if(mode==='compact'&&fact?.kind==='operation.finished'){
             currentSource=undefined;
@@ -206,16 +240,18 @@ export function cliPresentation(mode, print, printChunk, resetChunks) {
     },
     /** @param {unknown} value @param {boolean} [defer] */
     finish(value,defer=false) {
-      if(!mode||closed||!value||typeof value!=='object'||!('events' in value)||!('attempts' in value))return;
+      if(!mode||closed||summarized||!value||typeof value!=='object'||!('events' in value)||!('attempts' in value))return;
       const state=/** @type {Operation} */(value);
       const summary=formatOperation(state,mode);
       const text=Buffer.byteLength(summary)<=512*1024?summary:formatOperation(state,'compact')+'\n[Detailed snapshot omitted; inspect current operation]';
-      closed=true;aliases.clear();tones.clear();tools.clear();currentSource=undefined;
+      if(summaryCovers(state))pendingTerminal=undefined;
+      else void flushTerminal()?.catch(()=>{});
+      summarized=true;tools.clear();currentSource=undefined;
       const tone=state.status==='finished'&&state.assessment?.overall==='complete'?'success':'neutral';
       const render=()=>{void print('\n'+text,tone).catch(()=>{});};
       if(defer)return render;
       render();
     },
-    close(){closed=true;aliases.clear();tones.clear();tools.clear();currentSource=undefined;},
+    close(){if(!closed)void flushTerminal()?.catch(()=>{});closed=true;aliases.clear();tones.clear();tools.clear();currentSource=undefined;},
   };
 }
