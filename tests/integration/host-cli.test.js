@@ -117,3 +117,24 @@ test('C11 review P3: diagnose distinguishes directories from files and cwd-depen
     assert.equal((await diagnose('./command-is-file')).providers[0].launch, 'cwd_dependent');
     assert.equal((await diagnose(commandFile, cwd)).state, 'accessible');
   }));
+
+test('C17R configured capture reaches local sink only and leaves CLI machine output unchanged',()=>withOwnedRun('C17R-cli-private',async(cwd,spawn)=>{
+  const config=join(cwd,'config.json');
+  const spec={schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},
+    providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url)),'controller-contract']}}},
+    storage:{directory:'state'},diagnostics:{captureBodies:true,promptCaptureMaxBytes:262144}};
+  await writeFile(config,JSON.stringify(spec));
+  const result=spawn(process.execPath,[entry,'run','fixture task','--config',config,'--format','json','--presentation','debug'],{cwd});
+  assert.equal(result.status,0,result.stderr);
+  const parsed=JSON.parse(result.stdout);
+  assert.equal(parsed.status,'finished');
+  assert.equal(parsed.assessment.answer,'# Result\nПроверка 🧪\n{"value":1}');
+  assert.doesNotMatch(result.stdout,/adapter\.prompt\.capture|serializedPromptBytes|Controller Invocation \(sectioned JSON\)/);
+  assert.doesNotMatch(result.stderr,/Controller Invocation \(sectioned JSON\)/);
+  const events=(await readFile(join(cwd,'state','diagnostics','diagnostics.ndjson'),'utf8')).trim().split('\n').map(line=>JSON.parse(line));
+  const capture=events.find(e=>e.eventName==='adapter.prompt.capture');
+  assert.equal(capture.operationId,parsed.operationId);
+  assert.match(capture.details.prompt,/Controller Invocation \(sectioned JSON\)/);
+  assert.equal(capture.details.captureCompleteness,'complete_before_redaction');
+  assert.equal(capture.details.captureLimitBytes,262144);
+}));

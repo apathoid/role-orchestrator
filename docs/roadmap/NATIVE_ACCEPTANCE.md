@@ -29,27 +29,39 @@ opencode run --help
 
 A = direct native agent; B = approved baseline; C = only presentation changes; D = presentation, recovery, telemetry and independent UX corrections. B/C have no new text-prompt reporter; record their unavailable measures as unknown. D's telemetry is passive but has measurable cost; body capture is disabled in all main runs. Compare separately with D's capture explicitly enabled only for a safe diagnostic run. No provider-context compaction can be inferred from RO bytes. Use the actual provider's exposed metrics only.
 
-### Main comparable run (at least 3 independent runs per accessible variant)
+### Two main comparable runs (at least 3 independent runs of each scenario per accessible variant)
 
-Set `BASE_CONFIG` to the absolute path of an existing trusted RO config, `WORKSPACE` to the absolute test directory, and `MODEL` to the matching actual native OpenCode model selector; confirm installed native CLI syntax first. Restore the same fixture contents between runs. Keep default presentation and credentials unchanged except separate state directory, explicit 65536 Controller history budget, capture off.
+Set `BASE_CONFIG` to the absolute path of an existing trusted RO config, `WORKSPACE` to the absolute test directory, and `MODEL` to the matching actual native OpenCode model selector; confirm installed native CLI syntax first. Restore the same fixture contents between runs. Keep default presentation and credentials unchanged except separate state directory, explicit 65536 Controller history budget, capture off. For the second main scenario, set `CHANGED_TASK_FILE` to a private file with the original authorized native `changed` task (exact UTF-8 text) and `CHANGED_WORKSPACE` to the matching disposable authorized Git fixture. Record and verify the fixed target commit and skill contents/hash before every run; use a fresh equivalent working copy if an earlier run changed the fixture. Do not publish private task content or alter native skills/permissions. If unavailable, record that scenario UNVERIFIED rather than substituting the smoke test.
 
 ```bash
-TASK='Ответь двумя строками: первая — число 42, вторая — слово Привет. Без других строк.'
+for scenario in smoke changed; do
+  if [ "$scenario" = smoke ]; then
+    TASK='Ответь двумя строками: первая — число 42, вторая — слово Привет. Без других строк.'
+    CASE_WORKSPACE="$WORKSPACE"
+  else
+    if [ ! -r "${CHANGED_TASK_FILE:-}" ] || [ ! -d "${CHANGED_WORKSPACE:-}" ]; then
+      printf '%s\n' 'changed: UNVERIFIED; missing authorized fixture or task' >> "$OUT/blockers.txt"
+      continue
+    fi
+    TASK=$(cat "$CHANGED_TASK_FILE"; printf .); TASK=${TASK%.}
+    CASE_WORKSPACE="$CHANGED_WORKSPACE"
+  fi
 for n in 1 2 3; do
   for variant in A B C D; do
-    RUN="$OUT/$variant-$n"; mkdir -p "$RUN"
+    # Confirm/restore the same disposable input fixture before each run.
+    RUN="$OUT/$scenario-$variant-$n"; mkdir -p "$RUN"
     if [ "$variant" = A ]; then
-      (cd "$WORKSPACE" && /usr/bin/time -o "$RUN/time.txt" -f '%e %x' \
+      (cd "$CASE_WORKSPACE" && /usr/bin/time -o "$RUN/time.txt" -f '%e %x' \
         opencode run --model "$MODEL" "$TASK" > "$RUN/result.txt" 2> "$RUN/stderr")
       printf '%s\n' "$?" > "$RUN/exit"
       continue
     fi
     jq --arg state "$RUN/state" \
-      'del(.context.maxBytes) | .context.controllerMaxBytes=65536 |
+      'del(.context.maxBytes,.diagnostics.promptCaptureMaxBytes) | .context.controllerMaxBytes=65536 |
        .storage.directory=$state | .diagnostics.captureBodies=false' \
       "$BASE_CONFIG" > "$RUN/config.json"
     RO="$OUT/ro-$variant/bin/role-orchestrator"
-    (cd "$WORKSPACE" && /usr/bin/time -o "$RUN/time.txt" -f '%e %x' \
+    (cd "$CASE_WORKSPACE" && /usr/bin/time -o "$RUN/time.txt" -f '%e %x' \
       "$RO" run "$TASK" --config "$RUN/config.json" --format json > "$RUN/result.json" 2> "$RUN/stderr")
     printf '%s\n' "$?" > "$RUN/exit"
     op=$(jq -r '.operationId // empty' "$RUN/result.json")
@@ -59,9 +71,10 @@ for n in 1 2 3; do
     fi
   done
 done
+done
 ```
 
-Do not silently discard a failure, cancellation or an empty result. Inspect local rotated diagnostics in each state directory and correlate operationId/attemptId (and actual native session/thread id where present). Use `context.host_prepared`, `adapter.prompt.prepared`, `adapter.prompt.send_attempted` / launch or observed native turn, `adapter.prompt.reply`, `provider.reply_observed`, `controller.invalid_proposal` and journal terminal events. Record missing/rotated/drop markers; redact exports before sharing. In the separate capture test, enable existing `diagnostics.captureBodies=true` with a non-sensitive fixture; collect only the bounded redacted representation from the sink, not as model history or client events.
+Do not silently discard a failure, cancellation or an empty result. Inspect local rotated diagnostics in each state directory and correlate operationId/attemptId (and actual native session/thread id where present). Use `context.host_prepared`, `adapter.prompt.prepared`, `adapter.prompt.send_attempted` / launch or observed native turn, `adapter.prompt.reply`, `provider.reply_observed`, `controller.invalid_proposal` and journal terminal events. Record missing/rotated/drop markers; redact exports before sharing. In the separate capture test, enable `diagnostics.captureBodies=true`, e.g. `promptCaptureMaxBytes=262144`, `maxFileBytes=4194304`, `retainedFiles=3` in a separate D config with a non-sensitive fixture; verify source offsets/completeness and actual stored bytes/drop metadata. Collect only the bounded redacted representation from the sink, not as model history or client events. Do not silently mix capture-enabled timings into the main series.
 
 ### Autonomy and quality checks (repeat with authenticated independent alternatives when available)
 
@@ -71,7 +84,7 @@ Use the main fixed rubric: compare the actual two lines, valid Decision acceptan
 |---|---|
 | Main simple two-line answer | Literal 42 / Привет; native direct is content/time reference only; RO can complete in one Controller invocation |
 | Request Markdown headings, Unicode and separately literal JSON | Compare actual answer format, not transport wrapper; no Host rewriting |
-| Authorized changed-skill task on fixed test commit | Native skill is available outside RO catalog; compare required output/evidence and actual skill use when observable |
+| Second main scenario: authorized changed-skill task on fixed test commit (3 runs/variant) | Native skill is available outside RO catalog; compare required output/evidence and actual skill use when observable |
 | Non-Git test dir with a harmless project instruction, file and script | Native discovery follows the actual task/instructions; no Git gate |
 | Naturally rejected completed Decision | Original attempt correlation, active correction marker, availability/ref/truncation, no mandatory reuse/retrieval; if not observed mark native case UNVERIFIED (deterministic parser/admission fixtures separate) |
 | Two independent tasks suitable for delegation and native subagents | Observe chosen Actions/waits/results and native subagent events where available; distinguish native subagent from RO Worker |

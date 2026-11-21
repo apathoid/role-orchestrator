@@ -1,6 +1,12 @@
 # Role Orchestrator — оперативный статус
 
-## C17 — Controller Context Efficiency & Decision Reliability (implementation review; engineering pending; native UNVERIFIED)
+## C17R — Recovery Delivery & Diagnostic Verification (implementation verification; native UNVERIFIED)
+
+Review baseline `e7e8bf84b731b5db9d3a6f9cb9133a74a1da34ff` on `feature/controller-reliability`: [full CI #44931825482](https://github.com/apathoid/role-orchestrator/actions/runs/44931825482) SUCCESS (590 root, 15 actual Linux PTY, Node 24/Nix/release). This is baseline evidence, not C17R PASS. Test-only [RED #44933302382](https://github.com/apathoid/role-orchestrator/actions/runs/44933302382) on `644e9720` reproduced four failures (unattested mismatch, incorrect output kind/source, chronology). Initial correction [CI #44933465111](https://github.com/apathoid/role-orchestrator/actions/runs/44933465111) found checkJs annotation errors, corrected in subsequent code. Scope and implementation checkpoints: [C17R](C17_CONTROLLER_CONTEXT_AND_DECISION_RELIABILITY.md#c17r--recovery-delivery--diagnostic-verification).
+
+Implemented existing-budget recovery reserve before ordinary previews, explicit requested work pages first, chronological history projection; optional parser-source attestation from trusted native adapters and fallback; configurable UTF-8 bounded capture, actual serialized queue-byte limit and private redaction/completeness; persisted and lifecycle regressions; real NDJSON fault/overflow/rotation equivalence and three-build deterministic preparation comparison; two main native A/B/C/D scenarios. Decision v1 and native permissions/capabilities, model strategy, lifecycle and default context budgets unchanged. Final engineering status requires [mandatory CI](https://github.com/apathoid/role-orchestrator/actions/workflows/ci.yml?query=branch%3Afeature%2Fcontroller-reliability) on exact HEAD. Native comparison and genuine Zed/Ornith/independent provider remain UNVERIFIED (no authenticated real workspace/config/client). No master merge.
+
+## C17 — Controller Context Efficiency & Decision Reliability (baseline engineering CI PASS; C17R corrective review above; native UNVERIFIED)
 
 **Approved scope:** [C17 implementation plan](C17_CONTROLLER_CONTEXT_AND_DECISION_RELIABILITY.md); active branch `feature/controller-reliability` created from master merge PR #3 at `d80638609d86da92e2a88d939fa09a90a1a3cfbf`. Implementation is on the feature branch only; no master merge. Final exact-SHA [mandatory CI](https://github.com/apathoid/role-orchestrator/actions/workflows/ci.yml?query=branch%3Afeature%2Fcontroller-reliability) determines engineering closure.
 
@@ -14,7 +20,7 @@
 
 **Scope:** C17.0 baseline; C17.1 faithful Controller Invocation presentation; C17.2 durable addressable rejected-result recovery; C17.3 technical deduplication and bounded passive diagnostics; C17.4 controlled native comparison and autonomy checks; C17.6 optional-field native CLI form UX; C17.7 truthful non-redundant compact terminal outcomes; C17.8 full exact-SHA engineering validation and documentation. Keep current Decision v1 schema/transport/parser/decoder/admission, model ownership, native tools/skills/project discovery, current user-turn semantics, journal/5/10 bounds, authorization, budgets and cancellation/unknown-effect guarantees. No semantic Host summaries, extra workflow, new provider capability requirements, default limit changes, steering or persistent session change.
 
-**Readiness:** scoped code and regression changes committed; ENGINEERING PENDING final exact-SHA CI; NATIVE UNVERIFIED for C17. Prior C16/C16R and C15 checks below are historical evidence tied to their stated SHAs, not a PASS for this branch/merge. Earlier open native/GUI obligations remain open; do not relabel them based on new fixtures. Document all actual checks and blockers as work proceeds.
+**Readiness:** historical C17 exact-SHA engineering CI passed at `e7e8bf84`; C17R corrective acceptance above remains separately verified; NATIVE UNVERIFIED for C17. Prior C16/C16R and C15 checks below are historical evidence tied to their stated SHAs, not a PASS for this branch/merge. Earlier open native/GUI obligations remain open; do not relabel them based on new fixtures. Document all actual checks and blockers as work proceeds.
 
 
 ## C16R — targeted recovery/parser regression completion (ENGINEERING CODE CI PASS; final docs-SHA CI pending; native UNVERIFIED)

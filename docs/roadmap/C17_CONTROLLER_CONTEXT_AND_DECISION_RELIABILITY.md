@@ -1,6 +1,6 @@
 # C17 — Controller Context Efficiency & Decision Reliability
 
-**Status:** implementation review — engineering pending final exact-SHA CI; native UNVERIFIED. See [STATUS](STATUS.md) and [operator procedure](NATIVE_ACCEPTANCE.md).  
+**Status:** C17 baseline full CI PASS at e7e8bf84; C17R corrective verification below; native UNVERIFIED. See [STATUS](STATUS.md) and [operator procedure](NATIVE_ACCEPTANCE.md).  
 **Branch:** `feature/controller-reliability` (from master after merge of PR #3)  
 **Planning baseline:** `d80638609d86da92e2a88d939fa09a90a1a3cfbf`  
 **Priority:** P1 reliability/context/diagnostics; P2 terminal UX.  
@@ -179,3 +179,20 @@ Run mandatory repository CI/checks per current workflow: Node 24 and checkJs/noE
 Update existing docs by purpose only: this plan and IMPLEMENTATION_PLAN/STATUS; CONTEXT_AND_RECOVERY for confirmed recovery changes, PROVIDERS_AND_CONFIGURATION/DIAGNOSTICS for actual config/diagnostic contracts, DECISIONS for durable architectural choices, CHANGELOG for user-facing changes, existing tests/ACCEPTANCE_MATRIX.md (extend relevant A05/A06/A21/A24/A123–A125 and UX entries or add only genuinely new requirements); keep NATIVE_ACCEPTANCE procedure consistent if needed. Do not pre-mark unexecuted checks PASS, duplicate normative requirements or commit private captures.
 
 Final handoff: exact HEAD and branch, scope delivered, technical decisions/evidence, regression paths/expected RED/actual GREEN, CI URL and exact SHA, native commands/versions/results or exact blockers, remaining limitations. Distinguish IMPLEMENTATION COMPLETE / ENGINEERING VERIFIED / NATIVE VERIFIED (or UNVERIFIED). If native testing reveals unresolved regression, state it separately; no false quality claims. Closure of engineering work requires all scoped fixes and mandatory checks; no out-of-scope runtime changes.
+
+## C17R — Recovery Delivery & Diagnostic Verification
+
+Approved review baseline `e7e8bf84b731b5db9d3a6f9cb9133a74a1da34ff`; same branch; no merge. Correct only P2.1–P2.6 and procedure/coverage P3.2/C17.7. Preserve Decision v1 transport/parser/decoder/admission and model ownership as above. No change to section order or strategy instructions.
+
+| Checkpoint | Implementation and verification |
+|---|---|
+| C17R.0 | Exact baseline CI and prior-code targeted RED; see STATUS. |
+| C17R.1/.2 | Existing common-budget packer reserves explicit refs/requested page then correlated recovery before default previews, keeping minimal work identity where both fit; ordinary delivered history follows journal revision/index, request projection is separate. |
+| C17R.3 | Trusted optional UTF-8 capture limit; serialized redacted body and record caps with explicit unavailable, private sink only and existing count/byte-bounded queue/retention. |
+| C17R.4 | Optional adapter parser attestation, exact identity/provenance/output pointer checks, canonical fallback for unproven association; no Application reparse. |
+| C17R.5 | Extend C17/C16R parser/admission, restart/ACK-loss, same-turn and new-turn, Worker continuation/unknown, late/cancellation scenarios. |
+| C17R.6 | Real NDJSON sink isolation and fault/rotation tests; exact-build three-variant preparation probe at 64/256/1024 KiB, three samples each, no noisy timing gates. Distinguish fixture overhead from native latency. |
+| C17R.7 | Two main operator scenarios (smoke and original authorized changed-skill task) with >=3 independent runs/variant. Native remains UNVERIFIED. |
+| C17R.8 | Architectural review, CLI regressions, full mandatory CI and final exact HEAD evidence. No scope expansion. |
+
+Acceptance requires actual checks, not the existence of tests or documentation; see [STATUS](STATUS.md), [acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md), [native comparison procedure](NATIVE_ACCEPTANCE.md).
