@@ -1,8 +1,8 @@
 # Активный план реализации и приёмки
 
-## C17 — Controller Context Efficiency & Decision Reliability (PLANNED; active)
+## C17 — Controller Context Efficiency & Decision Reliability (implementation review; exact-SHA CI pending)
 
-**Approved implementation scope:** [C17 plan](C17_CONTROLLER_CONTEXT_AND_DECISION_RELIABILITY.md). **Branch:** `feature/controller-reliability`, from master at `d80638609d86da92e2a88d939fa09a90a1a3cfbf` (merge PR #3). Start at C17.0. This is the active development milestone; older entries below are historical, with their original verification boundaries. No master merge by the implementation agent.
+**Approved implementation scope:** [C17 plan](C17_CONTROLLER_CONTEXT_AND_DECISION_RELIABILITY.md). **Branch:** `feature/controller-reliability`, from master at `d80638609d86da92e2a88d939fa09a90a1a3cfbf` (merge PR #3). Scoped implementation and regression changes are committed; see [STATUS](STATUS.md) and [native comparison procedure](NATIVE_ACCEPTANCE.md). Native acceptance remains UNVERIFIED. This is the active development milestone; older entries below are historical, with their original verification boundaries. No master merge by the implementation agent.
 
 | Step | Executable result |
 |---|---|

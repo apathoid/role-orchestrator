@@ -2,7 +2,13 @@
 
 Публичные изменения и основные продуктовые вехи (не журнал всех коммитов). Текущий operational status и доказательства исполнения — [roadmap STATUS](docs/roadmap/STATUS.md).
 
-## Unreleased — C12–C16 integration and delivery
+## Unreleased — C12–C17 integration and delivery
+
+### C17 — Controller Context Efficiency & Decision Reliability (native effectiveness UNVERIFIED)
+- Sectioned, literal Controller text prompt with one Decision reference, bounded history and separately identified active correction. Decision v1 parser/schema/admission and Worker transport unchanged.
+- Receipt-bound rejected-result reference and distinct wire/declared representations support optional addressable recovery without forced retry/reuse or additional body storage. Passive payload/transport/usage observations and bounded private opt-in capture.
+- Generic native optional text field affordance with explicit :skip; schema and broker-owned response remain unchanged. Compact CLI summary removes only equivalent terminal decorations and preserves cancellation progress and late/unknown outcomes.
+- Baseline comparator and focused regressions; [engineering evidence and limits](docs/roadmap/STATUS.md), [native comparative procedure](docs/roadmap/NATIVE_ACCEPTANCE.md). No native speed/quality claim.
 
 ### C16 — Controller Reliability & Decision Recovery (native quality UNVERIFIED)
 - Controller Invocation now identifies original and latest accepted user turns by immutable journal ContextItem references and positions. Initial `objective` and literal user messages retain their original text and provenance; Controller decides whether a new message is an answer, clarification, extra context or changed task.

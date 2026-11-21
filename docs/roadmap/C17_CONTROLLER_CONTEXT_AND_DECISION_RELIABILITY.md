@@ -1,6 +1,6 @@
 # C17 — Controller Context Efficiency & Decision Reliability
 
-**Status:** PLANNED — approved for implementation  
+**Status:** implementation review — engineering pending final exact-SHA CI; native UNVERIFIED. See [STATUS](STATUS.md) and [operator procedure](NATIVE_ACCEPTANCE.md).  
 **Branch:** `feature/controller-reliability` (from master after merge of PR #3)  
 **Planning baseline:** `d80638609d86da92e2a88d939fa09a90a1a3cfbf`  
 **Priority:** P1 reliability/context/diagnostics; P2 terminal UX.  

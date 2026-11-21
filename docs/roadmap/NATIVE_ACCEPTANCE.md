@@ -1,5 +1,87 @@
 # C12.3–C12.4: протокол нативной приёмки
 
+## C17.4 — Controller context and decision reliability (NATIVE UNVERIFIED)
+
+No authenticated real-model provider, user config/workspace, installed native agent or Zed GUI was available to the implementation agent. Node 24/Nix/actual PTY and SDK fixtures in Actions are engineering evidence only. The following procedure is for the operator, not a product runtime workflow; no private prompts, config or credentials go to Git or CI.
+
+### Isolate builds and control conditions
+
+Use a trusted local checkout and an authorized disposable, non-secret workspace (native Git/non-Git scenarios separately). RO does not sandbox tools. Keep the normal native permission/skill discovery configuration; do not grant additional authority for a test. Use absolute paths for provider/plugin/skill settings if configuration is relocated. Record exact model build/quantization, context window, sampling, effort, agent/transport/client and binary versions, OS, Node/Nix, timeout/other budgets, initial files/skill hashes, and whether the native session/server was cold or warm.
+
+```bash
+umask 077
+OUT=$(mktemp -d "${TMPDIR:-/tmp}/ro-c17.XXXXXXXX")
+B=d80638609d86da92e2a88d939fa09a90a1a3cfbf
+C=bfd2532b7c840420dac7878f7bc66cd76eefa848
+D=$(git rev-parse feature/controller-reliability)
+printf 'B=%s\nC=%s\nD=%s\n' "$B" "$C" "$D" > "$OUT/builds.txt"
+for variant in B C D; do
+  case "$variant" in B) sha=$B;; C) sha=$C;; D) sha=$D;; esac
+  git worktree add --detach "$OUT/src-$variant" "$sha" || break
+  (cd "$OUT/src-$variant" &&
+    nix build --no-update-lock-file --out-link "$OUT/ro-$variant" .#role-orchestrator) || break
+done
+node --version
+nix --version
+opencode --version
+opencode run --help
+```
+
+A = direct native agent; B = approved baseline; C = only presentation changes; D = presentation, recovery, telemetry and independent UX corrections. B/C have no new text-prompt reporter; record their unavailable measures as unknown. D's telemetry is passive but has measurable cost; body capture is disabled in all main runs. Compare separately with D's capture explicitly enabled only for a safe diagnostic run. No provider-context compaction can be inferred from RO bytes. Use the actual provider's exposed metrics only.
+
+### Main comparable run (at least 3 independent runs per accessible variant)
+
+Set `BASE_CONFIG` to the absolute path of an existing trusted RO config, `WORKSPACE` to the absolute test directory, and `MODEL` to the matching actual native OpenCode model selector; confirm installed native CLI syntax first. Restore the same fixture contents between runs. Keep default presentation and credentials unchanged except separate state directory, explicit 65536 Controller history budget, capture off.
+
+```bash
+TASK='Ответь двумя строками: первая — число 42, вторая — слово Привет. Без других строк.'
+for n in 1 2 3; do
+  for variant in A B C D; do
+    RUN="$OUT/$variant-$n"; mkdir -p "$RUN"
+    if [ "$variant" = A ]; then
+      (cd "$WORKSPACE" && /usr/bin/time -o "$RUN/time.txt" -f '%e %x' \
+        opencode run --model "$MODEL" "$TASK" > "$RUN/result.txt" 2> "$RUN/stderr")
+      printf '%s\n' "$?" > "$RUN/exit"
+      continue
+    fi
+    jq --arg state "$RUN/state" \
+      'del(.context.maxBytes) | .context.controllerMaxBytes=65536 |
+       .storage.directory=$state | .diagnostics.captureBodies=false' \
+      "$BASE_CONFIG" > "$RUN/config.json"
+    RO="$OUT/ro-$variant/bin/role-orchestrator"
+    (cd "$WORKSPACE" && /usr/bin/time -o "$RUN/time.txt" -f '%e %x' \
+      "$RO" run "$TASK" --config "$RUN/config.json" --format json > "$RUN/result.json" 2> "$RUN/stderr")
+    printf '%s\n' "$?" > "$RUN/exit"
+    op=$(jq -r '.operationId // empty' "$RUN/result.json")
+    if [ -n "$op" ]; then
+      "$RO" trace "$op" --config "$RUN/config.json" --format json > "$RUN/trace.json"
+      "$RO" export-diagnostics "$op" --config "$RUN/config.json" --output "$RUN/export.json"
+    fi
+  done
+done
+```
+
+Do not silently discard a failure, cancellation or an empty result. Inspect local rotated diagnostics in each state directory and correlate operationId/attemptId (and actual native session/thread id where present). Use `context.host_prepared`, `adapter.prompt.prepared`, `adapter.prompt.send_attempted` / launch or observed native turn, `adapter.prompt.reply`, `provider.reply_observed`, `controller.invalid_proposal` and journal terminal events. Record missing/rotated/drop markers; redact exports before sharing. In the separate capture test, enable existing `diagnostics.captureBodies=true` with a non-sensitive fixture; collect only the bounded redacted representation from the sink, not as model history or client events.
+
+### Autonomy and quality checks (repeat with authenticated independent alternatives when available)
+
+Use the main fixed rubric: compare the actual two lines, valid Decision acceptance (RO only), first-attempt acceptance, accepted/rejected counts and stage, invocation count, elapsed/stop/exit, prompt bytes, reported usage, native tool events and meaningful task content. For each scenario below record the exact input, expected observable, actual result, evidence, PASS/FAIL/UNVERIFIED. A different valid model strategy is not a failure. No mandatory tools or forced delegation are introduced.
+
+| Input/scenario | Verification |
+|---|---|
+| Main simple two-line answer | Literal 42 / Привет; native direct is content/time reference only; RO can complete in one Controller invocation |
+| Request Markdown headings, Unicode and separately literal JSON | Compare actual answer format, not transport wrapper; no Host rewriting |
+| Authorized changed-skill task on fixed test commit | Native skill is available outside RO catalog; compare required output/evidence and actual skill use when observable |
+| Non-Git test dir with a harmless project instruction, file and script | Native discovery follows the actual task/instructions; no Git gate |
+| Naturally rejected completed Decision | Original attempt correlation, active correction marker, availability/ref/truncation, no mandatory reuse/retrieval; if not observed mark native case UNVERIFIED (deterministic parser/admission fixtures separate) |
+| Two independent tasks suitable for delegation and native subagents | Observe chosen Actions/waits/results and native subagent events where available; distinguish native subagent from RO Worker |
+| Natural native choice/form and clarification | Original field titles/values, optional :skip vs empty, :back, broker ACK, request identity, direct and attached client; no model question seen = UNVERIFIED |
+| Resume with a related and subsequently a different task after finished/waiting | Original/new user messages, order, no stale correction or inferred intent |
+| Cancel during active safe read, controlled timeout, disconnected provider | User cancellation source, terminal vs unknown effect, no blind replay; never test a potentially damaging effect |
+| Normal authorized MCP-disabled configuration | Can complete using available native capabilities; no forced retrieval. Record absent capability honestly. |
+
+Repeat using the user's Ornith-1.5-35B-A3B/OpenCode ACP configuration if available, a smaller model and a stronger control, and another independent transport/provider. Run C16.6 and prior real installed Zed/CLI/native acceptance obligations separately if not already verified. Report sample sizes, each run and range/median; do not claim universal speedup from three runs or infer hidden reasoning. Report actual content/evidence/skill compliance alongside throughput. If a material regression is reproduced, isolate B→C vs C→D and revise only the agreed C17 changes. Until actual evidence is obtained, native effectiveness and absence of quality regression remain UNVERIFIED.
+
 ## C15R-GUI — graphical ACP client verification (UNVERIFIED)
 
 Engineered ACP v1 wire forwarding and RO-owned projection have SDK tests; **no real installed Zed session or screenshot was available for this implementation**. Do not infer Zed rendering from official protocol schemas, Zed documentation or SDK fixture. See [C15R-GUI](C15R_GUI_GRAPHICAL_ACP_PRESENTATION.md), [A116–A122](../../tests/ACCEPTANCE_MATRIX.md). Record installed RO exact SHA, real Zed version, pinned ACP SDK v1, provider/model, capabilities and redacted actual `session/update`; compare before/after for native Controller plan in compact (not Host plan), interleaved parallel Workers, source/finding uncertainty, original Markdown/final, permission/form, cancel/unknown and A→B→A `session/load`. **Probe client Markdown rendering before building an own formatter.** Measure bounded native delivery/gaps/latency separately with deterministic fixtures. Report actual RO-wire PASS, client-render PASS, client limitation or UNVERIFIED. A second compatible ACP client if available. Do not publish credentials/private prompts/paths, fabricate native results, add special client branches or change authority.
