@@ -129,11 +129,16 @@ test('C17R recovery reserve precedes default work previews and chronological pro
 });
 
 test('C17R cross-attempt reference falls back and late cancelled result cannot replace a durable rejection',{timeout:5000},async()=>{
-  const reached=Promise.withResolvers(),release=Promise.withResolvers(),late=Promise.withResolvers();
-  let firstRef,secondRef,lateAttempt,firstAttempt,cancellationRevision;
-  const {api,invocations}=setup({maxInvocations:5,committedDiagnostic(event){
-    if(event.eventName==='attempt.late_outcome'&&event.attemptId===lateAttempt&&
-      cancellationRevision!==undefined&&event.sequence>cancellationRevision)late.resolve();
+  const reached=Promise.withResolvers(),release=Promise.withResolvers(),reported=Promise.withResolvers();
+  let firstRef,secondRef,lateAttempt,firstAttempt;
+  const {api,invocations}=setup({maxInvocations:5,async close(){
+    // The adapter must not acknowledge detachment before reporting its late
+    // result: observations after confirmed detachment are intentionally ignored.
+    if(invocations.length===3){
+      release.resolve();
+      await reported.promise;
+      await new Promise(resolve=>setImmediate(resolve));
+    }
   },async respond(invocation,count,observe){
     const reply=final(invocation);
     if(count===1){
@@ -150,6 +155,7 @@ test('C17R cross-attempt reference falls back and late cancelled result cannot r
     if(count===3){
       lateAttempt=invocation.attemptId;reached.resolve();await release.promise;
       const ref=observe({kind:'model',ref:'late',sourceId:'native',completeness:'complete',value:'# late draft'});
+      reported.resolve();
       return {...reply,...parseDecisionText('# late draft'),outputObservationRef:ref,
         outcome:{...reply.outcome,outputRefs:ref?[{ref,kind:'output',source:'model_claim'}]:[]}};
     }
@@ -169,16 +175,12 @@ test('C17R cross-attempt reference falls back and late cancelled result cannot r
     await api.cancel(initial.operationId,'client');
     const terminal=await run.completion;
     assert.equal(terminal.status,'cancelled');
-    // The cancellation settlement itself may classify as late_outcome. Wait
-    // for a newly committed receipt strictly after that terminal revision.
-    cancellationRevision=terminal.revision;
-    release.resolve();
-    await late.promise;
     const settled=await api.inspect(initial.operationId);
     assert.equal(settled.status,'cancelled');
     assert.equal(settled.events.filter(e=>e.kind==='controller.invalid_proposal').length,1);
-    assert.ok(settled.events.some(e=>e.kind==='attempt.outcome'&&e.late&&e.outcome.attemptId===lateAttempt));
+    assert.ok(settled.events.some(e=>e.kind==='attempt.outcome'&&e.late&&e.outcome.attemptId===lateAttempt&&
+      e.observations?.some(o=>o.value==='# late draft')));
     assert.deepEqual(settled.events.find(e=>e.kind==='controller.invalid_proposal').result,rejected.result);
     assert.equal(invocations.length,3);
-  }finally{release.resolve();await api.close();}
+  }finally{release.resolve();reported.resolve();await api.close();}
 });
