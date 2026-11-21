@@ -330,6 +330,28 @@ test('C15R.6.2 text, optional/required, typed values, multi-select and exact str
     content:{answer:'  verbatim  ',count:0,agreed:false,tags:['x','y']}}});
   terminal.close();input.end();
 });
+test('C17.6 choice followed by arbitrary optional and required text preserves omitted versus empty',async()=>{
+  for(const omit of [true,false]){
+    const input=new PassThrough(),output=new PassThrough();let display='';output.on('data',b=>display+=b);
+    const terminal=createCliInput(input,output,true,()=>{});
+    const f=structuredClone(form);
+    f.request.payload={mode:'form',message:'Choose an action',requestedSchema:{type:'object',
+      properties:{pick:{type:'string',oneOf:[{const:'A',title:'Continue'},{const:'B',title:'Stop'}]},
+        arbitrary:{type:'string',title:'Original field title',description:'Original description',default:'not selected'},
+        other:{type:'string',title:'A required field',minLength:1}},required:['pick','other']}};
+    const done=terminal.ask(f,new AbortController().signal);
+    await tick();input.write('2\n');await tick();
+    assert.match(display,/Additional text \(optional\)/);
+    assert.match(display,/Original field title/);assert.match(display,/Original description/);
+    assert.match(display,/Enter text, or :skip to omit this field\./);
+    input.write(omit?':skip\n':'\n');await tick();
+    input.write(':skip\n');await tick();assert.match(display,/cannot skip/);
+    input.write('literal\n');
+    assert.deepEqual(await done,{kind:'answered',payload:{action:'accept',content:{pick:'B',...(omit?{}:{arbitrary:''}),other:'literal'}}});
+    terminal.close();input.end();
+  }
+});
+
 test('C15R.6.2 literal control words and optional omission are distinct',async()=>{
   const input=new PassThrough(),output=new PassThrough();output.resume();
   const terminal=createCliInput(input,output,true,()=>{});

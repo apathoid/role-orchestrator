@@ -180,6 +180,8 @@ test('C15R.6 actual SDK/PTY permission and titled form preserve identity and Mar
   assert.match(output,/What should happen next\?/);
   assert.match(output,/Continue work/);assert.match(output,/Stop work/);
   assert.match(output,/Optional context/);
+  assert.match(output,/Additional text \(optional\)/);
+  assert.match(output,/Enter text, or :skip to omit this field\./);
   // Real interaction and lifecycle notices may legitimately interrupt Thinking.
   // They cannot produce one header per native fragment while readline redraws.
   assert.ok((output.match(/Thinking · Controller/g)??[]).length<=6,output);

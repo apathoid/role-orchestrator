@@ -99,13 +99,14 @@ export function renderFormField(form,index,choiceOffset=0){
     (v.description?' — '+named(v.description,480):'')).join('')??'';
   const choicesNote=total>pageSize?'\n  Showing '+(from+1)+'–'+Math.min(total,from+pageSize)+' of '+
     total+' choices. Enter :choices N to view starting at choice N.':'';
-  return '\n  '+(index+1)+'/'+form.fields.length+'  '+boundedText(caption,1000)+' ('+type+
+  const optionalText=shape.type==='string'&&!field.options&&!field.required;
+  return (optionalText?'\n\n  Additional text (optional)':'')+'\n  '+(index+1)+'/'+form.fields.length+'  '+boundedText(caption,1000)+' ('+type+
     (field.required?', required':', optional')+')'+description+
     (constraints.length?'\n  '+constraints.join(' · '):'')+
     (shape.default!==undefined&&shape.default!==null?'\n  Offered default (not applied): '+named(JSON.stringify(shape.default),240):'')+
     choices+choicesNote+
-    (field.options?'\n  Enter a displayed number'+(shape.type==='array'?' list separated by commas':'')+'.':'\n  Enter the value as text.')+
-    (!field.required?'\n  :skip omits this field.':'')+
+    (field.options?'\n  Enter a displayed number'+(shape.type==='array'?' list separated by commas':'')+'.':optionalText?'\n  Enter text, or :skip to omit this field.':'\n  Enter the value as text.')+
+    (!field.required&&!optionalText?'\n  :skip omits this field.':'')+
     '\n  :back edits the preceding field; :decline or :cancel stops the form.';
 }
 /** @param {FormProjection} form @param {string} label @param {string} [source] */
