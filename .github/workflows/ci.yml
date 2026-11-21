@@ -67,6 +67,8 @@ jobs:
         run: nix develop --no-update-lock-file --command npm test
       - name: C17 deterministic baseline Controller payload and parser comparison
         run: nix develop --no-update-lock-file --command node scripts/c17-prompt-comparison.mjs
+      - name: C17R deterministic Controller preparation and diagnostic overhead comparison
+        run: nix develop --no-update-lock-file --command node scripts/c17r-preparation-benchmark.mjs
       - name: C15 deterministic baseline presentation comparison
         run: nix develop --no-update-lock-file --command node scripts/c15-presentation-benchmark.mjs
       - name: C15R actual SDK transcript red/green and history comparison

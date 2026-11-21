@@ -639,7 +639,6 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // History budget counters can shrink after optional packing; final
   // measured technical bytes must describe the actual delivered host record.
   measureHost();
-  /** @type {ContextItem[]} */
   // Keep ordinary history in its journal order, independently of packing.
   // Explicit materializations (including positional and byte chunks) keep
   // the existing separate request projection and its ordering.
@@ -647,6 +646,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   const selectedHistory = bounded.context.filter(item=>ordinaryOrder.has(item.ref))
     .sort((a,b)=>(ordinaryOrder.get(a.ref)??0)-(ordinaryOrder.get(b.ref)??0));
   const selectedRequests = bounded.context.filter(item=>!ordinaryOrder.has(item.ref)).reverse();
+  /** @type {ContextItem[]} */
   const items = [request, host, ...selectedHistory, ...selectedRequests];
   if (correctionItem) items.push(correctionItem);
   return items;

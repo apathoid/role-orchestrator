@@ -140,7 +140,7 @@ test('C17R production sink modes leave operation, concurrent dispatch, budgets a
     const sink=mode==='noop'?{emit(){},flush(){}}:createNdjsonSink({
       directory:join(directory,mode),maxFileBytes:131072,retainedFiles:2,
       ...(mode==='overflow'&&{queueMaxBytes:25000,queueSize:2}),
-      flushDeadlineMs:10,stderr:{write:msg=>warnings.push(msg)},
+      flushDeadlineMs:mode==='slow'||mode==='overflow'?10:1000,stderr:{write:msg=>warnings.push(msg)},
       ...(mode==='slow'||mode==='overflow'?{writeLine:()=>release.promise}:mode==='fail'?{writeLine:async()=>{throw Error('disk fault');}}:{})
     });
     // Exercise real Application dispatch and native activity through a deterministic

@@ -63,11 +63,12 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
       // The raw UTF-8 limit is not the NDJSON size: escaping and redaction
       // can expand it. Do not enqueue a known-undeliverable large body.
       if (safe.eventName === 'adapter.prompt.capture' && typeof safe.details?.prompt === 'string') {
+        const storedBytes=Buffer.byteLength(safe.details.prompt);
         /** @type {Record<string,string|number|boolean|null>} */
-        const details = {...safe.details, captureStoredBytes:Buffer.byteLength(safe.details.prompt)};
+        const details = {...safe.details, captureStoredBytes:storedBytes};
         const limit = redaction.maxPrivateRecordBytes ?? 1048576;
         const full = {...safe,details};
-        if (details.captureStoredBytes <= Number(details.captureLimitBytes) &&
+        if (storedBytes <= Number(details.captureLimitBytes) &&
             Buffer.byteLength(JSON.stringify(full)+'\n') <= limit) {
           emitDiagnostic(sink, full);
         } else {
