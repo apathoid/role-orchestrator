@@ -2,6 +2,8 @@ import { appendFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** @import {DiagnosticEvent, DiagnosticPort} from '../../core/diagnostics.js' */
+export const defaultDiagnosticQueueMaxBytes = 8 * 1024 * 1024;
+export const defaultDiagnosticMaxFileBytes = 1048576;
 
 /**
  * The diagnostic sink is deliberately independent of the StateStore ledger:
@@ -12,8 +14,8 @@ import { join } from 'node:path';
  * @returns {DiagnosticPort & {stats: () => {dropped: number, failed: number}}}
  */
 export function createNdjsonSink(options) {
-  const { directory, maxFileBytes = 1_048_576, retainedFiles = 3,
-    queueSize = 128, queueMaxBytes = 8 * 1024 * 1024, flushDeadlineMs = 1000, stderr = process.stderr,
+  const { directory, maxFileBytes = defaultDiagnosticMaxFileBytes, retainedFiles = 3,
+    queueSize = 128, queueMaxBytes = defaultDiagnosticQueueMaxBytes, flushDeadlineMs = 1000, stderr = process.stderr,
     writeLine = (path, line) => appendFile(path, line, { mode: 0o600 }) } = options;
   for (const n of [maxFileBytes, retainedFiles, queueSize, queueMaxBytes]) {
     if (!Number.isSafeInteger(n) || n < 1) throw new RangeError('Invalid diagnostic bound');

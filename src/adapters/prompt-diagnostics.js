@@ -33,13 +33,10 @@ export function createPromptReporter({diagnostics, privateDiagnostics, clock, id
       // the configured number of code units (UTF-8 is never smaller).
       let end=prompt.length;
       if (Number(measured.serializedPromptBytes)>captureLimit) {
-        let low=0,high=Math.min(prompt.length,captureLimit);
-        while(low<high){
-          const mid=Math.ceil((low+high)/2);
-          if(Buffer.byteLength(prompt.slice(0,mid))<=captureLimit)low=mid;
-          else high=mid-1;
-        }
-        end=low===0?0:prompt.lastIndexOf('\n',low-1)+1;
+        const bytes=Buffer.from(prompt.slice(0,captureLimit),'utf8');
+        const prefix=bytes.subarray(0,captureLimit);
+        const newline=prefix.lastIndexOf(10);
+        end=newline<0?0:prefix.subarray(0,newline+1).toString('utf8').length;
       }
       const sample = prompt.slice(0,end);
       const body = sample.split('\n').map(line =>
@@ -48,6 +45,7 @@ export function createPromptReporter({diagnostics, privateDiagnostics, clock, id
       emitDiagnostic(privateDiagnostics,{...identity,eventName:'adapter.prompt.capture',eventId:ids.newId(),
         sequence:++sequence,details:{...measured,prompt:body,captureSourceBytes:Buffer.byteLength(sample),
           captureCompleteness:end===0?'unavailable':end===prompt.length?'complete_before_redaction':'partial',
+          ...(end===0&&{captureUnavailableReason:'no_complete_line_within_limit'}),
           representation:'redacted_text', captureLimitBytes:captureLimit, captureStartBytes:0,
           captureEndBytes:Buffer.byteLength(sample)}});
     } catch { /* Diagnostics never affect dispatch. */ }

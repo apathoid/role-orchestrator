@@ -714,18 +714,18 @@ export function createOrchestrator(deps) {
           const addressable = !handoff && !signal.aborted &&
             parsed.value.terminal === 'completed' && result.dispatchCertainty !== 'not_sent' &&
             output.kind === 'accepted';
+          const originalPointers = addressable && original ? parsed.value.outputRefs.filter(pointer =>
+            pointer.ref === original.ref ||
+            (pointer.ref === original.providerRef && !reservedEvidenceRef(original.providerRef ?? ''))) : [];
           const originalProven = addressable && original && original.providerRef &&
             !conflictingReports.has(original.providerRef) && original.value !== undefined &&
-            !original.summary && parsed.value.outputRefs.filter(pointer =>
-              pointer.ref === original.ref ||
-              (pointer.ref === original.providerRef && !reservedEvidenceRef(original.providerRef ?? ''))).length === 1 &&
-            parsed.value.outputRefs.some(pointer => (pointer.ref === original.ref || pointer.ref === original.providerRef) &&
-              pointer.source === 'model_claim' && pointer.kind === 'output') &&
+            !original.summary && originalPointers.length === 1 &&
+            originalPointers[0].source === 'model_claim' && originalPointers[0].kind === 'output' &&
             (typeof original.value === 'string'
               ? (alreadyRecorded || (reply.outputObservationParsed === true &&
                 (result.decisionTextError === 'non_object' ||
                  (!result.decisionTextError && typeof result.output !== 'string'))))
-              : sameRecord(original.value, result.output));
+              : sameRecord(original.value, output.value));
           const canonicalRef = (handoff ? 'attempt-output:' : 'controller-output:') + attemptId;
           if (!alreadyRecorded || (addressable && !originalProven)) receive(observation({
             ref: canonicalRef,

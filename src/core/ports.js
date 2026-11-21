@@ -29,6 +29,11 @@
  * @typedef {ActivityEvent | {kind: 'gap', operationId: string, attemptId?: string, droppedCount: number,
  *   reason: 'overflow', sequenceRange?: {first: number, last: number}}} ActivityNotice
  * @typedef {(event: ActivityNotice) => void | Promise<void>} ActivityListener
+ * Adapter-owned result identity: outputObservationRef names the exact report already
+ * emitted for this attempt. outputObservationParsed:true additionally attests
+ * that output/decisionTextError were derived by parsing that complete reported
+ * text, not another message. Omit for unproven correlation or structured output.
+ * This is optional technical provenance, not a capability or an admission field.
  * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, outputObservationParsed?: true, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
  *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected',
  *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth'}} ProviderResult
