@@ -4,6 +4,7 @@
 /** @import {Finding} from './finding.js' */
 /** @import {Admission} from './action-graph.js' */
 /** @import {FieldError} from './decode.js' */
+/** @typedef {{ref: string, representation: 'reported_text' | 'declared_value'}} RejectedResultReference */
 /** @typedef {'profile' | 'role' | 'skill' | 'reasoning' | 'adapter' | 'capability' | 'resource'} ActionFailureCategory */
 
 /**
@@ -34,7 +35,7 @@
  *   {kind: 'attempt.outcome', outcome: Outcome, dispatchCertainty: DispatchCertainty, observations?: readonly Observation[], findings?: readonly Finding[], late?: true} |
  *   {kind: 'controller.responded', decision: Decision, attemptId?: string, admissions?: readonly Admission[]} |
  *   {kind: 'controller.invalid_proposal', attemptId: string, decisionId?: string, reason: FieldError,
- *     category?: 'invalid_json' | 'non_object' | 'depth' | 'schema_invalid' | 'admission_invalid'} |
+ *     category?: 'invalid_json' | 'non_object' | 'depth' | 'schema_invalid' | 'admission_invalid', result?: RejectedResultReference} |
    {kind: 'action.rejected' | 'action.deferred', actionId: string, code: ReasonCode, resource?: string, category?: ActionFailureCategory} |
    {kind: 'action.cancelled', actionId: string, source: CancellationSource} |
  *   {kind: 'operation.waiting', waiting: Waiting} |
@@ -263,6 +264,32 @@ export function journalReasonCode(event) {
   }
 }
 
+/**
+ * Validate an optional link against the original completed receipt, not a
+ * later observation or an arbitrary equal-text message. The adapter's explicit
+ * result identity is selected by Application while it receives the reply.
+ * @param {Pick<Extract<Event, {kind: 'attempt.outcome'}>, 'outcome' | 'observations' | 'dispatchCertainty' | 'late'> | undefined} receipt
+ * @param {RejectedResultReference} result
+ */
+export function validRejectedResult(receipt, result) {
+  if (!receipt || receipt.late || receipt.dispatchCertainty === 'not_sent' ||
+      receipt.outcome.terminal !== 'completed') return false;
+  const matches = (receipt.observations ?? []).filter(item => item.ref === result.ref);
+  if (matches.length !== 1) return false;
+  const item = matches[0];
+  if (item.source !== 'model_claim' || item.provenance?.kind !== 'model' || item.summary ||
+      item.completeness === 'unavailable' || item.value === undefined) return false;
+  const attemptId = receipt.outcome.attemptId;
+  if (!item.providerRef) {
+    return item.ref === 'controller-output:' + attemptId &&
+      item.provenance.sourceId === attemptId && result.representation === 'declared_value';
+  }
+  const pointers = receipt.outcome.outputRefs.filter(pointer => pointer.ref === item.ref);
+  return pointers.length === 1 && pointers[0].source === 'model_claim' &&
+    pointers[0].kind === 'output' &&
+    result.representation === (typeof item.value === 'string' ? 'reported_text' : 'declared_value');
+}
+
 /** @param {Operation} state @param {Event} event @returns {Transition} */
 export function applyEvent(state, event) {
   const attemptId = event.kind === 'attempt.outcome' ? event.outcome.attemptId
@@ -372,6 +399,13 @@ export function applyEvent(state, event) {
     case 'controller.invalid_proposal':
       if (state.status !== 'active' || attempt?.actionId !== event.attemptId ||
           attempt.status !== 'terminal' || attempt.outcome.terminal !== 'completed') return reject('INVALID_PROPOSAL');
+      if (event.result) {
+        const receipt = state.events.find(item => item.kind === 'attempt.outcome' &&
+          item.outcome.attemptId === event.attemptId && !item.late);
+        if (receipt?.kind !== 'attempt.outcome' || !validRejectedResult(receipt, event.result)) {
+          return reject('INVALID_PROPOSAL');
+        }
+      }
       return apply({}, event.reason.code);
     case 'controller.responded': {
       if (event.decision.operationId !== state.operationId) return reject('INVALID_PROPOSAL');

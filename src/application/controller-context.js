@@ -321,6 +321,28 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     latest: { ref: latestUser.ref, receivedSequence: latestUser.receivedSequence },
   };
   const recovery = decisionRecovery(state);
+  const active = correction && recovery.lastRejection?.active ? recovery.lastRejection : undefined;
+  const result = active?.result;
+  const source = result && history.find(item => item.ref === result.ref &&
+    item.attemptId === active?.attemptId && item.completeness !== 'unavailable' && item.value !== undefined);
+  // The stored body and the inline representation are separate facts. An
+  // existing scoped request is optional; neither it nor MCP promises a full body.
+  const resultDelivery = result ? {
+    kind: 'reference', ...result,
+    storedCompleteness: source?.completeness ?? 'unknown',
+    retrieval: source ? 'bounded_context_request' : 'unknown',
+    inline: 'duplicate_inline', // longest placeholder, reserved before packing
+  } : undefined;
+  /** @type {ContextItem | undefined} */
+  const correctionItem = active && correction ? {
+    ref:'host:decision-error', source:'host_observed', completeness:'complete',
+    value: {
+      ...correction, attemptId: active.attemptId, category: active.category, stage: active.stage,
+      consecutiveIdentical: recovery.consecutiveIdentical, totalRejected: recovery.totalRejected,
+      thresholds: recovery.limits, result: resultDelivery ?? {kind:'unknown'},
+      guidance: 'Previous declared result rejected. Historical results and observations may be used or reconsidered as needed. Return a valid Decision for this invocation. The referenced body, if available, is scoped and bounded; retrieval is optional.',
+    },
+  } : undefined;
   const previous = state.events.findLast(item => item.kind === 'operation.finished');
   const unresolved = previous?.assessment.requirements.flatMap(({ requirementId, status }) =>
     status === 'fulfilled' ? [] : [{ requirementId, status }]);
@@ -461,7 +483,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // A requested historical source must not be crowded out by derived map
   // rows. Reserve only the bytes its actual bounded materialization would
   // consume, not a fixed percentage or a per-role allocation.
-  const baseBytes = byteLength([host]);
+  const baseBytes = byteLength(correctionItem ? [host, correctionItem] : [host]);
   const requestedBudget = compactContext(requested, Math.max(0, maxBytes - baseBytes + 1), false);
   const requestedBytes = byteLength(requestedBudget.context) - 2 +
     (requestedBudget.context.length ? 1 : 0);
@@ -541,14 +563,14 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // own decimal digits, rather than reporting the pre-update JSON length.
   function measureHost() {
     for (let i = 0; i < 4; i++) {
-      const actual = byteLength([host]);
+      const actual = byteLength(correctionItem ? [host, correctionItem] : [host]);
       const overflow = actual > maxBytes;
       if (host.value.technicalBudget.mandatoryBytes === actual &&
           host.value.technicalBudget.mandatoryOverflow === overflow) break;
       host.value.technicalBudget.mandatoryBytes = actual;
       host.value.technicalBudget.mandatoryOverflow = overflow;
     }
-    return byteLength([host]);
+    return byteLength(correctionItem ? [host, correctionItem] : [host]);
   }
   used = measureHost();
   // Explicitly requested records take precedence without duplicating their
@@ -556,8 +578,13 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   const requestedRefs = new Set(requested.map(item => item.ref));
   const requestedPositions = new Set(requested.flatMap(item => item.receivedSequence
     ? [JSON.stringify(item.receivedSequence)] : []));
-  const candidates = [...requested, ...history.reverse().filter(item => !requestedRefs.has(item.ref) &&
-    (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence))))];
+  const ordinary = history.reverse().filter(item => !requestedRefs.has(item.ref) &&
+    (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence))));
+  // Explicitly requested refs retain precedence; only prioritize the proven
+  // original within the existing optional history budget.
+  const prefer = source && ordinary.includes(source);
+  const candidates = [...requested, ...(prefer ? [source] : []),
+    ...ordinary.filter(item => !prefer || item !== source)];
   const bounded = compactContext(deduplicateInlineResults(candidates),
     Math.max(0, maxBytes - used + 1), false);
   host.value.historyBudget.omitted = bounded.omitted;
@@ -584,22 +611,20 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         page.kind === 'unavailable' && 'reason' in page ? String(page.reason) : 'budget';
     }
   }
+  if (resultDelivery) {
+    const delivered = bounded.context.find(item => item.ref === resultDelivery.ref ||
+      (source?.receivedSequence && item.receivedSequence &&
+        item.receivedSequence.revision === source.receivedSequence.revision &&
+        item.receivedSequence.index === source.receivedSequence.index));
+    resultDelivery.inline = !delivered ? 'omitted' :
+      delivered.duplicateOf ? 'duplicate_inline' : delivered.excerpt !== undefined ? 'excerpt' :
+        delivered.completeness === 'unavailable' || delivered.value === undefined ? 'unavailable' : delivered.completeness;
+  }
   // History budget counters can shrink after optional packing; final
   // measured technical bytes must describe the actual delivered host record.
   measureHost();
   /** @type {ContextItem[]} */
   const items = [request, host, ...bounded.context.reverse()];
-  if (correction) items.push({ref:'host:decision-error',source:'host_observed',
-    completeness:'complete',value: {
-      ...correction,
-      ...(recovery.lastRejection?.scope === 'current_user_turn' && {
-        attemptId: recovery.lastRejection.attemptId,
-        category: recovery.lastRejection.category,
-        stage: recovery.lastRejection.stage,
-        consecutiveIdentical: recovery.consecutiveIdentical,
-        totalRejected: recovery.totalRejected,
-        thresholds: recovery.limits,
-      }),
-    }});
+  if (correctionItem) items.push(correctionItem);
   return items;
 }

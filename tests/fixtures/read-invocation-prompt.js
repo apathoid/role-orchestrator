@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 export function readInvocationPrompt(prompt) {
   const controllerMarker = '\n\nController Invocation (sectioned JSON):\n\n';
   const workerMarker = '\n\nInvocation (JSON):\n';
-  if (!prompt.startsWith('Return exactly one JSON object')) {
+  // Historical comparator probes deliberately run older adapters.
+  if (!prompt.includes(controllerMarker)) {
     assert.ok(prompt.includes(workerMarker));
     return JSON.parse(prompt.slice(prompt.indexOf(workerMarker) + workerMarker.length));
   }

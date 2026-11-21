@@ -2,7 +2,7 @@ import { admitFindings, eventFindings, evidenceRefs, findingRef, findings, recor
 import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
 import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
 import { contextItem } from './observation.js';
-import { classifyOutcomeReport, resolveOutcome, sameRecord } from './operation.js';
+import { classifyOutcomeReport, resolveOutcome, sameRecord, validRejectedResult } from './operation.js';
 
 /** @import {Decoder, FieldError} from './decode.js' */
 /** @import {Attempt, Event, Operation} from './operation.js' */
@@ -92,6 +92,7 @@ const event = tagged('kind', {
     ...eventFields, kind: oneOf('controller.invalid_proposal'), attemptId: id, decisionId: optional(id),
     category: optional(oneOf('invalid_json','non_object','depth','schema_invalid','admission_invalid')),
     reason: record({code: oneOf('INVALID_PROPOSAL'), path: id, expected: id}),
+    result: optional(record({ref: id, representation: oneOf('reported_text', 'declared_value')})),
   }),
   'action.rejected': record({
     ...eventFields, kind: oneOf('action.rejected'), actionId: id, code: reasonCode, resource: optional(id),
@@ -159,6 +160,8 @@ function validateSnapshot(value,path,onOutcome) {
   }
   /** @type {Map<string, Attempt>} */
   const ledger = new Map();
+  /** @type {Map<string, Extract<import('./operation.js').Event, {kind:'attempt.outcome'}>>} */
+  const initialControllerReceipts = new Map();
   let generation = 0;
   let cancelled=false;
   /** @type {{decisionId: string, reasoningLevel?: string} | undefined} */
@@ -259,6 +262,10 @@ function validateSnapshot(value,path,onOutcome) {
           (prior.actionId !== attemptId || prior.status !== 'terminal' || prior.outcome.terminal !== 'completed')) {
         invalid(at + '.attemptId', 'a completed Controller attempt');
       }
+      if (item.kind === 'controller.invalid_proposal' && item.result &&
+          !validRejectedResult(initialControllerReceipts.get(attemptId), item.result)) {
+        invalid(at + '.result', 'a correlated observation in the original completed Controller receipt');
+      }
       if (item.kind === 'attempt.dispatched') {
         if (prior.status !== 'reserved') invalid(at + '.kind', 'a dispatch of a reserved attempt');
         const routeReasoning = item.route?.reasoning;
@@ -300,6 +307,9 @@ function validateSnapshot(value,path,onOutcome) {
           ...prior, status: 'dispatched', dispatchCertainty: 'unknown', dispatchedAt: item.receivedAt, route: item.route,
         });
       } else if (item.kind === 'attempt.outcome') {
+        if (prior.actionId === attemptId && prior.status !== 'terminal' && !item.late) {
+          initialControllerReceipts.set(attemptId, item);
+        }
         if(onOutcome){
           const report=classifyOutcomeReport(prior,item,cancelled,generation);
           if(report.kind!=='duplicate')onOutcome(item.eventId,{eventName:report.eventName,reasonCode:report.reasonCode});

@@ -3,7 +3,7 @@ import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, 
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
-import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, workspaceContextFor } from '../core/operation.js';
+import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, validRejectedResult, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions, pendingControllerHistoryRequest } from './controller-context.js';
 import { decisionRecovery } from './decision-recovery.js';
@@ -622,6 +622,10 @@ export function createOrchestrator(deps) {
 
     /** @type {Map<string, Observation>} */
     const providerReports = new Map();
+    /** @type {Set<string>} */
+    const conflictingReports = new Set();
+    /** @type {import('../core/operation.js').RejectedResultReference | undefined} */
+    let declaredResult;
     /** @param {Observation} item */
     const reportContent = ({ provenance, ...item }) => ({
       ...item, provenance: provenance && { ...provenance, receivedAt: undefined },
@@ -707,11 +711,28 @@ export function createOrchestrator(deps) {
           const alreadyRecorded = output.kind === 'accepted' && original &&
             typeof original.value === 'string' && typeof output.value === 'string' &&
             Buffer.from(original.value, 'utf8').equals(Buffer.from(output.value, 'utf8'));
-          if (!alreadyRecorded) receive(observation({
-            ref: (handoff ? 'attempt-output:' : 'controller-output:') + attemptId,
+          const addressable = !handoff && !signal.aborted &&
+            parsed.value.terminal === 'completed' && result.dispatchCertainty !== 'not_sent' &&
+            output.kind === 'accepted';
+          const originalProven = addressable && original && original.providerRef &&
+            !conflictingReports.has(original.providerRef) && original.value !== undefined &&
+            !original.summary && parsed.value.outputRefs.filter(pointer =>
+              pointer.ref === original.ref ||
+              (pointer.ref === original.providerRef && !reservedEvidenceRef(original.providerRef ?? ''))).length === 1 &&
+            (typeof original.value === 'string'
+              ? (typeof result.output !== 'string' || result.decisionTextError === 'non_object' || alreadyRecorded)
+              : sameRecord(original.value, result.output));
+          const canonicalRef = (handoff ? 'attempt-output:' : 'controller-output:') + attemptId;
+          if (!alreadyRecorded || (addressable && !originalProven)) receive(observation({
+            ref: canonicalRef,
             completeness: output.kind === 'accepted' ? 'complete' : 'unavailable',
             value: output.kind === 'accepted' ? output.value : undefined,
           }, { kind: 'model', sourceId: attemptId, receivedAt: clock.now() }));
+          if (addressable) {
+            declaredResult = originalProven ? {
+              ref: original.ref, representation: typeof original.value === 'string' ? 'reported_text' : 'declared_value',
+            } : {ref: canonicalRef, representation: 'declared_value'};
+          }
         }
         if (signal.aborted) {
           lateReply = result;
@@ -1010,6 +1031,7 @@ export function createOrchestrator(deps) {
                 return ref;
               }
               if (sameRecord(reportContent(prior), reportContent(item))) return ref;
+              if (!handoff) conflictingReports.add(providerRef);
             }
           }
           trace(dispatched, 'attempt.observation_invalid', 'PROTOCOL_ERROR', attemptId);
@@ -1032,6 +1054,11 @@ export function createOrchestrator(deps) {
           },
         });
         outcome = bindOutcomeEvidence(state.operationId, reply.outcome, observations);
+        if (declaredResult && !validRejectedResult({outcome, observations, dispatchCertainty: certainty}, declaredResult)) {
+          // Do not substitute an arbitrary historical ref when validation fails.
+          const fallback = {ref: 'controller-output:' + attemptId, representation: /** @type {const} */ ('declared_value')};
+          declaredResult = validRejectedResult({outcome, observations, dispatchCertainty: certainty}, fallback) ? fallback : undefined;
+        }
         if (!handoff && reply.reasoningUnavailable && reasoning.mode === 'selectable') {
           const catalogProfile = entries.find(item => item.kind === 'profile' &&
             item.value.profileId === selectedProfile.profileId);
@@ -1093,6 +1120,7 @@ export function createOrchestrator(deps) {
     return {
       outcome, certainty, output, contextCursor, recordLate, reportedFindings, decisionTextError,
       reasoningFailure,
+      declaredResult: outcome.terminal === 'completed' ? declaredResult : undefined,
       observations: certainty === 'not_sent' ? observations.filter(item => !item.summary) : observations,
     };
   }
@@ -1441,7 +1469,7 @@ export function createOrchestrator(deps) {
         correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
         const rejectedState = await transition(state, {kind:'controller.invalid_proposal', attemptId,
           decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined,
-          category:rejectionCategory, reason:correction});
+          category:rejectionCategory, reason:correction, result: response.declaredResult});
         const threshold = decisionRecovery(rejectedState).thresholdRejection;
         return threshold ? technicalWait(rejectedState, decisionRecoveryReason(rejectedState, threshold)) : rejectedState;
       }).finally(() => releaseAttempt(attemptId));
