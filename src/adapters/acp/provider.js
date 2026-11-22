@@ -417,8 +417,13 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         refused.outcome.diagnostics[0].ref = ref;
         return refused;
       }
-      if (httpMcp && (invocation.contextAccess || invocation.externalTools)) {
-        mcp = await startMcpBridge({ ...invocation, signal });
+      // Transport choice is made from trusted configuration and the actual
+      // native HTTP MCP negotiation, before the first Controller prompt.
+      // Unsupported optional MCP falls back to the same intent via native text.
+      const controllerDelivery = invocation.kind === 'controller' && configuration.controllerIntent
+        ? (configuration.controllerIntent === 'prefer_mcp' && httpMcp ? 'intent_mcp' : 'intent_text') : undefined;
+      if (httpMcp && (invocation.contextAccess || invocation.externalTools || controllerDelivery === 'intent_mcp')) {
+        mcp = await startMcpBridge({ ...invocation, controllerDelivery, signal });
       }
       signal.throwIfAborted();
       session = await agent.request(a.session.new, {
@@ -470,7 +475,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const preparationStarted=performance.now();
         /** @type {Record<string,number>} */
         let componentSizes={};
-        const prompt = renderInvocationPrompt(invocation, retrievalDetail(Boolean(mcp && invocation.contextAccess)),
+        const prompt = renderInvocationPrompt({...invocation, controllerDelivery}, retrievalDetail(Boolean(mcp && invocation.contextAccess)),
           promptReporter?sizes=>{componentSizes=sizes;}:undefined);
         reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length,...componentSizes},prompt);
         signal.throwIfAborted();
@@ -489,8 +494,31 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if (signal.aborted || stopReason === 'cancelled') result = resultFor(invocation, 'CANCELLED', stopReason === 'cancelled' ? 'cancelled' : 'unknown', 'sent');
         else if (stopReason === 'end_turn' && !truncated) {
           result = resultFor(invocation, undefined, 'completed', 'sent');
-          if (invocation.kind === 'controller') Object.assign(result, parseDecisionText(output));
-          else result.output = output;
+          if (invocation.kind !== 'controller') result.output = output;
+          else if (controllerDelivery === 'intent_mcp') {
+            // Tool receipt is proposal-only. A trusted native end_turn closes
+            // registration and waits for all pre-boundary submissions only.
+            const selected = await mcp?.finalizeDecision?.();
+            if (!selected || selected.kind === 'unavailable') {
+              result = resultFor(invocation, 'PROTOCOL_ERROR', 'failed', 'sent');
+            } else {
+              result.output = output; // native final text is a separate observation
+              if (selected.kind === 'intent') {
+                const receiptRef = publish({ref:'acp-decision-submission',sourceId:selected.proposalRef,
+                  kind:'model',completeness:'complete',value:selected.value});
+                result.controllerDeclaration = {kind:'intent',value:selected.value,observationRef:receiptRef};
+              } else if (selected.kind === 'invalid') {
+                result.controllerDeclaration = {kind:'invalid',reason:selected.reason};
+              } else {
+                result.controllerDeclaration = {kind:selected.kind};
+              }
+            }
+          } else {
+            Object.assign(result, parseDecisionText(output));
+            if (controllerDelivery === 'intent_text' && !result.decisionTextError) {
+              result.controllerDeclaration = {kind:'intent',value:result.output};
+            }
+          }
         } else {
           const code = truncated || stopReason === 'max_tokens' || stopReason === 'max_turn_requests' ? 'RESOURCE_LIMIT' :
             stopReason === 'refusal' ? 'PROVIDER_REFUSED' : 'PROTOCOL_ERROR';
@@ -500,7 +528,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         flushMessage(!truncated && result.outcome.terminal === 'completed');
         if (result.outcome.terminal === 'completed' && finalMessageRef) {
           result.outputObservationRef = finalMessageRef;
-          if (invocation.kind === 'controller') result.outputObservationParsed = true;
+          if (invocation.kind === 'controller' && controllerDelivery !== 'intent_mcp') result.outputObservationParsed = true;
         }
         const stopRef=publish({ ref: 'acp-stop', sourceId: sessionId, kind: 'provider_report', completeness: 'complete',
           value: { stopReason: stopReason ?? null, truncated, cancelRequested: signal.aborted } });

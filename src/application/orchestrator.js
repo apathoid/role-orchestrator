@@ -1,6 +1,7 @@
 import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
+import { materializeControllerIntent } from './controller-intent.js';
 import { decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, validRejectedResult, workspaceContextFor } from '../core/operation.js';
@@ -693,6 +694,7 @@ export function createOrchestrator(deps) {
       const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty,
         output: reply.output, findings: reply.findings,
         reasoningUnavailable: validReasoningIssue ? reply.reasoningUnavailable : undefined,
+        controllerDeclaration: !handoff && parsed.value.terminal === 'completed' ? reply.controllerDeclaration : undefined,
         decisionTextError: !handoff && parsed.value.terminal === 'completed' && reply.decisionTextError &&
           ['invalid_json', 'non_object', 'depth'].includes(reply.decisionTextError) ? reply.decisionTextError : undefined };
       if (acceptingObservations) {
@@ -738,6 +740,22 @@ export function createOrchestrator(deps) {
             } : {ref: canonicalRef, representation: 'declared_value'};
           }
         }
+        // The MCP submission is its own model-declared observation, never
+        // the text of the native final message. Require an exact current
+        // attempt pointer and complete source provenance for correction refs.
+        if (!handoff && result.controllerDeclaration) {
+          const declared = result.controllerDeclaration;
+          if (declared.kind !== 'intent') declaredResult = undefined;
+          else if (declared.observationRef) {
+            const receipt = observations.find(item =>
+              item.ref === declared.observationRef && item.source === 'model_claim' &&
+              item.provenance?.kind === 'model' && item.completeness === 'complete' &&
+              parsed.value.outputRefs.some(pointer => pointer.ref === item.ref &&
+                pointer.source === 'model_claim' && pointer.kind === 'output'));
+            declaredResult = receipt && sameRecord(receipt.value, declared.value)
+              ? {ref:receipt.ref,representation: /** @type {const} */ ('declared_value')} : undefined;
+          }
+        }
         if (signal.aborted) {
           lateReply = result;
           scheduleLateCommit();
@@ -756,6 +774,8 @@ export function createOrchestrator(deps) {
     let reportedFindings;
     /** @type {ProviderResult['decisionTextError']} */
     let decisionTextError;
+    /** @type {ProviderResult['controllerDeclaration']} */
+    let controllerDeclaration;
     /** @type {Outcome} */
     let outcome;
     /** @type {'sent' | 'not_sent' | 'unknown'} */
@@ -1052,7 +1072,7 @@ export function createOrchestrator(deps) {
         outcome = failedOutcome(attemptId, 'PROTOCOL_ERROR', true);
         certainty = 'unknown';
       } else {
-        ({ dispatchCertainty: certainty, output, findings: reportedFindings, decisionTextError } = reply);
+        ({ dispatchCertainty: certainty, output, findings: reportedFindings, decisionTextError, controllerDeclaration } = reply);
         trace(state, 'provider.reply_observed', 'PROVIDER_REPLIED', attemptId, {
           details: { profileId:selectedProfile.profileId, dispatchCertainty: certainty, terminal: reply.outcome.terminal,
             outputRefs: reply.outcome.outputRefs.length,
@@ -1128,7 +1148,7 @@ export function createOrchestrator(deps) {
       }
     }
     return {
-      outcome, certainty, output, contextCursor, recordLate, reportedFindings, decisionTextError,
+      outcome, certainty, output, contextCursor, recordLate, reportedFindings, decisionTextError, controllerDeclaration,
       reasoningFailure,
       declaredResult: outcome.terminal === 'completed' ? declaredResult : undefined,
       observations: certainty === 'not_sent' ? observations.filter(item => !item.summary) : observations,
@@ -1407,7 +1427,112 @@ export function createOrchestrator(deps) {
           code: 'INVALID_PROPOSAL', path: '$', expected: {
             invalid_json: 'valid JSON', non_object: 'a JSON object', depth: 'JSON nesting depth at most 16',
           }[response.decisionTextError],
-        }} : decodeDecision(response.output);
+        }} : response.controllerDeclaration?.kind === 'intent'
+          ? materializeControllerIntent(response.controllerDeclaration.value,
+            {operationId,attemptId,contextCursor:response.contextCursor,profileId:profile.profileId})
+          : response.controllerDeclaration?.kind === 'invalid'
+            ? {kind:'rejected',reason:response.controllerDeclaration.reason}
+            : response.controllerDeclaration?.kind === 'conflict'
+              ? {kind:'rejected',reason:{code:'INVALID_PROPOSAL',path:'$.replaces',
+                expected:'one unambiguous corrected ControllerIntent proposal'}}
+              : response.controllerDeclaration?.kind === 'missing'
+                ? {kind:'rejected',reason:{code:'INVALID_PROPOSAL',path:'
+        // Category is taken from the actual parser/decoder/admission boundary.
+        // It is not inferred from the natural-language Controller output.
+        const rejectionCategory = response.decisionTextError ??
+          (parsed.kind === 'rejected' ? 'schema_invalid' : 'admission_invalid');
+        correction = parsed.kind === 'rejected' ? parsed.reason : undefined;
+        if (parsed.kind === 'accepted') {
+          const refs = evidenceRefs(state.request.requestId, state.events);
+          const scope = scopedEvidenceAliases(response.observations, response.outcome.outputRefs, refs);
+          const { resolve } = scope;
+          const value = {
+            ...parsed.value,
+            additions: parsed.value.additions.map(action => ({ ...action, contextRefs: action.contextRefs.map(resolve) })),
+            findings: parsed.value.findings && bindFindingEvidence(parsed.value.findings, resolve),
+            finalAssessment: parsed.value.finalAssessment && bindAssessmentEvidence(parsed.value.finalAssessment, resolve),
+          };
+          const assessment = value.finalAssessment;
+          const evidenceError = admitFindings(refs, value.findings ?? [], '$.findings', profile.profileId)
+            ?? (assessment && checkAssessment(refs, assessment, profile.profileId));
+          const live = new Set(pending.keys());
+          if (value.operationId !== operationId) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.operationId', expected: 'the current operation id' };
+          } else if (value.contextCursor > response.contextCursor) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.contextCursor', expected: 'an observed revision' };
+          } else if ((value.waitPolicy && value.clarification) ||
+            (value.additions.length && !value.waitPolicy && !value.nextController?.continue)) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'a clarification, final assessment or action wait policy' };
+          } else if (assessment && !value.waitPolicy && [...live].some(id => !value.cancellations.includes(id))) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.finalAssessment', expected: 'an explicit wait or cancellation for each pending action' };
+          } else if (value.acceptedActionIds?.some(id => !state.attempts.some(attempt =>
+            attempt.actionId === id && attempt.status === 'terminal' && attempt.attemptId !== attempt.actionId))) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.acceptedActionIds', expected: 'ids of terminal actions' };
+          } else if (scope.ambiguous) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$', expected: 'explicit internal references for ambiguous evidence names' };
+          } else if (evidenceError) {
+            correction = evidenceError;
+          } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
+            correction = { code: 'INVALID_PROPOSAL', path: '$.decisionId', expected: 'a fresh decision id' };
+          } else {
+            const round = planRound(state, value);
+            if (round.error) correction = round.error;
+            else {
+              state = await transition(state, { kind: 'controller.responded', decision: value, attemptId, admissions: round.admissions });
+              for (const actionId of new Set(value.cancellations)) {
+                state = await transition(state, { kind: 'action.cancelled', actionId, source: 'superseded' });
+                pending.get(actionId)?.stop.abort('superseded');
+              }
+              if (value.cancellations.length) releaseSlot();
+              if (assessment && !live.size) return transition(state, { kind: 'operation.finished', assessment });
+              if (assessment) {
+                settleCancellation = [...pending.entries()].flatMap(([id, task]) =>
+                  value.cancellations.includes(id) ? [task.completion] : []);
+              }
+              if (value.clarification) return transition(state, { kind: 'operation.waiting', waiting: {
+                kind: 'question', questionId: 'question:' + ids.newId(), question: value.clarification.question,
+              } });
+              if (value.waitPolicy) selection = {
+                ...round, policy: value.waitPolicy.kind,
+              };
+              else if (value.nextController?.continue && round.newlyAdmitted.length) selection = {
+                ...round, selected: [], policy: 'next_completion', newResult: true,
+              };
+              return state;
+            }
+          }
+        }
+        if (!correction) correction = {code:'INVALID_PROPOSAL',path:'$',expected:'a valid Decision'};
+        // The decoder's path can contain an arbitrary unknown key. Keep the
+        // technical correction bounded; never persist the rejected body here.
+        correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
+        const rejectedState = await transition(state, {kind:'controller.invalid_proposal', attemptId,
+          decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined,
+          category:rejectionCategory, reason:correction, result: response.declaredResult});
+        const threshold = decisionRecovery(rejectedState).thresholdRejection;
+        return threshold ? technicalWait(rejectedState, decisionRecoveryReason(rejectedState, threshold)) : rejectedState;
+      }).finally(() => releaseAttempt(attemptId));
+      if (next.status !== 'active') {
+        if (controllerFailureWaiting(next)) {
+          await runRecoveredWorkers(next, pending, execution, lookups);
+          return inspect(operationId);
+        }
+        return next;
+      }
+      if (settleCancellation.length) await Promise.all(settleCancellation);
+      if (selection) await runActionRound(selection.selected, selection.newlyAdmitted, selection.actions, next,
+        (action, signal) => dispatchWorker(next, action, signal, execution, lookups),
+        (action, code, resource) => recordAction(operationId, action, 'action.deferred', code, resource),
+        pending, selection.policy, selection.newResult);
+    }
+    return inspect(operationId);
+  }
+
+  return { submit, resume, inspect, inspectFinding, findRequest, cancel, subscribeActivity: activity.subscribe, close };
+}
+,
+                  expected:'a submitted ControllerIntent before native end_turn'}}
+                : decodeDecision(response.output);
         // Category is taken from the actual parser/decoder/admission boundary.
         // It is not inferred from the natural-language Controller output.
         const rejectionCategory = response.decisionTextError ??

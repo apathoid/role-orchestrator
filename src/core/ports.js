@@ -19,7 +19,8 @@
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>}} Invocation
+ *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>,
+ *   controllerDelivery?: 'intent_text' | 'intent_mcp'}} Invocation
  * @typedef {{kind: 'reasoning' | 'user_message' | 'tool' | 'plan' | 'finding', payload: unknown,
  *   nativeId?: string, nativeKind?: string}} ProviderActivity
  * @typedef {(item: ProviderActivity) => void} ActivityCallback
@@ -36,7 +37,9 @@
  * This is optional technical provenance, not a capability or an admission field.
  * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, outputObservationParsed?: true, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
  *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected',
- *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth'}} ProviderResult
+ *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth',
+ *   controllerDeclaration?: {kind:'intent',value:unknown,observationRef?:string} |
+ *     {kind:'missing'|'conflict'} | {kind:'invalid',reason:import('./decode.js').FieldError}}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,
