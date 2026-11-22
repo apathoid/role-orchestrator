@@ -275,6 +275,9 @@
         },
         "mcpBridge": {
           "type": "boolean"
+        },
+        "controllerIntent": {
+          "enum": ["text", "prefer_mcp"]
         }
       }
     },

@@ -39,7 +39,7 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
       invalidReason = reason;
       return { kind:'rejected', proposalRef:ref, reason };
     };
-    if (!live()) return { kind:'unavailable', reason:'closed' };
+    if (signal.aborted || isActive?.() === false) return { kind:'unavailable', reason:'closed' };
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       return rejected(error('$', 'submit_decision arguments object'));
     }

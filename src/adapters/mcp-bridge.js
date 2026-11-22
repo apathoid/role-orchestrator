@@ -124,9 +124,11 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
   /** @param {string} name @param {unknown} args */
   async function callTool(name, args) {
     if (closed || signal.aborted) return { kind: 'unavailable', reason: 'closed' };
+    // Controller submission is a separate bounded control plane, never one
+    // of the ordinary concurrent native tool slots.
+    if (name === decisionTool.name && pendingDecision) return pendingDecision.register(args);
     active++;
     try {
-      if (name === decisionTool.name && pendingDecision) return pendingDecision.register(args);
       if (name === listTool.name && contextAccess) {
         const parsed = decode(listArgs, args);
         return parsed.kind === 'accepted' ? contextAccess.list(parsed.value.cursor) : { kind: 'unavailable', reason: 'invalid_input' };

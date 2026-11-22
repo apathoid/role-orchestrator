@@ -2,7 +2,7 @@
 
 /**
  * @typedef {{adapter: string, launch?: {command: string, args?: string[], env?: Record<string, {fromEnv: string}>},
- *   nativeSettings?: Record<string, unknown>, mcpBridge?: boolean}} ProviderConfig
+ *   nativeSettings?: Record<string, unknown>, mcpBridge?: boolean, controllerIntent?: 'text' | 'prefer_mcp'}} ProviderConfig
  * @typedef {{maxConcurrentInvocations?: number, maxInvocationsPerOperation?: number, invocationTimeoutMs?: number}} ResourceConfig
  * @typedef {{
  *   schemaVersion: 1,
