@@ -2,12 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { count, decode, id, optional, record } from '../core/decode.js';
 import { contextReference, historyCursor } from '../core/contracts.js';
+import { createPendingControllerDecisions } from './controller-proposals.js';
 
 /** @import {Invocation} from '../core/ports.js' */
 /** @import {IncomingMessage, ServerResponse} from 'node:http' */
 
 export const bridgeName = 'role_orchestrator';
 const maxRequestBytes = 32 * 1024;
+const maxDecisionRequestBytes = 2 * 1024 * 1024;
+const maxDecisionCalls = 128;
 const maxResponseBytes = 256 * 1024;
 const maxToolCalls = 64;
 const maxConcurrentCalls = 4;
@@ -28,6 +31,11 @@ const listTool = {
   name: 'context_list', description: 'List visible historical records by page. Copy nextCursor exactly to continue the same journal-prefix traversal; omit cursor or use 0 to start a fresh traversal.',
   inputSchema: { type: 'object', properties: { cursor: { anyOf: [{type:'integer',enum:[0]}, { type: 'object',
     properties: { revision: countSchema, index: countSchema }, required: ['revision','index'], additionalProperties: false }] } }, additionalProperties: false },
+};
+const decisionTool = {
+  name: 'submit_decision',
+  description: 'Declare or correct a model-owned ControllerIntent proposal in this native turn. A received proposal does not admit Actions; use replaces with a prior proposalRef for explicit correction. You may continue using all native tools and reasoning before end_turn.',
+  inputSchema: { type:'object', properties:{ intent:{}, replaces:{type:'string'} }, required:['intent'], additionalProperties:false },
 };
 const fetchTool = {
   name: 'context_fetch', description: 'Retrieve a visible record by ref or position returned by context_list. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; follow nextOffset to read more. Source completeness and truncation remain as recorded.',
@@ -60,7 +68,7 @@ function object(value) {
  */
 function toolReply(value, requestId) {
   const text = JSON.stringify(value);
-  const full = { content: [{ type: 'text', text }] };
+  const full = { content: [{ type: 'text', text }], ...(object(value)?.kind === 'rejected' && {isError:true}) };
   // The JSON-RPC envelope and request id also consume response bytes.
   if (Buffer.byteLength(JSON.stringify({ jsonrpc: '2.0', id: requestId, result: full })) <= maxResponseBytes) {
     return full;
@@ -83,28 +91,32 @@ function toolReply(value, requestId) {
 }
 
 /** @param {IncomingMessage} request */
-async function readRequest(request) {
+async function readRequest(request, limit) {
   let total = 0;
   /** @type {Buffer[]} */
   const chunks = [];
   for await (const chunk of request.iterator({ destroyOnReturn: false })) {
     total += chunk.length;
-    if (total > maxRequestBytes) return undefined;
+    if (total > limit) return undefined;
     chunks.push(chunk);
   }
-  try { return object(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+  try { return { message: object(JSON.parse(Buffer.concat(chunks).toString('utf8'))), bytes: total }; }
   catch { return undefined; }
 }
 
 /**
  * Stateless Streamable HTTP endpoint for one invocation. It binds only loopback,
  * uses an unguessable attempt URL and exposes only the supplied live ports.
- * @param {Pick<Invocation, 'contextAccess' | 'externalTools' | 'signal'>} invocation
+ * @param {Pick<Invocation, 'contextAccess' | 'externalTools' | 'signal' | 'attemptId' | 'controllerDelivery' | 'isActive'>} invocation
  */
-export async function startMcpBridge({ contextAccess, externalTools, signal }) {
+export async function startMcpBridge({ contextAccess, externalTools, signal, attemptId, controllerDelivery, isActive }) {
   signal.throwIfAborted();
   const path = '/' + randomUUID();
   let closed = false;
+  const pendingDecision = controllerDelivery === 'intent_mcp' && attemptId
+    ? createPendingControllerDecisions({ signal, attemptId, isActive }) : undefined;
+  let ordinaryCalls = 0;
+  let decisionCalls = 0;
   /** @type {Map<string | number, {key: string, response: Promise<unknown>}>} */
   const calls = new Map();
   let active = 0;
@@ -114,6 +126,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
     if (closed || signal.aborted) return { kind: 'unavailable', reason: 'closed' };
     active++;
     try {
+      if (name === decisionTool.name && pendingDecision) return pendingDecision.register(args);
       if (name === listTool.name && contextAccess) {
         const parsed = decode(listArgs, args);
         return parsed.kind === 'accepted' ? contextAccess.list(parsed.value.cursor) : { kind: 'unavailable', reason: 'invalid_input' };
@@ -157,15 +170,18 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
       response.writeHead(400).end();
       return;
     }
-    if (Number(request.headers['content-length']) > maxRequestBytes) {
+    if (Number(request.headers['content-length']) > (pendingDecision ? maxDecisionRequestBytes : maxRequestBytes)) {
       response.writeHead(413, { Connection: 'close' }).end();
       return;
     }
-    const message = await readRequest(request);
+    const payload = await readRequest(request, pendingDecision ? maxDecisionRequestBytes : maxRequestBytes);
+    const message = payload?.message;
     if (!message || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
       response.writeHead(400, { Connection: 'close' }).end();
       return;
     }
+    if (payload.bytes > maxRequestBytes && !(pendingDecision && message.method === 'tools/call' &&
+        object(message.params)?.name === decisionTool.name)) { response.writeHead(413).end(); return; }
     if (message.id === undefined) { response.writeHead(202).end(); return; }
     if ((typeof message.id !== 'string' && typeof message.id !== 'number') ||
         (typeof message.id === 'number' && !Number.isFinite(message.id))) {
@@ -188,6 +204,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
       case 'tools/list': {
         const tools = [
           ...(contextAccess ? [listTool, fetchTool] : []),
+          ...(pendingDecision ? [decisionTool] : []),
           ...(externalTools?.list() ?? []).map(({ id, description, inputSchema, effect }) =>
             ({ name: id, description, inputSchema, annotations: { readOnlyHint: effect === 'read' } })),
         ];
@@ -204,9 +221,13 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
         const key = JSON.stringify([params.name, args]);
         let call = calls.get(requestId);
         if (call && call.key !== key) { error = { code: -32602, message: 'Request id already used' }; break; }
-        if (!call && calls.size < maxToolCalls && active < maxConcurrentCalls) {
-          call = { key, response: callTool(params.name, args).then(value => toolReply(value, requestId)) };
-          calls.set(requestId, call);
+        if (!call) {
+          const control = params.name === decisionTool.name && pendingDecision !== undefined;
+          if (control ? decisionCalls < maxDecisionCalls : ordinaryCalls < maxToolCalls && active < maxConcurrentCalls) {
+            if (control) decisionCalls++; else ordinaryCalls++;
+            call = { key, response: callTool(params.name, args).then(value => toolReply(value, requestId)) };
+            calls.set(requestId, call);
+          }
         }
         result = call ? await call.response : toolReply({ kind: 'unavailable', reason: 'budget' }, requestId);
         break;
@@ -240,9 +261,11 @@ export async function startMcpBridge({ contextAccess, externalTools, signal }) {
   const { port } = address;
   return {
     url: 'http://127.0.0.1:' + port + path,
+    finalizeDecision: pendingDecision ? () => pendingDecision.finalize() : undefined,
     close() {
       if (closed) return;
       closed = true;
+      pendingDecision?.close();
       server.close();
       server.closeAllConnections();
       calls.clear();
