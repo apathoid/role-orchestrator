@@ -1,5 +1,13 @@
 # C12.3–C12.4: протокол нативной приёмки
 
+## C18 — Controller Intent & Deferred Decision Admission (PLANNED)
+
+**Status: UNVERIFIED.** This is a future native evaluation, not evidence of existing C18 implementation. Implementation specification: [C18](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md). Preserve normal provider-native tools, permissions, skill discovery and subagents; never require Host Git/immutable workspace. No private prompts, tokens, or proprietary source archives committed.
+
+Run a controlled comparison on the actual C17R baseline, C18 text-minimal Intent and MCP Intent; native structured output only where confirmed supported. Include one real OpenCode ACP/local model and an independent provider/adapter where available. Record exact commit, provider/client/model version, sampling/effort, context limit, budgets, permissions, cwd and relevant environment; use equal tasks and document cold/warm effects. Test direct answer, real repository read, script execution, model-selected native skill absent from RO Catalog, provider-native subagent, code modification with chosen verification, multi-Worker dependencies/acceptance, evidence/findings, partial/unresolved, task continuation, native cancellation, and in-turn correction. Repeat applicable scenarios **after an invalid, conflicting and valid pending submission**: native tools must still work and the model may continue its own investigation. Confirm `submit_decision` without context retrieval, large correct Decisions, concurrent replacements, late MCP requests, crash-gap/unknown effects, and independent Workers; separate synthetic faults from naturally produced failures.
+
+Compare **actual user-task correctness** as well as final Decision rejections, avoided Controller reinvocations, in-turn correction frequency, proposal count, native tool calls/unwanted effects, end-to-end latency, prompt/output bytes and supported usage. If a provider lacks the needed native capability, mark that subtest UNVERIFIED or a specifically proven capability unavailable; never claim a synthetic PASS is native PASS. See detailed [C18.8 criteria](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md#c188--controlled-native-acceptance-and-exact-sha-verification).
+
 ## C17.4 — Controller context and decision reliability (NATIVE UNVERIFIED)
 
 No authenticated real-model provider, user config/workspace, installed native agent or Zed GUI was available to the implementation agent. Node 24/Nix/actual PTY and SDK fixtures in Actions are engineering evidence only. The following procedure is for the operator, not a product runtime workflow; no private prompts, config or credentials go to Git or CI.
