@@ -150,3 +150,8 @@ Execution notices may carry committed finding records beside the redacted event.
 ## C18 — Internal decision control tool versus extensions
 
 `submit_decision` is a built-in, attempt-scoped MCP **Controller-only** control tool when opted-in and negotiated. It is not added to `AttemptTools`, `externalTools.list()`, the RO Tool Catalog, or an extension permission resource. Its bounded call/input capacity is separate from the original general-purpose MCP bridge (`context_list/context_fetch` and configured external tools). It never bypasses native permissions, creates a Worker, suppresses other native providers' tools or authorizes new effects. The URL/token identifies a currently active Controller attempt to the extent an HTTP bearer is secret; it cannot prove that the root model rather than an authorized native subagent initiated a call.
+
+### C18R — Collision-free MCP tool namespace
+
+The Controller-only built-in `submit_decision` is not a reserved **external ToolPort ID**: already configured external tools with that ID remain reachable. If present, the invocation-scoped MCP bridge advertises its control tool under the first free `role_orchestrator_submit_decision` / `role_orchestrator_submit_decision_N` alias and reflects that exact name in the Controller's model-facing instructions. Native callers use the advertised name, never a silently shadowed external handler. Tool authorization remains with the original ToolPort; RO does not infer model strategy from names or prohibit provider-native tools. Workers never receive the built-in Controller capability.
+

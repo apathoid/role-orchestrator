@@ -1,5 +1,12 @@
 # Активный план реализации и приёмки
 
+## C18R — corrective review and exact-SHA verification (IMPLEMENTED; NATIVE UNVERIFIED)
+
+C18R fixes on `feature/controller-intent-deferred-admission` derive from the engineering review of `f9d06f19`. P1: ACP capture overflow no longer invalidates separately proven MCP completion; clearly observed invalid explicit replacements of the current proposal cannot silently admit its predecessor. P2: dynamic collision-free builtin MCP tool naming, trusted attempt-bound duplicate/identity treatment and crash-gap, finality/capacity/cancellation/provenance regressions. Production fixes are confined to ACP/MCP adapter and existing identity/admission owners; no extra scheduler, semantic Host gate, CAS for proposals or native-tool restriction.
+
+Exact-SHA Node 24/Nix and all existing regression suites are **mandatory before engineering PASS**; see [STATUS](STATUS.md). Real native provider comparisons remain UNVERIFIED and are not inferred from SDK/PTY fixtures.
+
+
 ## C18 — Controller Intent & Deferred Decision Admission (IMPLEMENTATION; NATIVE UNVERIFIED)
 
 **Current implementation record:** [C18 executable plan](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md), branch `feature/controller-intent-deferred-admission` from C17R `836c3795`, planning HEAD `f8722bc8`. Read [C18 status](STATUS.md) for exact code/CI/native evidence. C18 production code and synthetic tests exist on the feature branch; engineering verification requires full exact-SHA CI, while real-model native acceptance is UNVERIFIED. No master merge.

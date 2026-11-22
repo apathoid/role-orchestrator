@@ -547,3 +547,17 @@ Reuses A05/A06/A21/A24/A123–A125 and existing CLI/ACP interaction/presentation
 | Cross-process crash-gap, unknown effect, release-package checks, Node 24/Nix and real model autonomy/quality | Historical C16/C17R regressions, required C18.8 native operator comparison | Additional review / native UNVERIFIED |
 
 No fixture-generated MCP call is evidence that a real model chose the right work, discovered a native skill, or preserved quality/latency. Only exact commit + full CI after the final edits may be marked ENGINEERING PASS.
+
+## C18R — Corrective capture/finality, observed replacements, tool namespace and durable recovery
+
+| Review scenario | Executable evidence | Engineering status |
+| --- | --- | --- |
+| R1.1–R1.6 valid MCP proposal then >1 MiB ACP tool updates; missing/refusal/cancel/text failure with truthful truncation | `tests/contracts/acp-provider.test.js`, actual SDK fixture `acp-contract-agent.js` | RED #45016896522; GREEN exact-SHA CI required |
+| R2.1–R2.8 duplicate request ID, known explicit replacement, correction, unknown/foreign ref, malformed message and continuation | `tests/integration/c18-controller-proposals.test.js` with live HTTP MCP; registry unit tests | Exact-SHA CI required |
+| R3.1–R3.5 alias resolves `submit_decision` collision while preserving the original external ToolPort | `tests/integration/c18-controller-proposals.test.js` | Exact-SHA CI required |
+| R4.1–R4.8 stable Controller receipt id/content/attempt identity; durable outcome and responded ACK gaps; accepted Worker crash-gap and historical C16 unknown effect | `tests/integration/c18-orchestrator.test.js`, Core reducer/snapshot, existing C16R persisted tests | Exact-SHA CI required |
+| R5.1–R5.18 registration barrier, independent control/ordinary budgets, near 2 MiB UTF-8, oversize 413, abort/late/cross-invocation, no Worker control capability | C18R HTTP registry tests, `tests/contracts/acp-provider.test.js`, ACP SDK/Operation path | Exact-SHA CI required |
+| Real LLM native tool/skill/subagent autonomy and comparative quality | `docs/roadmap/NATIVE_ACCEPTANCE.md` operator protocol | **NATIVE UNVERIFIED** |
+
+Final engineering PASS is contingent on full mandatory CI on the **last** committed SHA, not previous green commits. Native ACP fixture and PTY are not real-model acceptance.
+

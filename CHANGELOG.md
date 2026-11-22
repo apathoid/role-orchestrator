@@ -4,6 +4,13 @@
 
 ## Unreleased — C12–C18 integration and delivery
 
+### C18R — ControllerIntent corrective reliability (exact-SHA verification pending)
+- An independently completed MCP ControllerIntent survives auxiliary ACP observation-capture overflow while truncation remains visible and incomplete native text is never promoted to full evidence.
+- Rejected explicit replacements from a known JSON-RPC request-ID conflict invalidate the selected lineage; successful same-turn correction remains available, and unresolved transport faults receive technical outcomes.
+- External MCP tools named `submit_decision` remain reachable via dynamic collision-free control-tool naming reflected in the Controller prompt.
+- Stronger original-attempt receipt identity and crash-gap/near-2-MiB/cancellation/namespace regressions. Real-model native quality and tool autonomy remain UNVERIFIED.
+
+
 ### C18 — ControllerIntent & deferred Controller admission (engineering verification pending; native UNVERIFIED)
 - Opt-in model-owned ControllerIntent with trusted technical Decision v1 binding and unchanged single admission/journal. The old Decision v1 provider path remains the default.
 - Negotiated ACP MCP `submit_decision` accepts proposal-only submissions, supports same-turn correction and explicit same-lineage last-wins after normal native completion. Text fallback works without a second invocation; native tools are not disabled.

@@ -1,5 +1,18 @@
 # Role Orchestrator — оперативный статус
 
+## C18R — Controller Intent corrective fixes (IMPLEMENTED; final exact-SHA CI pending, native UNVERIFIED)
+
+**Branch:** `feature/controller-intent-deferred-admission`. **Review baseline:** `f9d06f1960dd73985d736b9fa6525044c24bb2d4` — [full C18 baseline CI #45015450152](https://github.com/apathoid/role-orchestrator/actions/runs/45015450152) SUCCESS on that exact SHA, independently of the reviewer's earlier inability to retrieve its result. The baseline PASS is **not** transferred to C18R. No merge to master, no evidence of local worktree cleanliness from the remote API.
+
+**C18R.0 RED:** [CI #45016896522](https://github.com/apathoid/role-orchestrator/actions/runs/45016896522) confirmed that correct MCP Intent was lost after ACP auxiliary capture exceeded 1 MiB (`c18-overflow-valid`). Duplicate JSON-RPC request-ID replacement was reproduced by production MCP bridge regression. Intermediary failing runs are not a native failure; C18R fixes and tests require their **own final exact-SHA CI**.
+
+**C18R.1–.3 changes:** ACP now distinguishes aggregate native capture truncation from separately proven, normally completed MCP intent; incomplete native final text is not attested, and truncation remains a visible `acp-output-limit` observation and stop report. True native stop/protocol/cancel errors still prevent admission; legacy/intent_text remain strict. A parsed, attributable JSON-RPC request-ID conflict with a known explicit `replaces` invalidates only the selected proposal lineage through the existing bounded registry queue; unresolved error is a **technical protocol failure**, not a fabricated model-schema error. Valid correction within one turn remains possible. Built-in MCP control tool is deterministically renamed when external tool names collide; actual name is passed in the Controller prompt and both external and control tools remain callable. Existing independently bounded native/external tools and authorizations are not modified.
+
+**C18R.4–.5 evidence:** tests cover same original receipt/attempt duplicate versus changed payload or attempt identity, lost commit ACK before/after durable `controller.responded`, restart of an admitted-but-not-dispatched Worker, known/unknown/foreign replacement, large UTF-8 MCP request near 2 MiB through real ACP subprocess, budget exhaustion, cancellation/late endpoint and independent invocation scope. All tests remain subordinate to the exact-SHA CI result. Historical C16/C17R regression suites continue as mandatory. No new scheduler, Host semantic policy, durable proposal store, or Git/workspace gate.
+
+**Native: UNVERIFIED.** OpenCode/Ornith, separate provider and real workspace/skill/subagent autonomy comparisons were not run. Native ACP SDK fixtures and Linux PTY are engineering evidence, not a real LLM acceptance.
+
+
 ## C18 — Controller Intent & Deferred Decision Admission (IMPLEMENTATION; EXACT-SHA VERIFICATION PENDING)
 
 **Branch:** `feature/controller-intent-deferred-admission`, planning HEAD `f8722bc8a90ae89f0ab3fb47483f96ed31a7ce7e`. [Executable plan](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md), [native protocol](NATIVE_ACCEPTANCE.md). Source implementation was committed to this same feature branch; **no master merge**. The original planning SHA passed [baseline CI #45013518456](https://github.com/apathoid/role-orchestrator/actions/runs/45013518456) before C18 code. Historical C17R results do not prove C18 correctness.
