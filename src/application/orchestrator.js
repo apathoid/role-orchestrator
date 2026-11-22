@@ -1436,7 +1436,9 @@ export function createOrchestrator(deps) {
               ? {kind:'rejected',reason:{code:'INVALID_PROPOSAL',path:'$.replaces',
                 expected:'one unambiguous corrected ControllerIntent proposal'}}
               : response.controllerDeclaration?.kind === 'missing'
-                ? {kind:'rejected',reason:{code:'INVALID_PROPOSAL',path:'
+                ? {kind:'rejected',reason:{code:'INVALID_PROPOSAL',path:'$',
+                  expected:'a ControllerIntent submission before native end_turn'}}
+                : decodeDecision(response.output);
         // Category is taken from the actual parser/decoder/admission boundary.
         // It is not inferred from the natural-language Controller output.
         const rejectionCategory = response.decisionTextError ??

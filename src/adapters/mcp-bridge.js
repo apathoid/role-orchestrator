@@ -90,7 +90,7 @@ function toolReply(value, requestId) {
   return { content: [{ type: 'text', text: JSON.stringify(limited) }], isError: true };
 }
 
-/** @param {IncomingMessage} request */
+/** @param {IncomingMessage} request @param {number} limit */
 async function readRequest(request, limit) {
   let total = 0;
   /** @type {Buffer[]} */
@@ -107,7 +107,7 @@ async function readRequest(request, limit) {
 /**
  * Stateless Streamable HTTP endpoint for one invocation. It binds only loopback,
  * uses an unguessable attempt URL and exposes only the supplied live ports.
- * @param {Pick<Invocation, 'contextAccess' | 'externalTools' | 'signal' | 'attemptId' | 'controllerDelivery' | 'isActive'>} invocation
+ * @param {Pick<Invocation, 'contextAccess' | 'externalTools' | 'signal' | 'controllerDelivery' | 'isActive'> & {attemptId?: string}} invocation
  */
 export async function startMcpBridge({ contextAccess, externalTools, signal, attemptId, controllerDelivery, isActive }) {
   signal.throwIfAborted();
