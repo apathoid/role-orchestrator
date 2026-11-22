@@ -101,3 +101,20 @@ test('C18.5 a previous bridge URL never writes into another invocation',async()=
    assert.equal((await one.finalizeDecision()).kind,'intent');
  }finally{stop.abort();one.close();two.close();}
 });
+
+
+test('C18.4 observed malformed replacement invalidates its proven lineage without erasing unrelated conflicts',async()=>{
+ const r=make('extra');
+ const first=await r.register({intent:intent('A')});
+ const malformed=await r.register({intent:intent('B'),replaces:first.proposalRef,unexpected:true});
+ assert.equal(malformed.kind,'rejected');
+ assert.equal(malformed.reason.path,'$.unexpected');
+ assert.equal((await r.finalize()).kind,'invalid');
+ const other=make('lineage');
+ const a=await other.register({intent:intent('A')});
+ const bad=await other.register({intent:intent('B')});
+ assert.equal(bad.kind,'rejected');
+ const unknown=await other.register({intent:{},replaces:'unknown'});
+ assert.equal(unknown.kind,'rejected');
+ assert.equal((await other.finalize()).kind,'conflict');
+});

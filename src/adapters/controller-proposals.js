@@ -20,6 +20,8 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
   /** @type {{code:'INVALID_PROPOSAL',path:string,expected:string} | undefined} */
   let invalidReason;
   let conflicted = false;
+  /** @type {'budget' | undefined} */
+  let fatal;
   let processing = Promise.resolve();
 
   const live = () => open && !signal.aborted && isActive?.() !== false;
@@ -44,9 +46,6 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
       return rejected(error('$', 'submit_decision arguments object'));
     }
     const args = /** @type {Record<string,unknown>} */ (input);
-    for (const key of Object.keys(args)) {
-      if (key !== 'intent' && key !== 'replaces') return rejected(error('$.' + key, 'intent or replaces'));
-    }
     let root = ref;
     if (args.replaces !== undefined) {
       if (typeof args.replaces !== 'string' || !args.replaces.trim()) {
@@ -57,15 +56,26 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
       root = source.root;
     }
     known.set(ref, {root});
+    for (const key of Object.keys(args)) {
+      if (key !== 'intent' && key !== 'replaces') {
+        if (args.replaces !== undefined && selected?.root === root) {
+          selected = undefined;
+          conflicted = false;
+        }
+        return rejected(error('$.' + key, 'intent or replaces'));
+      }
+    }
     const parsed = decodeControllerIntent(args.intent);
     if (parsed.kind === 'rejected') {
-      if (args.replaces !== undefined && selected?.root === root) selected = undefined;
-      conflicted = false;
+      if (args.replaces !== undefined && selected?.root === root) {
+        selected = undefined;
+        conflicted = false;
+      }
       return rejected(parsed.reason);
     }
-    if (args.replaces === undefined && selected) {
+    if (selected && (args.replaces === undefined || selected.root !== root)) {
       conflicted = true;
-      return rejected(error('$.replaces', 'an explicit proposalRef to resolve unrelated submissions'));
+      return rejected(error('$.replaces', 'a proposalRef from the currently selected lineage'));
     }
     // Same-lineage explicit replacements use registration order; a correction
     // to either side of a conflict may select a new unique candidate.
@@ -86,16 +96,19 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
     const ref = 'proposal:' + attemptId + ':' + (++sequence);
     const size = Buffer.byteLength(JSON.stringify(input) ?? '', 'utf8');
     if (bytes + size > maxPendingIntentBytes) {
-      // Budget is a technical failure; do not silently admit a stale candidate.
-      selected = undefined;
-      conflicted = false;
-      invalidReason = error('$', 'submission within invocation control-byte budget');
-      return Promise.resolve({kind:'unavailable',reason:'budget',maxBytes:maxPendingIntentBytes});
+      // This is technical loss, never an invalid model Decision or permission
+      // to resurrect a previous candidate as though the request was unseen.
+      return Promise.resolve(exceedLimit());
     }
     bytes += size;
     const result = processing.then(() => classify(ref,input));
     processing = result.then(() => {}, () => {});
     return result;
+  }
+
+  function exceedLimit() {
+    fatal = 'budget';
+    return {kind:'unavailable',reason:'budget',maxBytes:maxPendingIntentBytes};
   }
 
   async function finalize() {
@@ -104,11 +117,12 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
     // including validations whose microtasks have not run yet.
     await processing;
     if (signal.aborted || isActive?.() === false) return {kind: /** @type {const} */ ('unavailable'), reason:'closed'};
+    if (fatal) return {kind: /** @type {const} */ ('unavailable'), reason:fatal};
     if (conflicted) return {kind: /** @type {const} */ ('conflict')};
     if (selected) return {kind: /** @type {const} */ ('intent'), value:selected.value, proposalRef:selected.ref};
     if (invalidReason) return {kind: /** @type {const} */ ('invalid'), reason:invalidReason};
     return {kind: /** @type {const} */ ('missing')};
   }
 
-  return {register, finalize, close() { open = false; }};
+  return {register, finalize, exceedLimit, close() { open = false; }};
 }

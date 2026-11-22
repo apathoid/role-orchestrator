@@ -500,7 +500,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             // registration and waits for all pre-boundary submissions only.
             const selected = await mcp?.finalizeDecision?.();
             if (!selected || selected.kind === 'unavailable') {
-              result = resultFor(invocation, 'PROTOCOL_ERROR', 'failed', 'sent');
+              result = resultFor(invocation, selected?.reason === 'budget' ? 'RESOURCE_LIMIT' : 'PROTOCOL_ERROR', 'failed', 'sent');
             } else {
               result.output = output; // native final text is a separate observation
               if (selected.kind === 'intent') {

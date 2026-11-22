@@ -97,7 +97,7 @@ async function readRequest(request, limit) {
   const chunks = [];
   for await (const chunk of request.iterator({ destroyOnReturn: false })) {
     total += chunk.length;
-    if (total > limit) return undefined;
+    if (total > limit) return {message:undefined,bytes:total};
     chunks.push(chunk);
   }
   try { return { message: object(JSON.parse(Buffer.concat(chunks).toString('utf8'))), bytes: total }; }
@@ -178,6 +178,10 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
     }
     const payload = await readRequest(request, pendingDecision ? maxDecisionRequestBytes : maxRequestBytes);
     const message = payload?.message;
+    if (payload && payload.bytes > (pendingDecision ? maxDecisionRequestBytes : maxRequestBytes)) {
+      response.writeHead(413, {Connection:'close'}).end();
+      return;
+    }
     if (!message || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
       response.writeHead(400, { Connection: 'close' }).end();
       return;
@@ -229,6 +233,9 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
             if (control) decisionCalls++; else ordinaryCalls++;
             call = { key, response: callTool(params.name, args).then(value => toolReply(value, requestId)) };
             calls.set(requestId, call);
+          } else if (control) {
+            result = toolReply(pendingDecision.exceedLimit(),requestId);
+            break;
           }
         }
         result = call ? await call.response : toolReply({ kind: 'unavailable', reason: 'budget' }, requestId);
