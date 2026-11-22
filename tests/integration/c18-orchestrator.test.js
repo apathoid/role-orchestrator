@@ -198,3 +198,58 @@ test('C18R.4 lost ACK after durable controller.responded preserves one acceptanc
    assert.equal(state.attempts.length,2);
  }finally{await after.api.close();}
 });
+
+test('C18R.4 persisted Controller admission before Worker reservation resumes one original Action',async()=>{
+ const saved=new Map();
+ let acknowledged=false;
+ const store={
+   async open(){},async close(){},
+   async list(){return structuredClone([...saved.values()]);},
+   async load(id){return structuredClone(saved.get(id));},
+   async commit(id,revision,next){
+     if((saved.get(id)?.revision??null)!==revision)return {kind:'conflict'};
+     saved.set(id,structuredClone(next));
+     if(!acknowledged && next.events.at(-1)?.kind==='controller.responded'){
+       acknowledged=true;return {kind:'unavailable'};
+     }
+     return {kind:'committed'};
+   },
+ };
+ const action={actionId:'restart-worker',kind:'delegate',profileId:'primary',
+   objective:'Do it once',expectedResult:'One worker output'};
+ const semantic={additions:[action],
+   waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:action.actionId}]}};
+ const first=setup({store,maxInvocations:4,maxConcurrentInvocations:2,respond(invocation){
+   assert.equal(invocation.kind,'controller');
+   return {...final(invocation),output:undefined,
+     controllerDeclaration:{kind:'intent',value:semantic}};
+ }});
+ let operationId;
+ try{
+   const run=await first.api.submit(request({requestId:'c18r-pre-dispatch'}));
+   operationId=run.operation.operationId;
+   await assert.rejects(run.completion,e=>e.code==='STORE_UNAVAILABLE');
+   const durable=await store.load(operationId);
+   assert.equal(durable.events.filter(e=>e.kind==='controller.responded').length,1);
+   assert.equal(durable.events.filter(e=>e.kind==='attempt.reserved'&&e.actionId===action.actionId).length,0);
+ }finally{await first.api.close();}
+ const calls=[];
+ const second=setup({store,idPrefix:'c18r-recover-worker-',maxInvocations:4,maxConcurrentInvocations:2,
+   respond(invocation){
+     calls.push({kind:invocation.kind,actionId:invocation.actionId,attemptId:invocation.attemptId});
+     return invocation.kind==='delegate'
+       ? {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId),output:'Worker executed once'}
+       : final(invocation);
+   },
+ });
+ try{
+   const state=await (await second.api.resume(operationId)).completion;
+   const workers=calls.filter(item=>item.kind==='delegate'&&item.actionId===action.actionId);
+   assert.equal(workers.length,1);
+   assert.equal(state.events.filter(e=>e.kind==='attempt.reserved'&&e.actionId===action.actionId).length,1);
+   assert.equal(state.events.filter(e=>e.kind==='controller.responded'
+     && e.admissions?.some(x=>x.kind==='accepted'&&x.action.actionId===action.actionId)).length,1);
+   assert.equal(state.attempts.filter(x=>x.actionId===action.actionId).length,1);
+   assert.equal(state.status,'finished');
+ }finally{await second.api.close();}
+});
