@@ -1,5 +1,23 @@
 # Активный план реализации и приёмки
 
+## C18 — Controller Intent & Deferred Decision Admission (PLANNED)
+
+**Current implementation handoff:** [C18 executable plan](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md), planned branch `feature/controller-intent-deferred-admission` based on `feature/controller-reliability` @ `836c3795`. Read [C18 status](STATUS.md#c18--controller-intent--deferred-decision-admission-planned-not-implemented) before work. Planning-only documentation; no C18 production implementation, tests, CI or native acceptance yet. Do not merge to master without approval.
+
+| Checkpoint | Required deliverable and exit |
+| --- | --- |
+| C18.0 | Baseline, exact provenance/call-graph analysis, RED failure fixtures; record real limits |
+| C18.1 | Full transport-neutral model-owned ControllerIntent decoder and per-field empty defaults |
+| C18.2 | Trusted deterministic Intent→Decision v1 materialization and text/structured reference path |
+| C18.3 | Generic ProviderPort transport/result discrimination, capability negotiation and legacy fallback |
+| C18.4 | MCP proposal-only tool, in-turn correction, explicit same-lineage last-wins, recoverable conflicts, pre-`end_turn` in-flight barrier |
+| C18.5 | Invocation-scoped generic provenance, cross-session tests, bounded large-intent/control-tool capacity |
+| C18.6 | Existing single admission/journal, C16 5/10 recovery, C17R source identity, crash-safe receipt dedup and no replay |
+| C18.7 | Complete contract/integration/cancel/late/restart/PTY regressions and native autonomy invariants |
+| C18.8 | Real OpenCode+independent provider comparisons, code quality and native tool behavior, final exact-SHA Node 24/Nix/CI and documentation |
+
+**Nonnegotiable:** native tools/skills/subagents and ordinary research must continue after any pending/invalid/conflicted submission. Host does not evaluate semantic correctness, enforce Git/workspace integrity, invent model defaults, or block independent Workers. The full C18 document governs details; this table is a navigation summary, not a second specification.
+
 ## C17R — Recovery Delivery & Diagnostic Verification
 
 Corrective scope approved after C17 review; baseline `e7e8bf84` (full CI PASS), branch `feature/controller-reliability`. C17R.0–.2 baseline/recovery packing/chronology; .3 bounded configurable capture; .4 source correlation; .5 existing durable/concurrency paths; .6 diagnostic isolation and exact-build synthetic overhead; .7 two main native comparisons; .8 full exact-SHA verification. Existing [C17R scope and criteria](C17_CONTROLLER_CONTEXT_AND_DECISION_RELIABILITY.md#c17r--recovery-delivery--diagnostic-verification), [STATUS](STATUS.md) and [native procedure](NATIVE_ACCEPTANCE.md). No new model workflow, Decision transport or default context budget. Engineering evidence is exact-SHA only; native UNVERIFIED.
