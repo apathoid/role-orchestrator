@@ -849,3 +849,17 @@ for(const [scenario,valid] of [
       }finally{await api.close();}
     }));
 }
+
+test('C18R.5 complete near-limit UTF-8 MCP Decision passes real ACP SDK and existing admission', {...linux,timeout:20000},() =>
+  withOwnedRun('C18R-acp-large',async cwd=>{
+    const endpoint=provider(cwd,'c18-large',{mcpBridge:true,controllerIntent:'prefer_mcp'});
+    const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+    try{
+      const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished');
+      assert.equal(state.assessment.answer,'界'.repeat(650_000));
+      assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+      const observations=state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[]);
+      assert.ok(observations.some(o=>o.value?.finalAssessment?.answer===state.assessment.answer));
+    }finally{await api.close();}
+  }));

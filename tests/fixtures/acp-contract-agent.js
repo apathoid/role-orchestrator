@@ -40,11 +40,11 @@ agent()
     if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
-      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
+      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
   })
   .onRequest(a.session.new, ({ params }) => {
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
-    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
+    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
       assert.equal(params.mcpServers[0]?.type, 'http');
       mcpUrl = params.mcpServers[0].url;
     }
@@ -336,6 +336,19 @@ agent()
           findingRefs: [], unresolvedQuestions: [], answer: text },
       }));
       return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'c18-large') {
+      assert.match(prompt,/ControllerIntent reference/);
+      const answer='界'.repeat(650_000);
+      const body=JSON.stringify({jsonrpc:'2.0',id:42,method:'tools/call',
+        params:{name:'submit_decision',arguments:{intent:{finalAssessment:{overall:'complete',answer}}}}});
+      assert.ok(Buffer.byteLength(body,'utf8')>1_900_000&&Buffer.byteLength(body,'utf8')<2*1024*1024);
+      const result=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},body});
+      assert.equal(result.status,200);
+      const packet=await result.json();
+      assert.equal(JSON.parse(packet.result.content[0].text).kind,'proposal_pending');
+      await message('native-last','Native final text is not the decision');
+      return {stopReason:'end_turn'};
     }
     if (scenario.startsWith('c18-overflow-')) {
       assert.equal(kind,'controller');

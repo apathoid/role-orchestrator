@@ -130,7 +130,7 @@ test('C18R.0 RED: observed duplicate JSON-RPC id replacement invalidates candida
    const changed=await call(bridge.url,10,'submit_decision',{
      intent:intent('B'),replaces:value(a).proposalRef});
    assert.equal(changed.body.error?.code,-32602);
-   assert.equal((await bridge.finalizeDecision()).kind,'invalid');
+   assert.deepEqual(await bridge.finalizeDecision(),{kind:'unavailable',reason:'request_id_conflict'});
  }finally{stop.abort();bridge.close();}
 });
 
@@ -144,5 +144,79 @@ test('C18R.0 RED: rejected replacement can be corrected without additional nativ
    const c=await call(bridge.url,11,'submit_decision',{intent:intent('C'),replaces:ref});
    assert.equal(value(c).kind,'proposal_pending');
    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'C');
+ }finally{stop.abort();bridge.close();}
+});
+
+test('C18R.2 unknown, unrelated and malformed JSON-RPC calls cannot invalidate a known proposal',async()=>{
+ const stop=new AbortController();
+ const one=await startMcpBridge({signal:stop.signal,attemptId:'r2-scoped',controllerDelivery:'intent_mcp'});
+ const two=await startMcpBridge({signal:stop.signal,attemptId:'r2-other',controllerDelivery:'intent_mcp'});
+ try{
+   const a=value(await call(one.url,10,'submit_decision',{intent:intent('A')}));
+   const unrelated=await call(one.url,10,'submit_decision',{intent:intent('unrelated')});
+   assert.equal(unrelated.body.error.code,-32602);
+   const foreign=await call(one.url,10,'submit_decision',{intent:intent('foreign'),replaces:'proposal:r2-other:1'});
+   assert.equal(foreign.body.error.code,-32602);
+   const malformed=await fetch(one.url,{method:'POST',headers:{'content-type':'application/json'},body:'{malformed'});
+   assert.equal(malformed.status,400);
+   const b=value(await call(two.url,1,'submit_decision',{intent:intent('B')}));
+   assert.notEqual(a.proposalRef,b.proposalRef);
+   assert.equal((await one.finalizeDecision()).value.finalAssessment.answer,'A');
+   assert.equal((await two.finalizeDecision()).value.finalAssessment.answer,'B');
+ }finally{stop.abort();one.close();two.close();}
+});
+
+test('C18R.3 built-in Decision control name never shadows external submit_decision',async()=>{
+ const stop=new AbortController();
+ const calls=[];
+ const externalTools={
+   list:()=>['submit_decision','role_orchestrator_submit_decision'].map(id=>({
+     id,description:'External tool '+id,effect:'read',inputSchema:{type:'object',additionalProperties:true},
+   })),
+   async call(name,args){calls.push({name,args});return {status:'completed',effect:'none',output:name};},
+ };
+ const bridge=await startMcpBridge({signal:stop.signal,attemptId:'collision',controllerDelivery:'intent_mcp',externalTools});
+ try{
+   const listing=await fetch(bridge.url,{method:'POST',headers:{'content-type':'application/json'},
+     body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})}).then(r=>r.json());
+   const advertised=listing.result.tools.map(t=>t.name);
+   assert.deepEqual(new Set(advertised).size,advertised.length);
+   assert.ok(advertised.includes('submit_decision'));
+   assert.ok(advertised.includes('role_orchestrator_submit_decision'));
+   assert.equal(bridge.decisionToolName,'role_orchestrator_submit_decision_1');
+   assert.ok(advertised.includes(bridge.decisionToolName));
+   assert.equal(value(await call(bridge.url,2,'submit_decision',{hello:'external'})).output,'submit_decision');
+   assert.equal(value(await call(bridge.url,3,'role_orchestrator_submit_decision',{})).output,'role_orchestrator_submit_decision');
+   const pending=value(await call(bridge.url,4,bridge.decisionToolName,{intent:intent('correct')}));
+   assert.equal(pending.kind,'proposal_pending');
+   assert.deepEqual(calls.map(x=>x.name),['submit_decision','role_orchestrator_submit_decision']);
+   assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'correct');
+ }finally{stop.abort();bridge.close();}
+ const worker=await startMcpBridge({signal:stop.signal,externalTools});
+ try{
+   assert.equal(worker.decisionToolName,undefined);
+   assert.equal(value(await call(worker.url,5,'submit_decision',{})).output,'submit_decision');
+ }finally{worker.close();}
+});
+
+test('C18R.5 near-2MiB UTF-8 Control submission remains intact; oversize is refused explicitly',async()=>{
+ const stop=new AbortController();
+ const bridge=await startMcpBridge({signal:stop.signal,attemptId:'near-limit',controllerDelivery:'intent_mcp'});
+ try{
+   const answer='界'.repeat(650_000);
+   const body=JSON.stringify({jsonrpc:'2.0',id:9,method:'tools/call',
+     params:{name:'submit_decision',arguments:{intent:intent(answer)}}});
+   assert.ok(Buffer.byteLength(body,'utf8')>1_900_000);
+   assert.ok(Buffer.byteLength(body,'utf8')<2*1024*1024);
+   const response=await fetch(bridge.url,{method:'POST',headers:{'content-type':'application/json'},body});
+   assert.equal(response.status,200);
+   const reply=await response.json();
+   const ref=JSON.parse(reply.result.content[0].text).proposalRef;
+   assert.ok(ref);
+   const overflow=await fetch(bridge.url,{method:'POST',headers:{'content-type':'application/json'},
+     body:JSON.stringify({jsonrpc:'2.0',id:10,method:'tools/call',params:{
+       name:'submit_decision',arguments:{intent:intent('界'.repeat(705_000)),replaces:ref}}})});
+   assert.equal(overflow.status,413);
+   assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,answer);
  }finally{stop.abort();bridge.close();}
 });
