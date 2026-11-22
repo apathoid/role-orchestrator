@@ -1475,7 +1475,19 @@ export function createOrchestrator(deps) {
           } else if (evidenceError) {
             correction = evidenceError;
           } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
-            correction = { code: 'INVALID_PROPOSAL', path: '$.decisionId', expected: 'a fresh decision id' };
+            const prior = state.events.find(event => event.kind === 'controller.responded' &&
+              event.decision.decisionId === value.decisionId);
+            if (prior?.kind === 'controller.responded' && prior.attemptId === attemptId &&
+                sameRecord(prior.decision, value)) {
+              // Same trusted receipt was already admitted: no second planRound,
+              // reservation, cancellation or Worker dispatch.
+              return state;
+            }
+            // Identity reuse with different content or attempt provenance is
+            // a technical conflict, not a made-up model schema violation.
+            return technicalWait(state, { code:'IDENTITY_CONFLICT', operationId,
+              attemptId, actionId:attemptId, effect:response.outcome.effect,
+              dispatchCertainty:response.certainty });
           } else {
             const round = planRound(state, value);
             if (round.error) correction = round.error;

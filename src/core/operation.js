@@ -412,7 +412,8 @@ export function applyEvent(state, event) {
       const known = state.events.find(item => item.kind === 'controller.responded' &&
         item.decision.decisionId === event.decision.decisionId);
       if (known?.kind === 'controller.responded') {
-        return sameRecord(known.decision, event.decision) ? duplicate : reject('IDENTITY_CONFLICT');
+        return known.attemptId === event.attemptId && sameRecord(known.decision, event.decision)
+          ? duplicate : reject('IDENTITY_CONFLICT');
       }
       if (state.status !== 'active') return reject(state.status === 'cancelled' ? 'CANCELLED' : 'INVALID_PROPOSAL');
       return apply({}, 'ACCEPTED');

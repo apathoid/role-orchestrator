@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setup, final } from '../fixtures/application.js';
-import { request } from '../fixtures/core.js';
+import { request, decision, outcome } from '../fixtures/core.js';
+import { createOperation, applyEvent, sameRecord } from '../../src/core/operation.js';
+import { materializeControllerIntent } from '../../src/application/controller-intent.js';
+import { decodeSnapshot, encodeSnapshot } from '../../src/adapters/state/codec.js';
 
 test('C18.2 model-owned ControllerIntent uses unchanged Operation admission and a trusted context revision',async()=>{
  const answer='# Hello 🌿\n\nDirect result';
@@ -101,4 +104,51 @@ test('C18.6 crash-gap after durable completed outcome does not replay prior Cont
    assert.ok(state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[])
      .some(o=>o.value?.finalAssessment?.answer==='Interrupted receipt'));
  }finally{await after.api.close();}
+});
+
+test('C18R.4 same durable receipt is duplicate, altered content or provenance is IDENTITY_CONFLICT',()=>{
+ const op='op-c18r-identity';
+ let state=createOperation(op,request({requestId:'c18r-identity'}),'fixture-authority',
+   {maxInvocations:3,maxConcurrentInvocations:2});
+ let serial=0;
+ const apply=data=>{
+   const event={eventId:'c18r-'+(++serial),receivedAt:serial,operationId:op,...data};
+   const r=applyEvent(state,event);
+   assert.equal(r.kind,'applied',JSON.stringify(r.reason));state=r.state;
+ };
+ const attemptId='original-controller';
+ apply({kind:'attempt.reserved',attemptId,actionId:attemptId});
+ apply({kind:'attempt.dispatched',attemptId,route:{configurationRef:'test-config',
+   profileId:'primary',providerId:'fixture',model:'fake'}});
+ apply({kind:'attempt.outcome',dispatchCertainty:'sent',outcome:outcome(attemptId)});
+ const action={actionId:'action-once',kind:'delegate',profileId:'primary',
+   objective:'Run once',expectedResult:'One outcome'};
+ const material=materializeControllerIntent({additions:[action],
+   waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:action.actionId}]}},
+ {operationId:op,attemptId,contextCursor:state.revision,profileId:'primary'});
+ assert.equal(material.kind,'accepted');
+ const value=material.value;
+ const accepted=[{kind:'accepted',action:{...action,contextRefs:[],dependsOn:[]}}];
+ apply({kind:'controller.responded',attemptId,decision:value,admissions:accepted});
+ const snapshot=decodeSnapshot(encodeSnapshot(state));
+ assert.equal(snapshot.kind,'accepted');
+ const recovered=snapshot.value;
+ const duplicate=applyEvent(recovered,{eventId:'c18r-received-again',receivedAt:100,
+   operationId:op,kind:'controller.responded',attemptId,decision:structuredClone(value),admissions:accepted});
+ assert.equal(duplicate.kind,'duplicate');
+ assert.equal(duplicate.state.revision,recovered.revision);
+ assert.equal(duplicate.state.events.filter(e=>e.kind==='controller.responded').length,1);
+ assert.equal(duplicate.state.attempts.length,1);
+ const conflict=applyEvent(recovered,{eventId:'c18r-corrupt',receivedAt:101,
+   operationId:op,kind:'controller.responded',attemptId,
+   decision:{...value,additions:[]},admissions:[]});
+ assert.equal(conflict.kind,'rejected');
+ assert.equal(conflict.reason.code,'IDENTITY_CONFLICT');
+ const wrongAttempt=applyEvent(recovered,{eventId:'c18r-other-attempt',receivedAt:102,
+   operationId:op,kind:'controller.responded',attemptId:'another-controller',
+   decision:structuredClone(value),admissions:accepted});
+ assert.equal(wrongAttempt.kind,'rejected');
+ assert.equal(wrongAttempt.reason.code,'IDENTITY_CONFLICT');
+ assert.equal(state.events.filter(e=>e.kind==='attempt.reserved'&&e.actionId===action.actionId).length,0);
+ assert.equal(recovered.events.filter(e=>e.kind==='controller.responded').length,1);
 });
