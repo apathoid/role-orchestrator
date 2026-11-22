@@ -192,11 +192,12 @@ test('C18R.3 built-in Decision control name never shadows external submit_decisi
    assert.deepEqual(calls.map(x=>x.name),['submit_decision','role_orchestrator_submit_decision']);
    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'correct');
  }finally{stop.abort();bridge.close();}
- const worker=await startMcpBridge({signal:stop.signal,externalTools});
+ const workerStop=new AbortController();
+ const worker=await startMcpBridge({signal:workerStop.signal,externalTools});
  try{
    assert.equal(worker.decisionToolName,undefined);
    assert.equal(value(await call(worker.url,5,'submit_decision',{})).output,'submit_decision');
- }finally{worker.close();}
+ }finally{workerStop.abort();worker.close();}
 });
 
 test('C18R.5 near-2MiB UTF-8 Control submission remains intact; oversize is refused explicitly',async()=>{
