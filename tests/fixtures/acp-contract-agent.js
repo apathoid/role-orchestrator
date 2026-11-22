@@ -40,11 +40,11 @@ agent()
     if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
-      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' } } };
+      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
   })
   .onRequest(a.session.new, ({ params }) => {
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
-    if (scenario === 'mcp' || scenario === 'c18-mcp') {
+    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
       assert.equal(params.mcpServers[0]?.type, 'http');
       mcpUrl = params.mcpServers[0].url;
     }
@@ -336,6 +336,29 @@ agent()
           findingRefs: [], unresolvedQuestions: [], answer: text },
       }));
       return { stopReason: 'end_turn' };
+    }
+    if (scenario.startsWith('c18-overflow-')) {
+      assert.equal(kind,'controller');
+      if (scenario !== 'c18-overflow-text' && scenario !== 'c18-overflow-missing') {
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id:77,method:'tools/call',params:{
+            name:'submit_decision',arguments:{intent:{finalAssessment:{overall:'complete',answer:'capture independent'}}}}})});
+        const packet=await response.json();
+        assert.equal(JSON.parse(packet.result.content[0].text).kind,'proposal_pending');
+      }
+      if (scenario === 'c18-overflow-text') {
+        await message('partial-final','{"finalAssessment":{"overall":"complete",');
+      }
+      // Many ordinary tool updates, each under the ACP per-frame limit.
+      // Their aggregate exceeds the adapter's 1MiB observation capture budget.
+      for (let i=0;i<170;i++) await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:'large-native',
+        title:'native '+i+' '+'.'.repeat(8000),status:'in_progress',
+      }});
+      if (scenario === 'c18-overflow-refusal') return {stopReason:'refusal'};
+      if (scenario === 'c18-overflow-cancelled') return {stopReason:'cancelled'};
+      if (scenario !== 'c18-overflow-text') await message('after-large-native','ordinary native final message');
+      return {stopReason:'end_turn'};
     }
     if (scenario === 'c18-text' || scenario === 'c18-mcp') {
       assert.match(prompt, /ControllerIntent reference/);

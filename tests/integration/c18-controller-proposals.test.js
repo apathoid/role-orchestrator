@@ -118,3 +118,31 @@ test('C18.4 observed malformed replacement invalidates its proven lineage withou
  assert.equal(unknown.kind,'rejected');
  assert.equal((await other.finalize()).kind,'conflict');
 });
+
+test('C18R.0 RED: observed duplicate JSON-RPC id replacement invalidates candidate; identical replay is inert',async()=>{
+ const stop=new AbortController();
+ const bridge=await startMcpBridge({signal:stop.signal,attemptId:'r2-reuse',controllerDelivery:'intent_mcp'});
+ try{
+   const a=await call(bridge.url,10,'submit_decision',{intent:intent('A')});
+   assert.equal(value(a).kind,'proposal_pending');
+   const identical=await call(bridge.url,10,'submit_decision',{intent:intent('A')});
+   assert.deepEqual(identical.body,a.body);
+   const changed=await call(bridge.url,10,'submit_decision',{
+     intent:intent('B'),replaces:value(a).proposalRef});
+   assert.equal(changed.body.error?.code,-32602);
+   assert.equal((await bridge.finalizeDecision()).kind,'invalid');
+ }finally{stop.abort();bridge.close();}
+});
+
+test('C18R.0 RED: rejected replacement can be corrected without additional native turn',async()=>{
+ const stop=new AbortController();
+ const bridge=await startMcpBridge({signal:stop.signal,attemptId:'r2-correct',controllerDelivery:'intent_mcp'});
+ try{
+   const a=await call(bridge.url,10,'submit_decision',{intent:intent('A')});
+   const ref=value(a).proposalRef;
+   assert.equal((await call(bridge.url,10,'submit_decision',{intent:intent('BAD'),replaces:ref})).body.error?.code,-32602);
+   const c=await call(bridge.url,11,'submit_decision',{intent:intent('C'),replaces:ref});
+   assert.equal(value(c).kind,'proposal_pending');
+   assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'C');
+ }finally{stop.abort();bridge.close();}
+});

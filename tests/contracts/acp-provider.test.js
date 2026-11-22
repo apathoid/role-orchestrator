@@ -822,3 +822,30 @@ test('C18.4 ACP MCP tool finality, correction and continuing native tools in one
       assert.ok(observations.some(x=>x.value?.finalAssessment?.answer==='new candidate'));
     }finally{await api.close();}
   }));
+
+// C18R.0 RED: capture of ordinary ACP updates is not a proof of MCP
+// submission incompleteness. Preserve the independent truncation evidence.
+for(const [scenario,valid] of [
+  ['c18-overflow-valid',true],['c18-overflow-missing',false],
+  ['c18-overflow-refusal',false],['c18-overflow-cancelled',false],
+  ['c18-overflow-text',false],
+]){
+  test('C18R.1 ACP capture overflow and decision finality: '+scenario, {...linux,timeout:15000},()=> 
+    withOwnedRun('C18R-'+scenario, async cwd=>{
+      const endpoint=provider(cwd,scenario,{mcpBridge:true,controllerIntent:'prefer_mcp'});
+      const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+      try {
+        const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+        const receipts=state.events.filter(e=>e.kind==='controller.responded');
+        assert.equal(receipts.length,valid?1:0);
+        if(valid){
+          assert.equal(state.assessment.answer,'capture independent');
+          assert.equal(state.status,'finished');
+        }
+        const observed=state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[]);
+        assert.ok(observed.some(o=>o.providerRef==='acp-output-limit'));
+        assert.ok(observed.some(o=>o.value?.truncated===true&&o.value?.stopReason));
+        assert.ok(!observed.some(o=>o.value==='ordinary native final message'&&o.completeness==='complete'));
+      }finally{await api.close();}
+    }));
+}
