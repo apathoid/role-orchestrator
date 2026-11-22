@@ -561,3 +561,5 @@ No fixture-generated MCP call is evidence that a real model chose the right work
 
 Final engineering PASS is contingent on full mandatory CI on the **last** committed SHA, not previous green commits. Native ACP fixture and PTY are not real-model acceptance.
 
+
+**C18R engineering verification:** [CI #45017738925](https://github.com/apathoid/role-orchestrator/actions/runs/45017738925) SUCCESS on `fab92fd037a0169e9e12ac6706801c3c6d4d1666` (29 foundation, 77 core, 526 applicable integration, 15 Linux PTY, complete required Nix/release; no failed required step). Newer SHA requires separate exact-SHA CI. Real native/provider correctness remains **UNVERIFIED**.

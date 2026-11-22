@@ -1,6 +1,6 @@
 # C18 — Controller Intent & Deferred Decision Admission
 
-**Status:** IMPLEMENTATION ON FEATURE BRANCH → EXACT-SHA ENGINEERING ACCEPTANCE PENDING; NATIVE UNVERIFIED  
+**Status:** ENGINEERING CI PASS on C18R code/doc SHA `fab92fd037a0169e9e12ac6706801c3c6d4d1666` ([CI #45017738925](https://github.com/apathoid/role-orchestrator/actions/runs/45017738925)); NATIVE UNVERIFIED. Subsequent commits require a fresh exact-SHA check.  
 **Branch:** `feature/controller-intent-deferred-admission`  
 **Starting baseline:** `feature/controller-reliability` @ `836c379515202e5c9dfdf8304ed8aede981f6093`  
 **Priority:** P1 Controller reliability / model autonomy, P2 transport capacity and native behavior  
@@ -204,3 +204,5 @@ C18R addresses two confirmed P1 failures and P2 test/ownership gaps without alte
 
 **Limits:** a complete registered request is distinct from an incomplete/unreceived client-side MCP attempt; Host never invents submissions. A bearer URL is scoped capability rather than proof of root-agent authorship. Decision ID is stable but not proof of universal exactly-once for opaque external effects. Capture truncation preserves uncertainty rather than fabricating evidence. Last-wins remains only for explicit replacements of one known lineage.
 
+
+**C18R engineering evidence (2026-11-22):** [CI #45017738925](https://github.com/apathoid/role-orchestrator/actions/runs/45017738925) SUCCESS on `fab92fd037a0169e9e12ac6706801c3c6d4d1666`: Node 24 specification/checkJs, foundation/core/contracts/integration/acceptance, 15 actual Linux PTY fixtures, C15/C17 comparison, Nix locked flake, external package install and release. Real OpenCode/Ornith and independent provider native acceptance remains UNVERIFIED. A later documentation-only change requires a fresh CI result and must not inherit PASS automatically.

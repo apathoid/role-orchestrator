@@ -2,9 +2,9 @@
 
 ## C18R — corrective review and exact-SHA verification (IMPLEMENTED; NATIVE UNVERIFIED)
 
-C18R fixes on `feature/controller-intent-deferred-admission` derive from the engineering review of `f9d06f19`. P1: ACP capture overflow no longer invalidates separately proven MCP completion; clearly observed invalid explicit replacements of the current proposal cannot silently admit its predecessor. P2: dynamic collision-free builtin MCP tool naming, trusted attempt-bound duplicate/identity treatment and crash-gap, finality/capacity/cancellation/provenance regressions. Production fixes are confined to ACP/MCP adapter and existing identity/admission owners; no extra scheduler, semantic Host gate, CAS for proposals or native-tool restriction.
+C18R fixes on `feature/controller-intent-deferred-admission` derive from the engineering review of `f9d06f19`. The corrected implementation and added tests passed [CI #45017738925](https://github.com/apathoid/role-orchestrator/actions/runs/45017738925) on `fab92fd037a0169e9e12ac6706801c3c6d4d1666`; any later documentation-only SHA requires a fresh exact-SHA CI. P1: ACP capture overflow no longer invalidates separately proven MCP completion; clearly observed invalid explicit replacements of the current proposal cannot silently admit its predecessor. P2: dynamic collision-free builtin MCP tool naming, trusted attempt-bound duplicate/identity treatment and crash-gap, finality/capacity/cancellation/provenance regressions. Production fixes are confined to ACP/MCP adapter and existing identity/admission owners; no extra scheduler, semantic Host gate, CAS for proposals or native-tool restriction.
 
-Exact-SHA Node 24/Nix and all existing regression suites are **mandatory before engineering PASS**; see [STATUS](STATUS.md). Real native provider comparisons remain UNVERIFIED and are not inferred from SDK/PTY fixtures.
+Node 24/Nix and all applicable regressions passed at `fab92fd037a0169e9e12ac6706801c3c6d4d1666`; see [STATUS](STATUS.md). Any subsequent commit requires a new exact-SHA PASS. Real native provider comparisons remain UNVERIFIED and are not inferred from SDK/PTY fixtures.
 
 
 ## C18 — Controller Intent & Deferred Decision Admission (IMPLEMENTATION; NATIVE UNVERIFIED)
