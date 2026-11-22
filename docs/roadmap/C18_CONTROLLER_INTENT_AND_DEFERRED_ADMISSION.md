@@ -1,6 +1,6 @@
 # C18 — Controller Intent & Deferred Decision Admission
 
-**Status:** PLANNED → IMPLEMENTATION (no C18 production code accepted yet)  
+**Status:** IMPLEMENTATION ON FEATURE BRANCH → EXACT-SHA ENGINEERING ACCEPTANCE PENDING; NATIVE UNVERIFIED  
 **Branch:** `feature/controller-intent-deferred-admission`  
 **Starting baseline:** `feature/controller-reliability` @ `836c379515202e5c9dfdf8304ed8aede981f6093`  
 **Priority:** P1 Controller reliability / model autonomy, P2 transport capacity and native behavior  

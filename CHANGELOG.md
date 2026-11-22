@@ -2,7 +2,12 @@
 
 Публичные изменения и основные продуктовые вехи (не журнал всех коммитов). Текущий operational status и доказательства исполнения — [roadmap STATUS](docs/roadmap/STATUS.md).
 
-## Unreleased — C12–C17 integration and delivery
+## Unreleased — C12–C18 integration and delivery
+
+### C18 — ControllerIntent & deferred Controller admission (engineering verification pending; native UNVERIFIED)
+- Opt-in model-owned ControllerIntent with trusted technical Decision v1 binding and unchanged single admission/journal. The old Decision v1 provider path remains the default.
+- Negotiated ACP MCP `submit_decision` accepts proposal-only submissions, supports same-turn correction and explicit same-lineage last-wins after normal native completion. Text fallback works without a second invocation; native tools are not disabled.
+- Bounded independent control-tool capacity and technical failure classification; added core/bridge/Operation/ACP subprocess regressions. Real model/provider performance and native skill/subagent behavior are not yet verified.
 
 ### C17R — Recovery delivery & diagnostic verification
 - Reserve actual correlated recovery representation in the existing optional budget before default technical previews, preserve model-requested records/pages and original journal order.

@@ -535,3 +535,15 @@ Extend existing A05/A06/A21/A24/A123–A125, A95 and compact CLI lifecycle/PTY c
 ### C17R corrective coverage
 
 Reuses A05/A06/A21/A24/A123–A125 and existing CLI/ACP interaction/presentation entries. `c17-decision-recovery.test.js`: actual parser/decoder/admission, mismatch/unattested and wrong pointers, large/omitted recovery, requested refs/page, chronology/cross-attempt/late cancellation. `c16-controller-reliability.test.js`: existing production StateStore restart/crash-gap/independent Worker fixtures now validate persisted result reference, scoped fetch, turn reset and chronology. `c17-prompt-diagnostics.test.js`, configuration/redaction/diagnostic-sink, host CLI/ACP: UTF-8/serialized capture bounds, real production sink modes and delivery separation. `c17-cli-summary.test.js` + existing real Linux PTY tests: compact gap/late/cancel/wait/partial/unresolved and original machine output. `scripts/c17r-preparation-benchmark.mjs`: exact baseline/C17/C17R preparation, deterministic provider boundary, counted StateStore writes/model calls and available time/byte metrics. Exact CI result in STATUS. Real model `changed` and smoke A/B/C/D comparisons remain UNVERIFIED.
+
+## C18 — Controller Intent & Deferred Decision Admission (synthetic regression; native UNVERIFIED)
+
+| Scenario | Engineering coverage | Status |
+| --- | --- | --- |
+| Full model-owned Decision v1 fields, trust binding, null/unknown fields, Unicode and large result | `tests/core/controller-intent.test.js` through production `decodeDecision` | Implemented; exact-SHA CI required |
+| Same-turn corrections, explicit concurrent replacement last-wins, unrelated conflict, invalid replacement, finality and cancellation | `tests/integration/c18-controller-proposals.test.js` against production proposal registry / HTTP MCP bridge | Implemented; exact-SHA CI required |
+| Correct completed intent admission, missing result and final invalid correction | `tests/integration/c18-orchestrator.test.js` with real Operation lifecycle | Implemented; exact-SHA CI required |
+| Actual ACP SDK subprocess: text fallback, HTTP MCP submission/correction and continuing native activity | `tests/contracts/acp-provider.test.js`, `tests/fixtures/acp-contract-agent.js` | Implemented; exact-SHA CI required |
+| Cross-process crash-gap, unknown effect, release-package checks, Node 24/Nix and real model autonomy/quality | Historical C16/C17R regressions, required C18.8 native operator comparison | Additional review / native UNVERIFIED |
+
+No fixture-generated MCP call is evidence that a real model chose the right work, discovered a native skill, or preserved quality/latency. Only exact commit + full CI after the final edits may be marked ENGINEERING PASS.

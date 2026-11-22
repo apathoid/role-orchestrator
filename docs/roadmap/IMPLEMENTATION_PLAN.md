@@ -1,8 +1,8 @@
 # Активный план реализации и приёмки
 
-## C18 — Controller Intent & Deferred Decision Admission (PLANNED)
+## C18 — Controller Intent & Deferred Decision Admission (IMPLEMENTATION; NATIVE UNVERIFIED)
 
-**Current implementation handoff:** [C18 executable plan](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md), planned branch `feature/controller-intent-deferred-admission` based on `feature/controller-reliability` @ `836c3795`. Read [C18 status](STATUS.md#c18--controller-intent--deferred-decision-admission-planned-not-implemented) before work. Planning-only documentation; no C18 production implementation, tests, CI or native acceptance yet. Do not merge to master without approval.
+**Current implementation record:** [C18 executable plan](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md), branch `feature/controller-intent-deferred-admission` from C17R `836c3795`, planning HEAD `f8722bc8`. Read [C18 status](STATUS.md) for exact code/CI/native evidence. C18 production code and synthetic tests exist on the feature branch; engineering verification requires full exact-SHA CI, while real-model native acceptance is UNVERIFIED. No master merge.
 
 | Checkpoint | Required deliverable and exit |
 | --- | --- |
