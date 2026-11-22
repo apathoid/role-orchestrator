@@ -22,6 +22,8 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
   let conflicted = false;
   /** @type {'budget' | undefined} */
   let fatal;
+  /** @type {{root: string, reason: 'request_id_conflict'} | undefined} */
+  let unresolvedTransport;
   let processing = Promise.resolve();
 
   const live = () => open && !signal.aborted && isActive?.() !== false;
@@ -80,6 +82,7 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
     // Same-lineage explicit replacements use registration order; a correction
     // to either side of a conflict may select a new unique candidate.
     selected = {ref, root, value:parsed.value};
+    if (unresolvedTransport?.root === root) unresolvedTransport = undefined;
     invalidReason = undefined;
     conflicted = false;
     return {kind:'proposal_pending', proposalRef:ref,
@@ -106,6 +109,28 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
     return result;
   }
 
+  /**
+   * A structurally observed tools/call with a reused JSON-RPC id may fail
+   * before ordinary proposal validation. Account only for a reliably known
+   * explicit replacement of the selected lineage. No model-text inference.
+   * @param {unknown} input
+   */
+  function observeRejectedReplacement(input) {
+    if (!live()) return;
+    // Register this transport fact in the same trusted arrival-order queue
+    // as successful submissions; do not invent a proposalRef for it.
+    const observed = processing.then(() => {
+      const args = input && typeof input === 'object' && !Array.isArray(input)
+        ? /** @type {Record<string, unknown>} */ (input) : undefined;
+      const source = typeof args?.replaces === 'string' && args.replaces.trim()
+        ? known.get(args.replaces) : undefined;
+      if (!source || selected?.root !== source.root) return;
+      selected = undefined;
+      unresolvedTransport = { root:source.root, reason:'request_id_conflict' };
+    });
+    processing = observed.then(() => {}, () => {});
+  }
+
   function exceedLimit() {
     fatal = 'budget';
     return {kind:'unavailable',reason:'budget',maxBytes:maxPendingIntentBytes};
@@ -120,9 +145,10 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
     if (fatal) return {kind: /** @type {const} */ ('unavailable'), reason:fatal};
     if (conflicted) return {kind: /** @type {const} */ ('conflict')};
     if (selected) return {kind: /** @type {const} */ ('intent'), value:selected.value, proposalRef:selected.ref};
+    if (unresolvedTransport) return {kind: /** @type {const} */ ('unavailable'), reason:unresolvedTransport.reason};
     if (invalidReason) return {kind: /** @type {const} */ ('invalid'), reason:invalidReason};
     return {kind: /** @type {const} */ ('missing')};
   }
 
-  return {register, finalize, exceedLimit, close() { open = false; }};
+  return {register, finalize, observeRejectedReplacement, exceedLimit, close() { open = false; }};
 }

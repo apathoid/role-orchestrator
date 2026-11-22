@@ -115,6 +115,20 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
   let closed = false;
   const pendingDecision = controllerDelivery === 'intent_mcp' && attemptId
     ? createPendingControllerDecisions({ signal, attemptId, isActive }) : undefined;
+  // External tools share the MCP namespace. Use an unambiguous name for
+  // the built-in control tool rather than silently shadowing any configured
+  // external tool (including submit_decision itself).
+  const listedExternalTools = externalTools?.list() ?? [];
+  const externalNames = new Set(listedExternalTools.map(item => item.id));
+  const decisionToolName = (() => {
+    if (!pendingDecision) return undefined;
+    if (!externalNames.has(decisionTool.name)) return decisionTool.name;
+    const prefix = 'role_orchestrator_submit_decision';
+    for (let i=0;;i++) {
+      const name = i === 0 ? prefix : prefix + '_' + i;
+      if (!externalNames.has(name)) return name;
+    }
+  })();
   let ordinaryCalls = 0;
   let decisionCalls = 0;
   /** @type {Map<string | number, {key: string, response: Promise<unknown>}>} */
@@ -126,7 +140,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
     if (closed || signal.aborted) return { kind: 'unavailable', reason: 'closed' };
     // Controller submission is a separate bounded control plane, never one
     // of the ordinary concurrent native tool slots.
-    if (name === decisionTool.name && pendingDecision) return pendingDecision.register(args);
+    if (name === decisionToolName && pendingDecision) return pendingDecision.register(args);
     active++;
     try {
       if (name === listTool.name && contextAccess) {
@@ -187,7 +201,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
       return;
     }
     if (payload.bytes > maxRequestBytes && !(pendingDecision && message.method === 'tools/call' &&
-        object(message.params)?.name === decisionTool.name)) { response.writeHead(413).end(); return; }
+        object(message.params)?.name === decisionToolName)) { response.writeHead(413).end(); return; }
     if (message.id === undefined) { response.writeHead(202).end(); return; }
     if ((typeof message.id !== 'string' && typeof message.id !== 'number') ||
         (typeof message.id === 'number' && !Number.isFinite(message.id))) {
@@ -210,8 +224,8 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
       case 'tools/list': {
         const tools = [
           ...(contextAccess ? [listTool, fetchTool] : []),
-          ...(pendingDecision ? [decisionTool] : []),
-          ...(externalTools?.list() ?? []).map(({ id, description, inputSchema, effect }) =>
+          ...(pendingDecision ? [{...decisionTool,name:decisionToolName}] : []),
+          ...listedExternalTools.map(({ id, description, inputSchema, effect }) =>
             ({ name: id, description, inputSchema, annotations: { readOnlyHint: effect === 'read' } })),
         ];
         const cursor = params?.cursor === undefined ? 0 :
@@ -226,9 +240,17 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
         const args = params.arguments ?? {};
         const key = JSON.stringify([params.name, args]);
         let call = calls.get(requestId);
-        if (call && call.key !== key) { error = { code: -32602, message: 'Request id already used' }; break; }
+        if (call && call.key !== key) {
+          // This is a complete attributable tools/call, but the reused
+          // request id prevents delivery as a valid submission. A reliable
+          // replaces reference invalidates its lineage; ordinary duplicate
+          // delivery and unrelated/unknown refs remain unchanged.
+          if (params.name === decisionToolName) pendingDecision?.observeRejectedReplacement(args);
+          error = { code: -32602, message: 'Request id already used' };
+          break;
+        }
         if (!call) {
-          const control = params.name === decisionTool.name && pendingDecision !== undefined;
+          const control = params.name === decisionToolName && pendingDecision !== undefined;
           if (control ? decisionCalls < maxDecisionCalls : ordinaryCalls < maxToolCalls && active < maxConcurrentCalls) {
             if (control) decisionCalls++; else ordinaryCalls++;
             call = { key, response: callTool(params.name, args).then(value => toolReply(value, requestId)) };
@@ -270,6 +292,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
   const { port } = address;
   return {
     url: 'http://127.0.0.1:' + port + path,
+    decisionToolName,
     finalizeDecision: pendingDecision ? () => pendingDecision.finalize() : undefined,
     close() {
       if (closed) return;

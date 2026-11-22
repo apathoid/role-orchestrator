@@ -475,7 +475,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const preparationStarted=performance.now();
         /** @type {Record<string,number>} */
         let componentSizes={};
-        const prompt = renderInvocationPrompt({...invocation, controllerDelivery}, retrievalDetail(Boolean(mcp && invocation.contextAccess)),
+        const prompt = renderInvocationPrompt({...invocation, controllerDelivery, controllerDecisionToolName:mcp?.decisionToolName}, retrievalDetail(Boolean(mcp && invocation.contextAccess)),
           promptReporter?sizes=>{componentSizes=sizes;}:undefined);
         reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length,...componentSizes},prompt);
         signal.throwIfAborted();
@@ -492,7 +492,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         permissionStop.abort();
         let result;
         if (signal.aborted || stopReason === 'cancelled') result = resultFor(invocation, 'CANCELLED', stopReason === 'cancelled' ? 'cancelled' : 'unknown', 'sent');
-        else if (stopReason === 'end_turn' && !truncated) {
+        else if (stopReason === 'end_turn' && (!truncated || controllerDelivery === 'intent_mcp')) {
           result = resultFor(invocation, undefined, 'completed', 'sent');
           if (invocation.kind !== 'controller') result.output = output;
           else if (controllerDelivery === 'intent_mcp') {
@@ -502,7 +502,10 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             if (!selected || selected.kind === 'unavailable') {
               result = resultFor(invocation, selected?.reason === 'budget' ? 'RESOURCE_LIMIT' : 'PROTOCOL_ERROR', 'failed', 'sent');
             } else {
-              result.output = output; // native final text is a separate observation
+              // Ordinary capture overflow is not a defect in a separately
+              // received, invocation-scoped MCP declaration. An incomplete
+              // final text must never be described as complete evidence.
+              if (!truncated) result.output = output;
               if (selected.kind === 'intent') {
                 const receiptRef = publish({ref:'acp-decision-submission',sourceId:selected.proposalRef,
                   kind:'model',completeness:'complete',value:selected.value});
@@ -520,7 +523,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             }
           }
         } else {
-          const code = truncated || stopReason === 'max_tokens' || stopReason === 'max_turn_requests' ? 'RESOURCE_LIMIT' :
+          const code = truncated && stopReason === 'end_turn' || stopReason === 'max_tokens' || stopReason === 'max_turn_requests' ? 'RESOURCE_LIMIT' :
             stopReason === 'refusal' ? 'PROVIDER_REFUSED' : 'PROTOCOL_ERROR';
           result = resultFor(invocation, code, 'failed', 'sent');
           if (truncated) result.outcome.diagnostics[0].ref=limitRef;
