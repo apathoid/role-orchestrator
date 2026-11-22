@@ -363,12 +363,24 @@ agent()
         sessionUpdate:'tool_call',toolCallId:'after-invalid',title:'Native activity after invalid',
         kind:'read',status:'completed',
       }});
-      const initial=await call(3,'submit_decision',{intent:{finalAssessment:{
-        overall:'complete',answer:'old candidate'}}});
+      // An intermediate valid Action must NOT be admitted, reserved or
+      // dispatched while the agent continues its native tool loop.
+      const initial=await call(3,'submit_decision',{intent:{
+        additions:[{actionId:'must-not-run',kind:'delegate',profileId,objective:'Should not dispatch',
+          expectedResult:'Not applicable'}],
+        waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'must-not-run'}]},
+      }});
       assert.equal(initial.value.kind,'proposal_pending');
-      const replacement=await call(4,'submit_decision',{intent:{finalAssessment:{
+      assert.equal((await call(4,'context_list',{})).value.kind,'available');
+      // Unrelated proposals conflict, but the native session is still live.
+      const conflicting=await call(5,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'unrelated'}}});
+      assert.equal(conflicting.value.kind,'rejected');
+      assert.equal((await call(6,'context_list',{})).value.kind,'available');
+      const replacement=await call(7,'submit_decision',{intent:{finalAssessment:{
         overall:'complete',answer:'new candidate'}},replaces:initial.value.proposalRef});
       assert.equal(replacement.value.kind,'proposal_pending');
+      assert.equal((await call(8,'context_list',{})).value.kind,'available');
       await message('not-decision','Ordinary native final text is not a JSON Decision');
       return {stopReason:'end_turn'};
     }

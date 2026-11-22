@@ -814,6 +814,8 @@ test('C18.4 ACP MCP tool finality, correction and continuing native tools in one
       assert.equal(state.assessment.answer,'new candidate');
       const responded=state.events.filter(x=>x.kind==='controller.responded');
       assert.equal(responded.length,1);
+      assert.equal(state.attempts.length,1,'pending proposals must not dispatch Workers');
+      assert.ok(!state.events.some(x=>x.kind==='action.admitted'));
       assert.equal(state.events.filter(x=>x.kind==='controller.invalid_proposal').length,0);
       const observations=state.events.flatMap(x=>x.observations??[]);
       assert.ok(observations.some(x=>x.value==='Ordinary native final text is not a JSON Decision'));
