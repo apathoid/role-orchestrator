@@ -152,3 +152,49 @@ test('C18R.4 same durable receipt is duplicate, altered content or provenance is
  assert.equal(state.events.filter(e=>e.kind==='attempt.reserved'&&e.actionId===action.actionId).length,0);
  assert.equal(recovered.events.filter(e=>e.kind==='controller.responded').length,1);
 });
+
+// A stored Controller acknowledgement can be lost after the journal was
+// updated. Restart never replays native provider calls from the old attempt.
+test('C18R.4 lost ACK after durable controller.responded preserves one acceptance',async()=>{
+ const saved=new Map();
+ let ambiguous=false;
+ const store={
+   async open(){},async close(){},
+   async list(){return structuredClone([...saved.values()]);},
+   async load(id){return structuredClone(saved.get(id));},
+   async commit(id,revision,next){
+     if((saved.get(id)?.revision??null)!==revision)return {kind:'conflict'};
+     saved.set(id,structuredClone(next));
+     if(!ambiguous&&next.events.at(-1)?.kind==='controller.responded'){
+       ambiguous=true;return {kind:'unavailable'};
+     }
+     return {kind:'committed'};
+   },
+ };
+ const before=setup({store,maxInvocations:3,respond(invocation){
+   const intent={finalAssessment:{overall:'complete',answer:'Original completed intent'}};
+   return {...final(invocation),controllerDeclaration:{kind:'intent',value:intent},output:undefined};
+ }});
+ let operationId;
+ try {
+   const run=await before.api.submit(request({requestId:'c18r-ack'}));
+   operationId=run.operation.operationId;
+   await assert.rejects(run.completion,error=>error.code==='STORE_UNAVAILABLE');
+   assert.equal(ambiguous,true);
+   assert.equal(before.invocations.length,1);
+   const durable=await store.load(operationId);
+   assert.equal(durable.events.filter(e=>e.kind==='controller.responded').length,1);
+   assert.equal(durable.attempts.length,1);
+   assert.equal(durable.status,'active');
+ }finally{await before.api.close();}
+ const after=setup({store,idPrefix:'c18r-ack-recovered-',maxInvocations:3});
+ try{
+   const state=await (await after.api.resume(operationId)).completion;
+   assert.equal(state.status,'finished');
+   assert.equal(after.invocations.length,1,'only a fresh Controller invocation is permitted');
+   assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,2);
+   assert.equal(state.events.filter(e=>e.kind==='controller.responded'
+     && e.decision.finalAssessment?.answer==='Original completed intent').length,1);
+   assert.equal(state.attempts.length,2);
+ }finally{await after.api.close();}
+});

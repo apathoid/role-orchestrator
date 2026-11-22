@@ -220,3 +220,47 @@ test('C18R.5 near-2MiB UTF-8 Control submission remains intact; oversize is refu
    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,answer);
  }finally{stop.abort();bridge.close();}
 });
+
+test('C18R.5 Decision control budget exhaustion cannot resurrect earlier proposal',async()=>{
+ const stop=new AbortController();
+ const bridge=await startMcpBridge({signal:stop.signal,attemptId:'r5-budget',controllerDelivery:'intent_mcp'});
+ try{
+   const a=value(await call(bridge.url,1,'submit_decision',{intent:intent('first')}));
+   assert.equal(a.kind,'proposal_pending');
+   for(let i=2;i<=128;i++){
+     const result=value(await call(bridge.url,i,'submit_decision',{
+       intent:intent('candidate-'+i),replaces:a.proposalRef}));
+     assert.equal(result.kind,'proposal_pending');
+   }
+   const over=value(await call(bridge.url,129,'submit_decision',{
+     intent:intent('overflow'),replaces:a.proposalRef}));
+   assert.equal(over.kind,'unavailable');
+   assert.equal(over.reason,'budget');
+   assert.deepEqual(await bridge.finalizeDecision(),{kind:'unavailable',reason:'budget'});
+   const late=value(await call(bridge.url,130,'submit_decision',{intent:intent('late')}));
+   assert.equal(late.kind,'unavailable');
+ }finally{stop.abort();bridge.close();}
+});
+
+test('C18R.5 cross-invocation cancel and late callbacks cannot admit pending proposals',async()=>{
+ const stop=new AbortController();
+ const another=new AbortController();
+ const old=await startMcpBridge({signal:stop.signal,attemptId:'r5-cancelled',controllerDelivery:'intent_mcp'});
+ const live=await startMcpBridge({signal:another.signal,attemptId:'r5-active',controllerDelivery:'intent_mcp'});
+ try{
+   const proposal=value(await call(old.url,1,'submit_decision',{intent:intent('old')}));
+   assert.equal(proposal.kind,'proposal_pending');
+   stop.abort();
+   assert.equal((await old.finalizeDecision()).kind,'unavailable');
+   const failed=await call(live.url,2,'submit_decision',{intent:intent('not-replacement'),
+     replaces:proposal.proposalRef});
+   assert.equal(value(failed).kind,'rejected');
+   assert.equal((await live.finalizeDecision()).kind,'invalid');
+   // The old endpoint is not a channel into the other, even if its URL is retained.
+   const blocked=await fetch(old.url,{method:'POST',headers:{'content-type':'application/json'},
+     body:JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/call',params:{
+       name:'submit_decision',arguments:{intent:intent('late')},
+     }})});
+   assert.equal(blocked.status,410);
+ }finally{stop.abort();another.abort();old.close();live.close();}
+});
