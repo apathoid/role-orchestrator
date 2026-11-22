@@ -20,9 +20,9 @@ const linux = { skip: process.platform !== 'linux', timeout: 12_000 };
 const profile = { providerId: 'acp', profileId: 'primary', model: 'fixture' };
 const script = fileURLToPath(new URL('../fixtures/acp-contract-agent.js', import.meta.url));
 
-function provider(cwd, scenario, { nativeSettings, mcpBridge, ...options } = {}) {
+function provider(cwd, scenario, { nativeSettings, mcpBridge, controllerIntent, ...options } = {}) {
   return createAcpProvider({ providerId: 'acp', defaultCwd: cwd,
-    configuration: { adapter: 'acp', launch: { command: process.execPath, args: [script, scenario ?? 'basic'] }, nativeSettings, mcpBridge },
+    configuration: { adapter: 'acp', launch: { command: process.execPath, args: [script, scenario ?? 'basic'] }, nativeSettings, mcpBridge, controllerIntent },
     ...options });
 }
 
@@ -788,4 +788,35 @@ test('C13 ACP native activity is delivered before terminal without changing resu
     const baselineResult = await baseline.completion;
     assert.deepEqual(result, baselineResult);
     assert.deepEqual(live.observations, baseline.observations);
+  }));
+
+
+test('C18.3 ACP native text fallback works without HTTP MCP negotiation', linux, () =>
+  withOwnedRun('C18-acp-intent-text', async cwd => {
+    const endpoint=provider(cwd,'c18-text',{mcpBridge:true,controllerIntent:'prefer_mcp'});
+    const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+    try{
+      const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished');
+      assert.equal(state.assessment.answer,'C18 text fallback');
+      assert.equal(state.events.filter(x=>x.kind==='controller.responded').length,1);
+      assert.equal(state.events.filter(x=>x.kind==='controller.invalid_proposal').length,0);
+    }finally{await api.close();}
+  }));
+
+test('C18.4 ACP MCP tool finality, correction and continuing native tools in one real SDK turn', linux, () =>
+  withOwnedRun('C18-acp-intent-mcp', async cwd => {
+    const endpoint=provider(cwd,'c18-mcp',{mcpBridge:true,controllerIntent:'prefer_mcp'});
+    const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+    try{
+      const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished',JSON.stringify(state.events.slice(-4)));
+      assert.equal(state.assessment.answer,'new candidate');
+      const responded=state.events.filter(x=>x.kind==='controller.responded');
+      assert.equal(responded.length,1);
+      assert.equal(state.events.filter(x=>x.kind==='controller.invalid_proposal').length,0);
+      const observations=state.events.flatMap(x=>x.observations??[]);
+      assert.ok(observations.some(x=>x.value==='Ordinary native final text is not a JSON Decision'));
+      assert.ok(observations.some(x=>x.value?.finalAssessment?.answer==='new candidate'));
+    }finally{await api.close();}
   }));

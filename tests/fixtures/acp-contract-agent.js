@@ -40,11 +40,11 @@ agent()
     if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
-      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' } } };
+      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' } } };
   })
   .onRequest(a.session.new, ({ params }) => {
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
-    if (scenario === 'mcp') {
+    if (scenario === 'mcp' || scenario === 'c18-mcp') {
       assert.equal(params.mcpServers[0]?.type, 'http');
       mcpUrl = params.mcpServers[0].url;
     }
@@ -336,6 +336,41 @@ agent()
           findingRefs: [], unresolvedQuestions: [], answer: text },
       }));
       return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'c18-text' || scenario === 'c18-mcp') {
+      assert.match(prompt, /ControllerIntent reference/);
+      if (scenario === 'c18-text') {
+        await message('intent-final',JSON.stringify({finalAssessment:{overall:'complete',
+          answer:'C18 text fallback'}}));
+        return {stopReason:'end_turn'};
+      }
+      /** @param {number} id @param {string} name @param {unknown} args */
+      const call = async (id,name,args) => {
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})});
+        assert.equal(response.status,200);
+        const envelope=await response.json();
+        return {envelope,value:JSON.parse(envelope.result.content[0].text)};
+      };
+      const first=await call(1,'submit_decision',{intent:{finalAssessment:{
+        overall:'unrecognized',answer:'invalid first'}}});
+      assert.equal(first.envelope.result.isError,true);
+      assert.equal(first.value.kind,'rejected');
+      // Native tool and model activity remains available after invalid submission.
+      const nativeTool=await call(2,'context_list',{});
+      assert.equal(nativeTool.value.kind,'available');
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call',toolCallId:'after-invalid',title:'Native activity after invalid',
+        kind:'read',status:'completed',
+      }});
+      const initial=await call(3,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'old candidate'}}});
+      assert.equal(initial.value.kind,'proposal_pending');
+      const replacement=await call(4,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'new candidate'}},replaces:initial.value.proposalRef});
+      assert.equal(replacement.value.kind,'proposal_pending');
+      await message('not-decision','Ordinary native final text is not a JSON Decision');
+      return {stopReason:'end_turn'};
     }
     if (scenario === 'mcp') {
       assert.match(prompt, /Optional MCP context_list and context_fetch/);
