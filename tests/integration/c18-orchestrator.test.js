@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setup, final } from '../fixtures/application.js';
-import { request, decision, outcome } from '../fixtures/core.js';
-import { createOperation, applyEvent, sameRecord } from '../../src/core/operation.js';
+import { request, outcome } from '../fixtures/core.js';
+import { createOperation, applyEvent } from '../../src/core/operation.js';
 import { materializeControllerIntent } from '../../src/application/controller-intent.js';
-import { decodeSnapshot, encodeSnapshot } from '../../src/adapters/state/codec.js';
+import { decodeSnapshot, encodeSnapshot } from '../../src/core/snapshot.js';
 
 test('C18.2 model-owned ControllerIntent uses unchanged Operation admission and a trusted context revision',async()=>{
  const answer='# Hello 🌿\n\nDirect result';
