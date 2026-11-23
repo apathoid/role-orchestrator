@@ -4,7 +4,7 @@
 
 ## Unreleased — C12–C18 integration and delivery
 
-### C18N — Live evidence discovery and ordinary MCP simplification (engineering verification in progress; real native UNVERIFIED)
+### C18N — Live evidence discovery and ordinary MCP simplification (engineering CI PASS on 42293b6; real native UNVERIFIED)
 
 - Introduce optional invocation-local `evidence_list/evidence_fetch` over already accepted observations with stable canonical refs, bounded paging/bytes, actual provenance and no early durability claim; historical context cursors are unchanged.
 - Add nonblocking advisory reference preflight **after** proposal registration with independently copied reference indices. Controller correction stays in the same native turn; the final journal admission remains sole authority.

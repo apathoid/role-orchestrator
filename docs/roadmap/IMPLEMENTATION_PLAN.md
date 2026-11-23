@@ -1,8 +1,8 @@
 # Активный план реализации и приёмки
 
-## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (IMPLEMENTATION; exact-SHA engineering verification pending)
+## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (ENGINEERING VERIFIED at `42293b6`; native UNVERIFIED)
 
-**Approved executable scope:** [C18N.0–C18N.10 plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; planning baseline `12b88248c8b59408b06d2ec1919498050bee19a9`. The feature branch contains implementation and automated regression fixtures for C18N.1–C18N.8. Synthetic ACP SDK testing does not establish native LLM acceptance, which remains **UNVERIFIED**. Engineering PASS requires the complete CI on the final commit SHA; intermediate CI failures are explicitly recorded in STATUS.
+**Approved executable scope:** [C18N.0–C18N.10 plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; planning baseline `12b88248c8b59408b06d2ec1919498050bee19a9`. The feature branch contains implementation and automated regression fixtures for C18N.1–C18N.8. Synthetic ACP SDK testing does not establish native LLM acceptance, which remains **UNVERIFIED**. Required Node24/checkJs, core/contracts/integration/PTY, Nix packaging and release CI passed on [`42293b6`](https://github.com/apathoid/role-orchestrator/actions/runs/45260312459) (35/35 job steps, 534 integration tests). Earlier intermediate failures and the accepted ordinary request-ID post-completion replay compromise are recorded in STATUS. Later commits require independent exact-SHA verification; native-model autonomy/performance remains UNVERIFIED.
 
 | Checkpoint | Required deliverable and exit |
 | --- | --- |

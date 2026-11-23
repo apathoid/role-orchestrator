@@ -1,6 +1,6 @@
 # Role Orchestrator — оперативный статус
 
-## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (IMPLEMENTATION; engineering final exact-SHA verification required; native UNVERIFIED)
+## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (ENGINEERING VERIFIED at `42293b6`; real native UNVERIFIED)
 
 **Branch:** `feature/controller-intent-deferred-admission`. **Requested baseline:** `45cc5219bbf26f37a3ca568044c8171307590bf2` (verified remote branch SHA before editing). Implementation began on that exact commit. [C18N executable plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [native A/B procedure](NATIVE_ACCEPTANCE.md), [acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md). No master merge. GitHub's remote branch pointer does **not** prove a local worktree is clean.
 
@@ -10,10 +10,12 @@
 
 **MCP compromise:** The cumulative 64 ordinary-call ceiling and completed ordinary request/response Map entries were removed. Concurrent same-ID identical requests share active execution; conflicting active IDs are transport errors. A completed ordinary ID can be delivered again as a **new** call after eviction, with no exactly-once guarantee (conscious tradeoff). Existing concurrency (4), input/output byte bounds, authority, cancellation and lifecycle remain. `submit_decision` retains separate strong invocation-local identity, bounded 128 control calls and 8 MiB registered Intent budget; these require further measurement for any future capacity change.
 
-**Verification chronology (not final PASS):**
+**Verification chronology (historical failures, followed by verified green):**
 - [CI #45258247037](https://github.com/apathoid/role-orchestrator/actions/runs/45258247037) on `5e32a739` FAILED checkJs on an optional findings-length type guard; corrected in `c48a25f`.
 - [CI #45258956278](https://github.com/apathoid/role-orchestrator/actions/runs/45258956278) on `c48a25f` PASSED Node24/checkJs and core/contracts, FAILED 9 integration tests. Six old cases asserted post-completion dedup and were updated to the explicitly accepted weaker ordinary MCP contract; the shared MCP context fixture now issues a single ordinary call, while a distinct barrier-controlled test proves active concurrency; one invocation presentation snapshot now excludes the newly added ephemeral read-only ports. These fixes and docs **must** pass full CI on the final commit before engineering acceptance.
 - The required CI workflow runs locked Node24/npm, checkJs/contract/core/integration/acceptance, real Linux PTY, Nix flake/package/install/systemPackages and release evidence; only a successful run **on final exact SHA** counts as engineering PASS. Actual sampled memory statistics from the synthetic probe are not real model/client measurements.
+
+**Engineering evidence:** [CI #45260312459](https://github.com/apathoid/role-orchestrator/actions/runs/45260312459) **SUCCESS on exact `42293b6dc6ff7168888a83f07d31cef433f3178d`**; GitHub Actions job `specification-and-nix` 35/35 successful steps. Locked Node.js **v24.21.0**, specification/checkJs/boundaries, 29 foundation, 78 core, 534 integration, 15 actual Linux PTY, ACP SDK/provider contract and acceptance fixtures, root `npm test`, all C15/C17 deterministic comparisons, `nix flake check`, outside-checkout Nix install, package inspection, NixOS evaluation, locked source/package and release archive checks passed. No failed mandatory step. The new isolated 1000-call synthetic ordinary MCP/GC probe reported `baselineHeapBytes=7439024`, `heapAfter1000=11582880`, `retainedHeapGrowthBytes=4143856` (about **3.95 MiB**, includes undici/Node overhead, not a real native/provider memory measurement). This is **ENGINEERING PASS** for the stated code SHA, not evidence of autonomous model quality. A later documentation-only SHA still needs its own exact-SHA CI for end-to-end closure.
 
 **Native acceptance: UNVERIFIED.** Real local OpenCode ACP/Ornith, independent provider, Zed/CLI, actual skill discovery and production workspace effect/performance comparisons have not run in the accessible GitHub CI environment. The earlier operator-provided native failure is not a C18N success. Provider-native execution strategy, model-selected evidence sufficiency, real-world resource overhead and user-task quality are unproven.
 
