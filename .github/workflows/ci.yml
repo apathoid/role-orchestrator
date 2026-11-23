@@ -59,6 +59,8 @@ jobs:
           tail -n 20 "$RUNNER_TEMP/orchestrator-integration.log"
       - name: C18N bounded ordinary MCP request retention (synthetic, GC)
         run: nix develop --no-update-lock-file --command node --expose-gc scripts/c18n-mcp-memory-probe.mjs
+      - name: C18N-R real ToolPort memory and preflight comparison (synthetic, GC)
+        run: nix develop --no-update-lock-file --command node --expose-gc scripts/c18nr-correction-probe.mjs
       - name: Actual Linux PTY transport fixture (not native LLM)
         run: |
           command -v script

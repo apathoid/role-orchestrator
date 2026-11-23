@@ -1,5 +1,21 @@
 # Role Orchestrator — оперативный статус
 
+## C18N-R — Corrective Review Fixes (IMPLEMENTATION; final exact-SHA CI pending, native UNVERIFIED)
+
+**Scope:** R1–R5 of the approved C18N corrective review. Branch `feature/controller-intent-deferred-admission`, verified review baseline `0dbae3434b626fcd4132059f6d349b3f4dcab3c6`; no merge. RED [CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178) on `1a53134dc3d44935a73645adc3ebdcfe3051a778` failed **exactly five** new production-path tests: 33rd real external call, repeated 15,000-element preflight scan, registration of reserved external name, exhausted live cursor, and >24-KiB metadata page blockage. In the RED run, 12 repeated preflight checks consumed approximately 246 ms on the runner; this is not a controlled native latency result.
+
+**Implementation checkpoint:** `295499174be7f4475dc14b59bfa6c7b5bbe3e427`; [CI #45266687474](https://github.com/apathoid/role-orchestrator/actions/runs/45266687474) **SUCCESS, 35/35 steps**, after R1–R5 implementation, with Node24, checkJs, foundation/core, contracts/ACP SDK/integration, root npm tests, 15 PTY, Nix flake/outside-checkout install, systemPackages and release checks. Additional historical-findings/alias/oversized consecutive-entry regressions and same-run baseline-versus-corrected performance probe are included in the following corrective verification commit; only its exact-SHA CI establishes final engineering PASS.
+
+**R1/P1:** Remove `maxCalls=32` from genuine `createExternalToolPort`; every model-initiated call retains original AJV/argument/output size checks, permission broker, signal/close, provenance, unknown effect, late receipt and existing concurrent MCP slots. No new count budget. Actual receipts remain in the Operation observation stream and are *not* removed as if they were ordinary transport cache. Ordinary post-completion request-ID replay remains permitted; no blind Host replay.
+
+**R2/P1:** Historical refs constructed once for invocation. Live canonical refs and provider-local alias names are indexed only from yet-unindexed elements of the original accepted observation buffer. On each proposal, only current Intent's referenced identifiers are projected into **new temporary sets** for the mutating `admitFindings` and assessment check. Scope lifetime is invocation-local, with no persistent index, second observer store or additional admission/gate. All optional feedback remains advisory and can be unchecked without veto. A later Worker outcome can still be considered by the sole authoritative Operation admission.
+
+**R3–R5/P2:** Register valid external IDs matching RO built-ins and preserve collision-free MCP aliases through the production compiler/permission port. `evidence_list.resumeCursor` is returned even after empty/exhausted pages; `nextCursor` still indicates an already available next page. Overlarge optional metadata is declared by `omittedMetadataFields`; if even the minimal canonical ref cannot fit, a positional `unavailable/budget` marker preserves directory traversal. Full observation values are not rewritten or summarized.
+
+**Native:** Real OpenCode/Ornith, independent provider, Zed, autonomous skill/subagent selection, long native run/latency and effectiveness comparisons remain **UNVERIFIED**. Linux/ACP SDK fixtures are engineering evidence only. Technical limits on message bytes, active concurrency and control submissions remain unchanged. No Host semantic effect classification, VCS gate, forced evidence retrieval, new scheduler or workflow introduced.
+
+
+
 ## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (ENGINEERING VERIFIED at `42293b6`; real native UNVERIFIED)
 
 **Branch:** `feature/controller-intent-deferred-admission`. **Requested baseline:** `45cc5219bbf26f37a3ca568044c8171307590bf2` (verified remote branch SHA before editing). Implementation began on that exact commit. [C18N executable plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [native A/B procedure](NATIVE_ACCEPTANCE.md), [acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md). No master merge. GitHub's remote branch pointer does **not** prove a local worktree is clean.

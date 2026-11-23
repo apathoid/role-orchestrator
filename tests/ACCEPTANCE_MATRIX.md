@@ -584,3 +584,16 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 
 
 **C18N exact-SHA engineering result:** [CI #45260312459](https://github.com/apathoid/role-orchestrator/actions/runs/45260312459) SUCCESS at `42293b6dc6ff7168888a83f07d31cef433f3178d`: 29 foundation, 78 core, 534 integration, 15 PTY, whole root test suite, ACP SDK/contract, Nix flake/install/evaluation, release/package; the 1000-call synthetic heap-growth probe passed (+4,143,856 bytes after GC). **Real-model native acceptance remains UNVERIFIED**. No claim of exactly-once ordinary replay.
+
+
+## C18N-R — Corrective review production path, performance and native distinction
+
+| Finding | RED evidence at 1a53134d | GREEN regression | Engineering |
+| --- | --- | --- | --- |
+| R1 actual External ToolPort stops at call 33 | [RED CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178) call 33 `budget` | `c18nr-corrective.test.js` real compiled registered tool, 120 calls, permissions, receipt effects; old cancellation/late/large-result cases remain | [GREEN code CI #45266687474](https://github.com/apathoid/role-orchestrator/actions/runs/45266687474) PASS; final exact-SHA rerun required |
+| R2 unbounded repeated preflight scan | Same RED run: 15k items scanned per correction; ~246 ms / 12 corrections on runner | indexed-record Proxy count, historical findings/output refs, alias conflicts, late additions; `scripts/c18nr-correction-probe.mjs` baseline-algorithm vs indexed per-correction measurements with GC | Extra benchmark/new regression exact-SHA CI pending |
+| R3 real registration bans `context_list` | Same RED run, compiler returns undefined | five actual `compileExternalTool` registrations, distinct built-in aliases, real ToolPort dispatch and prompt names | GREEN code CI PASS; final exact-SHA pending |
+| R4 exhausted live cursor absent | Same RED run, undefined resume cursor | empty, late append, full/exhausted page, same-cursor and closed scope | GREEN code CI PASS; final exact-SHA pending |
+| R5 one oversized metadata item blocks traversal | Same RED run, `unavailable:budget` page | large Unicode sourceId, consecutive oversized records, explicit positional gap, later normal records, raw byte fetch and envelope limit | GREEN code CI PASS; final exact-SHA pending |
+
+**Unchanged regression contracts:** C18/C18R strong `submit_decision` request identity/last-wins/native finality, authoritative durable admission/restart, ordinary active request-ID dedup versus intentionally weak late replay, continued direct answer and optional discovery, native skills/terminal/subagents/permissions. Actual native LLM/provider comparison: **UNVERIFIED**.

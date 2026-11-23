@@ -228,3 +228,10 @@ Executor report must state: actual HEAD and changed paths; architecture/owner an
 - [ ] Full exact-SHA mandatory CI PASS; real native outcome separately PASS/FAIL/UNVERIFIED.
 
 **Design summary:** RO provides trustworthy technical identities, scoped access and bounded advisory feedback; the model owns evidence interpretation and action strategy. Transport handles its live resources, not a cumulative quota of model decisions. Strong consistency is reserved for RO's own Decision/Action lifecycle.
+
+
+## C18N-R — Corrective review implementation
+
+The approved C18N-R follow-up corrects five concrete omissions without altering the C18N owner boundaries: a separate cumulative 32-call quota in the registered External ToolPort; repeated O(history + live observations) preflight scan; registration-time bans on valid built-in-colliding external IDs; missing live resume cursor after an exhausted snapshot; and a single oversized metadata record preventing directory traversal. RED evidence: [CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178), commit `1a53134dc3d44935a73645adc3ebdcfe3051a778`. Production fixes: `295499174be7f4475dc14b59bfa6c7b5bbe3e427`, [CI #45266687474](https://github.com/apathoid/role-orchestrator/actions/runs/45266687474) SUCCESS. Full corrective performance/native disposition and exact final-SHA evidence live in [STATUS](STATUS.md) and [acceptance matrix](../../tests/ACCEPTANCE_MATRIX.md).
+
+Implementation uses no second persistent ledger or preflight admission: historical identity sets are built once, only newly accepted observations extend the invocation-local identity/alias index, and each decoded Intent gets temporary membership sets passed to mutating validators. The real External ToolPort has no call-count gate; permissions, receipt capture and unknown effects retain their owners. MCP naming is collision-safe from registration to live advertisement. `resumeCursor` supports later arrival; bounded `omittedMetadataFields`/indexed unavailable entries distinguish metadata representation limits from missing evidence. A real model's autonomous tool use and latency are still UNVERIFIED.

@@ -181,3 +181,82 @@ test('C18N-R RED R5: oversized metadata does not strand entries; origin complete
     assert.ok(Buffer.byteLength(JSON.stringify(fetched))<256*1024);
   }finally{stop.abort();bridge.close();}
 });
+
+test('C18N-R R2 parity: history, inherited findings, ambiguous aliases and late observations',()=>{
+  const priorFinding={findingId:'prior',author:'controller',claim:'prior',subject:'subject',
+    supports:['evidence:historical'],uncertainties:[]};
+  const events=[{kind:'attempt.outcome',outcome:{outputRefs:[{ref:'finding-output:past',kind:'finding'}]},
+    observations:[native('evidence:historical')],findings:[priorFinding]}];
+  const current=native('evidence:live');
+  const observations=[current];
+  let active=true;
+  const preflight=bindControllerPreflight({requestId:'request',events,observations,
+    profileId:'controller',isActive:()=>active});
+  const run=raw=>{
+    const p=decodeControllerIntent(raw);
+    assert.equal(p.kind,'accepted');
+    return preflight(p.value);
+  };
+  const good={findings:[{findingId:'new',claim:'new',subject:'subject',
+    supports:['evidence:historical','evidence:live'],supersedes:'finding:prior'}],
+    finalAssessment:{overall:'complete',answer:'done',observationRefs:['evidence:live','evidence:historical'],
+      findingRefs:['finding:prior','finding:new','finding-output:past']}};
+  assert.deepEqual(run(good).issues,[]);
+  assert.deepEqual(run(good).issues,[],'temporary finding-index mutation must not leak between proposals');
+  const duplicate=run({...good,findings:[{...good.findings[0],findingId:'prior'}]});
+  assert.equal(duplicate.issues[0].path,'$.findings[0].findingId');
+  const missing=run({finalAssessment:{overall:'complete',answer:'pending',
+    observationRefs:['evidence:late-worker']}});
+  assert.equal(missing.issues[0].availability,'not_in_snapshot');
+  observations.push(native('evidence:late-worker'));
+  assert.deepEqual(run({finalAssessment:{overall:'complete',answer:'received',
+    observationRefs:['evidence:late-worker']}}).issues,[]);
+  // Same provider-local ref as the historical Request is ambiguous:
+  // require canonical IDs without choosing silently.
+  current.providerRef='request';
+  // The index is append-only: mutate a fixture only before it is indexed in a
+  // fresh preflight to reflect the production immutability contract.
+  const aliasCheck=bindControllerPreflight({requestId:'request',events,observations,
+    profileId:'controller',isActive:()=>active});
+  const ambiguous=(()=>{
+    const parsed=decodeControllerIntent({finalAssessment:{overall:'complete',answer:'ambiguous',
+      observationRefs:['request']}});
+    assert.equal(parsed.kind,'accepted');return aliasCheck(parsed.value);
+  })();
+  assert.ok(ambiguous.issues.some(issue=>issue.availability==='ambiguous'));
+  active=false;
+  assert.deepEqual(run(good),{kind:'unchecked',reason:'closed',advisory:true});
+});
+
+test('C18N-R R4/R5: consecutive oversized metadata, exhausted complete page and explicit positional gaps',()=>{
+  const largeId='📦'.repeat(10000);
+  const observations=[
+    native('evidence:oversized-a','a',largeId),
+    native('evidence:normal-1','ok'),
+    native('evidence:oversized-b','b',largeId),
+    native('evidence:oversized-c','c',largeId),
+    native('evidence:normal-2','ok'),
+    native('evidence:very-long-ref:'+'v'.repeat(5000),'unreachable-from-directory'),
+    native('evidence:normal-3','ok'),
+  ];
+  const access=bindLiveEvidenceAccess({observations,isActive:()=>true});
+  const first=access.list();
+  assert.equal(first.kind,'available');
+  assert.equal(first.items.length,7);
+  assert.equal(first.resumeCursor,7);
+  assert.equal(first.nextCursor,undefined);
+  assert.equal(first.items[0].omittedMetadataFields.includes('provenance'),true);
+  assert.deepEqual(first.items[5],{kind:'unavailable',reason:'budget',index:5});
+  assert.equal(first.items[6].ref,'evidence:normal-3');
+  assert.ok(Buffer.byteLength(JSON.stringify(first))<24*1024);
+  observations.push(...Array.from({length:12},(_,i)=>native('evidence:later-'+i)));
+  const next=access.list(first.resumeCursor);
+  assert.equal(next.items.length,12);
+  assert.equal(next.resumeCursor,19);
+  assert.equal(next.nextCursor,undefined);
+  observations.push(native('evidence:late-after-full-page'));
+  const last=access.list(next.resumeCursor);
+  assert.equal(last.items[0].ref,'evidence:late-after-full-page');
+  assert.equal(last.resumeCursor,20);
+  assert.equal(access.list(20).resumeCursor,20);
+});

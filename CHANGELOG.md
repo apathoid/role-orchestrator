@@ -4,6 +4,13 @@
 
 ## Unreleased — C12–C18 integration and delivery
 
+### C18N-R — External ToolPort and live discovery corrective fixes (engineering verification pending; real native UNVERIFIED)
+
+- Remove the hidden cumulative 32-call limit from the **registered** External ToolPort while retaining input/output sizes, permissions, cancellation, late receipts and source provenance; >64 real external invocations are now covered by integration regression.
+- Make optional Controller preflight reuse invocation-scoped historical/live identity indexes and check only referenced entries, instead of copying/scanning every prior observation per correction; the authoritative Decision remains unchanged.
+- Allow external tools to register names colliding with RO MCP built-ins, using existing deterministic aliasing; add `evidence_list.resumeCursor` and explicit omission/gap markers for oversized metadata so later captured observations remain discoverable.
+
+
 ### C18N — Live evidence discovery and ordinary MCP simplification (engineering CI PASS on 42293b6; real native UNVERIFIED)
 
 - Introduce optional invocation-local `evidence_list/evidence_fetch` over already accepted observations with stable canonical refs, bounded paging/bytes, actual provenance and no early durability claim; historical context cursors are unchanged.

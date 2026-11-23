@@ -1,5 +1,24 @@
 # Активный план реализации и приёмки
 
+## C18N-R — Review corrections (IMPLEMENTATION; final exact-SHA CI pending)
+
+Review baseline `0dbae3434b626fcd4132059f6d349b3f4dcab3c6`; [STATUS](STATUS.md) and [C18N specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). The five RED regressions are recorded at `1a53134d` / [CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178). R1–R5 production fixes passed [CI #45266687474](https://github.com/apathoid/role-orchestrator/actions/runs/45266687474) on `295499174be7f4475dc14b59bfa6c7b5bbe3e427`. Final corrective regressions/docs require a newer exact-SHA full CI, not an inherited PASS.
+
+| Corrective checkpoint | Deliverable |
+| --- | --- |
+| R.0 | Five specific RED tests for registered ToolPort call 33, repeated preflight scan, real tool registration, exhausted live cursor and oversized metadata |
+| R.1 | Genuine External ToolPort no cumulative 32-call limit; unchanged permission/cancel/late receipts and input/output bounds |
+| R.2 | Historical index once, incremental live alias/identity lookup, Intent-size temporary `EvidenceRefs` |
+| R.3 | Valid external names including context/evidence/submit_decision; built-ins aliased dynamically |
+| R.4 | Live `resumeCursor` after every page without historical cursor changes |
+| R.5 | Explicit omission/gap markers, bounded directory metadata and navigable later entries |
+| R.6 | Real-port, large-history/finding/alias, multi-page/Unicode, ACP SDK, cancellation/finality/restart regressions |
+| R.7 | Comparative GC/preflight measurements, complete Node24/npm/PTY/Nix/release CI at exact SHA, real native UNVERIFIED |
+
+No additional scheduler, semantic gate, call quota or compulsory workspace validation.
+
+
+
 ## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (ENGINEERING VERIFIED at `42293b6`; native UNVERIFIED)
 
 **Approved executable scope:** [C18N.0–C18N.10 plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; planning baseline `12b88248c8b59408b06d2ec1919498050bee19a9`. The feature branch contains implementation and automated regression fixtures for C18N.1–C18N.8. Synthetic ACP SDK testing does not establish native LLM acceptance, which remains **UNVERIFIED**. Required Node24/checkJs, core/contracts/integration/PTY, Nix packaging and release CI passed on [`42293b6`](https://github.com/apathoid/role-orchestrator/actions/runs/45260312459) (35/35 job steps, 534 integration tests). Earlier intermediate failures and the accepted ordinary request-ID post-completion replay compromise are recorded in STATUS. Later commits require independent exact-SHA verification; native-model autonomy/performance remains UNVERIFIED.
