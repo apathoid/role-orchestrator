@@ -234,7 +234,7 @@ test('C15.6 actual committed fact and native renderer modes preserve full determ
       assert.equal(state.events.flatMap(e=>e.findings??[]).length,2);
       if(!['headless','disconnected'].includes(mode))assert.ok(rendered>0);
       t.diagnostic('C15_MODES '+JSON.stringify({mode,firstMs,completionMs,rendered,bytes}));
-      return {state,events,invocations:invocations.map(({signal,isActive,contextAccess,externalTools,permissions,interactions,...stable})=>stable)};
+      return {state,events,invocations:invocations.map(({signal,isActive,contextAccess,evidenceAccess,preflightIntent,externalTools,permissions,interactions,...stable})=>stable)};
     }finally{gate.resolve();execution?.();activity?.();cli?.close();stream.close();await api.close();}
   }
   const expected=await run('headless');

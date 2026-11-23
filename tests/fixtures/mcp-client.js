@@ -43,11 +43,9 @@ export async function retrieveContext(url, invocation) {
   assert.deepEqual(await call('context_fetch', { ref: artifact.ref }), { kind: 'unavailable', reason: 'budget' });
   const refs = [found.item.ref];
   if (listing.tools.some(tool => tool.name === 'echo_text')) {
-    const [external, replay] = await Promise.all([
-      call('echo_text', { text: 'from live MCP' }, 'stable-tool-call'),
-      call('echo_text', { text: 'from live MCP' }, 'stable-tool-call'),
-    ]);
-    assert.deepEqual(replay, external);
+    // No attempt to deduplicate an already completed ordinary external call:
+    // active overlap is separately tested with an explicit execution barrier.
+    const external = await call('echo_text', { text: 'from live MCP' }, 'stable-tool-call');
     assert.equal(external.status, 'completed');
     assert.equal(external.output, 'from live MCP');
     refs.push(external.ref);

@@ -563,3 +563,22 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 
 
 **C18R engineering verification:** [CI #45017738925](https://github.com/apathoid/role-orchestrator/actions/runs/45017738925) SUCCESS on `fab92fd037a0169e9e12ac6706801c3c6d4d1666` (29 foundation, 77 core, 526 applicable integration, 15 Linux PTY, complete required Nix/release; no failed required step). Newer SHA requires separate exact-SHA CI. Real native/provider correctness remains **UNVERIFIED**.
+
+## C18N — Live evidence, advisory correction and minimal MCP (implementation checkpoints; real native UNVERIFIED)
+
+| Checkpoint | Test / observable acceptance evidence | Status pending final SHA |
+| --- | --- | --- |
+| C18N.0 | Baseline branch `45cc5219`; historical 64-call cap and retained all-call Map statically confirmed in `mcp-bridge.js`; earlier operator OpenCode failure documented in C18N plan | Static baseline SUPPORTED; no separate executable RED baseline CI claimed |
+| C18N.1 | `tests/integration/c18n-live-evidence.test.js`: canonical provider-ref hash identity, source/provider provenance and later journal evidence; ACP SDK scenario `c18n-live` | Automated verification required |
+| C18N.2 | Bounded append-only cursor, current-attempt fetch/offset, empty/capture-gap/closed/foreign ref, collision-safe namespace; independent historical cursor | Automated verification required |
+| C18N.3 | General Controller evidence contract with optional discovery/retrieval; no action/file-specific source heuristics; legacy adapters remain | Source inspection and synthetic regression |
+| C18N.4 | Registered proposal with `preflight` warning; fresh reference-index copies; unchecked fallback; no preflight-as-admission | HTTP/ACP SDK automated verification required |
+| C18N.5 | Same-turn correction, unrelated conflict, explicit known-lineage last-wins, cross-invocation `replaces` unchanged | Existing C18/C18R and new C18N SDK regressions |
+| C18N.6 | `mcp-bridge-limits.test.js`: 300+ ordinary calls, in-flight duplicate/conflict, post-completion replay permissible, 4-slot concurrency, continued cancellation/late effect receipts | Automated verification required |
+| C18N.7 | Actual ACP SDK native tool provenance and exact Unicode+Markdown `Assessment.answer` through MCP/Intent/Decision/journal | Automated verification required; real LLM UNVERIFIED |
+| C18N.8 | Full integration/ACP SDK/PTY/restart/security/cancellation suites and `scripts/c18n-mcp-memory-probe.mjs` GC heap snapshots after 250/500/750/1000 calls | Full exact-SHA CI required |
+| C18N.9 | Model-led direct/legacy/C18N real workspace trials, independent provider, permissions/skills/subagents, latency/quality and source correctness | **UNVERIFIED** (no authenticated real model or native client) |
+| C18N.10 | Node 24, checkJs, npm suites, Nix flake/install/systemPackages, release artifact, precise workflow SHA and final docs | Full exact-SHA CI required |
+
+**Interpretation:** Automated tests confirm transport/reference and lifecycle contracts only; they do not establish model-selected evidence relevance, native skill discovery or run quality. Ordinary completed request IDs are intentionally not transport exactly-once; this does not weaken `submit_decision` and durable RO guarantees. Earlier failed C18N intermediate runs are not PASS.
+

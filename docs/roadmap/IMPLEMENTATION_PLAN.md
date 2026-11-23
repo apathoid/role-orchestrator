@@ -1,8 +1,8 @@
 # Активный план реализации и приёмки
 
-## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (PLANNED)
+## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (IMPLEMENTATION; exact-SHA engineering verification pending)
 
-**Approved executable scope:** [C18N.0–C18N.10 plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; planning baseline `12b88248c8b59408b06d2ec1919498050bee19a9`. Planning documentation does **not** establish engineering or native PASS.
+**Approved executable scope:** [C18N.0–C18N.10 plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; planning baseline `12b88248c8b59408b06d2ec1919498050bee19a9`. The feature branch contains implementation and automated regression fixtures for C18N.1–C18N.8. Synthetic ACP SDK testing does not establish native LLM acceptance, which remains **UNVERIFIED**. Engineering PASS requires the complete CI on the final commit SHA; intermediate CI failures are explicitly recorded in STATUS.
 
 | Checkpoint | Required deliverable and exit |
 | --- | --- |

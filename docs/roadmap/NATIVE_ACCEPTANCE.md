@@ -1,8 +1,8 @@
 # C12.3–C12.4: протокол нативной приёмки
 
-## C18N — Live evidence and simplified MCP bridge (PLANNED; NATIVE UNVERIFIED)
+## C18N — Live evidence and simplified MCP bridge (synthetic implementation; REAL NATIVE UNVERIFIED)
 
-[Implementation specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). This is a **future native acceptance procedure**, not evidence of C18N implementation. Operator-supplied earlier OpenCode ACP / `llamacpp/medium` run of the native `changed` task failed after late unresolved observationRef admission and cross-invocation `replaces` error. Keep original private debug archives and user source outside Git; use sanitized deterministic fixtures in repository tests.
+[Implementation specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). This is a **real-model native acceptance procedure**, not evidence that the committed synthetic C18N implementation has passed real native acceptance. Operator-supplied earlier OpenCode ACP / `llamacpp/medium` run of the native `changed` task failed after late unresolved observationRef admission and cross-invocation `replaces` error. Keep original private debug archives and user source outside Git; use sanitized deterministic fixtures in repository tests.
 
 On the actual trusted permitted workspace, pin the target commit, provider/ACP client/model build, quantization, context window, sampling/effort, configuration, active native skill environment, cwd, permissions and resource limits. Compare prior C18R behavior with C18N MCP Intent and C18N text Intent where actually available; include independent provider if possible. Distinguish controller-generated user-task answer correctness from successful JSON/MCP transport.
 

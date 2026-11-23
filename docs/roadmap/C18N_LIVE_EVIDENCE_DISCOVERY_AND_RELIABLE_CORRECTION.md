@@ -1,8 +1,18 @@
 # C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge
 
-**Status:** PLANNED → IMPLEMENTATION. **Branch:** `feature/controller-intent-deferred-admission`. **Planning HEAD:** `12b88248c8b59408b06d2ec1919498050bee19a9`. **Scope:** C18N.0–C18N.10. Implementation and native acceptance have **not** been performed by this planning change. Do not merge to master.
+**Status:** IMPLEMENTATION → exact-SHA engineering verification (native UNVERIFIED). **Branch:** `feature/controller-intent-deferred-admission`. **Planning HEAD:** `12b88248c8b59408b06d2ec1919498050bee19a9`. **Scope:** C18N.0–C18N.10. Implementation and native acceptance have **not** been performed by this planning change. Do not merge to master.
 
 Related documents: [C18/C18R](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md), [STATUS](STATUS.md), [IMPLEMENTATION_PLAN](IMPLEMENTATION_PLAN.md), [NATIVE_ACCEPTANCE](NATIVE_ACCEPTANCE.md), [CONTRACTS](../CONTRACTS.md), [EXECUTION](../EXECUTION.md), [CONTEXT_AND_RECOVERY](../CONTEXT_AND_RECOVERY.md), [PROVIDERS_AND_CONFIGURATION](../PROVIDERS_AND_CONFIGURATION.md), [EXTENSIONS](../EXTENSIONS.md), [DECISIONS](../DECISIONS.md).
+
+
+
+### Implementation record (after original planning)
+
+The implementer verified the **requested starting branch HEAD** `45cc5219bbf26f37a3ca568044c8171307590bf2`. The original planning commit SHA above is historical and remains unchanged. The first implementation commit `5e32a739` and ACP SDK correction/checkJs commit `c48a25f` are recorded in [STATUS](STATUS.md). All C18N code, automated fixtures, Nix CI measurement and normative documentation are maintained on the **feature branch only**, without a master merge.
+
+The accepted technical compromise is implemented: completed **ordinary** MCP requests no longer retain the old 64-call budget or a response cache; active same-ID correlation still exists, but late post-eviction same IDs can be new external executions. `submit_decision` request/lineage identity, deferred native finality, durable Decision/Worker recovery and no blind Host replay remain separate. Optional live captured evidence is a bounded read-only projection of existing current-attempt observations; optional advisory preflight runs only after proposal registration with a copied ref index, never as authoritative admission. Real model native/skill/subagent autonomy tests remain UNVERIFIED until operator-run comparisons. No host semantic effect classifier, scheduler, mandatory retrieval or workspace integrity gate was introduced.
+
+The final code SHA and exact GitHub Actions CI run determine engineering acceptance; no passing status is inferred from the earlier C18R green build or any intermediate failed C18N run.
 
 ## 1. Motivation and verified boundaries
 

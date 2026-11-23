@@ -93,3 +93,8 @@ Host не вводит специальные ограничения черед�
 
 Вся техническая компоновка bound by trusted budgets, но гарантии помещаемости user input, инструкции/каталог Host и внутренний native prompt независимы от optional context budget; отсутствие полного результата указывается, а не маскируется семантическим Host summary. Восстановление, отмена, поздний результат и неопределённый эффект сохраняют ранее действующие инварианты.
 
+## C18N — Choosing evidence in the current Controller turn
+
+A Controller that has received provider-native observations can optionally inspect their canonical refs with the negotiated MCP `evidence_list` and retrieve bounded bytes with `evidence_fetch`. This is a view of what the adapter and Orchestrator accepted, not a Host verdict about whether a tool succeeded or a task is complete. The model decides whether retrieval, further native calls, a Worker, a direct answer or no citations are appropriate. `observationRefs: []` remains valid.
+
+A `proposal_pending` receipt may include provisional `preflight` reference issues. It is not the final admission verdict; the model may continue native tools, discoveries and corrections, including a same-lineage `replaces` using a **proposalRef issued by this invocation**. Results from older Controller invocations remain historical evidence, not valid current `replaces` references. Unrelated native tools, skills, scripts and subagents cannot be suppressed by the receipt.

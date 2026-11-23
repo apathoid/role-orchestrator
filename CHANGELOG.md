@@ -4,6 +4,14 @@
 
 ## Unreleased — C12–C18 integration and delivery
 
+### C18N — Live evidence discovery and ordinary MCP simplification (engineering verification in progress; real native UNVERIFIED)
+
+- Introduce optional invocation-local `evidence_list/evidence_fetch` over already accepted observations with stable canonical refs, bounded paging/bytes, actual provenance and no early durability claim; historical context cursors are unchanged.
+- Add nonblocking advisory reference preflight **after** proposal registration with independently copied reference indices. Controller correction stays in the same native turn; the final journal admission remains sole authority.
+- Remove the cumulative 64 ordinary MCP calls limit and release completed ordinary request results. Concurrent same-ID calls remain correlated, but post-completion same-ID redelivery can run anew. Preserve strong `submit_decision` identity/last-wins/finality and durable unknown-effect handling.
+- Alias all colliding built-in MCP tools instead of shadowing extension names; general evidence guidance does not restrict model strategy or provider-native tools. Add live-HTTP and ACP SDK regressions; actual independent-provider/native model verification remains separate.
+
+
 ### C18R — ControllerIntent corrective reliability (engineering CI PASS at `fab92fd037a0`; native UNVERIFIED)
 - An independently completed MCP ControllerIntent survives auxiliary ACP observation-capture overflow while truncation remains visible and incomplete native text is never promoted to full evidence.
 - Rejected explicit replacements from a known JSON-RPC request-ID conflict invalidate the selected lineage; successful same-turn correction remains available, and unresolved transport faults receive technical outcomes.

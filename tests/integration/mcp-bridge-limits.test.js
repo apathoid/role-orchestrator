@@ -175,10 +175,11 @@ test('C12R.8R.1 a genuine bounded ToolPort preserves read/write/unknown receipts
     }
     assert.equal(called, 3);
     assert.deepEqual(value(await invoke(bridge.url, 2, 'write', {})),
-      { status: 'truncated', effect: 'possible', callId: 'call-2', ref: 'evidence:call-2' });
-    assert.equal((await invoke(bridge.url, 2, 'write', { changed: true })).body.error.code, -32602);
-    assert.equal(called, 3);
-    assert.equal(receipts.length, 3);
+      { status: 'truncated', effect: 'possible', callId: 'call-4', ref: 'evidence:call-4' });
+    assert.deepEqual(value(await invoke(bridge.url, 2, 'write', { changed: true })),
+      { status: 'truncated', effect: 'possible', callId: 'call-5', ref: 'evidence:call-5' });
+    assert.equal(called, 5);
+    assert.equal(receipts.length, 5);
   } finally {
     stop.abort();
     bridge.close();
@@ -222,9 +223,11 @@ test('C12R.8R.1 oversized valid AttemptTools results keep effect/status/ref with
     const replay = await invoke(bridge.url, 2, 'write', {});
     assert.equal(replay.body.result.isError, true);
     assert.equal(value(replay).effect, 'possible');
-    assert.equal((await invoke(bridge.url, 2, 'write', { different: true })).body.error.code, -32602);
-    assert.equal(executed, 3);
-    assert.equal(originals.length, 3);
+    const changed = await invoke(bridge.url, 2, 'write', { different: true });
+    assert.equal(changed.status, 200);
+    assert.equal(value(changed).callId, 'tool-call-5');
+    assert.equal(executed, 5);
+    assert.equal(originals.length, 5);
     for (const item of originals) assert.equal(item.output.length, 300 * 1024);
   } finally {
     stop.abort();
@@ -233,7 +236,7 @@ test('C12R.8R.1 oversized valid AttemptTools results keep effect/status/ref with
 });
 
 for (const first of ['history', 'external']) {
-  test('C12R.8R.2 shared MCP budget across context_list/context_fetch and external tools (' + first + ' first)', async () => {
+  test('C18N.6 no cumulative budget across historical context and external tools (' + first + ' first)', async () => {
     const stop = new AbortController();
     let listed = 0, fetched = 0, tools = 0;
     const bridge = await startMcpBridge({
@@ -264,17 +267,19 @@ for (const first of ['history', 'external']) {
       }
       assert.deepEqual([listed, fetched, tools], [16, 16, 32]);
       for (const name of ['echo', 'context_fetch', 'context_list']) {
-        const blocked = await invoke(bridge.url, 65 + ['echo', 'context_fetch', 'context_list'].indexOf(name),
+        const afterOldLimit = await invoke(bridge.url, 65 + ['echo', 'context_fetch', 'context_list'].indexOf(name),
           name, name === 'context_fetch' ? { ref: 'record' } : {});
-        assert.deepEqual(value(blocked), { kind: 'unavailable', reason: 'budget' });
+        assert.equal(afterOldLimit.status, 200);
+        assert.notEqual(value(afterOldLimit).reason, 'budget');
       }
-      assert.deepEqual([listed, fetched, tools], [16, 16, 32]);
+      assert.deepEqual([listed, fetched, tools], [17, 17, 33]);
       const previously = steps[63];
       const repeated = await invoke(bridge.url, 64, previously.name, previously.args);
       assert.equal(repeated.status, 200);
       assert.notEqual(value(repeated).reason, 'budget');
-      const conflicting = await invoke(bridge.url, 64, 'echo', { conflicting: true });
-      assert.equal(conflicting.body.error.code, -32602);
+      const redelivered = await invoke(bridge.url, 64, 'echo', { conflicting: true });
+      assert.equal(redelivered.status, 200);
+      assert.notEqual(value(redelivered).reason,'budget');
       const invalid = await fetch(bridge.url, { method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: { wrong: true }, method: 'tools/call',
@@ -288,7 +293,7 @@ for (const first of ['history', 'external']) {
         body: '{"jsonrpc":"2.0","id":1e400,"method":"tools/call","params":{"name":"echo","arguments":{}}}',
       });
       assert.equal(nonFinite.status, 400);
-      assert.deepEqual([listed, fetched, tools], [16, 16, 32]);
+      assert.deepEqual([listed, fetched, tools], first === 'history' ? [17,17,35] : [17,18,34]);
     } finally {
       stop.abort();
       bridge.close();
@@ -423,7 +428,9 @@ test('C12R.8R.1 an oversized MCP projection does not alter a durable tool receip
         assert.equal(response.body.result.isError, true);
         assert.deepEqual(value(response), { status: 'completed', effect: 'possible',
           callId: 'receipt-1', ref: 'host:tool:receipt-1', outputUnavailableReason: 'budget' });
-        assert.deepEqual(value(await invoke(bridge.url, 1, 'write', {})), value(response));
+        // A second completed ordinary request ID can execute again by
+        // design; do not manufacture a second durable write for this
+        // single-receipt integrity fixture.
       } finally {
         bridge.close();
       }
@@ -494,7 +501,7 @@ test('C12R.8R.1 the full JSON-RPC envelope budget cannot turn a completed effect
     });
     assert.ok(Buffer.byteLength(JSON.stringify(response.body)) <= max);
     assert.deepEqual(value(await invoke(bridge.url, 1, 'write', {})), value(response));
-    assert.equal(calls, 1);
+    assert.equal(calls, 2);
     assert.equal(original.output.length, length);
   } finally {
     stop.abort();
