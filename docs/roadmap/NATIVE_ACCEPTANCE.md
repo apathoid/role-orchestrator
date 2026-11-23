@@ -1,5 +1,22 @@
 # C12.3–C12.4: протокол нативной приёмки
 
+## C18N — Live evidence and simplified MCP bridge (PLANNED; NATIVE UNVERIFIED)
+
+[Implementation specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). This is a **future native acceptance procedure**, not evidence of C18N implementation. Operator-supplied earlier OpenCode ACP / `llamacpp/medium` run of the native `changed` task failed after late unresolved observationRef admission and cross-invocation `replaces` error. Keep original private debug archives and user source outside Git; use sanitized deterministic fixtures in repository tests.
+
+On the actual trusted permitted workspace, pin the target commit, provider/ACP client/model build, quantization, context window, sampling/effort, configuration, active native skill environment, cwd, permissions and resource limits. Compare prior C18R behavior with C18N MCP Intent and C18N text Intent where actually available; include independent provider if possible. Distinguish controller-generated user-task answer correctness from successful JSON/MCP transport.
+
+Minimum observed scenarios:
+1. Native tool/skill produces a provider-reported observation; Controller discovers its canonical RO ref and, when useful, retrieves the actual bounded body **during the same native invocation**; Host does not infer evidence relevance.
+2. MCP submission carries an unresolved but structurally valid reference; model sees optional preflight warning and may correct it in the same turn, with no automatic re-invocation or mandatory tool use. A reference appearing later, including from independent Worker completion, is considered by final admission.
+3. Model skips discovery entirely and still completes a valid direct task; native tools, scripts, skills and subagents continue after pending/invalid proposals and warnings.
+4. Historical result and current `proposalRef` remain distinct; old cross-invocation `replaces` is rejected without blocking a fresh valid submission.
+5. More than 64 consecutive ordinary bridge calls are possible without cumulative call exhaustion; technical resource and memory bounds hold. Ordinary completed request-ID replay is **not** claimed exactly-once; RO `submit_decision` and durable Action/Worker semantics remain correct.
+6. Cancellation after live reference issuance does not fabricate durability. Capture gaps are not claimed to represent full native execution; no new workspace/VCS/skill gate.
+7. Actual Unicode/Markdown `answer` is preserved from the parsed submission through journal and final presentation, without Host text correction.
+
+For each run record exact RO SHA, tools called (ordinary MCP vs provider-native separated), proposed/final Decisions, live refs, preflight/correction actions, admission outcomes, Controller invocations, duration, prompt/output bytes, model/task correctness and attributable usage. Distinguish SDK/PTY engineering PASS from real-model native PASS/FAIL/UNVERIFIED. Use repeated comparable trials when possible. No private raw prompts, credentials or proprietary source files in Git.
+
 ## C18 — Controller Intent & Deferred Decision Admission (IMPLEMENTATION; NATIVE UNVERIFIED)
 
 **Status: UNVERIFIED.** C18 implementation and synthetic ACP fixtures are not real-model native evidence; the following is the required future operator evaluation. Implementation specification: [C18](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md). Preserve normal provider-native tools, permissions, skill discovery and subagents; never require Host Git/immutable workspace. No private prompts, tokens, or proprietary source archives committed.
