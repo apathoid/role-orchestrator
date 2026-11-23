@@ -1,5 +1,25 @@
 # Активный план реализации и приёмки
 
+## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (PLANNED)
+
+**Approved executable scope:** [C18N.0–C18N.10 plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; planning baseline `12b88248c8b59408b06d2ec1919498050bee19a9`. Planning documentation does **not** establish engineering or native PASS.
+
+| Checkpoint | Required deliverable and exit |
+| --- | --- |
+| C18N.0 | Baseline current ACP/Orchestrator/MCP resource behavior; sanitize operator trace; RED for missing live discovery, late evidence rejection, cross-invocation replacement and cumulative ordinary-call limit |
+| C18N.1 | Existing canonical observation refs exposed from accepted current-invocation data; stable identity, truthful provenance and explicit lack of durability before journal commit |
+| C18N.2 | Optional read-only live list/fetch with append-safe cursor independent of historical `context_list` snapshot; bounded scopes, body, metadata and collision-free tool names |
+| C18N.3 | One general Controller instruction about scoped observations, optional retrieval and model-owned evidence interpretation; no task/tool/path-specific heuristics |
+| C18N.4 | Advisory bounded technical preflight; structural registration precedes optional checks, no second admission or StateStore wait, copy-on-check temporary reference indices |
+| C18N.5 | Same-turn correction, C18R finalization/last-wins/identity and cross-invocation historical-result recovery preserved |
+| C18N.6 | Ordinary MCP calls retain active correlation only, release completed responses, remove cumulative 64-call ceiling; explicitly accept reduced late same-ID dedup, preserve strong RO control/durable invariants |
+| C18N.7 | Provider-native tool/skill provenance and exact `finalAssessment.answer` transport; no Host editing/semantic verification |
+| C18N.8 | Full contract, ACP SDK, concurrency, fault, cancellation, restart, memory and native autonomy regression matrix |
+| C18N.9 | Controlled real-native direct/legacy/C18N comparisons on actual permitted model/workspace, or explicit UNVERIFIED |
+| C18N.10 | Exact-SHA Node 24/checkJs/npm/Nix/PTY/release CI, normative docs updated for actual implementation, reviewer/executor handoff |
+
+**Mandatory constraints:** no additional scheduler/store/Host semantic policy, no per-tool effect classification, no requirement to discover evidence before submitting, no alteration of historical ContextPort cursor, no blind Host replay of unknown effects, no weakening of RO-owned Decision/Action finality. Do not silently remove the 128-control-call bound if its removal would weaken proposal identity: measure, document and either safely replace with retained-resource accounting or report as explicit residual technical limit.
+
 ## C18R — corrective review and exact-SHA verification (IMPLEMENTED; NATIVE UNVERIFIED)
 
 C18R fixes on `feature/controller-intent-deferred-admission` derive from the engineering review of `f9d06f19`. The corrected implementation and added tests passed [CI #45017738925](https://github.com/apathoid/role-orchestrator/actions/runs/45017738925) on `fab92fd037a0169e9e12ac6706801c3c6d4d1666`; any later documentation-only SHA requires a fresh exact-SHA CI. P1: ACP capture overflow no longer invalidates separately proven MCP completion; clearly observed invalid explicit replacements of the current proposal cannot silently admit its predecessor. P2: dynamic collision-free builtin MCP tool naming, trusted attempt-bound duplicate/identity treatment and crash-gap, finality/capacity/cancellation/provenance regressions. Production fixes are confined to ACP/MCP adapter and existing identity/admission owners; no extra scheduler, semantic Host gate, CAS for proposals or native-tool restriction.
