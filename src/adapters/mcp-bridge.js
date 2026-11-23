@@ -69,7 +69,7 @@ export function retrievalDetail(enabled, names = {}) {
     ? 'Optional MCP ' + list + ' and ' + fetch + ' retrieve omitted history when useful. Copy ' + list + ' nextCursor exactly; cursor 0 starts a fresh directory traversal. ' + fetch + ' offset reads saved data in bounded base64 chunks with nextOffset; retain original completeness. Report material unavailable evidence explicitly.'
     : 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.';
   return context + (names.evidenceListToolName && names.evidenceFetchToolName
-    ? '\\nOptional current-invocation MCP ' + names.evidenceListToolName + ' and ' + names.evidenceFetchToolName +
+    ? '\nOptional current-invocation MCP ' + names.evidenceListToolName + ' and ' + names.evidenceFetchToolName +
       ' expose already captured observations and canonical refs. Discovery is not exhaustive, not durable until committed and never required. Continue independent native tools and reasoning as needed.'
     : '');
 }
@@ -80,9 +80,9 @@ function object(value) {
 }
 
 /**
- * Cache only the bounded, model-visible MCP reply for deduplication. Retaining
- * an arbitrary ToolPort payload in the invocation call map would also retain
- * omitted bytes until the bridge closed.
+ * Return a bounded, model-visible MCP reply. Only in-flight ordinary requests
+ * and bounded control receipts are retained for request-ID correlation.
+ * Never retain an arbitrary completed ToolPort payload beyond settlement.
  * @param {unknown} value @param {string | number} requestId
  */
 function toolReply(value, requestId) {
@@ -208,9 +208,8 @@ export async function startMcpBridge({ contextAccess, evidenceAccess, preflightI
       if (name === evidenceFetchToolName && evidenceAccess) {
         const parsed = decode(evidenceFetchArgs, args);
         if (parsed.kind === 'rejected') return {kind:'unavailable',reason:'invalid_input'};
-        return evidenceAccess.fetch(parsed.value.ref,parsed.value.offset === undefined ? undefined : {
-          offset:parsed.value.offset,maxBytes:parsed.value.maxBytes,
-        });
+        return evidenceAccess.fetch(parsed.value.ref,parsed.value.offset === undefined && parsed.value.maxBytes === undefined
+          ? undefined : {offset:parsed.value.offset ?? 0,maxBytes:parsed.value.maxBytes});
       }
       return externalTools ? await externalTools.call(name, args) : { kind: 'unavailable', reason: 'missing' };
     } finally {

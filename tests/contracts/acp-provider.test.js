@@ -823,6 +823,31 @@ test('C18.4 ACP MCP tool finality, correction and continuing native tools in one
     }finally{await api.close();}
   }));
 
+test('C18N.8 actual ACP SDK accepted native observation is discoverable in-turn and durable under same canonical ref',linux,()=>
+  withOwnedRun('C18N-acp-live',async cwd=>{
+    const endpoint=provider(cwd,'c18n-live',{mcpBridge:true,controllerIntent:'prefer_mcp'});
+    const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+    try{
+      const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished',JSON.stringify(state.events.slice(-4)));
+      const answer='# Нативный результат\n\nПроверено: 🌍 `code`';
+      assert.equal(state.assessment.answer,answer);
+      assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+      assert.equal(state.events.filter(e=>e.kind==='controller.invalid_proposal').length,0);
+      assert.equal(state.attempts.length,1);
+      const native=state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[])
+        .find(o=>o.provenance?.sourceId==='c18n-native-inspection');
+      assert.ok(native);
+      assert.match(native.ref,/^evidence:[a-f0-9]{64}$/);
+      assert.equal(native.providerRef?.startsWith('acp-update-'),true);
+      assert.equal(native.provenance.kind,'provider_tool');
+      assert.equal(state.assessment.requirements[0].observationRefs[0],native.ref);
+      assert.ok(state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[])
+        .some(o=>o.provenance?.sourceId==='after-warning'),
+        'native tools remain available after preflight warning');
+    }finally{await api.close();}
+  }));
+
 // C18R.0 RED: capture of ordinary ACP updates is not a proof of MCP
 // submission incompleteness. Preserve the independent truncation evidence.
 for(const [scenario,valid] of [

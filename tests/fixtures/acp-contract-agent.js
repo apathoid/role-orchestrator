@@ -40,11 +40,11 @@ agent()
     if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
-      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
+      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
   })
   .onRequest(a.session.new, ({ params }) => {
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
-    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
+    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
       assert.equal(params.mcpServers[0]?.type, 'http');
       mcpUrl = params.mcpServers[0].url;
     }
@@ -336,6 +336,59 @@ agent()
           findingRefs: [], unresolvedQuestions: [], answer: text },
       }));
       return { stopReason: 'end_turn' };
+    }
+    if (scenario === 'c18n-live') {
+      assert.equal(kind,'controller');
+      assert.match(prompt,/ControllerIntent reference/);
+      assert.match(prompt,/evidence_list/);
+      const call=async(id,name,args)=>{
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})});
+        assert.equal(response.status,200);
+        const payload=await response.json();
+        return JSON.parse(payload.result.content[0].text);
+      };
+      const nativeName='c18n-native-inspection';
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call',toolCallId:nativeName,title:'Native inspection',kind:'read',status:'in_progress',
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,title:'Native inspection',status:'completed',
+        content:[{type:'content',content:{type:'text',text:'native source receipt'}}],
+      }});
+      const directory=await call(1,'evidence_list',{});
+      assert.equal(directory.kind,'available');
+      const native=directory.items.find(item=>item.provenance?.sourceId===nativeName);
+      assert.ok(native,JSON.stringify(directory));
+      assert.match(native.ref,/^evidence:[a-f0-9]{64}$/);
+      assert.equal(native.source,'provider_reported');
+      assert.equal(native.provenance.kind,'provider_tool');
+      const bytes=await call(2,'evidence_fetch',{ref:native.ref});
+      assert.equal(bytes.kind,'chunk');
+      assert.equal(bytes.item.ref,native.ref);
+      assert.match(Buffer.from(bytes.base64,'base64').toString('utf8'),/Native inspection/);
+      const original=await call(3,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'before',requirements:[{
+          requirementId:'native',status:'fulfilled',observationRefs:['evidence:does-not-exist'],
+        }],
+      }}});
+      assert.equal(original.kind,'proposal_pending');
+      assert.equal(original.preflight.kind,'checked');
+      assert.match(original.preflight.issues[0].path,/requirements\[0\]\.observationRefs\[0\]/);
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call',toolCallId:'after-warning',title:'Native tool after warning',
+        kind:'read',status:'completed',
+      }});
+      const answer='# Нативный результат\n\nПроверено: 🌍 `code`';
+      const corrected=await call(4,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer,requirements:[{
+          requirementId:'native',status:'fulfilled',observationRefs:[native.ref],
+        }],
+      }},replaces:original.proposalRef});
+      assert.equal(corrected.kind,'proposal_pending');
+      assert.deepEqual(corrected.preflight.issues,[]);
+      await message('post-submission','Native final text is not ControllerIntent');
+      return {stopReason:'end_turn'};
     }
     if (scenario === 'c18-large') {
       assert.match(prompt,/ControllerIntent reference/);

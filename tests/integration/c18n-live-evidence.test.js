@@ -5,6 +5,7 @@ import { bindControllerPreflight } from '../../src/application/controller-prefli
 import { bindLiveEvidenceAccess } from '../../src/application/live-evidence.js';
 import { providerEvidenceRef } from '../../src/application/evidence-identity.js';
 import { materializeControllerIntent } from '../../src/application/controller-intent.js';
+import { decodeControllerIntent } from '../../src/core/controller-intent.js';
 import { observation } from '../../src/core/observation.js';
 
 /** @param {string} url @param {number} id @param {string} name @param {unknown} args */
@@ -117,8 +118,10 @@ test('C18N.4 preflight uses a fresh finding index and cannot veto a registered p
     profileId:'controller',isActive:()=>true});
   const intent={findings:[{findingId:'one',claim:'claim',subject:'subject',supports:['evidence:known']}],
     finalAssessment:{overall:'complete',answer:'done',findingRefs:['finding:one']}};
-  assert.deepEqual(preflight({...intent,additions:[],cancellations:[]}).issues,[]);
-  assert.deepEqual(preflight({...intent,additions:[],cancellations:[]}).issues,[]);
+  const parsed=decodeControllerIntent(intent);
+  assert.equal(parsed.kind,'accepted');
+  assert.deepEqual(preflight(parsed.value).issues,[]);
+  assert.deepEqual(preflight(parsed.value).issues,[]);
   const stop=new AbortController();
   const bridge=await startMcpBridge({attemptId:'fallback',controllerDelivery:'intent_mcp',
     signal:stop.signal,preflightIntent:()=>{throw Error('optional failed');}});
@@ -164,7 +167,7 @@ test('C18N.2 built-ins never shadow colliding native external names',async()=>{
 });
 
 test('C18N.7 parsed Unicode Markdown answer survives Intent materialization unchanged',()=>{
-  const answer='# Заголовок\\n\\n🌍 \\u{1F680} `code\\nwith newline`\\n> цитата\\n\\"quoted\\"';
+  const answer=['# Заголовок','','🌍 🚀 `code`','> цитата','"quoted"'].join('\n');
   const result=materializeControllerIntent({finalAssessment:{overall:'complete',answer}},
     {operationId:'op',attemptId:'attempt',contextCursor:0,profileId:'controller'});
   assert.equal(result.kind,'accepted');

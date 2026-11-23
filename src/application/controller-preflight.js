@@ -29,7 +29,7 @@ export function bindControllerPreflight({requestId, events, observations, profil
         requirements.reduce((sum,item)=>sum + item.observationRefs.length + item.findingRefs.length,0);
       // A large intent is still registered and may be admitted. Optional
       // preflight must not add an unbounded synchronous burden.
-      if (count > 512 || value.findings?.length > 128 || requirements.length > 128) {
+      if (count > 512 || (value.findings?.length ?? 0) > 128 || requirements.length > 128) {
         return {kind:'unchecked',reason:'budget',advisory:true};
       }
       /** @type {import('../core/finding.js').EvidenceRefs} */
