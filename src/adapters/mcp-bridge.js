@@ -269,13 +269,16 @@ export async function startMcpBridge({ contextAccess, evidenceAccess, preflightI
         break;
       case 'ping': result = {}; break;
       case 'tools/list': {
+        // Preserve the pre-C18N front-page ordering for existing context and
+        // external tools. Keep control discoverable near the front; new optional
+        // evidence tools follow, without shadowing or hiding old tool IDs.
         const tools = [
           ...(contextAccess ? [{...listTool,name:contextListToolName},{...fetchTool,name:contextFetchToolName}] : []),
-          ...(evidenceAccess ? [{...evidenceListTool,name:evidenceListToolName},
-            {...evidenceFetchTool,name:evidenceFetchToolName}] : []),
           ...(pendingDecision ? [{...decisionTool,name:decisionToolName}] : []),
           ...listedExternalTools.map(({ id, description, inputSchema, effect }) =>
             ({ name: id, description, inputSchema, annotations: { readOnlyHint: effect === 'read' } })),
+          ...(evidenceAccess ? [{...evidenceListTool,name:evidenceListToolName},
+            {...evidenceFetchTool,name:evidenceFetchToolName}] : []),
         ];
         const cursor = params?.cursor === undefined ? 0 :
           typeof params.cursor === 'string' && /^[0-9]+$/.test(params.cursor) ? Number(params.cursor) : -1;

@@ -166,6 +166,23 @@ test('C18N.2 built-ins never shadow colliding native external names',async()=>{
   }finally{stop.abort();bridge.close();}
 });
 
+test('C18N.2 existing context/external tools remain on first MCP page when evidence discovery is added',async()=>{
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,contextAccess:{
+    list:()=>({kind:'available',cursor:{revision:0,index:0},items:[]}),
+    fetch:async()=>({kind:'unavailable',reason:'missing'}),
+    captureArtifact:async()=>undefined,
+  },evidenceAccess:bindLiveEvidenceAccess({observations:[],isActive:()=>true}),
+  externalTools:{list:()=>[{id:'echo_text',description:'fixture',effect:'read',inputSchema:{type:'object'}}],
+    async call(){return {status:'completed',effect:'none'};}}});
+  try{
+    const first=(await listTools(bridge.url,1)).result;
+    assert.deepEqual(first.tools.map(t=>t.name),['context_list','context_fetch','echo_text','evidence_list']);
+    const later=(await listTools(bridge.url,2,{cursor:first.nextCursor})).result;
+    assert.deepEqual(later.tools.map(t=>t.name),['evidence_fetch']);
+  }finally{stop.abort();bridge.close();}
+});
+
 test('C18N.7 parsed Unicode Markdown answer survives Intent materialization unchanged',()=>{
   const answer=['# Заголовок','','🌍 🚀 `code`','> цитата','"quoted"'].join('\n');
   const result=materializeControllerIntent({finalAssessment:{overall:'complete',answer}},

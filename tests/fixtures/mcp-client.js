@@ -21,8 +21,16 @@ export async function retrieveContext(url, invocation) {
   }
   const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'fixture', version: '1' } });
   assert.equal(init.protocolVersion, '2025-06-18');
-  const listing = await rpc('tools/list');
-  assert.ok(listing.tools.some(tool => tool.name === 'context_fetch'));
+  const names=[];
+  let toolCursor;
+  do {
+    const listing=await rpc('tools/list',toolCursor===undefined?{}:{cursor:toolCursor});
+    names.push(...listing.tools.map(tool=>tool.name));
+    toolCursor=listing.nextCursor;
+  }while(toolCursor!==undefined);
+  assert.ok(names.includes('context_fetch'));
+  assert.ok(names.includes('evidence_list'));
+  assert.ok(names.includes('evidence_fetch'));
   const items = [];
   let cursor;
   do {
@@ -42,7 +50,7 @@ export async function retrieveContext(url, invocation) {
     { kind: 'unavailable', reason: 'denied' });
   assert.deepEqual(await call('context_fetch', { ref: artifact.ref }), { kind: 'unavailable', reason: 'budget' });
   const refs = [found.item.ref];
-  if (listing.tools.some(tool => tool.name === 'echo_text')) {
+  if (names.includes('echo_text')) {
     // No attempt to deduplicate an already completed ordinary external call:
     // active overlap is separately tested with an explicit execution barrier.
     const external = await call('echo_text', { text: 'from live MCP' }, 'stable-tool-call');
