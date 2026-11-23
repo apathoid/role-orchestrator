@@ -8,8 +8,8 @@ import { decodeControllerIntent } from '../core/controller-intent.js';
 
 const maxPendingIntentBytes = 8 * 1024 * 1024;
 
-/** @param {{signal: AbortSignal, isActive?: () => boolean, attemptId: string}} scope */
-export function createPendingControllerDecisions({ signal, isActive, attemptId }) {
+/** @param {{signal: AbortSignal, isActive?: () => boolean, attemptId: string, preflight?: import('../core/ports.js').ControllerPreflight}} scope */
+export function createPendingControllerDecisions({ signal, isActive, attemptId, preflight }) {
   let open = true;
   let sequence = 0;
   let bytes = 0;
@@ -85,8 +85,14 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId }
     if (unresolvedTransport?.root === root) unresolvedTransport = undefined;
     invalidReason = undefined;
     conflicted = false;
+    // The candidate is already registered. Preflight is optional advisory
+    // feedback, never a second admission, a veto or a delivery prerequisite.
+    let feedback;
+    try { feedback = preflight?.(parsed.value); }
+    catch { feedback = {kind:'unchecked',reason:'unavailable',advisory:true}; }
     return {kind:'proposal_pending', proposalRef:ref,
-      note:'Structurally received; no Action is admitted before native turn completion.'};
+      note:'Structurally received; no Action is admitted before native turn completion.',
+      ...(feedback && {preflight:feedback})};
   }
 
   /**

@@ -422,7 +422,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       // Unsupported optional MCP falls back to the same intent via native text.
       const controllerDelivery = invocation.kind === 'controller' && configuration.controllerIntent
         ? (configuration.controllerIntent === 'prefer_mcp' && httpMcp ? 'intent_mcp' : 'intent_text') : undefined;
-      if (httpMcp && (invocation.contextAccess || invocation.externalTools || controllerDelivery === 'intent_mcp')) {
+      if (httpMcp && (invocation.contextAccess || invocation.evidenceAccess || invocation.externalTools || controllerDelivery === 'intent_mcp')) {
         mcp = await startMcpBridge({ ...invocation, controllerDelivery, signal });
       }
       signal.throwIfAborted();
@@ -475,7 +475,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const preparationStarted=performance.now();
         /** @type {Record<string,number>} */
         let componentSizes={};
-        const prompt = renderInvocationPrompt({...invocation, controllerDelivery, controllerDecisionToolName:mcp?.decisionToolName}, retrievalDetail(Boolean(mcp && invocation.contextAccess)),
+        const prompt = renderInvocationPrompt({...invocation, controllerDelivery, controllerDecisionToolName:mcp?.decisionToolName}, retrievalDetail(Boolean(mcp?.contextListToolName), mcp),
           promptReporter?sizes=>{componentSizes=sizes;}:undefined);
         reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length,...componentSizes},prompt);
         signal.throwIfAborted();

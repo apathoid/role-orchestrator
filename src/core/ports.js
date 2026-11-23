@@ -19,7 +19,7 @@
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>,
+ *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, evidenceAccess?: LiveEvidencePort, preflightIntent?: ControllerPreflight, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>,
  *   controllerDelivery?: 'intent_text' | 'intent_mcp', controllerDecisionToolName?: string}} Invocation
  * @typedef {{kind: 'reasoning' | 'user_message' | 'tool' | 'plan' | 'finding', payload: unknown,
  *   nativeId?: string, nativeKind?: string}} ProviderActivity
@@ -105,6 +105,17 @@
  * @typedef {{bind: (scope: {attemptId: string, operationId: string, signal: AbortSignal, isActive: () => boolean,
  *   permissions?: Pick<AttemptPermissions, 'request'>, newId: () => string, maxBytes: number,
  *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
+ * @typedef {'closed' | 'invalid_cursor' | 'invalid_ref' | 'invalid_offset' | 'missing' | 'payload' | 'budget'} LiveEvidenceUnavailableReason
+ * @typedef {Pick<import('./observation.js').Observation, 'ref' | 'source' | 'completeness' | 'providerRef' | 'provenance' | 'reportedContext' | 'artifact' | 'summary'>} LiveEvidenceItem
+ * @typedef {{kind:'available',cursor:number,items:LiveEvidenceItem[],nextCursor?:number} |
+ *   {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceList
+ * @typedef {{kind:'chunk',item:LiveEvidenceItem,format:'utf8'|'json',offset:number,totalBytes:number,
+ *   base64:string,nextOffset?:number} | {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceFetch
+ * @typedef {{list:(cursor?:number)=>LiveEvidenceList,
+ *   fetch:(ref:string,range?:{offset:number,maxBytes?:number})=>LiveEvidenceFetch}} LiveEvidencePort
+ * @typedef {{kind:'checked',issues:{path:string,expected:string,availability:'not_in_snapshot'|'ambiguous'}[],
+ *   omittedCount:number,advisory:true} | {kind:'unchecked',reason:'budget'|'closed'|'unavailable',advisory:true}} PreflightResult
+ * @typedef {(intent:unknown)=>PreflightResult} ControllerPreflight
  * @typedef {{
  *   list: (cursor?: HistoryCursor) => ContextList,
  *   fetch: (ref: string | ContextPosition, sourceOperationId?: string, range?: {offset: number, maxBytes?: number}) => Promise<ContextFetch>,

@@ -14,7 +14,7 @@ async function invoke(url, id, name, args) {
 /** @param {{body: {result?: {content: {text: string}[]}}}} response */
 const value = response => JSON.parse(response.body.result?.content[0].text ?? 'null');
 
-test('C12R.8.3 MCP call budget preserves exact request identity and never replays completed effects', async () => {
+test('C18N.6 ordinary sequential calls have no cumulative ceiling; completed request IDs may run again', async () => {
   const stop = new AbortController();
   let executed = 0;
   const bridge = await startMcpBridge({
@@ -25,25 +25,51 @@ test('C12R.8.3 MCP call budget preserves exact request identity and never replay
     },
   });
   try {
-    for (let i = 1; i <= 64; i++) {
+    for (let i = 1; i <= 300; i++) {
       const response = await invoke(bridge.url, i, 'echo', { n: i });
       assert.equal(response.status, 200);
       assert.deepEqual(value(response), { kind: 'available', args: { n: i } });
     }
-    assert.equal(executed, 64);
-    const duplicate = await invoke(bridge.url, 64, 'echo', { n: 64 });
-    assert.deepEqual(value(duplicate), { kind: 'available', args: { n: 64 } });
-    assert.equal(executed, 64);
-    const conflict = await invoke(bridge.url, 64, 'echo', { n: 999 });
-    assert.equal(conflict.body.error?.code, -32602);
-    assert.equal(executed, 64);
-    const overBudget = await invoke(bridge.url, 65, 'echo', { n: 65 });
-    assert.deepEqual(value(overBudget), { kind: 'unavailable', reason: 'budget' });
-    assert.equal(executed, 64);
+    assert.equal(executed, 300);
+    const redelivery = await invoke(bridge.url, 300, 'echo', { n: 300 });
+    assert.deepEqual(value(redelivery), {kind:'available',args:{n:300}});
+    assert.equal(executed, 301);
+    // Post-completion dedup is deliberately absent, including changed args.
+    const different = await invoke(bridge.url, 300, 'echo', {n:999});
+    assert.deepEqual(value(different),{kind:'available',args:{n:999}});
+    assert.equal(executed, 302);
   } finally {
     stop.abort();
     bridge.close();
   }
+});
+
+test('C18N.6 active ordinary duplicate shares one execution, conflicting same-id request is rejected', async () => {
+  const stop = new AbortController();
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  let executed = 0;
+  const bridge = await startMcpBridge({
+    signal:stop.signal,
+    externalTools:{
+      list:()=>[{id:'hold',description:'fixture',effect:'write',inputSchema:{type:'object'}}],
+      async call() { executed++; started.resolve(); await release.promise; return {status:'completed',effect:'possible'}; },
+    },
+  });
+  try {
+    const first = invoke(bridge.url,19,'hold',{one:1});
+    await started.promise;
+    const duplicate = invoke(bridge.url,19,'hold',{one:1});
+    const conflict = await invoke(bridge.url,19,'hold',{one:2});
+    assert.equal(conflict.body.error?.code,-32602);
+    assert.equal(executed,1);
+    release.resolve();
+    assert.deepEqual(value(await first),{status:'completed',effect:'possible'});
+    assert.deepEqual(value(await duplicate),{status:'completed',effect:'possible'});
+    assert.equal(executed,1);
+    assert.equal((await invoke(bridge.url,19,'hold',{one:2})).status,200);
+    assert.equal(executed,2);
+  } finally { release.resolve(); stop.abort(); bridge.close(); }
 });
 
 test('C12R.8.3 a concurrency peak is not a permanent rejected request or additional dispatch', async () => {

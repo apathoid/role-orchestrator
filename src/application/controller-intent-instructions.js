@@ -35,14 +35,19 @@ direct answer, delegation, wait, clarification, cancellation, findings,
 partial/unresolved and optional continuation are all legitimate.
 Do not combine finalAssessment with additions or clarification; actions require
 an explicit waitPolicy or continue:true. Wait targets must be nonempty.
-Use existing observed refs; 0 begins a history traversal and returned
-{revision,index} continues it. A later page is not a numeric offset.
+Role Orchestrator records observations with scoped references and source provenance.
+When citing observations in Findings or Assessment, use available references
+from the orchestration context or optional observation discovery/retrieval
+capabilities. Retrieve details when useful and independently evaluate relevance,
+sufficiency and uncertainty. Retrieval is optional; do not invent unavailable
+references. History cursor 0 starts a traversal; a returned {revision,index}
+continues that traversal, not a numeric offset.
 
 In text mode send ONLY one JSON ControllerIntent object as final Controller
 message (no Markdown fences). In MCP mode submit_decision({intent,replaces?})
 registers only a proposed result: it never dispatches Actions, completes the
 turn or disables native tools, skills, reading or reasoning. Its proposalRef
-can be used by a later correction in this SAME native turn; explicit
+can be used by a later correction in this SAME native invocation only (not across invocations); explicit
 same-lineage competing replacements use registration-order last-wins.
 Unrelated proposals without replaces conflict until corrected; errors can
 be corrected without a new Controller invocation. After the trusted native

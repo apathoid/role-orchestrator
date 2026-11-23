@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { count, decode, id, optional, record } from '../core/decode.js';
 import { contextReference, historyCursor } from '../core/contracts.js';
@@ -12,7 +12,6 @@ const maxRequestBytes = 32 * 1024;
 const maxDecisionRequestBytes = 2 * 1024 * 1024;
 const maxDecisionCalls = 128;
 const maxResponseBytes = 256 * 1024;
-const maxToolCalls = 64;
 const maxConcurrentCalls = 4;
 const toolStatuses = new Set(['completed', 'failed', 'truncated', 'invalid_input', 'denied', 'unavailable', 'closed', 'unknown', 'budget']);
 const toolEffects = new Set(['none', 'possible', 'unknown']);
@@ -26,6 +25,8 @@ const fetchArgs = record({
   maxBytes: optional(count),
 });
 
+const evidenceListArgs = record({cursor:optional(count)});
+const evidenceFetchArgs = record({ref:id,offset:optional(count),maxBytes:optional(count)});
 const countSchema = { type: 'integer', minimum: 0 };
 const listTool = {
   name: 'context_list', description: 'List visible historical records by page. Copy nextCursor exactly to continue the same journal-prefix traversal; omit cursor or use 0 to start a fresh traversal.',
@@ -48,11 +49,29 @@ const fetchTool = {
   }, required: ['ref'], additionalProperties: false },
 };
 
-/** @param {boolean} enabled */
-export function retrievalDetail(enabled) {
-  return enabled
-    ? 'Optional MCP context_list and context_fetch retrieve omitted history when useful. Copy context_list nextCursor exactly; cursor 0 starts a fresh directory traversal. context_fetch offset reads saved data in bounded base64 chunks with nextOffset; retain original completeness. Report material unavailable evidence explicitly.'
+const evidenceListTool = {
+  name:'evidence_list',
+  description:'Optionally list accepted observations captured in this invocation in append-only order. This is not a native tool or capability inventory. Follow nextCursor; empty means no captured entries yet.',
+  inputSchema:{type:'object',properties:{cursor:countSchema},additionalProperties:false},
+};
+const evidenceFetchTool = {
+  name:'evidence_fetch',
+  description:'Read captured observation by the canonical ref returned by evidence_list. Bytes are bounded base64 UTF-8 or JSON; follow nextOffset. Provenance and completeness reflect capture, not durable commit or task success.',
+  inputSchema:{type:'object',properties:{ref:{type:'string',minLength:1},offset:countSchema,maxBytes:countSchema},required:['ref'],additionalProperties:false},
+};
+
+/** @param {boolean} enabled
+ *  @param {{contextListToolName?:string,contextFetchToolName?:string,evidenceListToolName?:string,evidenceFetchToolName?:string}} [names] */
+export function retrievalDetail(enabled, names = {}) {
+  const list = names.contextListToolName ?? 'context_list';
+  const fetch = names.contextFetchToolName ?? 'context_fetch';
+  const context = enabled
+    ? 'Optional MCP ' + list + ' and ' + fetch + ' retrieve omitted history when useful. Copy ' + list + ' nextCursor exactly; cursor 0 starts a fresh directory traversal. ' + fetch + ' offset reads saved data in bounded base64 chunks with nextOffset; retain original completeness. Report material unavailable evidence explicitly.'
     : 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.';
+  return context + (names.evidenceListToolName && names.evidenceFetchToolName
+    ? '\\nOptional current-invocation MCP ' + names.evidenceListToolName + ' and ' + names.evidenceFetchToolName +
+      ' expose already captured observations and canonical refs. Discovery is not exhaustive, not durable until committed and never required. Continue independent native tools and reasoning as needed.'
+    : '');
 }
 
 /** @param {unknown} value @returns {Record<string, unknown> | undefined} */
@@ -107,32 +126,49 @@ async function readRequest(request, limit) {
 /**
  * Stateless Streamable HTTP endpoint for one invocation. It binds only loopback,
  * uses an unguessable attempt URL and exposes only the supplied live ports.
- * @param {Pick<Invocation, 'contextAccess' | 'externalTools' | 'signal' | 'controllerDelivery' | 'isActive'> & {attemptId?: string}} invocation
+ * @param {Pick<Invocation, 'contextAccess' | 'evidenceAccess' | 'preflightIntent' | 'externalTools' | 'signal' | 'controllerDelivery' | 'isActive'> & {attemptId?: string}} invocation
  */
-export async function startMcpBridge({ contextAccess, externalTools, signal, attemptId, controllerDelivery, isActive }) {
+export async function startMcpBridge({ contextAccess, evidenceAccess, preflightIntent, externalTools, signal, attemptId, controllerDelivery, isActive }) {
   signal.throwIfAborted();
   const path = '/' + randomUUID();
   let closed = false;
   const pendingDecision = controllerDelivery === 'intent_mcp' && attemptId
-    ? createPendingControllerDecisions({ signal, attemptId, isActive }) : undefined;
+    ? createPendingControllerDecisions({ signal, attemptId, isActive, preflight:preflightIntent }) : undefined;
   // External tools share the MCP namespace. Use an unambiguous name for
   // the built-in control tool rather than silently shadowing any configured
   // external tool (including submit_decision itself).
   const listedExternalTools = externalTools?.list() ?? [];
   const externalNames = new Set(listedExternalTools.map(item => item.id));
-  const decisionToolName = (() => {
-    if (!pendingDecision) return undefined;
-    if (!externalNames.has(decisionTool.name)) return decisionTool.name;
-    const prefix = 'role_orchestrator_submit_decision';
-    for (let i=0;;i++) {
-      const name = i === 0 ? prefix : prefix + '_' + i;
-      if (!externalNames.has(name)) return name;
+  const reservedNames = new Set(externalNames);
+  /** @param {string} name */
+  function builtinName(name) {
+    if (!reservedNames.has(name)) {
+      reservedNames.add(name);
+      return name;
     }
-  })();
-  let ordinaryCalls = 0;
+    const prefix = 'role_orchestrator_' + name;
+    for (let i=0;;i++) {
+      const candidate = i === 0 ? prefix : prefix + '_' + i;
+      if (!reservedNames.has(candidate)) {
+        reservedNames.add(candidate);
+        return candidate;
+      }
+    }
+  }
+  const decisionToolName = pendingDecision ? builtinName(decisionTool.name) : undefined;
+  const contextListToolName = contextAccess ? builtinName(listTool.name) : undefined;
+  const contextFetchToolName = contextAccess ? builtinName(fetchTool.name) : undefined;
+  const evidenceListToolName = evidenceAccess ? builtinName(evidenceListTool.name) : undefined;
+  const evidenceFetchToolName = evidenceAccess ? builtinName(evidenceFetchTool.name) : undefined;
   let decisionCalls = 0;
-  /** @type {Map<string | number, {key: string, response: Promise<unknown>}>} */
+  // Ordinary correlation exists only while a call is in flight. A completed
+  // request id may be delivered again and run anew: no transport exactly-once.
+  /** @type {Map<string | number, {fingerprint: string, response: Promise<unknown>}>} */
   const calls = new Map();
+  // Control submissions have stronger invocation-local request-id identity.
+  // Store only a content digest and a bounded receipt, not full request args.
+  /** @type {Map<string | number, {fingerprint: string, response: Promise<unknown>}>} */
+  const controlCalls = new Map();
   let active = 0;
 
   /** @param {string} name @param {unknown} args */
@@ -143,11 +179,11 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
     if (name === decisionToolName && pendingDecision) return pendingDecision.register(args);
     active++;
     try {
-      if (name === listTool.name && contextAccess) {
+      if (name === contextListToolName && contextAccess) {
         const parsed = decode(listArgs, args);
         return parsed.kind === 'accepted' ? contextAccess.list(parsed.value.cursor) : { kind: 'unavailable', reason: 'invalid_input' };
       }
-      if (name === fetchTool.name && contextAccess) {
+      if (name === contextFetchToolName && contextAccess) {
         const parsed = decode(fetchArgs, args);
         if (parsed.kind === 'rejected') return { kind: 'unavailable', reason: 'invalid_input' };
         const { ref, sourceOperationId, offset, maxBytes } = parsed.value;
@@ -163,6 +199,18 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
         if (result.bytes.byteLength > (maxResponseBytes / 2)) return { kind: 'unavailable', reason: 'budget' };
         const { bytes, ...details } = result;
         return { ...details, base64: Buffer.from(bytes).toString('base64') };
+      }
+      if (name === evidenceListToolName && evidenceAccess) {
+        const parsed = decode(evidenceListArgs, args);
+        return parsed.kind === 'accepted' ? evidenceAccess.list(parsed.value.cursor) :
+          {kind:'unavailable',reason:'invalid_input'};
+      }
+      if (name === evidenceFetchToolName && evidenceAccess) {
+        const parsed = decode(evidenceFetchArgs, args);
+        if (parsed.kind === 'rejected') return {kind:'unavailable',reason:'invalid_input'};
+        return evidenceAccess.fetch(parsed.value.ref,parsed.value.offset === undefined ? undefined : {
+          offset:parsed.value.offset,maxBytes:parsed.value.maxBytes,
+        });
       }
       return externalTools ? await externalTools.call(name, args) : { kind: 'unavailable', reason: 'missing' };
     } finally {
@@ -223,7 +271,9 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
       case 'ping': result = {}; break;
       case 'tools/list': {
         const tools = [
-          ...(contextAccess ? [listTool, fetchTool] : []),
+          ...(contextAccess ? [{...listTool,name:contextListToolName},{...fetchTool,name:contextFetchToolName}] : []),
+          ...(evidenceAccess ? [{...evidenceListTool,name:evidenceListToolName},
+            {...evidenceFetchTool,name:evidenceFetchToolName}] : []),
           ...(pendingDecision ? [{...decisionTool,name:decisionToolName}] : []),
           ...listedExternalTools.map(({ id, description, inputSchema, effect }) =>
             ({ name: id, description, inputSchema, annotations: { readOnlyHint: effect === 'read' } })),
@@ -238,29 +288,46 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
       case 'tools/call': {
         if (typeof params?.name !== 'string') { error = { code: -32602, message: 'Invalid tool name' }; break; }
         const args = params.arguments ?? {};
-        const key = JSON.stringify([params.name, args]);
-        let call = calls.get(requestId);
-        if (call && call.key !== key) {
-          // This is a complete attributable tools/call, but the reused
-          // request id prevents delivery as a valid submission. A reliable
-          // replaces reference invalidates its lineage; ordinary duplicate
-          // delivery and unrelated/unknown refs remain unchanged.
-          if (params.name === decisionToolName) pendingDecision?.observeRejectedReplacement(args);
+        const fingerprint = createHash('sha256').update(JSON.stringify([params.name, args])).digest('hex');
+        const control = params.name === decisionToolName && pendingDecision !== undefined;
+        const previousControl = controlCalls.get(requestId);
+        const previousOrdinary = calls.get(requestId);
+        if ((previousControl && (!control || previousControl.fingerprint !== fingerprint)) ||
+            (previousOrdinary && (control || previousOrdinary.fingerprint !== fingerprint))) {
+          // A reliably known explicit replacement on a reused control id
+          // must not resurrect a prior proposal. Ordinary active conflicts
+          // are technical protocol errors, not effect-based classifications.
+          if (control) pendingDecision?.observeRejectedReplacement(args);
           error = { code: -32602, message: 'Request id already used' };
           break;
         }
-        if (!call) {
-          const control = params.name === decisionToolName && pendingDecision !== undefined;
-          if (control ? decisionCalls < maxDecisionCalls : ordinaryCalls < maxToolCalls && active < maxConcurrentCalls) {
-            if (control) decisionCalls++; else ordinaryCalls++;
-            call = { key, response: callTool(params.name, args).then(value => toolReply(value, requestId)) };
-            calls.set(requestId, call);
-          } else if (control) {
-            result = toolReply(pendingDecision.exceedLimit(),requestId);
-            break;
+        if (control) {
+          let call = previousControl;
+          if (!call) {
+            if (decisionCalls >= maxDecisionCalls) {
+              result = toolReply(pendingDecision.exceedLimit(),requestId);
+              break;
+            }
+            decisionCalls++;
+            call = {fingerprint,response:callTool(params.name,args).then(value=>toolReply(value,requestId))};
+            controlCalls.set(requestId,call);
           }
+          result = await call.response;
+        } else {
+          let call = previousOrdinary;
+          if (!call && active < maxConcurrentCalls) {
+            // No completed ordinary result, arguments or Promise is retained.
+            // Removal on settlement also covers failed calls and cancellation.
+            const entry = {fingerprint,response:Promise.resolve(/** @type {unknown} */ (undefined))};
+            entry.response = callTool(params.name,args).then(value=>toolReply(value,requestId)).finally(()=>{
+              if (calls.get(requestId) === entry) calls.delete(requestId);
+            });
+            calls.set(requestId,entry);
+            call = entry;
+          }
+          result = call ? await call.response :
+            toolReply({kind:'unavailable',reason:'budget'},requestId);
         }
-        result = call ? await call.response : toolReply({ kind: 'unavailable', reason: 'budget' }, requestId);
         break;
       }
       default: error = { code: -32601, message: 'Method not found' };
@@ -292,7 +359,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
   const { port } = address;
   return {
     url: 'http://127.0.0.1:' + port + path,
-    decisionToolName,
+    decisionToolName,contextListToolName,contextFetchToolName,evidenceListToolName,evidenceFetchToolName,
     finalizeDecision: pendingDecision ? () => pendingDecision.finalize() : undefined,
     close() {
       if (closed) return;
@@ -301,6 +368,7 @@ export async function startMcpBridge({ contextAccess, externalTools, signal, att
       server.close();
       server.closeAllConnections();
       calls.clear();
+      controlCalls.clear();
     },
   };
 }

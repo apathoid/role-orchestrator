@@ -12,11 +12,13 @@ import { handoffContext, materializeSkillInstructions, prepareHandoff } from './
 import { workerRequestHash } from './worker-request-identity.js';
 import { findingHistory } from './finding-history.js';
 import { bindContextAccess, materializeControllerHistory } from './context-access.js';
+import { bindLiveEvidenceAccess } from './live-evidence.js';
 import { defaultContextBudgets, maximumContextBudgetBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
 import { resolveRequestedReasoning, unavailableCapabilities } from './configuration/catalog.js';
 import { runActionRound } from './action-round.js';
 import { createActivityStream } from './activity.js';
+import { bindControllerPreflight } from './controller-preflight.js';
 import { bindAssessmentEvidence, bindFindingEvidence, bindOutcomeEvidence, evidenceAliases, providerEvidenceRef,
   reservedEvidenceRef, scopedEvidenceAliases } from './evidence-identity.js';
 import { decodeSummaryReport, observation, receiveProviderObservation } from '../core/observation.js';
@@ -969,6 +971,15 @@ export function createOrchestrator(deps) {
           selected, allowShare: allowContextShare, newId: () => ids.newId(), now: () => clock.now(), receive,
           isActive,
         });
+        // Both views borrow the existing accepted observation array. Neither
+        // discovers native capabilities or writes a second evidence journal.
+        const evidenceAccess = !handoff
+          ? bindLiveEvidenceAccess({observations, isActive}) : undefined;
+        const preflightIntent = !handoff
+          ? bindControllerPreflight({
+            requestId: dispatched.request.requestId, events: dispatched.events,
+            observations, profileId: selectedProfile.profileId, isActive,
+          }) : undefined;
         const externalTools = tools?.bind({
           attemptId, operationId: dispatched.operationId, isActive, signal: AbortSignal.any([signal, toolStop.signal]),
           permissions: boundPermissions, newId: () => ids.newId(), maxBytes: toolOutputMaxBytes,
@@ -1022,7 +1033,7 @@ export function createOrchestrator(deps) {
           mayHaveSent = true;
           if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
           return executor.invoke(owned, {
-          ...context, reasoning, isActive, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, reasoning, isActive, contextAccess, evidenceAccess, preflightIntent, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
           interactions: boundInteractions ? { request: boundInteractions.request, supports: boundInteractions.supports } : undefined,
         }, item => {
