@@ -38,12 +38,14 @@ test('C18N.1/2 accepted live refs, native provenance, append-only cursor and bou
   assert.equal(first.items[0].source,'provider_reported');
   assert.equal(first.items[0].completeness,'complete');
   assert.equal(first.nextCursor,12);
+  assert.equal(first.resumeCursor,12);
   items.push(sample('evidence:late','newly appended'));
   const second=port.list(first.nextCursor);
   assert.equal(second.kind,'available');
   assert.equal(second.items.length,6);
   assert.equal(second.items.at(-1).ref,'evidence:late');
   assert.equal(second.nextCursor,undefined);
+  assert.equal(second.resumeCursor,18);
   assert.equal(port.list(18).items.length,0);
   assert.deepEqual(port.list(20),{kind:'unavailable',reason:'invalid_cursor'});
   assert.deepEqual(port.fetch('evidence:foreign'),{kind:'unavailable',reason:'missing'});
@@ -60,7 +62,7 @@ test('C18N.2 closed, empty, capture gap and independent historical cursor',()=>{
   let active=true;
   const items=[];
   const port=bindLiveEvidenceAccess({observations:items,isActive:()=>active});
-  assert.deepEqual(port.list(),{kind:'available',cursor:0,items:[]});
+  assert.deepEqual(port.list(),{kind:'available',cursor:0,items:[],resumeCursor:0});
   items.push(sample('evidence:unavailable',undefined));
   assert.equal(port.list().items[0].completeness,'truncated');
   assert.deepEqual(port.fetch('evidence:unavailable'),{kind:'unavailable',reason:'payload'});
@@ -85,7 +87,7 @@ test('C18N.2/4 actual MCP list/fetch, nonblocking preflight and same-turn correc
     assert.ok(names.includes('evidence_list'));
     assert.ok(names.includes('evidence_fetch'));
     const listed=await call(bridge.url,2,'evidence_list',{});
-    assert.deepEqual(value(listed),{kind:'available',cursor:0,items:[]});
+    assert.deepEqual(value(listed),{kind:'available',cursor:0,items:[],resumeCursor:0});
     const unknown='evidence:future';
     const intent=(ref,answer)=>({finalAssessment:{overall:'complete',answer,
       requirements:[{requirementId:'r',status:'fulfilled',observationRefs:[ref]}]}});

@@ -51,7 +51,7 @@ const fetchTool = {
 
 const evidenceListTool = {
   name:'evidence_list',
-  description:'Optionally list accepted observations captured in this invocation in append-only order. This is not a native tool or capability inventory. Follow nextCursor; empty means no captured entries yet.',
+  description:'Optionally list accepted observations captured in this invocation in append-only order. Resume later from resumeCursor even after an empty/exhausted snapshot; nextCursor only marks more entries already captured now. Explicit unavailable entries mark oversized metadata and do not block later records. This is not a native tool or capability inventory.',
   inputSchema:{type:'object',properties:{cursor:countSchema},additionalProperties:false},
 };
 const evidenceFetchTool = {
@@ -70,7 +70,7 @@ export function retrievalDetail(enabled, names = {}) {
     : 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.';
   return context + (names.evidenceListToolName && names.evidenceFetchToolName
     ? '\nOptional current-invocation MCP ' + names.evidenceListToolName + ' and ' + names.evidenceFetchToolName +
-      ' expose already captured observations and canonical refs. Discovery is not exhaustive, not durable until committed and never required. Continue independent native tools and reasoning as needed.'
+      ' expose already captured observations and canonical refs. Continue later from evidence_list resumeCursor (even if nextCursor is absent); oversized metadata may be explicitly omitted. Discovery is not exhaustive, not durable until committed and never required. Continue independent native tools and reasoning as needed.'
     : '');
 }
 

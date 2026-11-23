@@ -3,10 +3,8 @@ import { decode, jsonValue } from '../../core/decode.js';
 /** @import {ToolDefinition, ToolMetadata, ToolPort, ToolResult} from '../../core/ports.js' */
 /** @import {ValidateFunction} from 'ajv' */
 
-export const reservedToolIds = new Set(['context_list', 'context_fetch']);
 const maxInputBytes = 32 * 1024;
 const maxOutputBytes = 64 * 1024;
-const maxCalls = 32;
 const maxPermissionDetailsBytes = 4096;
 
 /** @param {Record<string, unknown>} input @param {ReadonlySet<string>} fields */
@@ -38,7 +36,7 @@ export async function compileExternalTool(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const tool = /** @type {Partial<ToolDefinition>} */ (raw);
   const { id, description, resource, effect, inputSchema, invoke, cancel, permissionPreviewFields } = tool;
-  if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id) || reservedToolIds.has(id) ||
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id) ||
       typeof description !== 'string' || !description.trim() || description.length > 1024 ||
       typeof resource !== 'string' || !resource.trim() || resource.length > 512 ||
       (effect !== 'read' && effect !== 'write') || typeof invoke !== 'function' ||
@@ -68,15 +66,12 @@ export async function compileExternalTool(raw) {
 export function createExternalToolPort(tools) {
   return {
     bind({ attemptId, operationId, signal, isActive, permissions, newId, receive, maxBytes }) {
-      let calls = 0;
       return {
         list: () => isActive() && !signal.aborted ? [...tools.values()].map(tool => structuredClone(tool.metadata)) : [],
         async call(id, input) {
           if (!isActive() || signal.aborted) return { status: 'closed', effect: 'none' };
           const tool = tools.get(id);
           if (!tool) return { status: 'unavailable', effect: 'none' };
-          if (calls >= maxCalls) return { status: 'budget', effect: 'none' };
-          calls++;
           const callId = newId();
           const { metadata: { resource, description, effect }, validate, invoke, cancel, previewFields } = tool;
           const scope = { attemptId, operationId, callId, signal };

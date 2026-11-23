@@ -106,8 +106,9 @@
  *   permissions?: Pick<AttemptPermissions, 'request'>, newId: () => string, maxBytes: number,
  *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
  * @typedef {'closed' | 'invalid_cursor' | 'invalid_ref' | 'invalid_offset' | 'missing' | 'payload' | 'budget'} LiveEvidenceUnavailableReason
- * @typedef {Pick<import('./observation.js').Observation, 'ref' | 'source' | 'completeness' | 'providerRef' | 'provenance' | 'reportedContext' | 'artifact' | 'summary'>} LiveEvidenceItem
- * @typedef {{kind:'available',cursor:number,items:LiveEvidenceItem[],nextCursor?:number} |
+ * @typedef {Pick<import('./observation.js').Observation, 'ref' | 'source' | 'completeness' | 'providerRef' | 'provenance' | 'reportedContext' | 'artifact' | 'summary'> & {omittedMetadataFields?: string[]}} LiveEvidenceItem
+ * @typedef {LiveEvidenceItem | {kind:'unavailable',reason:'budget',index:number}} LiveEvidenceListItem
+ * @typedef {{kind:'available',cursor:number,items:LiveEvidenceListItem[],resumeCursor:number,nextCursor?:number} |
  *   {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceList
  * @typedef {{kind:'chunk',item:LiveEvidenceItem,format:'utf8'|'json',offset:number,totalBytes:number,
  *   base64:string,nextOffset?:number} | {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceFetch

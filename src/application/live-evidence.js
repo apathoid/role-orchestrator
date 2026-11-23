@@ -1,20 +1,56 @@
-/** Invocation-local, read-only view of accepted observations; no second journal. */
+/** Invocation-local read-only view of accepted observations; no second journal. */
 /** @import {Observation} from '../core/observation.js' */
-/** @import {LiveEvidencePort, LiveEvidenceUnavailableReason} from '../core/ports.js' */
+/** @import {LiveEvidencePort, LiveEvidenceUnavailableReason, LiveEvidenceItem} from '../core/ports.js' */
 const pageRecords = 12;
 const pageBytes = 24 * 1024;
 const chunkBytes = 16 * 1024;
+const itemBytes = 1536;
 
-/** @param {Observation} item */
+// Bound optional metadata *before* serializing it into the model-facing
+// directory. All fields are technically reported; nothing is inferred or
+// summarized from their contents. An omitted field is named explicitly.
+/** @param {string} field @param {unknown} value */
+function boundedMetadata(field, value) {
+  if (field === 'providerRef') return typeof value === 'string' && value.length <= 1024;
+  if (field === 'provenance') {
+    const v = /** @type {NonNullable<Observation['provenance']>} */ (value);
+    return v.sourceId.length <= 1024;
+  }
+  if (field === 'reportedContext') {
+    const v = /** @type {NonNullable<Observation['reportedContext']>} */ (value);
+    return (v?.location?.length ?? 0) <= 1024 && (v?.version?.length ?? 0) <= 1024;
+  }
+  if (field === 'summary') {
+    const v = /** @type {NonNullable<Observation['summary']>} */ (value);
+    return v.author.length <= 256 && v.coveredObservationRefs.length <= 16 &&
+      v.coveredObservationRefs.every(ref => ref.length <= 256);
+  }
+  return true;
+}
+
+/** @param {Observation} item @returns {LiveEvidenceItem | undefined} */
 function directoryItem(item) {
-  return {
-    ref: item.ref, source: item.source, completeness: item.completeness,
-    ...(item.providerRef && {providerRef: item.providerRef}),
-    ...(item.provenance && {provenance: item.provenance}),
-    ...(item.reportedContext && {reportedContext: item.reportedContext}),
-    ...(item.artifact && {artifact: item.artifact}),
-    ...(item.summary && {summary: item.summary}),
-  };
+  /** @type {LiveEvidenceItem} */
+  const entry = {ref:item.ref,source:item.source,completeness:item.completeness};
+  // An extreme canonical ref itself might not fit. Caller returns an
+  // explicit positional gap and still advances, never a fabricated ref.
+  if (Buffer.byteLength(JSON.stringify(entry)) > itemBytes - 160) return undefined;
+  /** @type {string[]} */
+  const omittedMetadataFields = [];
+  for (const field of /** @type {const} */ (['providerRef','provenance','reportedContext','artifact','summary'])) {
+    const value = item[field];
+    if (value === undefined) continue;
+    if (!boundedMetadata(field,value)) {
+      omittedMetadataFields.push(field);
+      continue;
+    }
+    // Keep room for the omission marker and the surrounding page envelope.
+    const proposed = {...entry,[field]:value};
+    if (Buffer.byteLength(JSON.stringify(proposed)) > itemBytes - 160) omittedMetadataFields.push(field);
+    else Object.assign(entry, {[field]:value});
+  }
+  if (omittedMetadataFields.length) entry.omittedMetadataFields = omittedMetadataFields;
+  return entry;
 }
 
 /**
@@ -27,21 +63,26 @@ export function bindLiveEvidenceAccess({observations, isActive}) {
   return {
     list(cursor = 0) {
       if (!isActive()) return unavailable('closed');
-      // This is an append-only accepted-record index, not a history cursor.
+      // Append-only accepted-record index, independent from history cursors.
       const length = observations.length;
       if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > length) return unavailable('invalid_cursor');
+      /** @type {import('../core/ports.js').LiveEvidenceListItem[]} */
       const items = [];
       let next = cursor;
       const end = Math.min(length, cursor + pageRecords);
       while (next < end) {
-        const entry = directoryItem(observations[next]);
-        const candidate = {kind:'available',cursor,items:[...items,entry],nextCursor:next + 1};
+        const entry = directoryItem(observations[next]) ??
+          {kind:/** @type {const} */ ('unavailable'),index:next,reason:/** @type {const} */ ('budget')};
+        const candidate = {kind:'available',cursor,items:[...items,entry],
+          resumeCursor:next+1,nextCursor:next+1};
         if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') > pageBytes) break;
         items.push(entry);
         next++;
       }
+      // Always allow a later read from this position, including an initially
+      // empty directory or a page whose snapshot is exhausted.
       if (next === cursor && next < length) return unavailable('budget');
-      return {kind:'available',cursor,items,...(next < length && {nextCursor:next})};
+      return {kind:'available',cursor,items,resumeCursor:next,...(next < length && {nextCursor:next})};
     },
     fetch(ref, range) {
       if (!isActive()) return unavailable('closed');
@@ -53,6 +94,8 @@ export function bindLiveEvidenceAccess({observations, isActive}) {
       const item = observations.find(item => item.ref === ref);
       if (!item) return unavailable('missing');
       if (item.value === undefined) return unavailable('payload');
+      const metadata = directoryItem(item);
+      if (!metadata) return unavailable('budget');
       const format = typeof item.value === 'string' ? 'utf8' : 'json';
       const bytes = Buffer.from(format === 'utf8' ? /** @type {string} */ (item.value) : JSON.stringify(item.value), 'utf8');
       const offset = range?.offset ?? 0;
@@ -61,7 +104,7 @@ export function bindLiveEvidenceAccess({observations, isActive}) {
       if (limit === 0 && offset < bytes.byteLength) return unavailable('budget');
       const end = Math.min(bytes.byteLength, offset + limit);
       return {
-        kind:'chunk', item:directoryItem(item),format,offset,totalBytes:bytes.byteLength,
+        kind:'chunk', item:metadata,format,offset,totalBytes:bytes.byteLength,
         base64:bytes.subarray(offset,end).toString('base64'),
         ...(end < bytes.byteLength && {nextOffset:end}),
       };
