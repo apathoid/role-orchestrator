@@ -4,7 +4,7 @@
 
 ## Unreleased — C12–C18 integration and delivery
 
-### C18N-R — External ToolPort and live discovery corrective fixes (engineering verification pending; real native UNVERIFIED)
+### C18N-R — External ToolPort and live discovery corrective fixes (engineering CI PASS at 0687a40; real native UNVERIFIED)
 
 - Remove the hidden cumulative 32-call limit from the **registered** External ToolPort while retaining input/output sizes, permissions, cancellation, late receipts and source provenance; >64 real external invocations are now covered by integration regression.
 - Make optional Controller preflight reuse invocation-scoped historical/live identity indexes and check only referenced entries, instead of copying/scanning every prior observation per correction; the authoritative Decision remains unchanged.

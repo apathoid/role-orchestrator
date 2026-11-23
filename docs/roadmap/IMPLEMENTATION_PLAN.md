@@ -1,8 +1,8 @@
 # Активный план реализации и приёмки
 
-## C18N-R — Review corrections (IMPLEMENTATION; final exact-SHA CI pending)
+## C18N-R — Review corrections (ENGINEERING VERIFIED at 0687a40; native UNVERIFIED)
 
-Review baseline `0dbae3434b626fcd4132059f6d349b3f4dcab3c6`; [STATUS](STATUS.md) and [C18N specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). The five RED regressions are recorded at `1a53134d` / [CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178). R1–R5 production fixes passed [CI #45266687474](https://github.com/apathoid/role-orchestrator/actions/runs/45266687474) on `295499174be7f4475dc14b59bfa6c7b5bbe3e427`. Final corrective regressions/docs require a newer exact-SHA full CI, not an inherited PASS.
+Review baseline `0dbae3434b626fcd4132059f6d349b3f4dcab3c6`; [STATUS](STATUS.md) and [C18N specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). The five RED regressions are recorded at `1a53134d` / [CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178). R1–R5 production fixes passed [CI #45266687474](https://github.com/apathoid/role-orchestrator/actions/runs/45266687474) on `295499174be7f4475dc14b59bfa6c7b5bbe3e427`. Expanded code/probes passed [CI #45267563474](https://github.com/apathoid/role-orchestrator/actions/runs/45267563474) at `f9ede6d`. Final code `0687a40a8cf2d2886ab1f722aa8e91663e9e43eb` passed [CI #45268444761](https://github.com/apathoid/role-orchestrator/actions/runs/45268444761): 36/36 steps including 543 integration, 15 PTY, Nix/release. The documentation-only head still requires its own exact-SHA workflow; real provider/model comparisons remain UNVERIFIED.
 
 | Corrective checkpoint | Deliverable |
 | --- | --- |
