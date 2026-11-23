@@ -260,3 +260,62 @@ test('C18N-R R4/R5: consecutive oversized metadata, exhausted complete page and 
   assert.equal(last.resumeCursor,20);
   assert.equal(access.list(20).resumeCursor,20);
 });
+
+test('C18N-R R3: colliding external tool remains available without built-in capability',async()=>{
+  const external=await compileExternalTool(definition('context_list',async()=>({external:true}),'read'));
+  assert.ok(external);
+  const stop=new AbortController();
+  const port=createExternalToolPort(new Map([['context_list',external]])).bind({
+    attemptId:'external-only',operationId:'op',signal:stop.signal,isActive:()=>true,
+    permissions:{async request(){return {kind:'selected',option:'allow'};}},
+    newId:()=> 'external-only-1',maxBytes:4096,receive:()=> 'host:tool:external-only',
+  });
+  const bridge=await startMcpBridge({signal:stop.signal,externalTools:port});
+  try{
+    assert.equal(bridge.contextListToolName,undefined);
+    const page=(await rpc(bridge.url,1,'tools/list',{})).body.result;
+    assert.deepEqual(page.tools.map(t=>t.name),['context_list']);
+    assert.deepEqual(value(await call(bridge.url,2,'context_list')).output,{external:true});
+  }finally{stop.abort();bridge.close();}
+});
+
+test('C18N-R R4/R5: more than 100 live reads, oversized reportedContext/summary/providerRef and Unicode',async()=>{
+  const observations=[
+    native('evidence:regular'),
+    native('evidence:provider-local'),
+    native('evidence:context'),
+    observation({ref:'evidence:summary',completeness:'complete',value:'summary output',
+      summary:{author:'controller',coveredObservationRefs:Array.from({length:200},(_,i)=>'evidence:covered-'+i)}},
+      {kind:'model',sourceId:'controller',receivedAt:1}),
+    native('evidence:tail'),
+  ];
+  observations[1].providerRef='📄'.repeat(10000);
+  observations[2].reportedContext={location:'🌍'.repeat(10000),version:'current'};
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,
+    evidenceAccess:bindLiveEvidenceAccess({observations,isActive:()=>true})});
+  try{
+    const page=value(await call(bridge.url,1,bridge.evidenceListToolName));
+    assert.equal(page.kind,'available');
+    assert.equal(page.resumeCursor,5);
+    assert.equal(page.items[1].omittedMetadataFields.includes('providerRef'),true);
+    assert.equal(page.items[2].omittedMetadataFields.includes('reportedContext'),true);
+    assert.equal(page.items[3].omittedMetadataFields.includes('summary'),true);
+    assert.equal(page.items[4].ref,'evidence:tail');
+    assert.equal(page.items[4].completeness,'complete');
+    assert.ok(Buffer.byteLength(JSON.stringify(page))<24*1024);
+    for(let i=2;i<=122;i++){
+      const result=value(await call(bridge.url,i,bridge.evidenceListToolName,
+        {cursor:page.resumeCursor}));
+      assert.equal(result.kind,'available');
+      assert.equal(result.resumeCursor,5);
+      assert.deepEqual(result.items,[]);
+    }
+    observations.push(native('evidence:after-120','🌍 value'));
+    const late=value(await call(bridge.url,123,bridge.evidenceListToolName,{cursor:5}));
+    assert.equal(late.items[0].ref,'evidence:after-120');
+    assert.equal(late.resumeCursor,6);
+    const fetched=value(await call(bridge.url,124,bridge.evidenceFetchToolName,{ref:'evidence:after-120'}));
+    assert.equal(Buffer.from(fetched.base64,'base64').toString('utf8'),'🌍 value');
+  }finally{stop.abort();bridge.close();}
+});

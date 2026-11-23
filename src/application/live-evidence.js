@@ -34,7 +34,8 @@ function directoryItem(item) {
   const entry = {ref:item.ref,source:item.source,completeness:item.completeness};
   // An extreme canonical ref itself might not fit. Caller returns an
   // explicit positional gap and still advances, never a fabricated ref.
-  if (Buffer.byteLength(JSON.stringify(entry)) > itemBytes - 160) return undefined;
+  if (item.ref.length > itemBytes - 160 ||
+      Buffer.byteLength(JSON.stringify(entry)) > itemBytes - 160) return undefined;
   /** @type {string[]} */
   const omittedMetadataFields = [];
   for (const field of /** @type {const} */ (['providerRef','provenance','reportedContext','artifact','summary'])) {
