@@ -1006,3 +1006,85 @@ for(const mode of ['cancel','deadline','disconnect','refusal']){
     assert.equal(result.outcome.diagnostics[0].code,({cancel:'CANCELLED',deadline:'DEADLINE_EXCEEDED',disconnect:'PROVIDER_DISCONNECTED',refusal:'PROVIDER_REFUSED'})[mode]);
   }));
 }
+
+test('C20-R rejected text after overflow references exact current native message and supports correction',linux,()=>
+  withOwnedRun('C20R-correction',async cwd=>{
+    const {api}=setup({provider:provider(cwd,'c20r-correction',{controllerIntent:'text'}),profile,maxInvocations:2,invocationTimeoutMs:null});
+    try{
+      const state=await(await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished');
+      assert.equal(state.assessment.answer,c20rAnswer);
+      const rejected=state.events.find(e=>e.kind==='controller.invalid_proposal');
+      assert.ok(rejected);
+      const receipt=state.events.find(e=>e.kind==='attempt.outcome'&&e.outcome.attemptId===rejected.attemptId);
+      const original=receipt.observations.find(o=>o.providerRef==='acp-current-result');
+      assert.equal(original.value,'not JSON after history overflow');
+      assert.equal(original.completeness,'complete');
+      assert.deepEqual(rejected.result,{ref:original.ref,representation:'reported_text'});
+      assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+    }finally{await api.close();}
+  }));
+
+test('C20-R actual Worker result survives Controller retrieval and durable reopen',linux,()=>
+  withOwnedRun('C20R-worker-durable',async cwd=>{
+    const endpoint=provider(cwd,'c20-overflow-worker');
+    const controller={profileId:'primary',providerId:'synthetic-controller',model:'fixture'};
+    const catalog=createCatalog({schemaVersion:1,providers:{'synthetic-controller':{adapter:'fixture'},acp:{adapter:'acp'}},
+      profiles:{primary:{provider:'synthetic-controller',model:'fixture'},worker:{provider:'acp',model:'fixture'}},controllerProfile:'primary'});
+    const store=createLocalStateStore(join(cwd,'state'));
+    await mkdir(join(cwd,'state'));
+    await store.open();
+    let turns=0,selectedRef;
+    const fakeController={
+      async open(){return {sessionId:'controller'};},async close(){},
+      async invoke(_session,invocation){
+        const contextCursor=invocation.context[1].value.contextCursor;
+        if(++turns===1)return final(invocation,{contextCursor,finalAssessment:undefined,
+          additions:[{kind:'delegate',actionId:'worker',profileId:'worker',objective:'Produce evidence',
+            expectedResult:'Report',dependsOn:[],contextRefs:[]}],
+          waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'worker'}]}});
+        let cursor=0;
+        do{
+          const page=invocation.contextAccess.list(cursor);
+          assert.equal(page.kind,'available');
+          const entry=page.items.find(item=>item.providerRef==='acp-current-result');
+          if(entry){
+            const detail=await invocation.contextAccess.fetch(entry.ref);
+            assert.equal(detail.kind,'available');
+            assert.equal(detail.item.value,'late final after capture');
+            assert.equal(detail.item.source,'model_claim');
+            assert.equal(detail.item.completeness,'complete');
+            selectedRef=entry.ref;
+            break;
+          }
+          cursor=page.nextCursor;
+        }while(cursor!==undefined);
+        assert.ok(selectedRef);
+        return final(invocation,{contextCursor});
+      },
+    };
+    const {api}=setup({profile:controller,provider:fakeController,catalog,store,maxInvocations:4,
+      invocationTimeoutMs:null,authority:createAuthorityGrant({reference:'fixture-authority',origin:'user',profileIds:['primary','worker']}),
+      providerFor:selected=>selected.profileId==='worker'?endpoint:fakeController});
+    let state;
+    try{
+      state=await(await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished');
+      assert.equal(turns,2);
+      const worker=state.attempts.find(a=>a.actionId==='worker');
+      assert.equal(worker.outcome.terminal,'completed');
+      const receipt=state.events.find(e=>e.kind==='attempt.outcome'&&e.outcome.attemptId===worker.attemptId);
+      const original=receipt.observations.find(o=>o.ref===selectedRef);
+      assert.equal(original.value,'late final after capture');
+      assert.equal(original.provenance.sourceId,'native-last');
+      assert.equal(receipt.observations.filter(o=>o.value===original.value).length,1);
+      assert.ok(receipt.outcome.outputRefs.some(r=>r.ref===selectedRef&&r.source==='model_claim'));
+    }finally{try{await api.close();}finally{await store.close();}}
+    const reopened=createLocalStateStore(join(cwd,'state'));
+    await reopened.open();
+    try{
+      const restored=await reopened.load(state.operationId);
+      const find=operation=>operation.events.flatMap(e=>e.observations??[]).find(o=>o.ref===selectedRef);
+      assert.deepEqual(JSON.parse(JSON.stringify(find(restored))),JSON.parse(JSON.stringify(find(state))));
+    }finally{await reopened.close();}
+  }));

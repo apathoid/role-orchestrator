@@ -454,6 +454,10 @@ agent()
         await update('new-call','new tool','tool_call');
         await update('new-call','status only');
         await message(undefined,json.slice(30));
+      }else if(mode==='correction'){
+        await flood();
+        const correction=context.find(item=>item.ref==='host:decision-error');
+        await message('final',correction?json:'not JSON after history overflow');
       }else if(mode==='worker-anonymous'){
         await message(undefined,'first ');
         await flood();
