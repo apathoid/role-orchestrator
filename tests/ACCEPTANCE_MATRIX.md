@@ -606,3 +606,5 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 | Checkpoint | Regression | Engineering |
 | --- | --- | --- |
 | C19.3 (partial), C19.4 | `tests/integration/controller-contract.test.js`: shared answer guidance exactly once in Decision, text Intent and MCP Intent; capture completeness distinct from tool success; unchanged Unicode/Markdown answer parsing | Added; NOT RUN. Full C19 metadata, identity, projection and native checks remain open. |
+
+| C19.1–C19.2 (candidate) | `c18n-live-evidence.test.js` optional current-event native metadata, invalid/oversized fields, canonical ref and first snapshot, historical list/fetch and live pagination; `acp-provider.test.js` actual SDK start/completion/status-less event and final admission | Added; NOT RUN. Reopen, provider coverage, measurements and full exact-SHA CI remain open. |

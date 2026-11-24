@@ -223,7 +223,7 @@ test('C19 answer guidance is delivered once in every Controller transport withou
     assert.match(assessmentAnswerGuidance, /action or an external artifact/);
     assert.equal(decisionContract.split(assessmentAnswerGuidance).length, 2);
     assert.equal(controllerIntentContract.split(assessmentAnswerGuidance).length, 2);
-    for (const controllerDelivery of ['legacy', 'intent_text', 'intent_mcp']) {
+    for (const controllerDelivery of [undefined, 'intent_text', 'intent_mcp']) {
       const prompt = renderInvocationPrompt({...invocation, controllerDelivery}, 'fixture');
       assert.equal(prompt.split(assessmentAnswerGuidance).length, 2);
       assert.equal(prompt.split('Observation completeness describes capture completeness, not tool success or evidence sufficiency.').length, 2);

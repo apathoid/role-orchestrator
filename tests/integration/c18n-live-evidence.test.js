@@ -6,7 +6,10 @@ import { bindLiveEvidenceAccess } from '../../src/application/live-evidence.js';
 import { providerEvidenceRef } from '../../src/application/evidence-identity.js';
 import { materializeControllerIntent } from '../../src/application/controller-intent.js';
 import { decodeControllerIntent } from '../../src/core/controller-intent.js';
-import { observation } from '../../src/core/observation.js';
+import { contextItem, observation, receiveProviderObservation } from '../../src/core/observation.js';
+import { decode } from '../../src/core/decode.js';
+import { setup, final } from '../fixtures/application.js';
+import { request } from '../fixtures/core.js';
 
 /** @param {string} url @param {number} id @param {string} name @param {unknown} args */
 async function call(url,id,name,args) {
@@ -191,4 +194,84 @@ test('C18N.7 parsed Unicode Markdown answer survives Intent materialization unch
     {operationId:'op',attemptId:'attempt',contextCursor:0,profileId:'controller'});
   assert.equal(result.kind,'accepted');
   assert.equal(result.value.finalAssessment.answer,answer);
+});
+
+test('C19 optional metadata snapshots current provider fields and omits invalid or oversized fields without rejecting evidence',()=>{
+  const report={ref:'native-start',sourceId:'call',kind:'provider_tool',completeness:'complete',
+    value:{raw:'原本🧪'},native:{eventKind:'tool_call',nativeToolCallId:'call',title:'inspect',status:'in_progress'}};
+  const first=receiveProviderObservation(report,100);
+  assert.deepEqual(first.native,report.native);
+  report.native.status='completed';
+  assert.equal(first.native.status,'in_progress');
+  const later=receiveProviderObservation({...report,ref:'native-update',
+    native:{eventKind:'tool_call_update',nativeToolCallId:'call'}},101);
+  assert.deepEqual(later.native,{eventKind:'tool_call_update',nativeToolCallId:'call'});
+  const invalid=receiveProviderObservation({...report,native:{eventKind:'tool_call_update',
+    title:'界'.repeat(3000),status:42}},102);
+  assert.deepEqual(invalid.native,{eventKind:'tool_call_update',omittedFields:['title','status']});
+  assert.deepEqual(invalid.value,report.value);
+  assert.equal(invalid.completeness,'complete');
+  const restored=decode(contextItem,JSON.parse(JSON.stringify(invalid)));
+  assert.equal(restored.kind,'accepted');
+  assert.deepEqual(restored.value.native,invalid.native);
+  const old=receiveProviderObservation({ref:'old',sourceId:'old',kind:'provider_tool',
+    completeness:'complete',value:'old'},103);
+  assert.equal(decode(contextItem,JSON.parse(JSON.stringify(old))).value.native,undefined);
+  const claim=receiveProviderObservation({...report,kind:'model'},104);
+  assert.equal(claim.source,'model_claim');
+  assert.equal(claim.native,undefined);
+});
+
+test('C19 bounded metadata keeps prior refs/provenance and raw retrieval; omissions and continuation remain explicit',()=>{
+  const records=Array.from({length:13},(_,i)=>receiveProviderObservation({
+    ref:'evidence:fixture:'+i,sourceId:'tool',kind:'provider_tool',completeness:'complete',
+    value:'原本🧪 '+i,native:{eventKind:'tool_call_update',nativeToolCallId:'tool',
+      title:'界'.repeat(900),status:'completed'}},123));
+  const port=bindLiveEvidenceAccess({observations:records,isActive:()=>true});
+  const first=port.list();
+  assert.equal(first.kind,'available');
+  assert.equal(first.items.length,12);
+  for(const row of first.items){
+    assert.ok(Buffer.byteLength(JSON.stringify(row))<=1536);
+    assert.equal(row.provenance.kind,'provider_tool');
+    assert.equal(row.native.status,'completed');
+    assert.ok(row.omittedMetadataFields.includes('native.title'));
+  }
+  assert.ok(Buffer.byteLength(JSON.stringify(first))<=24*1024);
+  const next=port.list(first.resumeCursor);
+  assert.equal(next.items[0].ref,records.at(-1).ref);
+  const fetched=port.fetch(records[0].ref);
+  assert.equal(fetched.item.ref,records[0].ref);
+  assert.equal(Buffer.from(fetched.base64,'base64').toString('utf8'),records[0].value);
+});
+
+test('C19 equivalent provider reports keep first metadata and canonical ref; historical list/fetch retains metadata',async()=>{
+  let ref;
+  const {api,respondErrors}=setup({maxInvocations:2,async respond(invocation,count,observe){
+    if(count===1){
+      const report={ref:'native-report',kind:'provider_tool',sourceId:'call',completeness:'complete',
+        value:'original body',native:{eventKind:'tool_call',nativeToolCallId:'call',status:'in_progress'}};
+      ref=observe(report);
+      assert.match(ref,/^evidence:[a-f0-9]{64}$/);
+      assert.equal(observe({...report,native:{eventKind:'tool_call',nativeToolCallId:'call'}}),ref);
+      assert.equal(observe({...report,value:'conflicting payload'}),undefined);
+      return final(invocation,{finalAssessment:undefined,nextController:{continue:true}});
+    }
+    const page=invocation.contextAccess.list();
+    assert.equal(page.kind,'available');
+    const item=page.items.find(item=>item.ref===ref);
+    assert.equal(item.native.status,'in_progress');
+    const fetched=await invocation.contextAccess.fetch(ref,invocation.operationId,{offset:0});
+    assert.equal(fetched.kind,'chunk');
+    assert.equal(fetched.item.native.status,'in_progress');
+    assert.equal(Buffer.from(fetched.base64,'base64').toString('utf8'),'original body');
+    return final(invocation);
+  }});
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.equal(state.status,'finished',respondErrors.map(String).join('\n'));
+    const accepted=state.events.flatMap(e=>e.observations??[]).filter(o=>o.ref===ref);
+    assert.equal(accepted.length,1);
+    assert.equal(accepted[0].native.status,'in_progress');
+  }finally{await api.close();}
 });

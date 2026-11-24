@@ -266,6 +266,10 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       tools.set(update.toolCallId, mergeToolCall(tools.get(update.toolCallId), update));
       // Keep opaque native payload as text to avoid recursive decoding of unbounded shapes.
       publish({ ref: 'acp-update-' + ++line, sourceId: update.toolCallId, kind: 'provider_tool', completeness: 'complete',
+        native: { eventKind: update.sessionUpdate, nativeToolCallId: update.toolCallId,
+          ...(typeof update.title === 'string' && {title: update.title}),
+          ...(typeof update.kind === 'string' && {kind: update.kind}),
+          ...(typeof update.status === 'string' && {status: update.status}) },
         value: { status: update.status, type: update.sessionUpdate, json: encoded } });
     }
     /** @template {keyof ClientRequestParamsByMethod} M @param {M} method @param {boolean} enabled */

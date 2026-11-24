@@ -356,9 +356,20 @@ agent()
         sessionUpdate:'tool_call_update',toolCallId:nativeName,title:'Native inspection',status:'completed',
         content:[{type:'content',content:{type:'text',text:'native source receipt'}}],
       }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,
+        content:[{type:'content',content:{type:'text',text:'status-less update'}}],
+      }});
       const directory=await call(1,'evidence_list',{});
       assert.equal(directory.kind,'available');
-      const native=directory.items.find(item=>item.provenance?.sourceId===nativeName);
+      const records=directory.items.filter(item=>item.provenance?.sourceId===nativeName);
+      assert.equal(records.length,3);
+      assert.deepEqual(records[0].native,{eventKind:'tool_call',nativeToolCallId:nativeName,
+        title:'Native inspection',kind:'read',status:'in_progress'});
+      assert.deepEqual(records[1].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
+        title:'Native inspection',status:'completed'});
+      assert.deepEqual(records[2].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName});
+      const native=records.find(item=>item.native?.status==='completed');
       assert.ok(native,JSON.stringify(directory));
       assert.match(native.ref,/^evidence:[a-f0-9]{64}$/);
       assert.equal(native.source,'provider_reported');
@@ -366,6 +377,7 @@ agent()
       const bytes=await call(2,'evidence_fetch',{ref:native.ref});
       assert.equal(bytes.kind,'chunk');
       assert.equal(bytes.item.ref,native.ref);
+      assert.deepEqual(bytes.item.native,native.native);
       assert.match(Buffer.from(bytes.base64,'base64').toString('utf8'),/Native inspection/);
       const original=await call(3,'submit_decision',{intent:{finalAssessment:{
         overall:'complete',answer:'before',requirements:[{

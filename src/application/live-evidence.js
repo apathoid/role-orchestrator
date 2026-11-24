@@ -1,6 +1,7 @@
 /** Invocation-local read-only view of accepted observations; no second journal. */
 /** @import {Observation} from '../core/observation.js' */
 /** @import {LiveEvidencePort, LiveEvidenceUnavailableReason, LiveEvidenceItem} from '../core/ports.js' */
+import { projectNativeMetadata } from './native-metadata.js';
 const pageRecords = 12;
 const pageBytes = 24 * 1024;
 const chunkBytes = 16 * 1024;
@@ -51,7 +52,7 @@ function directoryItem(item) {
     else Object.assign(entry, {[field]:value});
   }
   if (omittedMetadataFields.length) entry.omittedMetadataFields = omittedMetadataFields;
-  return entry;
+  return projectNativeMetadata(entry, item.native, itemBytes);
 }
 
 /**

@@ -12,7 +12,9 @@
 
 **Partial implementation checkpoint:** C19.4 shared answer guidance in Decision and ControllerIntent references; C19.3 capture-completeness distinction in shared Controller instructions (no new metadata advertised yet). Added prompt-delivery regression in `tests/integration/controller-contract.test.js`. Source baseline `229464630cfc125f8377b0e4189182610e4eebab`; static source inspection only, local checkout unavailable (GitHub DNS), local Node 22, Nix unavailable. No executable RED/GREEN or exact-SHA CI result claimed. C19.0 inventory incomplete; C19.1–C19.2, remaining C19.3, C19.5–C19.6 open. C20 not started. The remote branch commit is a partial implementation, not the C19 engineering gate.
 
-**Next:** complete C19.0 RED and metadata/source/projection work, run full C19 regression and exact-SHA CI before C20.0. C19/C20 real native acceptance UNVERIFIED.
+**Second implementation candidate:** additive Observation.native, ACP current tool events and Codex completed command reports; bounded live/historical projection, preservation of original evidence/ref and prior metadata, no inherited fields, optional capture omissions. Added direct/production-path regression assertions, actual ACP SDK scenario and historical access fixture. No claim of executed RED, measured projection costs, full C19 closure or native PASS. Remaining: validate exact-SHA CI and address failures, dedicated reopen/scale/budget and cross-provider coverage, C19.0/5/6 closure. C20 remains unstarted pending the separate C19 engineering gate.
+
+**Next:** complete C19 regression and exact-SHA engineering acceptance, then C20.0. C19/C20 real native acceptance UNVERIFIED.
 
 ## C18N-R — Corrective Review Fixes (ENGINEERING VERIFIED at 0687a40; native UNVERIFIED)
 

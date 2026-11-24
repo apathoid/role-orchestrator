@@ -106,7 +106,7 @@
  *   permissions?: Pick<AttemptPermissions, 'request'>, newId: () => string, maxBytes: number,
  *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
  * @typedef {'closed' | 'invalid_cursor' | 'invalid_ref' | 'invalid_offset' | 'missing' | 'payload' | 'budget'} LiveEvidenceUnavailableReason
- * @typedef {Pick<import('./observation.js').Observation, 'ref' | 'source' | 'completeness' | 'providerRef' | 'provenance' | 'reportedContext' | 'artifact' | 'summary'> & {omittedMetadataFields?: string[]}} LiveEvidenceItem
+ * @typedef {Pick<import('./observation.js').Observation, 'ref' | 'source' | 'completeness' | 'providerRef' | 'provenance' | 'reportedContext' | 'artifact' | 'summary' | 'native'> & {omittedMetadataFields?: string[]}} LiveEvidenceItem
  * @typedef {LiveEvidenceItem | {kind:'unavailable',reason:'budget',index:number}} LiveEvidenceListItem
  * @typedef {{kind:'available',cursor:number,items:LiveEvidenceListItem[],resumeCursor:number,nextCursor?:number} |
  *   {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceList
@@ -128,7 +128,7 @@
  *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'ambiguous' | 'retention' | 'budget' | 'integrity_error' | 'closed' | 'invalid_offset'}} ContextFetch
  * @typedef {NonNullable<ContextItem['receivedSequence']>} ContextPosition
  * @typedef {Pick<ContextItem, 'source' | 'completeness' | 'attemptId' | 'receivedSequence' |
- *   'providerRef' | 'kind' | 'outputKind' | 'unavailableReason'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem
+ *   'providerRef' | 'kind' | 'outputKind' | 'unavailableReason' | 'native' | 'omittedMetadataFields'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem
  * @typedef {number | {revision: number, index: number}} HistoryCursor
  * @typedef {{kind: 'available', cursor: {revision: number, index: number}, items: ContextDirectoryItem[], nextCursor?: {revision: number, index: number}} |
  *   {kind: 'unavailable', reason: 'closed' | 'invalid_cursor' | 'budget'}} ContextList

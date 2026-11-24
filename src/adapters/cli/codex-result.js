@@ -73,6 +73,8 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
       const exitCode = declined ? undefined : integer(item.exit_code);
       const evidence = publish({
         ref, kind: 'provider_tool', sourceId: item.id, completeness: 'complete', exitCode,
+        native: {eventKind: event.type, nativeToolCallId: item.id, kind: item.type,
+          ...(typeof item.status === 'string' && {status: item.status})},
         value: {
           command: typeof item.command === 'string' ? item.command : undefined,
           output: typeof item.aggregated_output === 'string' ? item.aggregated_output : undefined,

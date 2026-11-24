@@ -836,11 +836,13 @@ test('C18N.8 actual ACP SDK accepted native observation is discoverable in-turn 
       assert.equal(state.events.filter(e=>e.kind==='controller.invalid_proposal').length,0);
       assert.equal(state.attempts.length,1);
       const native=state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[])
-        .find(o=>o.provenance?.sourceId==='c18n-native-inspection');
+        .find(o=>o.provenance?.sourceId==='c18n-native-inspection'&&o.native?.status==='completed');
       assert.ok(native);
       assert.match(native.ref,/^evidence:[a-f0-9]{64}$/);
       assert.equal(native.providerRef?.startsWith('acp-update-'),true);
       assert.equal(native.provenance.kind,'provider_tool');
+      assert.equal(native.native.eventKind,'tool_call_update');
+      assert.equal(native.native.kind,undefined);
       assert.equal(state.assessment.requirements[0].observationRefs[0],native.ref);
       assert.ok(state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[])
         .some(o=>o.provenance?.sourceId==='after-warning'),

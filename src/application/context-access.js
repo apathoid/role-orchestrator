@@ -3,6 +3,7 @@ import { operationHistory } from './controller-context.js';
 import { observation } from '../core/observation.js';
 import { decode } from '../core/decode.js';
 import { historyCursor } from '../core/contracts.js';
+import { projectNativeMetadata } from './native-metadata.js';
 
 /** @import {Operation} from '../core/operation.js' */
 /** @import {ContextDirectoryItem, ContextFetch, ContextPort, ContextShare, StateStore, ContextList, HistoryCursor} from '../core/ports.js' */
@@ -11,15 +12,16 @@ import { historyCursor } from '../core/contracts.js';
 const pageRecords = 32;
 const pageBytes = 8192;
 
-/** @param {ContextItem} item @returns {ContextDirectoryItem} */
-function directoryEntry(item) {
+/** @param {ContextItem} item @param {boolean} [includeNative] @returns {ContextDirectoryItem} */
+function directoryEntry(item, includeNative = true) {
   const { ref, source, completeness, attemptId, receivedSequence, kind, outputKind } = item;
   const entry = { ref, source, completeness, attemptId, receivedSequence, kind, outputKind,
     unavailableReason: item.unavailableReason,
     providerRef: item.providerRef?.slice(0, 96).toWellFormed(),
     reportedLocation: item.reportedContext?.location?.slice(0, 96).toWellFormed() };
-  if (Buffer.byteLength(JSON.stringify(entry)) <= 1024 || !receivedSequence) return structuredClone(entry);
-  return { ref: { ...receivedSequence }, source, completeness, unavailableReason: item.unavailableReason, receivedSequence: { ...receivedSequence } };
+  const base = Buffer.byteLength(JSON.stringify(entry)) <= 1024 || !receivedSequence ? entry :
+    { ref: { ...receivedSequence }, source, completeness, unavailableReason: item.unavailableReason, receivedSequence: { ...receivedSequence } };
+  return structuredClone(includeNative ? projectNativeMetadata(base, item.native, 1024) : base);
 }
 
 /**
@@ -156,9 +158,15 @@ export function bindContextAccess(scope) {
         const totalBytes = item.artifact?.size ?? inline?.length ?? 0;
         if (range.offset > totalBytes) return unavailable('invalid_offset');
         const responseLimit = Math.min(maxBytes, range.maxBytes ?? maxBytes);
-        const itemMetadata = { ...directoryEntry(item), provenance: item.provenance, artifact: item.artifact };
-        const envelope = { kind: /** @type {const} */ ('chunk'), item: itemMetadata, format,
+        const itemMetadata = { ...directoryEntry(item, false), provenance: item.provenance, artifact: item.artifact };
+        const baseEnvelope = { kind: /** @type {const} */ ('chunk'), item: itemMetadata, format,
           offset: range.offset, totalBytes, base64: '', nextOffset: totalBytes };
+        // Do not make a formerly addressable byte chunk inaccessible due to
+        // optional metadata. Reserve at least one raw byte (four base64 bytes).
+        const extraBytes = Math.max(0, responseLimit - Buffer.byteLength(JSON.stringify(baseEnvelope)) - 8 -
+          (range.offset < totalBytes ? 4 : 0));
+        const envelope = {...baseEnvelope, item:projectNativeMetadata(itemMetadata, item.native,
+          Buffer.byteLength(JSON.stringify(itemMetadata)) + Math.min(1024, extraBytes))};
         // Base64 survives arbitrary UTF-8 boundaries. Account for the entire
         // technical response, not merely its raw byte payload.
         const overhead = Buffer.byteLength(JSON.stringify(envelope)) + 8;
@@ -279,6 +287,8 @@ export async function materializeControllerHistory(port, request, maxBytes) {
         completeness: result.offset === 0 && result.nextOffset === undefined
           ? result.item.completeness : 'truncated',
         provenance: result.item.provenance, attemptId: result.item.attemptId,
+        ...(result.item.native && {native:result.item.native}),
+        ...(result.item.omittedMetadataFields && {omittedMetadataFields:result.item.omittedMetadataFields}),
         receivedSequence: result.item.receivedSequence,
         value: { requestedRef: result.item.ref, format: result.format,
           offset: result.offset, totalBytes: result.totalBytes,

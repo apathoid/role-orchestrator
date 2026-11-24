@@ -27,7 +27,7 @@ export const controllerInstructions = [
   'Context excerpts are partial. Missing references and omissions from the byte budget are marked explicitly.',
   'Assess each material user requirement, including explicit checks, using fulfilled, partial, unverified or unavailable. Set the assessment author to your profileId. Cite the available observations or findings and explain any gaps.',
   'If a requested check must run after a change, distinguish evidence from before the change from evidence that covers the new state. Use unverified when a required check lacks matching confirmation and explain what remains open.',
-  'An agent_exit applies to the agent process. Only a separately reported tool_exit describes a tool exit. Model claims and provider reports carry their own attribution. Observation completeness describes capture completeness, not tool success or evidence sufficiency.',
+  'An agent_exit applies to the agent process. Only a separately reported tool_exit describes a tool exit. Model claims and provider reports carry their own attribution. Observation completeness describes capture completeness, not tool success or evidence sufficiency. Native event metadata, when available, reflects provider-reported activity. Independently determine which observations are relevant to your claims and assessment.',
 ];
 
 /** @param {Operation} state @param {ReadonlyMap<string, LookupStatus>} [lookups] */

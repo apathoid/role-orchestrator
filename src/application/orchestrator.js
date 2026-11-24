@@ -630,7 +630,9 @@ export function createOrchestrator(deps) {
     /** @type {import('../core/operation.js').RejectedResultReference | undefined} */
     let declaredResult;
     /** @param {Observation} item */
-    const reportContent = ({ provenance, ...item }) => ({
+    // Optional directory metadata is a first-accepted snapshot; its later
+    // availability cannot turn a previously equivalent payload into a conflict.
+    const reportContent = ({ provenance, native: _native, ...item }) => ({
       ...item, provenance: provenance && { ...provenance, receivedAt: undefined },
     });
 
