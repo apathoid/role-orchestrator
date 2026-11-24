@@ -1,5 +1,25 @@
 # C12.3–C12.4: протокол нативной приёмки
 
+## C19 — Model-facing Evidence & Answer Clarity (PLANNED; NATIVE UNVERIFIED)
+
+[Implementation specification](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md). Compare on pinned exact RO SHA, native agent/model/client versions, skill version, cwd/permissions, context, sampling/effort, and resource configuration; repeat comparable runs, distinguish actual user-result quality from successful admission. Earlier operator-supplied OpenCode/Ornith experiments reported successful direct answer and live list/fetch/canonical admission, weak evidence choice and report-instead-of-result, and Small in-turn structural `replaces` correction. They are not C19 acceptance, independently verified exact-build comparisons, or advisory-reference correction evidence.
+
+1. Direct task (e.g. clarified native `changed` skill) without required retrieval: actual requested result in submitted answer, correct format and preservation of native tool/skill choice.
+2. Explicit user evidence request: inspect actual reported metadata/omissions, list/fetch usage, refs used and durable identity; assess relevance outside Host; compare bytes/calls/model latency and quality against baseline. No mandatory retrieval in production.
+3. Natural advisory-ref warning then in-turn correction if observed (otherwise UNVERIFIED), independent provider/subagents and providers with no metadata where available.
+4. Exact answer round-trip and native tool use after pending proposal; compare independently with engineering fixtures. Do not commit private logs/prompts/source or deliberately teach production model to fail.
+
+## C20 — Optional Invocation Deadline & Resource Defaults (PLANNED; NATIVE UNVERIFIED)
+
+[Implementation specification](C20_OPTIONAL_INVOCATION_DEADLINE_AND_RESOURCE_DEFAULTS.md). Default three settings 5/null/null. No idle watchdog or additional execution timeout. Test under trusted permitted environment and record exact effective resource config and any native-provider limits.
+
+1. Legitimate long active or silent invocation exceeding old default/10-minute run, natural completion with complete/accurately diagnosed capture; final-only provider valid. No inference that silence means stalled.
+2. Long native tool/setup/prefill or subagent without new Host timeout where available; user interaction unanswered beyond previous deadline then resumed. No forced liveness callbacks or workflow.
+3. Explicit finite invocation deadline and user cancel with deadline disabled, including initialization and pending execution; separately verify reason, unknown effect, real cleanup vs unconfirmed detachment and slot accounting. Noncooperative-provider fault coverage may use SDK/controlled fixtures, not mislabeled native PASS.
+4. Multiple invocations/Workers and long Operation: independent authority, no arbitrary cumulative cap; preserve exact capture/truncation, proposal finality and no automatic replay.
+
+Record model task correctness, durations, configured vs actual cancellation cause, events and slot/cleanup outcomes, observable resource growth and limits. No inference of unbounded memory or guarantee of detecting hangs. Native provider limits remain independent. Exact-SHA engineering CI is separate; unavailable real native scenarios remain UNVERIFIED.
+
 ## C18N — Live evidence and simplified MCP bridge (synthetic implementation; REAL NATIVE UNVERIFIED)
 
 [Implementation specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). This is a **real-model native acceptance procedure**, not evidence that the committed synthetic C18N implementation has passed real native acceptance. Operator-supplied earlier OpenCode ACP / `llamacpp/medium` run of the native `changed` task failed after late unresolved observationRef admission and cross-invocation `replaces` error. Keep original private debug archives and user source outside Git; use sanitized deterministic fixtures in repository tests.

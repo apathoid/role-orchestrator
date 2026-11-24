@@ -1,5 +1,36 @@
 # Активный план реализации и приёмки
 
+## C19 — Model-facing Evidence & Answer Clarity (PLANNED)
+
+[Detailed executable plan](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; source baseline `2650d327b01eddd5ed2939263ef73b803381be11`. Implement before C20, with separate exact-SHA acceptance.
+
+| Checkpoint | Deliverable |
+| --- | --- |
+| C19.0 | Baseline actual native metadata sources, observation identity and prompt paths; RED fixtures |
+| C19.1 | Optional immutable provider-reported metadata, native values preserved, no universal ontology or invented provenance |
+| C19.2 | Bounded live/historical projection, canonical ref and essential provenance priority, explicit omissions, unchanged pagination |
+| C19.3 | Concise general observation guidance, capture completeness distinct from tool status |
+| C19.4 | Actual user-facing answer clarified across MCP/text/legacy; no Host semantic validation or text substitution |
+| C19.5 | Production-path ACP SDK, identity/duplicate/reopen/budget/answer/optional retrieval regressions |
+| C19.6 | Native model evaluation or UNVERIFIED, exact-SHA mandatory CI and documentation |
+
+## C20 — Optional Invocation Deadline & Resource Defaults (PLANNED; supersedes activity-based design)
+
+[Detailed executable plan](C20_OPTIONAL_INVOCATION_DEADLINE_AND_RESOURCE_DEFAULTS.md). Begin from verified C19 implementation head. Approved defaults: `maxConcurrentInvocations=5`, `maxInvocationsPerOperation=null`, `invocationTimeoutMs=null`. All remain configurable. No additional execution timeouts, idle/tool/startup/interaction/recovery deadlines, watchdog or liveness tracking. Preserve post-stop technical teardown and actual provider policies; never infer detachment or replay unknown work.
+
+| Checkpoint | Deliverable |
+| --- | --- |
+| C20.0 | Source/timer ownership inventory, RED fixtures incl. ACP startup cancellation; capture/output/resource audit |
+| C20.1 | Nullable configuration, explicit finite/absent/null semantics and trusted precedence |
+| C20.2 | Unlimited cumulative invocations and default concurrency 5 through Operation limits, reserve, state, resume, context and presentation |
+| C20.3 | One optional hard invocation deadline, no scheduled execution timer by default |
+| C20.4 | No hidden adapter/owned-process execution timeout; transport and post-stop mechanics distinguished |
+| C20.5 | Indefinite interactions and recovery, reliable explicit cancellation across all boundaries, truthful pending cleanup/late detachment and occupied slots |
+| C20.6 | Deterministic lifetime/resource/finality regressions, >40 invocations, scale/capture measurements and residual limits |
+| C20.7 | Native acceptance or UNVERIFIED, full exact-SHA CI, normative docs/config/acceptance matrix and handoff |
+
+No new scheduler, semantic gates, execution phase/watchdog subsystem or replacement cumulative quota. Neither C19 nor C20 is implemented by this planning change.
+
 ## C18N-R — Review corrections (ENGINEERING VERIFIED at 0687a40; native UNVERIFIED)
 
 Review baseline `0dbae3434b626fcd4132059f6d349b3f4dcab3c6`; [STATUS](STATUS.md) and [C18N specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). The five RED regressions are recorded at `1a53134d` / [CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178). R1–R5 production fixes passed [CI #45266687474](https://github.com/apathoid/role-orchestrator/actions/runs/45266687474) on `295499174be7f4475dc14b59bfa6c7b5bbe3e427`. Expanded code/probes passed [CI #45267563474](https://github.com/apathoid/role-orchestrator/actions/runs/45267563474) at `f9ede6d`. Final code `0687a40a8cf2d2886ab1f722aa8e91663e9e43eb` passed [CI #45268444761](https://github.com/apathoid/role-orchestrator/actions/runs/45268444761): 36/36 steps including 543 integration, 15 PTY, Nix/release. The documentation-only head still requires its own exact-SHA workflow; real provider/model comparisons remain UNVERIFIED.
