@@ -1,5 +1,9 @@
 # Changelog
 
+### C20 — Optional invocation deadline and resource defaults (candidate; engineering UNVERIFIED)
+
+- Default concurrency 5, cumulative invocation limit and hard invocation deadline disabled (`null`). Preserve finite trusted limits and optional single owner timer; no independent adapter, interaction or recovery execution timers. Cancellation during ACP setup and post-stop cleanup retain actual resource ownership.
+
 Публичные изменения и основные продуктовые вехи (не журнал всех коммитов). Текущий operational status и доказательства исполнения — [roadmap STATUS](docs/roadmap/STATUS.md).
 
 ## Unreleased — C12–C18 integration and delivery

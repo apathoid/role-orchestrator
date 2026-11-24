@@ -95,7 +95,13 @@ export function resolveConfiguration(user, projectText, launchOptions = {}, inst
   }
 
   return { kind: 'accepted', value: {
-    ...user, resources: { ...effective, ...project.value.resources, ...launch.value.resources }, context: {
+    ...user, resources: {
+      maxConcurrentInvocations: launch.value.resources?.maxConcurrentInvocations ?? project.value.resources?.maxConcurrentInvocations ?? effective.maxConcurrentInvocations,
+      maxInvocationsPerOperation: launch.value.resources?.maxInvocationsPerOperation !== undefined ? launch.value.resources.maxInvocationsPerOperation :
+        project.value.resources?.maxInvocationsPerOperation !== undefined ? project.value.resources.maxInvocationsPerOperation : effective.maxInvocationsPerOperation,
+      invocationTimeoutMs: launch.value.resources?.invocationTimeoutMs !== undefined ? launch.value.resources.invocationTimeoutMs :
+        project.value.resources?.invocationTimeoutMs !== undefined ? project.value.resources.invocationTimeoutMs : effective.invocationTimeoutMs,
+    }, context: {
       ...defaultContextBudgets,
       ...(user.context?.handoffMaxBytes === undefined ? {} : { handoffMaxBytes: user.context.handoffMaxBytes }),
       ...(user.context?.fetchMaxBytes === undefined ? {} : { fetchMaxBytes: user.context.fetchMaxBytes }),

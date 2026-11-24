@@ -128,26 +128,30 @@ test('a configured-only capability cannot authorize a lookup', async t => {
   assert.equal(result.attempts[0].outcome.effect, 'unknown');
 });
 
-test('a stuck lookup is bounded and does not suppress the uncertainty passed to the Controller', { timeout: 3000 }, async t => {
+test('C20 a stuck recovery lookup has no deadline; independent work and cancellation remain usable', { timeout: 3000 }, async t => {
   const { store } = await durableFixture(t);
   await store.open();
   const old = setup({ store, respond() { throw Error('connection lost'); } });
   const lost = await (await old.api.submit(request())).completion;
   const started = Promise.withResolvers();
-  let expire;
+  let timers=0, lookupSignal;
   const current = setup({
-    store, idPrefix: 'later-', capabilities: { 'attempt.status': { support: 'supported', source: 'negotiated' } },
-    schedule(ms, callback) { expire = callback; return () => {}; },
-    async lookupStatus() { started.resolve(); return new Promise(() => {}); },
-    respond(invocation) {
-      assert.equal(invocation.context[1].value.unresolvedAttempts[0].statusLookup, 'unavailable');
-      return final(invocation);
-    },
+    store, idPrefix: 'later-', invocationTimeoutMs:null,
+    capabilities: { 'attempt.status': { support: 'supported', source: 'negotiated' } },
+    schedule() { timers++; return () => {}; },
+    async lookupStatus(_attempt,signal) { lookupSignal=signal; started.resolve(); return new Promise(() => {}); },
   });
-  const resumed = await current.api.resume(lost.operationId, { requestId: 'follow', text: 'Continue' });
-  await started.promise;
-  expire();
-  assert.equal((await resumed.completion).status, 'finished');
+  try{
+    const resumed = await current.api.resume(lost.operationId, { requestId: 'follow', text: 'Continue' });
+    await started.promise;
+    assert.equal(timers,0,'recovery does not schedule an execution deadline');
+    const independent=await(await current.api.submit(request({requestId:'independent'}))).completion;
+    assert.equal(independent.status,'finished');
+    await current.api.cancel(lost.operationId);
+    const cancelled=await resumed.completion;
+    assert.equal(cancelled.status,'cancelled');
+    assert.equal(cancelled.attempts[0].outcome.terminal,'unknown');
+  }finally{await current.api.close();}
 });
 
 test('a lookup result naming a different attempt cannot settle the recorded uncertainty', async t => {

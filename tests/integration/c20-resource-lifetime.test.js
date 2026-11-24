@@ -51,3 +51,33 @@ test('C20 unlimited cumulative budget admits 45 valid sequential Controller invo
     assert.equal(resourceSnapshot(restored.value).remaining,null);
   }finally{await api.close();}
 });
+
+test('C20 null deadline schedules no execution timer, while explicit cancellation still settles a silent provider', {timeout:4000},async()=>{
+  const started=Promise.withResolvers();
+  const timers=[];
+  const {api}=setup({invocationTimeoutMs:null,maxInvocations:null,
+    schedule(ms,expire){const t={ms,expire};timers.push(t);return()=>{};},
+    respond(invocation){started.resolve(invocation);return new Promise(()=>{});}
+  });
+  try{
+    const submitted=await api.submit(request());
+    const invocation=await started.promise;
+    assert.equal(invocation.timeoutMs,null);
+    assert.deepEqual(timers,[]);
+    await api.cancel(submitted.operation.operationId);
+    const cancelled=await submitted.completion;
+    assert.equal(cancelled.status,'cancelled');
+    assert.equal(cancelled.attempts[0].outcome.effect,'unknown');
+  }finally{await api.close();}
+});
+test('C20 finite persisted cumulative budget is not widened by an unlimited default on resume',async()=>{
+  const first=setup({maxInvocations:2,respond(invocation){
+    return final(invocation,{finalAssessment:undefined,nextController:{continue:true}});
+  }});
+  try{
+    const state=await(await first.api.submit(request())).completion;
+    assert.equal(state.status,'waiting');
+    assert.equal(state.limits.maxInvocations,2);
+    assert.equal(resourceSnapshot(state).remaining,0);
+  }finally{await first.api.close();}
+});

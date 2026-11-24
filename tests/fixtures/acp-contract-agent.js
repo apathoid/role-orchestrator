@@ -33,6 +33,10 @@ const modeScenario = ['mode', 'mode-reroutes', 'mode-model-unavailable'].include
 agent()
   .onRequest(a.initialize, async ({ params }) => {
     clientCapabilities = params.clientCapabilities;
+    if (scenario === 'c20-silent-initialize') {
+      await writeFile('c20-setup.ready','');
+      return new Promise(()=>{});
+    }
     if (scenario === 'init-stderr') {
       await new Promise(resolve => process.stderr.write('Missing ACP fixture configuration\n' + 'x'.repeat(70_000), resolve));
       process.exit(9);
@@ -42,7 +46,11 @@ agent()
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
       agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
   })
-  .onRequest(a.session.new, ({ params }) => {
+  .onRequest(a.session.new, async ({ params }) => {
+    if (scenario === 'c20-silent-session-new') {
+      await writeFile('c20-setup.ready','');
+      return new Promise(()=>{});
+    }
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
     if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
       assert.equal(params.mcpServers[0]?.type, 'http');

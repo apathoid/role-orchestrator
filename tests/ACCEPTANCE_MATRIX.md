@@ -618,3 +618,8 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 | R2 optional metadata boundary | `c18n-live-evidence.test.js`: complete snapshot vs temporary omission overhead, absent/full/whole/partial/marker-only/exact bounds, prior markers, escaped/Unicode, pagination and raw fetch. `context-chunks.test.js`: raw chunk capacity unchanged at saturated budget. |
 | R3 positional identity | `context-chunks.test.js`: both canonical and positional fetch with large optional native metadata, exact/large budget, genuine long-ref fallback, original bytes. |
 | Full engineering | Correction candidate requires full exact-SHA CI; native UNVERIFIED. |
+
+
+### C20 candidate (engineering UNVERIFIED)
+
+`c20-resource-lifetime.test.js`: default/null/finite authority precedence, 45 actual Controller invocations, snapshot roundtrip, no execution timer and cancellation; finite budget counterpart. `interactions.test.js`: inherited deadline only, indefinite user response and cancellation. `resume.test.js`: no recovery deadline, independent allowed work and cancellation. `acp-provider.test.js`: real SDK silent initialize/session.new with no deadline, owner cancellation and deadline attribution. Full C20.6/7 and native acceptance open.

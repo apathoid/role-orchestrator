@@ -749,18 +749,20 @@ test('F1 actual ACP reasoning and process facts keep Host source across journal,
     }
   }));
 
-test('F2 ACP timeout retains its deadline classification and partial native evidence', linux, () =>
+test('F2/C20 ACP owner deadline retains classification and partial native evidence', linux, () =>
   withOwnedRun('C12R10R-F2-timeout', async cwd => {
-    await using call = await invoke(provider(cwd, 'ignore-cancel'), {objective:'hold', timeoutMs:3_000});
+    const stop=new AbortController();
+    await using call = await invoke(provider(cwd, 'ignore-cancel'), {objective:'hold', timeoutMs:null,signal:stop.signal});
     await ready(cwd, 'attempt-test.ready');
+    stop.abort('deadline');
     const result = await call.completion;
     assert.equal(result.outcome.diagnostics[0].code, 'DEADLINE_EXCEEDED');
     assert.equal(result.outcome.terminal, 'unknown');
     assert.equal(result.dispatchCertainty, 'unknown');
     assert.ok(call.observations.some(item => item.value === 'progress attempt-test'));
     const fact = call.observations.find(item => item.ref === 'acp-process').value;
-    assert.equal(fact.reason, 'timed_out');
-    assert.equal(fact.cancelRequested, false);
+    assert.equal(fact.reason, 'cancelled');
+    assert.equal(fact.cancelRequested, true);
     assert.equal(fact.signal, 'SIGKILL');
     assert.equal(fact.exitCode, null);
   }));
@@ -890,3 +892,20 @@ test('C18R.5 complete near-limit UTF-8 MCP Decision passes real ACP SDK and exis
       assert.ok(observations.some(o=>o.value?.finalAssessment?.answer===state.assessment.answer));
     }finally{await api.close();}
   }));
+
+for(const scenario of ['c20-silent-initialize','c20-silent-session-new']){
+  test('C20 ACP cancellation during '+scenario+' with no execution timer', {...linux,timeout:5000},()=>
+    withOwnedRun(scenario,async cwd=>{
+      const stop=new AbortController();
+      await using call=await invoke(provider(cwd,scenario),{timeoutMs:null,signal:stop.signal});
+      await ready(cwd,'c20-setup.ready');
+      stop.abort('user');
+      const result=await call.completion;
+      assert.equal(result.dispatchCertainty,'not_sent');
+      assert.equal(result.outcome.diagnostics[0].code,'CANCELLED');
+      assert.equal(result.outcome.effect,'none');
+      const fact=call.observations.find(item=>item.ref==='acp-process').value;
+      assert.equal(fact.cancelRequested,true);
+      assert.equal(fact.signal,'SIGKILL');
+    }));
+}
