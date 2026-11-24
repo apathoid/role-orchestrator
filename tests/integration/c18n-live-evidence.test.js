@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { startMcpBridge } from '../../src/adapters/mcp-bridge.js';
 import { bindControllerPreflight } from '../../src/application/controller-preflight.js';
+import { projectNativeMetadata } from '../../src/application/native-metadata.js';
+import { boundContextItem, compactContext } from '../../src/application/context-bundle.js';
 import { bindLiveEvidenceAccess } from '../../src/application/live-evidence.js';
 import { providerEvidenceRef } from '../../src/application/evidence-identity.js';
 import { materializeControllerIntent } from '../../src/application/controller-intent.js';
@@ -300,4 +302,32 @@ test('C19 synthetic directory/fetch representation cost compared with identical 
   assert.equal(current.pages,baseline.pages);
   assert.equal(current.omissions,0);
   console.log('C19_DIRECTORY '+JSON.stringify({records:120,baseline,current,scope:'synthetic representation, not native model latency'}));
+});
+
+test('C19-R.2 complete native metadata fits without temporary partial omission overhead',()=>{
+  const base={ref:'evidence:fixture',source:'provider_reported',completeness:'complete',
+    provenance:{kind:'provider_tool',sourceId:'call',receivedAt:1},value:'body',
+    omittedMetadataFields:['reportedContext']};
+  const native={eventKind:'tool_call',status:'ok'};
+  const full={...base,native};
+  const budget=Buffer.byteLength(JSON.stringify(full));
+  assert.deepEqual(projectNativeMetadata(base,native,budget),full);
+  assert.deepEqual(projectNativeMetadata(base,undefined,budget),base);
+});
+
+test('C19-R.2 omission-only and exact budget boundaries preserve the existing representation',()=>{
+  const base={ref:'evidence:fixture',source:'provider_reported',completeness:'complete',
+    provenance:{kind:'provider_tool',sourceId:'call',receivedAt:1},value:'original 🧪',
+    omittedMetadataFields:['reportedContext']};
+  const native={title:'界"\\'.repeat(250)};
+  const marker={...base,omittedMetadataFields:['reportedContext','native']};
+  const bytes=item=>Buffer.byteLength(JSON.stringify(item));
+  assert.deepEqual(projectNativeMetadata(base,native,bytes(marker)),marker);
+  assert.deepEqual(projectNativeMetadata(base,native,bytes(marker)-1),base);
+  assert.deepEqual(projectNativeMetadata(base,native,bytes(base)),base);
+  const item={...base,native};
+  assert.deepEqual(boundContextItem(item,bytes(marker)),marker);
+  assert.deepEqual(boundContextItem(item,bytes(base)),base);
+  assert.deepEqual(compactContext([item],bytes(base)+3,true).context,[base]);
+  assert.deepEqual(item.native,native,'projection never mutates the stored snapshot');
 });

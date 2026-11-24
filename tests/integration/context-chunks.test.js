@@ -510,3 +510,43 @@ test('C12R.9 review performance: verified artifact slices use bounded cache acro
         'the cache must not resurrect a missing artifact');
     }finally{await store.close();}
   }));
+
+test('C19-R.3 positional fetch preserves a canonical ref when only optional metadata exceeds the budget',async()=>{
+  const ref='evidence:'+ 'a'.repeat(64), body='原本🧪\\\n'.repeat(40);
+  const state=historyState(ref,body);
+  const position={revision:1,index:0};
+  const baseline=await portFor(state,64*1024).fetch(position);
+  assert.equal(baseline.kind,'available');
+  assert.equal(baseline.item.ref,ref);
+  const baseBytes=Buffer.byteLength(JSON.stringify(baseline.item));
+  const budget=baseBytes+100;
+  const native={eventKind:'tool_call_update',title:'界'.repeat(900),status:'completed'};
+  state.events[0].observations[0].native=native;
+  assert.ok(Buffer.byteLength(JSON.stringify({...baseline.item,native}))>budget);
+  const port=portFor(state,budget);
+  for(const key of [ref,position]){
+    const fetched=await port.fetch(key);
+    assert.equal(fetched.kind,'available');
+    assert.equal(fetched.item.ref,ref);
+    assert.equal(fetched.item.value,body);
+    assert.equal(fetched.item.completeness,'complete');
+    assert.deepEqual(fetched.item.provenance,baseline.item.provenance);
+    assert.ok(fetched.item.omittedMetadataFields.includes('native.title')||
+      fetched.item.omittedMetadataFields.includes('native'));
+    assert.ok(Buffer.byteLength(JSON.stringify(fetched.item))<=budget);
+  }
+  const full=await portFor(state,64*1024).fetch(position);
+  assert.equal(full.item.ref,ref);
+  assert.deepEqual(full.item.native,native);
+  const exact=await portFor(state,baseBytes).fetch(position);
+  assert.deepEqual(exact,baseline,'at exact boundary original content takes precedence even over omission marker');
+  const longRef='legacy-'+ 'x'.repeat(4000);
+  const long=historyState(longRef,'small body');
+  long.events[0].observations[0].native=native;
+  const fallback=await portFor(long,4096).fetch(position);
+  assert.equal(fallback.kind,'available');
+  assert.equal(fallback.item.ref,'host:history-position:1:0');
+  assert.equal(fallback.item.value,'small body');
+  const chunked=await readAll(port,position,budget);
+  assert.equal(chunked.bytes.toString('utf8'),body);
+});
