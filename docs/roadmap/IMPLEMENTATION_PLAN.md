@@ -1,6 +1,6 @@
 # Активный план реализации и приёмки
 
-## C19 — Model-facing Evidence & Answer Clarity (PLANNED)
+## C19 — Model-facing Evidence & Answer Clarity (IMPLEMENTATION / C19-R; engineering UNVERIFIED)
 
 [Detailed executable plan](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; source baseline `2650d327b01eddd5ed2939263ef73b803381be11`. Implement before C20, with separate exact-SHA acceptance.
 

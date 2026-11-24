@@ -550,3 +550,21 @@ test('C19-R.3 positional fetch preserves a canonical ref when only optional meta
   const chunked=await readAll(port,position,budget);
   assert.equal(chunked.bytes.toString('utf8'),body);
 });
+
+test('C19-R.2 historical byte chunks preserve previously deliverable payload at a saturated budget',async()=>{
+  const ref='native-raw', body='原本🧪\\\n'.repeat(1000), budget=512;
+  const state=historyState(ref,body);
+  const baseline=await portFor(state,budget).fetch(ref,undefined,{offset:0});
+  assert.equal(baseline.kind,'chunk');
+  assert.ok(baseline.nextOffset>0);
+  state.events[0].observations[0].native={eventKind:'tool_call_update',title:'界'.repeat(900),status:'completed'};
+  const port=portFor(state,budget);
+  const current=await port.fetch(ref,undefined,{offset:0});
+  assert.deepEqual(current,baseline,'optional fields must not reduce previously deliverable raw chunk bytes');
+  const last=await portFor(state,64*1024).fetch(ref,undefined,{offset:0});
+  assert.equal(last.kind,'chunk');
+  assert.equal(last.item.native.status,'completed');
+  assert.ok(last.item.omittedMetadataFields.includes('native.title'));
+  assert.equal(Buffer.from(last.base64,'base64').toString('utf8'),body);
+  assert.ok(Buffer.byteLength(JSON.stringify(last))<=64*1024);
+});

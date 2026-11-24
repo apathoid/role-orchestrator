@@ -25,6 +25,10 @@ export function projectNativeMetadata(entry, native, maxBytes) {
     const bytes = Buffer.byteLength(JSON.stringify(extra));
     return baseBytes + bytes - 2 + (baseBytes > 2 && bytes > 2 ? 1 : 0) <= maxBytes;
   }
+  // Test the entire snapshot first: temporary per-field omission labels can
+  // cost more than the missing fields themselves at a tight byte boundary.
+  const full = extension(native, previous);
+  if (fits(full)) return {...entry, ...full};
   // Prefer exact field omissions. If the omission list itself will not fit,
   // a whole-record marker is enough; never remove existing metadata/ref/body.
   // At an exact byte boundary even that marker may not fit: preserve access.

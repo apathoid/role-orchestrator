@@ -16,6 +16,8 @@
 
 **CI correction:** exact-SHA [CI #45472721002](https://github.com/apathoid/role-orchestrator/actions/runs/45472721002) on `8efb7b17519aa348257fba8415b3a2c60954431e` failed at checkJs (TS7023/TS7022: recursive `boundContextItem` without explicit return annotation); Node 24 and locked npm install passed, subsequent regression/Nix/package steps skipped. Added the explicit `ContextItem | undefined` return annotation without changing behavior. Recheck the new exact SHA; engineering remains UNVERIFIED.
 
+**C19-R corrective review:** baseline `9fc48206e0e4ab66b7043e136431bebc3832e074`, [CI #45473023553](https://github.com/apathoid/role-orchestrator/actions/runs/45473023553) FAILURE: checkJs/foundation/core/contracts PASS, integration 548/549 (C19 reopen fixture retained its original SQLite writer lock), remaining checks skipped. R1 explicitly closes the fixture-owned store before reopening and releases the reopened store before directory removal; no production locking change. R2 tries the full metadata snapshot first, preserves prior omission labels, keeps original bytes at the exact bound, and preserves pre-C19 raw chunk capacity. Saturated responses can omit even a marker; documented and covered by tests. R3 evaluates positional fallback on the primary observation without native metadata. Addressed with RED candidate `34a09e8826563211d4e60f1993e032f75587451e` and added boundary/large-title measurement tests. Actual RED/GREEN/measurement results require exact-SHA CI. Native UNVERIFIED.
+
 **Next:** complete C19 regression and exact-SHA engineering acceptance, then C20.0. C19/C20 real native acceptance UNVERIFIED.
 
 ## C18N-R — Corrective Review Fixes (ENGINEERING VERIFIED at 0687a40; native UNVERIFIED)

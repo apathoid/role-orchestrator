@@ -736,14 +736,24 @@ test('C19 accepted native metadata survives local store commit and reopen alongs
     const state=await(await api.submit(request())).completion;
     assert.equal(state.status,'finished',respondErrors.map(String).join('\n'));
     operationId=state.operationId;
-  }finally{await api.close();}
+  }finally{
+    try { await api.close(); } finally { await store.close(); }
+  }
+  // The fixture owns the injected store; release its writer lock before reopen.
+  // Close the reopened instance before setupStore's directory-removal hook.
   const reopened=createLocalStateStore(directory);
-  t.after(()=>reopened.close());
-  await reopened.open();
-  const state=await reopened.load(operationId);
-  const records=state.events.flatMap(event=>event.observations??[]);
-  assert.deepEqual(records.find(item=>item.ref===nativeRef).native,
-    {eventKind:'tool_call_update',nativeToolCallId:'call',status:'completed'});
-  assert.equal(records.find(item=>item.ref===nativeRef).value,'original');
-  assert.equal(records.find(item=>item.ref===legacyRef).native,undefined);
+  try {
+    await reopened.open();
+    const state=await reopened.load(operationId);
+    const records=state.events.flatMap(event=>event.observations??[]);
+    const native=records.find(item=>item.ref===nativeRef);
+    const legacy=records.find(item=>item.ref===legacyRef);
+    assert.deepEqual(native.native,
+      {eventKind:'tool_call_update',nativeToolCallId:'call',status:'completed'});
+    assert.equal(native.value,'original');
+    assert.equal(native.provenance.kind,'provider_tool');
+    assert.equal(native.provenance.sourceId,'call');
+    assert.equal(legacy.native,undefined);
+    assert.equal(legacy.value,'legacy');
+  } finally { await reopened.close(); }
 });

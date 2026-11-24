@@ -299,9 +299,12 @@ test('C19 synthetic directory/fetch representation cost compared with identical 
     return {pages,bytes,omissions,fetchBytes:Buffer.byteLength(JSON.stringify(fetch)),elapsedMs:performance.now()-start};
   }
   const baseline=measure(withoutNative),current=measure(withNative);
+  const large=measure(withNative.map(item=>({...item,native:{...item.native,title:'界"\\\\'.repeat(250)}})));
   assert.equal(current.pages,baseline.pages);
   assert.equal(current.omissions,0);
-  console.log('C19_DIRECTORY '+JSON.stringify({records:120,baseline,current,scope:'synthetic representation, not native model latency'}));
+  assert.equal(large.pages,baseline.pages);
+  assert.equal(large.omissions,withNative.length);
+  console.log('C19_DIRECTORY '+JSON.stringify({records:120,baseline,current,large,scope:'synthetic representation, not native model latency'}));
 });
 
 test('C19-R.2 complete native metadata fits without temporary partial omission overhead',()=>{

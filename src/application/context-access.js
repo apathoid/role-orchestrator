@@ -161,10 +161,11 @@ export function bindContextAccess(scope) {
         const itemMetadata = { ...directoryEntry(item, false), provenance: item.provenance, artifact: item.artifact };
         const baseEnvelope = { kind: /** @type {const} */ ('chunk'), item: itemMetadata, format,
           offset: range.offset, totalBytes, base64: '', nextOffset: totalBytes };
-        // Do not make a formerly addressable byte chunk inaccessible due to
-        // optional metadata. Reserve at least one raw byte (four base64 bytes).
-        const extraBytes = Math.max(0, responseLimit - Buffer.byteLength(JSON.stringify(baseEnvelope)) - 8 -
-          (range.offset < totalBytes ? 4 : 0));
+        // Preserve the raw chunk the pre-C19 envelope could deliver. Optional
+        // metadata (even an omission label) may consume only its spare bytes.
+        const spare = Math.max(0, responseLimit - Buffer.byteLength(JSON.stringify(baseEnvelope)) - 8);
+        const originalWanted = Math.min(totalBytes - range.offset, 3 * Math.floor(spare / 4));
+        const extraBytes = Math.max(0, spare - 4 * Math.ceil(originalWanted / 3));
         const envelope = {...baseEnvelope, item:projectNativeMetadata(itemMetadata, item.native,
           Buffer.byteLength(JSON.stringify(itemMetadata)) + Math.min(1024, extraBytes))};
         // Base64 survives arbitrary UTF-8 boundaries. Account for the entire
@@ -229,7 +230,11 @@ export function bindContextAccess(scope) {
       if (item.completeness === 'unavailable') return unavailable(item.unavailableReason === 'duplicate_inline' ? 'payload' : item.unavailableReason ?? 'payload');
       // A positional lookup can address an opaque reference too long to echo
       // within fetchMaxBytes. Its receivedSequence remains the original identity.
-      const view = typeof ref !== 'string' && Buffer.byteLength(JSON.stringify(item)) > maxBytes
+      // New optional metadata must not itself trigger the historical positional
+      // fallback. Preserve the pre-C19 size decision for the primary record;
+      // boundContextItem projects native fields only after that record fits.
+      const {native: _native, ...primary} = item;
+      const view = typeof ref !== 'string' && Buffer.byteLength(JSON.stringify(primary)) > maxBytes
         ? { ...item, ref: 'host:history-position:' + ref.revision + ':' + ref.index } : item;
       const bounded = boundContextItem(view, maxBytes, maxBytes);
       return bounded ? { kind: 'available', item: structuredClone(bounded) } : unavailable('budget');

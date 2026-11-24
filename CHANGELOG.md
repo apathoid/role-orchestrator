@@ -4,7 +4,9 @@
 
 ## Unreleased — C12–C18 integration and delivery
 
-### C19 — Answer guidance (partial implementation; engineering/native UNVERIFIED)
+### C19 — Answer guidance and native metadata (implementation / C19-R; engineering/native UNVERIFIED)
+
+- Correct fixture-owned local-store reopen; preserve canonical refs and previously deliverable raw bytes when optional native metadata exceeds the projection budget. Try the complete native snapshot before partial omission labels. Exact saturated budgets retain primary evidence even when an omission marker cannot fit.
 
 - Clarify the actual user-facing `finalAssessment.answer` for Decision and ControllerIntent, including action/artifact outcomes and limitations; distinguish observation capture completeness from tool success. No change to answer decoding, admission or presentation. C20 is not implemented by this checkpoint.
 - Add optional native event metadata from ACP tool events and Codex completed command records to existing observation capture, live and historical projection; no inherited or synthesized status. Preserve existing source identity, provenance, original body and retrieval choice. Engineering/native verification pending.

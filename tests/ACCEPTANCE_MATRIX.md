@@ -608,3 +608,13 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 | C19.3 (partial), C19.4 | `tests/integration/controller-contract.test.js`: shared answer guidance exactly once in Decision, text Intent and MCP Intent; capture completeness distinct from tool success; unchanged Unicode/Markdown answer parsing | [CI #45471947421](https://github.com/apathoid/role-orchestrator/actions/runs/45471947421) at 7ba7bffc: integration and root npm PASS; full workflow FAIL at historical C17 static contract equality. Later candidate requires its own full CI. |
 
 | C19.1–C19.2 (candidate) | `c18n-live-evidence.test.js` optional current-event native metadata, invalid/oversized fields, canonical ref and first snapshot, historical list/fetch and live pagination; `acp-provider.test.js` actual SDK start/completion/status-less event and final admission | Added; NOT RUN on candidate. Additional local-store reopen, Codex command metadata, and 120-record directory byte/cost comparison; full exact-SHA CI remains open. |
+
+
+### C19-R — Corrective review
+
+| Check | Evidence |
+| --- | --- |
+| R1 Local State Store reopen | [CI #45473023553](https://github.com/apathoid/role-orchestrator/actions/runs/45473023553) FAIL at 9fc48206: `STATE_STORE_IN_USE`; explicit fixture-owned close before reopen, full durable metadata/body/provenance assertions retained. |
+| R2 optional metadata boundary | `c18n-live-evidence.test.js`: complete snapshot vs temporary omission overhead, absent/full/whole/partial/marker-only/exact bounds, prior markers, escaped/Unicode, pagination and raw fetch. `context-chunks.test.js`: raw chunk capacity unchanged at saturated budget. |
+| R3 positional identity | `context-chunks.test.js`: both canonical and positional fetch with large optional native metadata, exact/large budget, genuine long-ref fallback, original bytes. |
+| Full engineering | Correction candidate requires full exact-SHA CI; native UNVERIFIED. |
