@@ -2,6 +2,12 @@
 // remain authoritative; this is neither a Host schema nor a strategy template.
 export const decisionExample = '{"schemaVersion":1,"decisionId":"example-decision","operationId":"example-operation","contextCursor":0,"additions":[],"cancellations":[],"finalAssessment":{"author":"example-profile","overall":"complete","requirements":[],"observationRefs":[],"findingRefs":[],"unresolvedQuestions":[],"answer":"Example answer"}}';
 
+export const assessmentAnswerGuidance = `The final user-facing response is the exact finalAssessment.answer string, including requested Markdown, Unicode,
+or JSON text.
+Provide the requested result directly, including its applicable content and formatting requirements,
+rather than merely reporting that it has been prepared. When the request is for an action or an external artifact,
+provide the appropriate outcome, artifact references and material limitations.`;
+
 export const decisionContract = `Decision v1 — declared result of a completed Controller invocation, not a format for native thoughts, plans, tools, progress, Worker results or the user's answer.
 Required fields: {schemaVersion: 1, decisionId: fresh non-empty string, operationId: invocation.operationId,
   contextCursor: observed host:invocation-context.value.contextCursor (number), additions: Action[], cancellations: string[]}.
@@ -36,8 +42,7 @@ Decision.contextCursor is the observed Decision revision, not a history/page cur
 Assessment requirements each have their own observationRefs and findingRefs, even when empty; reason, if present,
 must be a non-empty string. Use actual observed refs; never invent tool/observation evidence.
 
-The final user-facing response is the exact finalAssessment.answer string, including requested Markdown, Unicode,
-or JSON text. A text adapter returns a single JSON object without Markdown fences as the final Controller message;
+${assessmentAnswerGuidance} A text adapter returns a single JSON object without Markdown fences as the final Controller message;
 the native structured result contract may be used where available. Ordinary tool results, files, intermediate
 messages and native subagents do not submit a Decision. Admission may reject proposed Host Actions; accepted work
 is not necessarily dispatched or completed. Host Catalog skills are distinct from provider-native tools/skills.

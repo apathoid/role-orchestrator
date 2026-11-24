@@ -1,7 +1,8 @@
 import { readInvocationPrompt } from '../fixtures/read-invocation-prompt.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { decisionContract, decisionExample } from '../../src/application/decision-instructions.js';
+import { assessmentAnswerGuidance, decisionContract, decisionExample } from '../../src/application/decision-instructions.js';
+import { controllerIntentContract } from '../../src/application/controller-intent-instructions.js';
 import { controllerInstructions } from '../../src/application/controller-context.js';
 import { decodeDecision } from '../../src/core/contracts.js';
 import { parseDecisionText, renderInvocationPrompt } from '../../src/adapters/invocation-prompt.js';
@@ -208,5 +209,27 @@ test('C17.1 Controller sections preserve every delivered field and literal delim
     assert.ok(!workerPrompt.startsWith('Return exactly one JSON object'));
     assert.equal(readInvocationPrompt(workerPrompt).instructions[0], 'worker instruction');
     assert.equal(workerPrompt.includes(decisionContract), false);
+  } finally { await api.close(); }
+});
+
+test('C19 answer guidance is delivered once in every Controller transport without changing answer text', async () => {
+  const {api, invocations, respondErrors} = setup();
+  try {
+    const state = await (await api.submit(request())).completion;
+    assert.equal(state.status, 'finished', respondErrors.map(String).join('\n'));
+    const invocation = invocations[0];
+    assert.match(assessmentAnswerGuidance, /Provide the requested result directly/);
+    assert.match(assessmentAnswerGuidance, /rather than merely reporting/);
+    assert.match(assessmentAnswerGuidance, /action or an external artifact/);
+    assert.equal(decisionContract.split(assessmentAnswerGuidance).length, 2);
+    assert.equal(controllerIntentContract.split(assessmentAnswerGuidance).length, 2);
+    for (const controllerDelivery of ['legacy', 'intent_text', 'intent_mcp']) {
+      const prompt = renderInvocationPrompt({...invocation, controllerDelivery}, 'fixture');
+      assert.equal(prompt.split(assessmentAnswerGuidance).length, 2);
+      assert.equal(prompt.split('Observation completeness describes capture completeness, not tool success or evidence sufficiency.').length, 2);
+      const answer = '  # Результат 🧪\n{"artifact":"a\\\\b"}\n  ';
+      const raw = JSON.stringify({finalAssessment:{answer}});
+      assert.deepEqual(parseDecisionText(raw), {output:{finalAssessment:{answer}}});
+    }
   } finally { await api.close(); }
 });

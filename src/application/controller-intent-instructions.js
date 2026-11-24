@@ -1,5 +1,7 @@
 // Model-facing model-owned ControllerIntent, not an alternative admission
 // schema. The full canonical Decision v1 decoder remains authoritative.
+import { assessmentAnswerGuidance } from './decision-instructions.js';
+
 export const controllerIntentExample = '{"finalAssessment":{"overall":"complete","answer":"Example answer"}}';
 
 export const controllerIntentContract = `ControllerIntent — the model-owned declaration for this Controller invocation. The Host binds
@@ -42,6 +44,8 @@ capabilities. Retrieve details when useful and independently evaluate relevance,
 sufficiency and uncertainty. Retrieval is optional; do not invent unavailable
 references. History cursor 0 starts a traversal; a returned {revision,index}
 continues that traversal, not a numeric offset.
+
+${assessmentAnswerGuidance}
 
 In text mode send ONLY one JSON ControllerIntent object as final Controller
 message (no Markdown fences). In MCP mode submit_decision({intent,replaces?})

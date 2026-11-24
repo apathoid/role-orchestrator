@@ -599,3 +599,10 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 **Unchanged regression contracts:** C18/C18R strong `submit_decision` request identity/last-wins/native finality, authoritative durable admission/restart, ordinary active request-ID dedup versus intentionally weak late replay, continued direct answer and optional discovery, native skills/terminal/subagents/permissions. Actual native LLM/provider comparison: **UNVERIFIED**.
 
 **C18N-R final code verification:** [CI #45268444761](https://github.com/apathoid/role-orchestrator/actions/runs/45268444761) SUCCESS on `0687a40a8cf2d2886ab1f722aa8e91663e9e43eb` (36/36 steps; 29 foundation, 78 core, 543 integration, 15 PTY; full root npm/ACP SDK, Nix package/release); exact current documentation-only HEAD still requires its own successful CI. Native OpenCode/Ornith/Zed tests UNVERIFIED.
+
+
+## C19 — Model-facing evidence and answer clarity (PARTIAL; UNVERIFIED)
+
+| Checkpoint | Regression | Engineering |
+| --- | --- | --- |
+| C19.3 (partial), C19.4 | `tests/integration/controller-contract.test.js`: shared answer guidance exactly once in Decision, text Intent and MCP Intent; capture completeness distinct from tool success; unchanged Unicode/Markdown answer parsing | Added; NOT RUN. Full C19 metadata, identity, projection and native checks remain open. |

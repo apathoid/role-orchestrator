@@ -4,6 +4,10 @@
 
 ## Unreleased — C12–C18 integration and delivery
 
+### C19 — Answer guidance (partial implementation; engineering/native UNVERIFIED)
+
+- Clarify the actual user-facing `finalAssessment.answer` for Decision and ControllerIntent, including action/artifact outcomes and limitations; distinguish observation capture completeness from tool success. No change to answer decoding, admission or presentation. Native metadata and C20 are not implemented by this checkpoint.
+
 ### C18N-R — External ToolPort and live discovery corrective fixes (engineering CI PASS at 0687a40; real native UNVERIFIED)
 
 - Remove the hidden cumulative 32-call limit from the **registered** External ToolPort while retaining input/output sizes, permissions, cancellation, late receipts and source provenance; >64 real external invocations are now covered by integration regression.

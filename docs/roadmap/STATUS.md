@@ -1,6 +1,6 @@
 # Role Orchestrator — оперативный статус
 
-## C19–C20 — Approved next implementation scope (PLANNED; not implemented)
+## C19–C20 — Approved implementation scope (PARTIAL; engineering UNVERIFIED)
 
 **Branch:** `feature/controller-intent-deferred-admission`. **Source/review baseline:** `2650d327b01eddd5ed2939263ef73b803381be11`, exact-head [CI #45269408086](https://github.com/apathoid/role-orchestrator/actions/runs/45269408086) SUCCESS (36/36 steps). Start [C19 — Model-facing Evidence & Answer Clarity](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md), then [C20 — Optional Invocation Deadline & Resource Defaults](C20_OPTIONAL_INVOCATION_DEADLINE_AND_RESOURCE_DEFAULTS.md) from the verified C19 checkpoint. Separate exact-SHA engineering checks. No master merge. Planning does not establish new implementation/native PASS.
 
@@ -10,7 +10,9 @@
 
 **C20 superseding decision:** operator rejected activity-based timeout design entirely. Defaults become `maxConcurrentInvocations: 5`, `maxInvocationsPerOperation: null`, `invocationTimeoutMs: null`. The existing finite hard invocation deadline remains configurable; no idle/tool/startup/interaction/recovery execution timers, no watchdog/liveness callback or activity tracking for cancellation. Preserve ActivityStream for presentation and provider-native policies. Remove hidden mandatory adapter/process time limits. Preserve authorization, cancellation, unknown effects and existing technical post-stop/transport cleanup. Special regressions: cancellation while ACP initializes without active session, logical cancellation with unconfirmed detachment and slot retained, indefinite user interaction, recovery abort, persisted finite limits and >40 invocations. Audit capture/output budgets and measure longer operations; no new arbitrary cap or storage subsystem. Details in C20 plan.
 
-**Next:** executor starts C19.0; C20.0 follows C19 exact-SHA engineering checkpoint. C19/C20 native acceptance UNVERIFIED until actual runs. Update normative shipped contracts only after implementation.
+**Partial implementation checkpoint:** C19.4 shared answer guidance in Decision and ControllerIntent references; C19.3 capture-completeness distinction in shared Controller instructions (no new metadata advertised yet). Added prompt-delivery regression in `tests/integration/controller-contract.test.js`. Source baseline `229464630cfc125f8377b0e4189182610e4eebab`; static source inspection only, local checkout unavailable (GitHub DNS), local Node 22, Nix unavailable. No executable RED/GREEN or exact-SHA CI result claimed. C19.0 inventory incomplete; C19.1–C19.2, remaining C19.3, C19.5–C19.6 open. C20 not started. The remote branch commit is a partial implementation, not the C19 engineering gate.
+
+**Next:** complete C19.0 RED and metadata/source/projection work, run full C19 regression and exact-SHA CI before C20.0. C19/C20 real native acceptance UNVERIFIED.
 
 ## C18N-R — Corrective Review Fixes (ENGINEERING VERIFIED at 0687a40; native UNVERIFIED)
 
