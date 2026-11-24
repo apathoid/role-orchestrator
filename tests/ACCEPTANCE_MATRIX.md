@@ -627,3 +627,5 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 ### C20-R corrective candidate
 
 RED [#45487892013](https://github.com/apathoid/role-orchestrator/actions/runs/45487892013) (79/84 contracts): exact result/provenance missing in five new expectations. Actual SDK tests in `acp-provider.test.js`: all four paths after overflow, message ID transition/same ID, anonymous first-call/duplicate/status/Worker, oversized result/identity exhaustion, Unicode, refusal/cancel/deadline/disconnect. `c20r-acp-capture-probe.mjs`: actual SDK 1/4/16 MiB tool events; exact result and independent bounds. Exact GREEN and native acceptance pending.
+
+C20-R intermediate CI #45488246167: 94/96 contracts; all four delivery paths and 12 new identity/failure tests pass. Update old oversize diagnostic reference and missing MCP declaration evidence expectation without changing failure/admission assertions. Added Controller retrieval and real StateStore reopen for an actual ACP Worker and exact rejected native result correlation/correction.

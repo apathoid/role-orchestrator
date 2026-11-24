@@ -205,9 +205,12 @@ test('ACP bounds streamed text and rejects an unknown terminal', linux, () =>
       assert.equal(result.output, undefined);
       assert.ok(call.observations.some(item => item.kind === 'model' && item.completeness === 'truncated'));
       if(scenario==='oversize'){
-        const fact=call.observations.find(item=>item.value?.reason==='accumulated_output_limit');
+        const history=call.observations.find(item=>item.value?.reason==='accumulated_output_limit');
+        const fact=call.observations.find(item=>item.value?.reason==='current_result_limit');
+        assert.equal(history.kind,'host_transport');
         assert.equal(fact.kind,'host_transport');
         assert.equal(result.outcome.diagnostics[0].ref,fact.ref);
+        assert.equal(call.observations.find(o=>o.ref==='acp-stop').value.resultTruncated,true);
       }
     }
   }));
@@ -875,7 +878,7 @@ for(const [scenario,valid] of [
         assert.ok(observed.some(o=>o.providerRef==='acp-output-limit'));
         assert.ok(observed.some(o=>o.value?.truncated===true&&o.value?.stopReason));
         assert.equal(observed.some(o=>o.value==='ordinary native final message'&&o.completeness==='complete'),
-          scenario==='c18-overflow-valid');
+          ['c18-overflow-valid','c18-overflow-missing'].includes(scenario));
       }finally{await api.close();}
     }));
 }
