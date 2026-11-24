@@ -190,6 +190,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let truncated = false;
     let omittedEvents = 0;
     let resultBytes = 0;
+    let lastCodeUnit = NaN;
     let resultTruncated = false;
     let historyMissedText = false;
     /** @type {string | undefined} */
@@ -234,6 +235,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     function resetResult() {
       output = '';
       resultBytes = 0;
+      lastCodeUnit = NaN;
       resultTruncated = false;
       historyMissedText = false;
       currentResultIssue = undefined;
@@ -245,7 +247,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       finalMessageRef = undefined;
       // A surrogate pair may straddle two native chunks. Count the UTF-8
       // bytes of the assembled text, without repeatedly encoding the prefix.
-      const high = output.charCodeAt(output.length - 1);
+      const high = lastCodeUnit;
       const low = text.charCodeAt(0);
       const joinedPair = high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
       const bytes = Buffer.byteLength(text) - (joinedPair ? 2 : 0);
@@ -254,12 +256,13 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if (!resultLimitReported) {
           resultLimitReported = true;
           resultLimitRef = publish({ref:'acp-result-limit',sourceId:invocation.attemptId,kind:'host_transport',
-            completeness:'complete',value:{reason:'current_result_limit',limitBytes:maxOutputBytes,acceptedBytes:resultBytes}});
+            completeness:'complete',value:{reason:'current_result_limit',limitBytes:maxOutputBytes,firstAcceptedBytes:resultBytes}});
         }
         currentResultIssue = resultLimitRef;
         return;
       }
       output += text;
+      lastCodeUnit = text.charCodeAt(text.length - 1);
       resultBytes += bytes;
     }
     /** @param {boolean} complete */

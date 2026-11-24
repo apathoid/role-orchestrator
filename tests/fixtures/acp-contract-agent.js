@@ -476,6 +476,9 @@ agent()
         await writeFile('c20r-ready','');
         await stop.promise;
         return {stopReason:'cancelled'};
+      }else if(mode==='many-chunks'){
+        await flood();
+        for(let i=0;i<50000;i++)await message('final','abcdefghij');
       }else if(mode.startsWith('scale-')){
         const mib=Number(mode.slice(6));
         await flood(Math.ceil(mib*1024*1024/8000));

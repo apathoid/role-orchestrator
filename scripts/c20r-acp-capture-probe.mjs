@@ -57,3 +57,24 @@ for(const mib of [1,4,16]){
 }
 console.log('C20R_ACP_CAPTURE '+JSON.stringify({node:process.version,
   scope:'actual ACP SDK subprocess; tool update JSON bytes excluding transport envelopes, sampled main-process heap with observer-retained payloads and Activity clone/serialization; not peak RSS or native-model latency',results}));
+
+await withOwnedRun('C20R-many-text-chunks',async cwd=>{
+  const provider=createAcpProvider({providerId:'acp',defaultCwd:cwd,
+    configuration:{adapter:'acp',launch:{command:process.execPath,args:[fixture,'c20r-many-chunks']}}});
+  const signal=new AbortController().signal,session=await provider.open(profile,signal),observations=[];
+  const start=performance.now();
+  try{
+    const result=await provider.invoke(session,{attemptId:'chunks',operationId:'chunks',actionId:'worker',kind:'delegate',
+      profile,objective:'fixture',instructions:[],context:[],userConstraints:[],authorityRef:'grant',
+      workspaceContext:{cwd},timeoutMs:null,signal},o=>{observations.push(o);return o.ref;});
+    assert.equal(result.outcome.terminal,'completed');
+    assert.equal(result.output,'abcdefghij'.repeat(50000));
+    assert.equal(observations.find(o=>o.ref===result.outputObservationRef)?.value,result.output);
+    const stop=observations.find(o=>o.ref==='acp-stop').value;
+    assert.equal(stop.resultBytes,500000);
+    assert.equal(stop.historyTruncated,true);
+    assert.equal(stop.resultTruncated,false);
+    console.log('C20R_ACP_CHUNKS '+JSON.stringify({chunks:50000,resultBytes:stop.resultBytes,wallMs:performance.now()-start,
+      scope:'actual ACP SDK fixture; no model latency'}));
+  }finally{await provider.close(session);}
+});
