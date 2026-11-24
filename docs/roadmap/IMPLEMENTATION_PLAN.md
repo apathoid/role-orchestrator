@@ -1,6 +1,6 @@
 # Активный план реализации и приёмки
 
-## C19 — Model-facing Evidence & Answer Clarity (IMPLEMENTATION / C19-R; engineering UNVERIFIED)
+## C19 — Model-facing Evidence & Answer Clarity (ENGINEERING VERIFIED at 876a33c7; native UNVERIFIED)
 
 [Detailed executable plan](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; source baseline `2650d327b01eddd5ed2939263ef73b803381be11`. Implement before C20, with separate exact-SHA acceptance.
 
@@ -14,7 +14,7 @@
 | C19.5 | Production-path ACP SDK, identity/duplicate/reopen/budget/answer/optional retrieval regressions |
 | C19.6 | Native model evaluation or UNVERIFIED, exact-SHA mandatory CI and documentation |
 
-## C20 — Optional Invocation Deadline & Resource Defaults (PLANNED; supersedes activity-based design)
+## C20 — Optional Invocation Deadline & Resource Defaults (IMPLEMENTATION CANDIDATE; engineering UNVERIFIED)
 
 [Detailed executable plan](C20_OPTIONAL_INVOCATION_DEADLINE_AND_RESOURCE_DEFAULTS.md). Begin from verified C19 implementation head. Approved defaults: `maxConcurrentInvocations=5`, `maxInvocationsPerOperation=null`, `invocationTimeoutMs=null`. All remain configurable. No additional execution timeouts, idle/tool/startup/interaction/recovery deadlines, watchdog or liveness tracking. Preserve post-stop technical teardown and actual provider policies; never infer detachment or replay unknown work.
 

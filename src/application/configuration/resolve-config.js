@@ -91,7 +91,6 @@ export function resolveConfiguration(user, projectText, launchOptions = {}, inst
     if (reduced !== undefined && ceiling !== null && (reduced === null || reduced > ceiling)) {
       return reject('project', '$.resources.' + key, 'no-increase');
     }
-
   }
 
   return { kind: 'accepted', value: {
