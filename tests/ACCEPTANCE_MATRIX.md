@@ -623,3 +623,7 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 ### C20 candidate (engineering UNVERIFIED)
 
 `c20-resource-lifetime.test.js`: default/null/finite authority precedence, 45 actual Controller invocations, snapshot roundtrip, no execution timer and cancellation; finite budget counterpart. `interactions.test.js`: inherited deadline only, indefinite user response and cancellation. `resume.test.js`: no recovery deadline, independent allowed work and cancellation. `acp-provider.test.js`: real SDK silent initialize/session.new with no deadline, owner cancellation and deadline attribution. Full C20.6/7 and native acceptance open.
+
+### C20-R corrective candidate
+
+RED [#45487892013](https://github.com/apathoid/role-orchestrator/actions/runs/45487892013) (79/84 contracts): exact result/provenance missing in five new expectations. Actual SDK tests in `acp-provider.test.js`: all four paths after overflow, message ID transition/same ID, anonymous first-call/duplicate/status/Worker, oversized result/identity exhaustion, Unicode, refusal/cancel/deadline/disconnect. `c20r-acp-capture-probe.mjs`: actual SDK 1/4/16 MiB tool events; exact result and independent bounds. Exact GREEN and native acceptance pending.

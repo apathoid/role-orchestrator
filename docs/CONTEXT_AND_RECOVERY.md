@@ -197,3 +197,7 @@ An optional `native` record on a provider-attributed Observation snapshots field
 ### C20 — Indefinite invocation and recovery (candidate)
 
 Status lookup may wait indefinitely when the provider does not reply; explicit user/shutdown cancellation races the existing lookup even if the provider ignores its signal. No independent recovery deadline, watchdog, automatic replay or new lifecycle owner. Persisted finite cumulative and concurrent limits cannot be enlarged by new defaults, even if a project preference narrows the new default. Explicit trusted user/launch reconfiguration retains the existing resume authority semantics. Existing unknown effects are not reclassified as none merely because the operator cancelled a lookup.
+
+### C20-R capture boundary (candidate)
+
+History omission does not prevent delivery of an independently complete ACP current message. Existing observations retain their identity and completeness, no reconstruction of omitted tools. The application `captureMaxBytes` bounds artifact capture by ContextPort; ordinary provider-result acceptance is not a cumulative history-byte gate. Context projections remain bounded and retrieval optional. An incomplete anonymous current message cannot be reconstructed from later suffixes; only an existing proven native boundary permits reset.

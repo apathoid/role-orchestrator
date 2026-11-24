@@ -14,7 +14,7 @@
 | C19.5 | Production-path ACP SDK, identity/duplicate/reopen/budget/answer/optional retrieval regressions |
 | C19.6 | Native model evaluation or UNVERIFIED, exact-SHA mandatory CI and documentation |
 
-## C20 — Optional Invocation Deadline & Resource Defaults (IMPLEMENTATION CANDIDATE; engineering UNVERIFIED)
+## C20 — Optional Invocation Deadline & Resource Defaults (baseline ENGINEERING VERIFIED at e092712f; C20-R pending)
 
 [Detailed executable plan](C20_OPTIONAL_INVOCATION_DEADLINE_AND_RESOURCE_DEFAULTS.md). Begin from verified C19 implementation head. Approved defaults: `maxConcurrentInvocations=5`, `maxInvocationsPerOperation=null`, `invocationTimeoutMs=null`. All remain configurable. No additional execution timeouts, idle/tool/startup/interaction/recovery deadlines, watchdog or liveness tracking. Preserve post-stop technical teardown and actual provider policies; never infer detachment or replay unknown work.
 
@@ -29,7 +29,11 @@
 | C20.6 | Deterministic lifetime/resource/finality regressions, >40 invocations, scale/capture measurements and residual limits |
 | C20.7 | Native acceptance or UNVERIFIED, full exact-SHA CI, normative docs/config/acceptance matrix and handoff |
 
-No new scheduler, semantic gates, execution phase/watchdog subsystem or replacement cumulative quota. Neither C19 nor C20 is implemented by this planning change.
+No new scheduler, semantic gates, execution phase/watchdog subsystem or replacement cumulative quota. C19 and baseline C20 have exact-SHA engineering checkpoints; C20-R closes the remaining ACP result-capture defect. Native acceptance remains UNVERIFIED.
+
+## C20-R — Independent ACP Result Capture (candidate)
+
+Separate bounded current result from retained history in the existing ACP adapter; preserve message identity, complete-result refs and C18R finality. Actual SDK RED/GREEN, identity/Unicode/overflow/cancellation tests, capture scale probe and exact-SHA engineering CI. No change to C20 defaults or lifecycle; native UNVERIFIED.
 
 ## C18N-R — Review corrections (ENGINEERING VERIFIED at 0687a40; native UNVERIFIED)
 

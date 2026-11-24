@@ -1,6 +1,10 @@
 # Changelog
 
-### C20 — Optional invocation deadline and resource defaults (candidate; engineering UNVERIFIED)
+### C20-R — Independent ACP result capture (candidate; engineering UNVERIFIED)
+
+- Continue bounded current message capture after native history overflow; preserve message identity, exact output correlation, independent truncation diagnostics and native finality. No new execution deadline, resource default or store.
+
+### C20 — Optional invocation deadline and resource defaults (baseline engineering PASS at e092712f; native UNVERIFIED)
 
 - Default concurrency 5, cumulative invocation limit and hard invocation deadline disabled (`null`). Preserve finite trusted limits and optional single owner timer; no independent adapter, interaction or recovery execution timers. Cancellation during ACP setup and post-stop cleanup retain actual resource ownership.
 

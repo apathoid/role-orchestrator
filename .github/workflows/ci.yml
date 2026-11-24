@@ -65,6 +65,8 @@ jobs:
         run: |
           grep -RnE 'setTimeout|AbortSignal\.timeout|setInterval|requestTimeout|headersTimeout|schedule\(' src
           nix develop --no-update-lock-file --command node --expose-gc scripts/c20-scale-probe.mjs
+      - name: C20-R independent ACP result capture scale (actual SDK, GC)
+        run: nix develop --no-update-lock-file --command node --expose-gc scripts/c20r-acp-capture-probe.mjs
       - name: Actual Linux PTY transport fixture (not native LLM)
         run: |
           command -v script
