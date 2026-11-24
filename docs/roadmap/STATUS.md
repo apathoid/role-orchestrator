@@ -14,6 +14,8 @@
 
 **Second implementation candidate:** additive Observation.native, ACP current tool events and Codex completed command reports; bounded live/historical projection, preservation of original evidence/ref and prior metadata, no inherited fields, optional capture omissions. Added direct/production-path regression assertions, actual ACP SDK scenario and historical access fixture. No claim of executed RED, measured projection costs, full C19 closure or native PASS. Follow-up: C17 benchmark uses the same current contract for both renderers (the original framing/parser/Worker invariants remain asserted); historical contract byte size is separately reported. Added local-store reopen, Codex command metadata and synthetic directory-cost tests. Remaining: validate exact-SHA CI and address failures, broader scale/budget and cross-provider coverage, C19.0/5/6 closure. C20 remains unstarted pending the separate C19 engineering gate.
 
+**CI correction:** exact-SHA [CI #45472721002](https://github.com/apathoid/role-orchestrator/actions/runs/45472721002) on `8efb7b17519aa348257fba8415b3a2c60954431e` failed at checkJs (TS7023/TS7022: recursive `boundContextItem` without explicit return annotation); Node 24 and locked npm install passed, subsequent regression/Nix/package steps skipped. Added the explicit `ContextItem | undefined` return annotation without changing behavior. Recheck the new exact SHA; engineering remains UNVERIFIED.
+
 **Next:** complete C19 regression and exact-SHA engineering acceptance, then C20.0. C19/C20 real native acceptance UNVERIFIED.
 
 ## C18N-R — Corrective Review Fixes (ENGINEERING VERIFIED at 0687a40; native UNVERIFIED)

@@ -100,7 +100,7 @@ function boundHistoryPage(item, maxBytes) {
   return jsonBytes(marker) <= maxBytes ? marker : undefined;
 }
 
-/** @param {ContextItem} item @param {number} maxBytes @param {number} [excerptLimit] */
+/** @param {ContextItem} item @param {number} maxBytes @param {number} [excerptLimit] @returns {ContextItem | undefined} */
 export function boundContextItem(item, maxBytes, excerptLimit = maxExcerptBytes) {
   if (maxBytes <= 0) return undefined;
   if (!(typeof item.value === 'string' && item.value.length > maxBytes) && jsonBytes(item) <= maxBytes) return item;
