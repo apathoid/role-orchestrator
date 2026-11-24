@@ -1,6 +1,6 @@
 import { admitFindings, eventFindings, evidenceRefs, findingRef, findings, recordObservationRefs } from './finding.js';
 import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
-import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
+import { arrayOf, count, decode, id, invalid, measurement, nullable, oneOf, optional, record, text } from './decode.js';
 import { contextItem } from './observation.js';
 import { classifyOutcomeReport, resolveOutcome, sameRecord, validRejectedResult } from './operation.js';
 
@@ -45,7 +45,7 @@ const waiting = tagged('kind', {
 });
 /** @type {Decoder<number>} */
 const limit = (input, path) => count(input, path) || invalid(path, 'a positive safe integer');
-const limits = record({ maxInvocations: limit, maxConcurrentInvocations: limit });
+const limits = record({ maxInvocations: nullable(limit), maxConcurrentInvocations: limit });
 const trusted = record({ authorityRef: id, configurationRef: id, limits });
 const reasoning = tagged('mode', {
   native: record({mode: oneOf('native')}),

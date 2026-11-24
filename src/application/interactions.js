@@ -9,16 +9,13 @@ import { decode, jsonValue } from '../core/decode.js';
 /**
  * Ephemeral request/reply correlation. Not a permission broker or an execution
  * lifecycle. A configured handler OR manual owner answers, not observers.
- * @param {{ids: IdFactory, timeoutMs?: number,
+ * @param {{ids: IdFactory,
  *   available?: (operationId: string, kind: InteractionRequest['kind']) => boolean,
  *   onRequest?: (request: PendingInteraction) => void | Promise<void>,
  *   handleRequest?: (request: PendingInteraction, signal: AbortSignal) => Promise<InteractionResult>}} options
  */
-export function createInteractionBroker({ ids, timeoutMs, available = () => true, onRequest, handleRequest }) {
+export function createInteractionBroker({ ids, available = () => true, onRequest, handleRequest }) {
   if (onRequest && handleRequest) throw new TypeError('Choose one interaction answer owner');
-  if (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647)) {
-    throw new RangeError('Invalid interaction timeout');
-  }
   /** @type {Map<string, Entry>} */
   const pending = new Map();
   /** @type {Map<string, Entry>} */
@@ -84,24 +81,24 @@ export function createInteractionBroker({ ids, timeoutMs, available = () => true
         const data = { ...input, payload: parsed.value };
         const prior = deliveries.get(input.providerRequestId);
         if (prior) return sameRecord(prior.input, data) ? prior.result : { kind: 'invalid' };
-        const remaining = Math.min(scope.deadline - scope.clock.monotonicNow(), timeoutMs ?? Infinity);
-        if (remaining <= 0) return { kind: 'timed_out' };
+        const remaining = scope.deadline === null ? null : scope.deadline - scope.clock.monotonicNow();
+        if (remaining !== null && remaining <= 0) return { kind: 'timed_out' };
         const requestId = ids.newId();
         if (pending.has(requestId) || receipts.has(requestId)) return { kind: 'invalid' };
         const request = { ...data, requestId, operationId: scope.operationId, attemptId: scope.attemptId,
-          profileId: scope.profileId, deadlineAt: scope.clock.now() + remaining };
+          profileId: scope.profileId, deadlineAt: remaining === null ? null : scope.clock.now() + remaining };
         /** @type {PromiseWithResolvers<InteractionResult>} */
         const { promise, resolve } = Promise.withResolvers();
         deliveries.set(input.providerRequestId, { input: data, result: promise });
         owned.add(requestId);
         const delivery = new AbortController();
-        let clear = () => {};
-        const expires = scope.clock.monotonicNow() + remaining;
-        const alive = () => active() && !requestSignal?.aborted && scope.clock.monotonicNow() < expires;
+        // Only the invocation owner schedules a hard deadline. The broker
+        // checks that same absolute bound, and settles on its abort signal.
+        const alive = () => active() && !requestSignal?.aborted &&
+          (scope.deadline === null || scope.clock.monotonicNow() < scope.deadline);
         /** @type {Entry} */
         const entry = { request, manual: !!onRequest, active: () => receipts.has(requestId) ? active() : alive(), settle(result) {
           if (!pending.delete(requestId)) return;
-          clear();
           requestSignal?.removeEventListener('abort', interrupt);
           delivery.abort();
           if (result.kind === 'answered' && entry.manual) receipts.set(requestId, entry);
@@ -111,8 +108,6 @@ export function createInteractionBroker({ ids, timeoutMs, available = () => true
         function interrupt() { entry.settle(stopped()); }
         pending.set(requestId, entry);
         requestSignal?.addEventListener('abort', interrupt, { once: true });
-        clear = scope.schedule(Math.ceil(remaining), () => entry.settle({ kind: 'timed_out' }));
-        if (!pending.has(requestId)) clear();
         if (!alive()) entry.settle(active() && !requestSignal?.aborted ? { kind: 'timed_out' } : stopped());
         else {
           report('interaction.requested', 'AWAITING_TRUSTED_REPLY');

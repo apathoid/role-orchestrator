@@ -155,7 +155,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     const owner = startCliProcess({
       command: launch.command, args: launch.args ?? [], options: { cwd, env, shell: false },
     }, {
-      timeoutMs: invocation.timeoutMs,
+      timeoutMs: null,
       signal: new AbortController().signal,
       expectedStdoutCloseError: intentionalClose,
       onOutput(stream, chunk) { if (stream === 'stderr') stderr.append(chunk); },
@@ -309,11 +309,18 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     /** @type {NodeJS.Timeout | undefined} */
     let cancelDeadline;
     const cancellation = addAbortListener(signal, () => {
-      if (!active || !sessionId) return;
+      if (!active || !sessionId) {
+        // Setup and post-end-turn finalization may have an owned process but
+        // no active native prompt. Do not rely on a child execution timer.
+        closeConnection('cancellation_deadline');
+        owner.cancel();
+        return;
+      }
       void connection?.agent.notify(a.session.cancel, { sessionId }).catch(() => {});
       cancelDeadline = setTimeout(() => { closeConnection('cancellation_deadline'); owner.cancel(); }, closeGraceMs);
     });
     async function exchange() {
+      signal.throwIfAborted();
       if (!owner.pipes) return resultFor(invocation, 'PROVIDER_START_FAILED');
       const app = client()
         .onNotification(m.session.update, ({ params }) => {
@@ -576,7 +583,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       await owner.close();
     }
     const processResult = await owner.finished;
-    if (processResult.reason === 'timed_out' && result.outcome.terminal !== 'completed' && !signal.aborted) {
+    if (signal.reason === 'deadline' && result.outcome.terminal !== 'completed') {
       result.outcome.diagnostics = [{ code: 'DEADLINE_EXCEEDED', ref: undefined }];
     }
     flushMessage(false);

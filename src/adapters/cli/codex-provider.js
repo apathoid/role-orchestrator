@@ -108,7 +108,7 @@ export function createCodexProvider({ providerId, configuration, environment = p
         }, environment);
         const sendStarted=performance.now();
         reportPrompt(promptReporter,request,'launch_attempted',{transport:'codex-cli'});
-        const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal,
+        const process = startCodexProcess(launch, { timeoutMs: null, signal: request.signal,
           onFrame: activity ? event => {
             if (request.signal.aborted || !['item.started', 'item.updated', 'item.completed'].includes(event.type)) return;
             const item = event.item;

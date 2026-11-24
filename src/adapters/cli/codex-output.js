@@ -117,7 +117,7 @@ function isEnvelope(value) {
 /**
  * Collect bounded transport output for one owned Codex process.
  * @param {ReturnType<typeof import('./codex-launch.js').prepareCodexLaunch>} launch
- * @param {{timeoutMs: number, signal: AbortSignal, limits?: OutputLimits, onFrame?: (event: CodexEnvelope, line: number) => void}} options
+ * @param {{timeoutMs: number | null, signal: AbortSignal, limits?: OutputLimits, onFrame?: (event: CodexEnvelope, line: number) => void}} options
  */
 export function startCodexProcess(launch, { timeoutMs, signal, limits, onFrame }) {
   const output = createCodexOutputCapture(limits, onFrame);

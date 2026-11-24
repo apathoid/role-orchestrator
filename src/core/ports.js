@@ -18,7 +18,7 @@
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
- *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
+ *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number | null,
  *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, evidenceAccess?: LiveEvidencePort, preflightIntent?: ControllerPreflight, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>,
  *   controllerDelivery?: 'intent_text' | 'intent_mcp', controllerDecisionToolName?: string}} Invocation
  * @typedef {{kind: 'reasoning' | 'user_message' | 'tool' | 'plan' | 'finding', payload: unknown,
@@ -137,15 +137,14 @@
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>
  *   'ALLOWED' | 'PERMISSION_DENIED' | 'REVOKED'}} AuthorityPort
  * @typedef {{kind: 'input', nativeKind: string, providerRequestId: string, payload: unknown}} InteractionRequest
- * @typedef {InteractionRequest & {requestId: string, operationId: string, attemptId: string, profileId: string, deadlineAt: number}} PendingInteraction
+ * @typedef {InteractionRequest & {requestId: string, operationId: string, attemptId: string, profileId: string, deadlineAt: number | null}} PendingInteraction
  * @typedef {{kind: 'answered', payload: unknown} | {kind: 'unavailable' | 'cancelled' | 'timed_out' | 'invalid'} |
  *   {kind: 'error', code: number, message: string, data?: unknown}} InteractionResult
  * @typedef {{requestId: string, operationId: string, attemptId: string, providerRequestId: string, payload: unknown}} InteractionReply
  * @typedef {{supports: (kind: InteractionRequest['kind']) => boolean,
  *   request: (input: InteractionRequest, requestSignal?: AbortSignal) => Promise<InteractionResult>, close: () => void}} AttemptInteractions
  * @typedef {{bind: (scope: {operationId: string, attemptId: string, profileId: string, signal: AbortSignal,
- *   isActive: () => boolean, deadline: number, clock: import('./diagnostics.js').Clock,
- *   schedule: (timeoutMs: number, expire: () => void) => () => void,
+ *   isActive: () => boolean, deadline: number | null, clock: import('./diagnostics.js').Clock,
  *   report?: (event: string, reason: string) => void}) => AttemptInteractions}} InteractionPort
  * @typedef {{id: string, kind: 'allow' | 'deny', label?: string, scope?: 'once' | 'always'}} PermissionOption
  * @typedef {{source: 'provider_reported', title?: string, kind?: string, nativeToolCallId?: string,

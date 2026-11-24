@@ -35,7 +35,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {AttemptInteractions, AttemptPermissions, AuthorityPort, Catalog, ContextShare, InteractionPort, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
- * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number}} Execution
+ * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null}} Execution
  * @typedef {(workspace: Operation['request']['workspaceContext']) => Promise<Execution>} ResolveExecution
  * @typedef {{
  *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
@@ -95,9 +95,9 @@ export function createOrchestrator(deps) {
     diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry, tools,
     providerFor = selected => !deps.resolveExecution && selected.providerId === deps.profile.providerId ? deps.provider : undefined,
   } = deps;
-  if (!deps.resolveExecution && (!Number.isSafeInteger(deps.invocationTimeoutMs) || deps.invocationTimeoutMs < 1 ||
+  if (!deps.resolveExecution && deps.invocationTimeoutMs !== null && (!Number.isSafeInteger(deps.invocationTimeoutMs) || deps.invocationTimeoutMs < 1 ||
       deps.invocationTimeoutMs > 2_147_483_647)) {
-    throw new RangeError('invocationTimeoutMs must be an integer from 1 to 2147483647');
+    throw new RangeError('invocationTimeoutMs must be null or an integer from 1 to 2147483647');
   }
   const activity = createActivityStream();
   const suppliedBudgets = deps.context ?? {};
@@ -131,8 +131,13 @@ export function createOrchestrator(deps) {
   const reservationQueue = [];
   /** @type {ResolveExecution} */
   const resolveExecution = deps.resolveExecution ?? (async () => /** @type {Execution} */ (deps));
-  /** @param {Execution} execution */
-  const trusted = execution => ({ authorityRef: authority.reference, configurationRef, limits: execution.limits });
+  /** @param {Execution} execution @param {Operation} state */
+  const trusted = (execution, state) => ({ authorityRef: authority.reference, configurationRef, limits: {
+    ...execution.limits,
+    // Disabled cumulative defaults do not retroactively widen a persisted
+    // finite budget. Explicit finite trusted configuration remains effective.
+    maxInvocations: execution.limits.maxInvocations === null ? state.limits.maxInvocations : execution.limits.maxInvocations,
+  } });
 
   /** @param {string} attemptId */
   function releaseAttempt(attemptId) {
@@ -375,7 +380,7 @@ export function createOrchestrator(deps) {
             !(controllerFailureWaiting(state) && hasRecoverableWorkers(state)))) return activeSubmission(state);
         const execution = await resolveExecution(workspaceContextFor(state));
         requireRunning();
-        const next = await transition(state, { kind: 'operation.recovered', trusted: trusted(execution) });
+        const next = await transition(state, { kind: 'operation.recovered', trusted: trusted(execution, state) });
         notifyAccepted(accepted, operationId);
         return launch(next, execution, true);
       });
@@ -406,7 +411,7 @@ export function createOrchestrator(deps) {
       }
       const execution = await resolveExecution(follow.workspaceContext ?? workspaceContextFor(state));
       requireRunning();
-      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution) });
+      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution, state) });
       notifyAccepted(accepted, operationId);
       return launch(next, execution, true);
     });
@@ -485,7 +490,7 @@ export function createOrchestrator(deps) {
       if (recoverWorkers && !dispatched && !attempt.cancellation &&
           attempt.actionId !== attempt.attemptId && acceptedWorkerAllowed(current, attempt.actionId) &&
           recoverableWorkers(current).some(action => action.actionId === attempt.actionId) &&
-          resourceSnapshot(current).charged <= current.limits.maxInvocations) continue;
+          (current.limits.maxInvocations === null || resourceSnapshot(current).charged <= current.limits.maxInvocations)) continue;
       current = await transition(current, {
         kind: 'attempt.outcome', dispatchCertainty: dispatched ? 'unknown' : 'not_sent',
         outcome: failedOutcome(attempt.attemptId, attempt.cancellation ? 'CANCELLED' : 'PROVIDER_DISCONNECTED', dispatched),
@@ -495,7 +500,7 @@ export function createOrchestrator(deps) {
   }
 
   /** @param {string} operationId @param {AbortSignal} stop @param {Execution} execution */
-  async function recoverAttempts(operationId, stop, { invocationTimeoutMs, catalog }) {
+  async function recoverAttempts(operationId, stop, { catalog }) {
     const state = await serialize(async () => {
       const current = await inspect(operationId);
       return stop.aborted ? current : settleOrphans(current, true);
@@ -504,9 +509,7 @@ export function createOrchestrator(deps) {
     const lookups = new Map();
     const unknown = state.attempts.filter(attempt => attempt.outcome?.terminal === 'unknown');
     if (!unknown.length || stop.aborted) return lookups;
-    const local = new AbortController();
-    const signal = AbortSignal.any([local.signal, stop]);
-    const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
+    const signal = AbortSignal.any([stop, shuttingDown.signal]);
     /** @type {PromiseWithResolvers<Lookup>} */
     const interrupted = Promise.withResolvers();
     const abort = () => interrupted.resolve({ status: 'unavailable' });
@@ -541,7 +544,6 @@ export function createOrchestrator(deps) {
       }
     } finally {
       signal.removeEventListener('abort', abort);
-      clear();
     }
     return lookups;
   }
@@ -592,10 +594,10 @@ export function createOrchestrator(deps) {
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {Action} [action]
    */
   async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs }, correction, handoff, executor = provider, lookups, action) {
-    const deadline = interactions ? clock.monotonicNow() + invocationTimeoutMs : 0;
+    const deadline = invocationTimeoutMs === null ? null : clock.monotonicNow() + invocationTimeoutMs;
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal, shuttingDown.signal]);
-    const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
+    const clear = invocationTimeoutMs === null ? () => {} : schedule(invocationTimeoutMs, () => local.abort('deadline'));
     /** @type {Promise<ProviderSession> | undefined} */
     let opening;
     /** @type {ProviderSession | undefined} */
@@ -965,7 +967,7 @@ export function createOrchestrator(deps) {
         const isActive = () => contextOpen && !signal.aborted &&
           authority.authorize(dispatched.authorityRef, selectedProfile.profileId) === 'ALLOWED';
         boundInteractions = interactions?.bind({ operationId: state.operationId, attemptId, profileId: selectedProfile.profileId,
-          signal, isActive, deadline, clock, schedule, report: (event, reason) => trace(dispatched, event, reason, attemptId) });
+          signal, isActive, deadline, clock, report: (event, reason) => trace(dispatched, event, reason, attemptId) });
         const reportActivity = activity.bind({ operationId: state.operationId, attemptId,
           profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, actionId:context.actionId, invocationKind:context.kind }, () => acceptingActivity && isActive());
         const contextAccess = bindContextAccess({
@@ -1115,7 +1117,7 @@ export function createOrchestrator(deps) {
       }
     } catch (error) {
       if (error instanceof OrchestrationError && ['STORE_CONFLICT', 'STORE_UNAVAILABLE'].includes(error.code)) throw error;
-      const code = denied ?? (stop.aborted || shuttingDown.signal.aborted ? 'CANCELLED' : local.signal.aborted ? 'DEADLINE_EXCEEDED'
+      const code = denied ?? (signal.reason === 'deadline' ? 'DEADLINE_EXCEEDED' : signal.aborted ? 'CANCELLED'
         : mayHaveSent ? 'PROVIDER_DISCONNECTED' : 'PROVIDER_START_FAILED');
       certainty = mayHaveSent ? 'unknown' : 'not_sent';
       outcome = failedOutcome(attemptId, code, mayHaveSent);
@@ -1146,8 +1148,11 @@ export function createOrchestrator(deps) {
         }).catch(() => { cleanupFailed=true; trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId); });
         /** @type {{promise: Promise<void>, resolve: () => void}} */
         const cleanupDeadline = Promise.withResolvers();
-        const clearCleanup = schedule(invocationTimeoutMs, () => {
-          trace(state, 'provider.cleanup', 'DEADLINE_EXCEEDED', attemptId);
+        // Technical post-stop detachment grace only; no independent execution
+        // deadline or renewed invocation budget. ACP close (300 ms) and owned
+        // process post-exit drain (1000 ms) fit within this local wait.
+        const clearCleanup = schedule(2_000, () => {
+          trace(state, 'provider.cleanup', 'CLEANUP_NOT_CONFIRMED', attemptId);
           cleanupDeadline.resolve();
         });
         await Promise.race([detached, cleanupDeadline.promise]);
@@ -1155,7 +1160,7 @@ export function createOrchestrator(deps) {
         if (!closed) {
           undetached.add(attemptId);
           observations.push(observation({ref:'host:cleanup-pending:'+attemptId,completeness:'complete',
-            value:{status:'not_confirmed',reason:cleanupFailed?'close_failed':'deadline',slotRetained:true}},
+            value:{status:'not_confirmed',reason:cleanupFailed?'close_failed':'cleanup_grace_elapsed',slotRetained:true}},
             {kind:'host_transport',sourceId:attemptId,receivedAt:clock.now()}));
         }
       }
@@ -1180,7 +1185,7 @@ export function createOrchestrator(deps) {
     if (existing && (existing.status !== 'reserved' || liveAttempts.has(existing.attemptId))) return {kind:'known'};
     if (existing?.cancellation) return {kind:'denied'};
     const resources = resourceSnapshot(state);
-    if (existing ? resources.charged > state.limits.maxInvocations : resources.remaining <= 0) return {kind:'resource',resource:'invocation_budget'};
+    if (state.limits.maxInvocations !== null && (existing ? resources.charged > state.limits.maxInvocations : resources.remaining === 0)) return {kind:'resource',resource:'invocation_budget'};
     const active = new Set([...undetached, ...liveAttempts]);
     const detachedPending = state.attempts.filter(attempt =>
       attempt.status === 'terminal' && undetached.has(attempt.attemptId)).length;

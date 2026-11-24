@@ -18,7 +18,7 @@
  *   {status: 'reserved' | 'dispatched', outcome?: never, endedAt?: never} |
  *   {status: 'terminal', outcome: Outcome, endedAt: number}
  * )} Attempt
- * @typedef {{maxInvocations: number, maxConcurrentInvocations: number}} Limits
+ * @typedef {{maxInvocations: number | null, maxConcurrentInvocations: number}} Limits
  * @typedef {{code: ReasonCode, operationId: string, actionId?: string, attemptId?: string,
  *   dispatchCertainty?: DispatchCertainty, effect?: Outcome['effect'],
  *   profileId?: string, reasoningLevel?: string, availableLevels?: readonly string[], reasoningCause?: string, resource?: string}} Reason
@@ -51,8 +51,9 @@
 
 /** @param {string} operationId @param {Request} request @param {string} authorityRef @param {Limits} limits @param {number} [acceptedAt] @returns {Operation} */
 export function createOperation(operationId, request, authorityRef, limits, acceptedAt) {
-  for (const value of [limits.maxInvocations, limits.maxConcurrentInvocations]) {
-    if (!Number.isSafeInteger(value) || value < 1) throw new RangeError('Operation limits must be positive safe integers');
+  if (!Number.isSafeInteger(limits.maxConcurrentInvocations) || limits.maxConcurrentInvocations < 1 ||
+      (limits.maxInvocations !== null && (!Number.isSafeInteger(limits.maxInvocations) || limits.maxInvocations < 1))) {
+    throw new RangeError('Operation limits must be positive safe integers (cumulative limit may be null)');
   }
   return {
     schemaVersion: 1, operationId, request, authorityRef, limits: { ...limits },
@@ -92,7 +93,7 @@ export function resourceSnapshot(state) {
     return { known, unknown };
   }
   return {
-    active, charged, remaining: Math.max(0, state.limits.maxInvocations - charged),
+    active, charged, remaining: state.limits.maxInvocations === null ? null : Math.max(0, state.limits.maxInvocations - charged),
     usage: { inputTokens: total('inputTokens'), outputTokens: total('outputTokens'), cost: total('cost') },
   };
 }
@@ -348,7 +349,7 @@ export function applyEvent(state, event) {
         return reject(state.status === 'cancelled' ? 'CANCELLED' : 'INVALID_PROPOSAL');
       }
       const resources = resourceSnapshot(state);
-      if (resources.remaining <= 0 || resources.active >= state.limits.maxConcurrentInvocations) {
+      if (resources.remaining === 0 || resources.active >= state.limits.maxConcurrentInvocations) {
         return reject('RESOURCE_LIMIT');
       }
       return apply({ attempts: [...state.attempts, {

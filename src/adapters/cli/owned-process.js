@@ -16,13 +16,13 @@ const drainAfterExitMs = 1_000;
  * and receive raw bytes. Transport termination carries no model verdict.
  *
  * @param {ProcessLaunch} launch
- * @param {{timeoutMs: number, signal: AbortSignal, onOutput: (stream: OutputStream, chunk: Buffer) => void,
+ * @param {{timeoutMs: number | null, signal: AbortSignal, onOutput: (stream: OutputStream, chunk: Buffer) => void,
  *   expectedStdoutCloseError?: Error}} options
  * @returns {OwnedProcess & {pipes?: import('node:child_process').ChildProcessWithoutNullStreams}}
  */
 export function startCliProcess(launch, { timeoutMs, signal, onOutput, expectedStdoutCloseError }) {
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimerDelayMs) {
-    throw new RangeError('timeoutMs must be an integer from 1 to 2147483647');
+  if (timeoutMs !== null && (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimerDelayMs)) {
+    throw new RangeError('timeoutMs must be null or an integer from 1 to 2147483647');
   }
   if (signal.aborted) return withoutProcess('cancelled', {});
   if (process.platform !== 'linux') return withoutProcess('start_failed', { start: 'UNSUPPORTED_PLATFORM' });
@@ -126,7 +126,7 @@ export function startCliProcess(launch, { timeoutMs, signal, onOutput, expectedS
   });
   const abortSubscription = addAbortListener(signal, cancel);
   if (signal.aborted) cancel();
-  else {
+  else if (timeoutMs !== null) {
     const remaining = Math.ceil(timeoutMs - (performance.now() - startedAt));
     if (remaining <= 0) stop('timed_out');
     else deadline = setTimeout(() => stop('timed_out'), remaining);
