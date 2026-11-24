@@ -184,10 +184,24 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let finalMessageRef;
     /** @type {string | null | undefined} */
     let messageId;
+    // History capture and current native result have independent byte bounds.
+    // Both retain the existing 1 MiB ceiling; neither is a duration/count limit.
     let outputBytes = 0;
     let truncated = false;
+    let omittedEvents = 0;
+    let resultBytes = 0;
+    let resultTruncated = false;
+    let historyMissedText = false;
     /** @type {string | undefined} */
-    let limitRef;
+    let resultLimitRef;
+    /** @type {string | undefined} */
+    let boundaryLimitRef;
+    /** @type {string | undefined} */
+    let currentResultIssue;
+    // Reuse the permission/identity map. After history fills, retain only IDs
+    // within a byte bound, not tool payloads or an unbounded duplicate registry.
+    let toolIdentityBytes = 0;
+    let toolIdentityIncomplete = false;
     let line = 0;
     const updates = new Set();
     /** @type {Map<string, ToolCallUpdate>} */
@@ -208,11 +222,52 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     }
     function flushMessage(complete = true) {
       if (!pendingText) return;
-      const completedMessage = pendingText === output && complete;
+      const completedMessage = pendingText === output && complete && !resultTruncated && !historyMissedText;
       const ref = publish({ ref: 'acp-message-' + ++line, sourceId: messageId ?? sessionId ?? invocation.attemptId, kind: 'model',
         completeness: complete ? 'complete' : 'truncated', value: pendingText });
       finalMessageRef = completedMessage ? ref : undefined;
       pendingText = '';
+    }
+    /** Reset only at a boundary already defined by the native contract. */
+    function resetResult() {
+      output = '';
+      resultBytes = 0;
+      resultTruncated = false;
+      historyMissedText = false;
+      currentResultIssue = undefined;
+      finalMessageRef = undefined;
+    }
+    /** @param {string} text */
+    function appendResult(text) {
+      if (resultTruncated || !text) return;
+      // A surrogate pair may straddle two native chunks. Count the UTF-8
+      // bytes of the assembled text, without repeatedly encoding the prefix.
+      const high = output.charCodeAt(output.length - 1);
+      const low = text.charCodeAt(0);
+      const joinedPair = high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
+      const bytes = Buffer.byteLength(text) - (joinedPair ? 2 : 0);
+      if (resultBytes + bytes > maxOutputBytes) {
+        resultTruncated = true;
+        resultLimitRef ??= publish({ref:'acp-result-limit',sourceId:invocation.attemptId,kind:'host_transport',
+          completeness:'complete',value:{reason:'current_result_limit',limitBytes:maxOutputBytes,acceptedBytes:resultBytes}});
+        currentResultIssue = resultLimitRef;
+        return;
+      }
+      output += text;
+      resultBytes += bytes;
+    }
+    /** @param {boolean} complete */
+    function finishMessage(complete) {
+      flushMessage(complete && !historyMissedText && !resultTruncated);
+      // Only when history lost part of this message, retain its independently
+      // captured representation. Ordinary fragmented results keep the existing
+      // application declared-value fallback; do not duplicate complete history.
+      if (historyMissedText && output && !finalMessageRef) {
+        const ref = publish({ref:'acp-current-result',sourceId:messageId ?? sessionId ?? invocation.attemptId,
+          kind:'model',completeness:complete && !resultTruncated?'complete':'truncated',value:output});
+        if (complete && !resultTruncated) finalMessageRef = ref;
+      }
+      historyMissedText = false;
     }
     /** @param {SessionUpdate} update */
     function receive(update) {
@@ -230,40 +285,66 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       }
       if (update.sessionUpdate !== 'agent_message_chunk' &&
           update.sessionUpdate !== 'tool_call' && update.sessionUpdate !== 'tool_call_update') return;
-      const encoded = JSON.stringify(update);
-      if (truncated) return;
-      if (outputBytes + Buffer.byteLength(encoded) > maxOutputBytes) {
-        truncated = true;
-        limitRef = publish({ref:'acp-output-limit',sourceId:invocation.attemptId,kind:'host_transport',
-          completeness:'complete',value:{reason:'accumulated_output_limit',limitBytes:maxOutputBytes,acceptedBytes:outputBytes}});
-        return;
+      // Once history is full, only protocol identity and current text are
+      // consumed; do not serialize or retain further tool payloads.
+      const encoded = truncated ? undefined : JSON.stringify(update);
+      let retained = false;
+      if (encoded !== undefined) {
+        const bytes = Buffer.byteLength(encoded);
+        if (outputBytes + bytes <= maxOutputBytes) {
+          outputBytes += bytes;
+          retained = true;
+        } else {
+          truncated = true;
+          publish({ref:'acp-output-limit',sourceId:invocation.attemptId,kind:'host_transport',
+            completeness:'complete',value:{reason:'accumulated_output_limit',limitBytes:maxOutputBytes,acceptedBytes:outputBytes}});
+        }
       }
-      outputBytes += Buffer.byteLength(encoded);
+      if (!retained) omittedEvents++;
       if (update.sessionUpdate === 'agent_message_chunk') {
         if (update.content.type === 'text') {
           const id = update.messageId ?? null;
           if (id !== messageId) {
-            flushMessage();
+            flushMessage(!historyMissedText && !resultTruncated);
             messageId = id;
-            output = '';
-            finalMessageRef = undefined;
+            resetResult();
           }
-          output += update.content.text;
-          pendingText += update.content.text;
+          appendResult(update.content.text);
+          if (retained) pendingText += update.content.text;
+          else if (update.content.text) historyMissedText = true;
         }
         return;
       }
-      if (updates.has(encoded)) return;
-      updates.add(encoded);
-      flushMessage();
-      // With anonymous chunks, a new tool call separates progress from the
-      // subsequent answer. Tool status updates can interleave with the answer.
+      if (encoded !== undefined && updates.has(encoded)) return;
+      if (retained && encoded !== undefined) updates.add(encoded);
+      flushMessage(!historyMissedText && !resultTruncated);
+      const known = tools.has(update.toolCallId);
+      // Existing Controller-only anonymous boundary rule. If we cannot prove
+      // novelty after exhausting bounded identity retention, do not reset and
+      // do not claim the resulting ambiguous text is complete.
       if (invocation.kind === 'controller' && messageId === null &&
-          update.sessionUpdate === 'tool_call' && !tools.has(update.toolCallId)) {
-        output = '';
-        finalMessageRef = undefined;
+          update.sessionUpdate === 'tool_call' && !known) {
+        if (!toolIdentityIncomplete) resetResult();
+        else if (output || resultTruncated) {
+          resultTruncated = true;
+          boundaryLimitRef ??= publish({ref:'acp-result-boundary-limit',sourceId:invocation.attemptId,
+            kind:'host_transport',completeness:'complete',
+            value:{reason:'anonymous_tool_identity_unavailable',limitBytes:maxOutputBytes}});
+          currentResultIssue = boundaryLimitRef;
+        }
       }
-      tools.set(update.toolCallId, mergeToolCall(tools.get(update.toolCallId), update));
+      if (retained) {
+        // Previously accepted metadata remains available for permission requests.
+        if (!known) toolIdentityBytes += Buffer.byteLength(JSON.stringify(update.toolCallId)) + 16;
+        tools.set(update.toolCallId, mergeToolCall(tools.get(update.toolCallId), update));
+      } else if (!known && !toolIdentityIncomplete) {
+        const bytes = Buffer.byteLength(JSON.stringify(update.toolCallId)) + 16;
+        if (toolIdentityBytes + bytes <= maxOutputBytes) {
+          toolIdentityBytes += bytes;
+          tools.set(update.toolCallId, {toolCallId:update.toolCallId});
+        } else toolIdentityIncomplete = true;
+      }
+      if (!retained || encoded === undefined) return;
       // Keep opaque native payload as text to avoid recursive decoding of unbounded shapes.
       publish({ ref: 'acp-update-' + ++line, sourceId: update.toolCallId, kind: 'provider_tool', completeness: 'complete',
         native: { eventKind: update.sessionUpdate, nativeToolCallId: update.toolCallId,
@@ -503,7 +584,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         permissionStop.abort();
         let result;
         if (signal.aborted || stopReason === 'cancelled') result = resultFor(invocation, 'CANCELLED', stopReason === 'cancelled' ? 'cancelled' : 'unknown', 'sent');
-        else if (stopReason === 'end_turn' && (!truncated || controllerDelivery === 'intent_mcp')) {
+        else if (stopReason === 'end_turn' && (!resultTruncated || controllerDelivery === 'intent_mcp')) {
           result = resultFor(invocation, undefined, 'completed', 'sent');
           if (invocation.kind !== 'controller') result.output = output;
           else if (controllerDelivery === 'intent_mcp') {
@@ -516,7 +597,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
               // Ordinary capture overflow is not a defect in a separately
               // received, invocation-scoped MCP declaration. An incomplete
               // final text must never be described as complete evidence.
-              if (!truncated) result.output = output;
+              if (!resultTruncated) result.output = output;
               if (selected.kind === 'intent') {
                 const receiptRef = publish({ref:'acp-decision-submission',sourceId:selected.proposalRef,
                   kind:'model',completeness:'complete',value:selected.value});
@@ -534,18 +615,20 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             }
           }
         } else {
-          const code = truncated && stopReason === 'end_turn' || stopReason === 'max_tokens' || stopReason === 'max_turn_requests' ? 'RESOURCE_LIMIT' :
+          const code = resultTruncated && stopReason === 'end_turn' || stopReason === 'max_tokens' || stopReason === 'max_turn_requests' ? 'RESOURCE_LIMIT' :
             stopReason === 'refusal' ? 'PROVIDER_REFUSED' : 'PROTOCOL_ERROR';
           result = resultFor(invocation, code, 'failed', 'sent');
-          if (truncated) result.outcome.diagnostics[0].ref=limitRef;
+          if (resultTruncated) result.outcome.diagnostics[0].ref=currentResultIssue;
         }
-        flushMessage(!truncated && result.outcome.terminal === 'completed');
-        if (result.outcome.terminal === 'completed' && finalMessageRef) {
+        finishMessage(result.outcome.terminal === 'completed');
+        if (result.outcome.terminal === 'completed' && !resultTruncated && finalMessageRef) {
           result.outputObservationRef = finalMessageRef;
           if (invocation.kind === 'controller' && controllerDelivery !== 'intent_mcp') result.outputObservationParsed = true;
         }
         const stopRef=publish({ ref: 'acp-stop', sourceId: sessionId, kind: 'provider_report', completeness: 'complete',
-          value: { stopReason: stopReason ?? null, truncated, cancelRequested: signal.aborted } });
+          value: { stopReason: stopReason ?? null, truncated, historyTruncated:truncated,
+            resultTruncated, historyBytes:outputBytes, historyOmittedEvents:omittedEvents, resultBytes,
+            toolIdentityBytes, toolIdentityIncomplete, cancelRequested: signal.aborted } });
         for(const diagnostic of result.outcome.diagnostics) diagnostic.ref ??= stopRef;
         return result;
       } finally {
@@ -586,7 +669,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     if (signal.reason === 'deadline' && result.outcome.terminal !== 'completed') {
       result.outcome.diagnostics = [{ code: 'DEADLINE_EXCEEDED', ref: undefined }];
     }
-    flushMessage(false);
+    finishMessage(false);
     const captured = stderr.result();
     const stderrRef = result.outcome.diagnostics.length && captured.bytes.length ? publish({
       ref: 'acp-stderr', sourceId: invocation.attemptId, kind: 'provider_report',
