@@ -275,3 +275,29 @@ test('C19 equivalent provider reports keep first metadata and canonical ref; his
     assert.equal(accepted[0].native.status,'in_progress');
   }finally{await api.close();}
 });
+
+test('C19 synthetic directory/fetch representation cost compared with identical records without metadata',()=>{
+  const withNative=Array.from({length:120},(_,i)=>receiveProviderObservation({
+    ref:'evidence:fixture:'+i,kind:'provider_tool',sourceId:'tool-'+i,completeness:'complete',
+    value:'body '+i,native:{eventKind:'tool_call_update',nativeToolCallId:'tool-'+i,
+      title:'Native observation '+i,status:'completed'}},100));
+  const withoutNative=withNative.map(({native,...base})=>base);
+  function measure(records){
+    const port=bindLiveEvidenceAccess({observations:records,isActive:()=>true});
+    const start=performance.now();
+    let cursor=0,pages=0,bytes=0,omissions=0;
+    do{
+      const page=port.list(cursor);
+      assert.equal(page.kind,'available');
+      pages++;bytes+=Buffer.byteLength(JSON.stringify(page));
+      omissions+=page.items.reduce((sum,row)=>sum+(row.omittedMetadataFields?.length??0),0);
+      cursor=page.nextCursor;
+    }while(cursor!==undefined);
+    const fetch=port.fetch(records[0].ref);
+    return {pages,bytes,omissions,fetchBytes:Buffer.byteLength(JSON.stringify(fetch)),elapsedMs:performance.now()-start};
+  }
+  const baseline=measure(withoutNative),current=measure(withNative);
+  assert.equal(current.pages,baseline.pages);
+  assert.equal(current.omissions,0);
+  console.log('C19_DIRECTORY '+JSON.stringify({records:120,baseline,current,scope:'synthetic representation, not native model latency'}));
+});

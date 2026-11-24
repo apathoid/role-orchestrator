@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {readFileSync} from 'node:fs';
 import {renderInvocationPrompt,parseDecisionText} from '../src/adapters/invocation-prompt.js';
 import {decisionContract,decisionExample} from '../src/application/decision-instructions.js';
 import {decodeDecision} from '../src/core/contracts.js';
@@ -8,7 +7,9 @@ import {readInvocationPrompt} from '../tests/fixtures/read-invocation-prompt.js'
 
 const baseline='d80638609d86da92e2a88d939fa09a90a1a3cfbf';
 const show=path=>execFileSync('git',['show',baseline+':'+path],{encoding:'utf8'});
-assert.equal(show('src/application/decision-instructions.js'),readFileSync(new URL('../src/application/decision-instructions.js',import.meta.url),'utf8'));
+// The C17 comparison isolates framing, not the evolving model-facing contract.
+// Both renderers below receive and import the same current Decision reference.
+const baselineReference=await import('data:text/javascript;base64,'+Buffer.from(show('src/application/decision-instructions.js')).toString('base64'));
 const src=show('src/adapters/invocation-prompt.js').replace("'../application/decision-instructions.js'",JSON.stringify(new URL('../src/application/decision-instructions.js',import.meta.url).href));
 const old=await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64'));
 const invocation={kind:'controller',operationId:'example-operation',attemptId:'a1',actionId:'a1',profile:{profileId:'example-profile'},
@@ -37,5 +38,6 @@ assert.equal(decodeDecision(JSON.parse(decisionExample)).kind,'accepted');
 const invalid=JSON.parse(decisionExample);delete invalid.finalAssessment.findingRefs;
 assert.equal(decodeDecision(invalid).kind,'rejected');
 console.log('C17_BASELINE '+JSON.stringify({baseline,red:'old section marker absent',green:'literal projection, worker, parser cases and decoder unchanged',
-  baselineBytes:Buffer.byteLength(previous),currentBytes:Buffer.byteLength(current),sizes,bodyCopiesBefore:1,bodyCopiesAfter:1,parserCases:cases.length,
+  baselineBytes:Buffer.byteLength(previous),currentBytes:Buffer.byteLength(current),sizes,
+  historicalContractBytes:Buffer.byteLength(baselineReference.decisionContract),currentContractBytes:Buffer.byteLength(decisionContract),bodyCopiesBefore:1,bodyCopiesAfter:1,parserCases:cases.length,
   scope:'same-input synthetic render only; no inference about native model latency or acceptance'}));

@@ -721,3 +721,29 @@ test('cross-operation context reads require an exact share and cannot be enabled
   assert.equal((await resumed.completion).status, 'finished');
   assert.equal(target.invocations.length, 2);
 });
+
+test('C19 accepted native metadata survives local store commit and reopen alongside old observations',async t=>{
+  const {directory,store}=await setupStore(t);
+  let nativeRef,legacyRef;
+  const {api,respondErrors}=setup({store,respond(invocation,_count,observe){
+    nativeRef=observe({ref:'native-receipt',kind:'provider_tool',sourceId:'call',
+      completeness:'complete',value:'original',native:{eventKind:'tool_call_update',nativeToolCallId:'call',status:'completed'}});
+    legacyRef=observe({ref:'legacy-receipt',source:'provider_reported',completeness:'complete',value:'legacy'});
+    return final(invocation);
+  }});
+  let operationId;
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.equal(state.status,'finished',respondErrors.map(String).join('\n'));
+    operationId=state.operationId;
+  }finally{await api.close();}
+  const reopened=createLocalStateStore(directory);
+  t.after(()=>reopened.close());
+  await reopened.open();
+  const state=await reopened.load(operationId);
+  const records=state.events.flatMap(event=>event.observations??[]);
+  assert.deepEqual(records.find(item=>item.ref===nativeRef).native,
+    {eventKind:'tool_call_update',nativeToolCallId:'call',status:'completed'});
+  assert.equal(records.find(item=>item.ref===nativeRef).value,'original');
+  assert.equal(records.find(item=>item.ref===legacyRef).native,undefined);
+});

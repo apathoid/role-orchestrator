@@ -85,7 +85,9 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
     [item.source, item.provenance.exit.kind, item.provenance.exit.code]), [
     ['provider_reported', 'tool_exit', 9], ['host_observed', 'agent_exit', 0],
   ]);
-  assert.deepEqual(state.assessment.observationRefs, [worker.observations.find(item => item.provenance?.exit?.kind === 'tool_exit').ref]);
+  const reportedTool=worker.observations.find(item=>item.provenance?.exit?.kind==='tool_exit');
+  assert.deepEqual(reportedTool.native,{eventKind:'item.completed',nativeToolCallId:'command-1',kind:'command_execution',status:'failed'});
+  assert.deepEqual(state.assessment.observationRefs, [reportedTool.ref]);
   assert.equal(worker.observations.filter(item => item.value === 'Build failed').length, 1);
   assert.equal(worker.observations.filter(item => item.ref.startsWith('attempt-output:')).length, 0);
 });
