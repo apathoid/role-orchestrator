@@ -35,7 +35,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {AttemptInteractions, AttemptPermissions, AuthorityPort, Catalog, ContextShare, InteractionPort, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
- * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null}} Execution
+ * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
  * @typedef {(workspace: Operation['request']['workspaceContext']) => Promise<Execution>} ResolveExecution
  * @typedef {{
  *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
@@ -132,12 +132,22 @@ export function createOrchestrator(deps) {
   /** @type {ResolveExecution} */
   const resolveExecution = deps.resolveExecution ?? (async () => /** @type {Execution} */ (deps));
   /** @param {Execution} execution @param {Operation} state */
-  const trusted = (execution, state) => ({ authorityRef: authority.reference, configurationRef, limits: {
-    ...execution.limits,
-    // Disabled cumulative defaults do not retroactively widen a persisted
-    // finite budget. Explicit finite trusted configuration remains effective.
-    maxInvocations: execution.limits.maxInvocations === null ? state.limits.maxInvocations : execution.limits.maxInvocations,
-  } });
+  const trusted = (execution, state) => {
+    const {maxInvocations, maxConcurrentInvocations} = execution.limits;
+    const prior = state.limits.maxInvocations;
+    // A changed default (even narrowed by project preferences) cannot widen
+    // authority already recorded in an Operation. Direct port construction
+    // without configuration provenance conservatively retains finite limits
+    // when the cumulative ceiling is disabled. An explicit trusted user/launch
+    // reconfiguration has the original ResumeAuthority semantics.
+    const preserve = execution.defaultedLimits?.maxInvocations ?? maxInvocations === null;
+    return { authorityRef: authority.reference, configurationRef, limits: {
+      maxInvocations: preserve && prior !== null ?
+        (maxInvocations === null ? prior : Math.min(prior, maxInvocations)) : maxInvocations,
+      maxConcurrentInvocations: execution.defaultedLimits?.maxConcurrentInvocations ?
+        Math.min(state.limits.maxConcurrentInvocations, maxConcurrentInvocations) : maxConcurrentInvocations,
+    } };
+  };
 
   /** @param {string} attemptId */
   function releaseAttempt(attemptId) {

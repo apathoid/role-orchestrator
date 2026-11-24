@@ -98,6 +98,10 @@ export async function openRuntime(options, onStoreOpen) {
           maxInvocations: selectedConfig.resources.maxInvocationsPerOperation,
           maxConcurrentInvocations: selectedConfig.resources.maxConcurrentInvocations,
         },
+        defaultedLimits: {
+          maxInvocations: selectedConfig.defaultedResourceCeilings.maxInvocationsPerOperation,
+          maxConcurrentInvocations: selectedConfig.defaultedResourceCeilings.maxConcurrentInvocations,
+        },
         invocationTimeoutMs: selectedConfig.resources.invocationTimeoutMs,
       };
     }

@@ -37,7 +37,7 @@ const projectShape = record({ schemaVersion: oneOf(1), ...preferences });
 const launchShape = record(preferences);
 
 /** @typedef {{kind: 'rejected', source: 'project' | 'launch', path: string, constraint: string}} Rejected */
-/** @typedef {Configuration & {resources: Required<ResourceConfig>, context: typeof defaultContextBudgets, preferredRole?: string, preferredSkills: string[]}} EffectiveConfiguration */
+/** @typedef {Configuration & {resources: Required<ResourceConfig>, defaultedResourceCeilings: {maxConcurrentInvocations: boolean, maxInvocationsPerOperation: boolean}, context: typeof defaultContextBudgets, preferredRole?: string, preferredSkills: string[]}} EffectiveConfiguration */
 
 /** @param {Rejected['source']} source @param {string} path @param {string} constraint @returns {Rejected} */
 function reject(source, path, constraint) {
@@ -94,7 +94,13 @@ export function resolveConfiguration(user, projectText, launchOptions = {}, inst
   }
 
   return { kind: 'accepted', value: {
-    ...user, resources: {
+    ...user,
+    // Project preferences cannot gain authority merely because trusted defaults
+    // changed. Keep this resolver-only provenance for the resume boundary.
+    defaultedResourceCeilings: {
+      maxConcurrentInvocations: user.resources?.maxConcurrentInvocations === undefined && launch.value.resources?.maxConcurrentInvocations === undefined,
+      maxInvocationsPerOperation: user.resources?.maxInvocationsPerOperation === undefined && launch.value.resources?.maxInvocationsPerOperation === undefined,
+    }, resources: {
       maxConcurrentInvocations: launch.value.resources?.maxConcurrentInvocations ?? project.value.resources?.maxConcurrentInvocations ?? effective.maxConcurrentInvocations,
       maxInvocationsPerOperation: launch.value.resources?.maxInvocationsPerOperation !== undefined ? launch.value.resources.maxInvocationsPerOperation :
         project.value.resources?.maxInvocationsPerOperation !== undefined ? project.value.resources.maxInvocationsPerOperation : effective.maxInvocationsPerOperation,
