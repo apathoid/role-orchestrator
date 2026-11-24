@@ -22,11 +22,11 @@ export function unstartedCodexResult(attemptId, code) {
  * Interpret only the documented transport facts. The coordinator validates
  * the Decision itself and owns both correction and semantic assessment.
  * @param {CodexResult} result
- * @param {{attemptId: string, kind: 'controller' | 'delegate'}} request
+ * @param {{attemptId: string, kind: 'controller' | 'delegate', signal?: AbortSignal}} request
  * @param {Parameters<ProviderPort['invoke']>[2]} observe
  * @returns {ProviderResult}
  */
-export function receiveCodexResult(result, { attemptId, kind }, observe) {
+export function receiveCodexResult(result, { attemptId, kind, signal }, observe) {
   const { process, stdout, stderr, execution, diagnostics } = result;
   const {frames,sent,terminal,usage,invalidSequence}=execution;
   /** @type {Outcome['outputRefs']} */
@@ -88,7 +88,7 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
   /** @type {ReasonCode | undefined} */
   let code;
   if (!process.started) code = process.reason === 'cancelled' ? 'CANCELLED' : 'PROVIDER_START_FAILED';
-  else if (process.reason === 'cancelled') code = invocation.signal.reason === 'deadline' ? 'DEADLINE_EXCEEDED' : 'CANCELLED';
+  else if (process.reason === 'cancelled') code = signal?.reason === 'deadline' ? 'DEADLINE_EXCEEDED' : 'CANCELLED';
   else if (process.reason === 'timed_out') code = 'DEADLINE_EXCEEDED';
   else if (process.exitCode !== 0 || Object.keys(process.errors).length || terminal === 'turn.failed') code = 'PROVIDER_DISCONNECTED';
   else if (invalidSequence || diagnostics.some(item => item.code === 'PROTOCOL_ERROR') ||
