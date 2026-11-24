@@ -194,8 +194,10 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let historyMissedText = false;
     /** @type {string | undefined} */
     let resultLimitRef;
+    let resultLimitReported = false;
     /** @type {string | undefined} */
     let boundaryLimitRef;
+    let boundaryLimitReported = false;
     /** @type {string | undefined} */
     let currentResultIssue;
     // Reuse the permission/identity map. After history fills, retain only IDs
@@ -240,6 +242,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     /** @param {string} text */
     function appendResult(text) {
       if (resultTruncated || !text) return;
+      finalMessageRef = undefined;
       // A surrogate pair may straddle two native chunks. Count the UTF-8
       // bytes of the assembled text, without repeatedly encoding the prefix.
       const high = output.charCodeAt(output.length - 1);
@@ -248,8 +251,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       const bytes = Buffer.byteLength(text) - (joinedPair ? 2 : 0);
       if (resultBytes + bytes > maxOutputBytes) {
         resultTruncated = true;
-        resultLimitRef ??= publish({ref:'acp-result-limit',sourceId:invocation.attemptId,kind:'host_transport',
-          completeness:'complete',value:{reason:'current_result_limit',limitBytes:maxOutputBytes,acceptedBytes:resultBytes}});
+        if (!resultLimitReported) {
+          resultLimitReported = true;
+          resultLimitRef = publish({ref:'acp-result-limit',sourceId:invocation.attemptId,kind:'host_transport',
+            completeness:'complete',value:{reason:'current_result_limit',limitBytes:maxOutputBytes,acceptedBytes:resultBytes}});
+        }
         currentResultIssue = resultLimitRef;
         return;
       }
@@ -327,9 +333,12 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if (!toolIdentityIncomplete) resetResult();
         else if (output || resultTruncated) {
           resultTruncated = true;
-          boundaryLimitRef ??= publish({ref:'acp-result-boundary-limit',sourceId:invocation.attemptId,
-            kind:'host_transport',completeness:'complete',
-            value:{reason:'anonymous_tool_identity_unavailable',limitBytes:maxOutputBytes}});
+          if (!boundaryLimitReported) {
+            boundaryLimitReported = true;
+            boundaryLimitRef = publish({ref:'acp-result-boundary-limit',sourceId:invocation.attemptId,
+              kind:'host_transport',completeness:'complete',
+              value:{reason:'anonymous_tool_identity_unavailable',limitBytes:maxOutputBytes}});
+          }
           currentResultIssue = boundaryLimitRef;
         }
       }

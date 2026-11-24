@@ -423,6 +423,62 @@ agent()
       await message('native-last','Native final text is not the decision');
       return {stopReason:'end_turn'};
     }
+    if (scenario.startsWith('c20r-')) {
+      const mode=scenario.slice('c20r-'.length);
+      const answer='# Result\nПроверка 🧪\n{"value":"a\\b"}';
+      const json=JSON.stringify({finalAssessment:{overall:'complete',answer}});
+      const update=(toolCallId,title='tool',sessionUpdate='tool_call_update')=>client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate,toolCallId,title,status:'in_progress',
+      }});
+      const flood=async(count=170)=>{for(let i=0;i<count;i++)await update('flood','native '+i+' '+'.'.repeat(8000));};
+      const big=async(id)=>{for(let i=0;i<6;i++)await message(id,'界'.repeat(65000));};
+      if(mode==='mid-message'){
+        // A previously published exact prefix must not be mistaken for the final result.
+        await message('final',json.slice(0,24));
+        await flood();
+        await message('final',json.slice(24));
+      }else if(mode==='oversized'||mode==='new-id'||mode==='anonymous-too-large'){
+        const id=mode==='anonymous-too-large'?undefined:'previous';
+        await big(id);
+        if(mode==='new-id')await message('final',json);
+        else await message(id,json);
+      }else if(mode==='anonymous'||mode==='anonymous-identity-limit'){
+        await message(undefined,'old progress');
+        await flood();
+        if(mode==='anonymous-identity-limit'){
+          // Bounded identity registry cannot prove novelty for all omitted IDs.
+          for(let i=0;i<140;i++)await update('id-'+i+'x'.repeat(8000));
+        }
+        await update('new-call','new tool','tool_call');
+        await message(undefined,json.slice(0,30));
+        await update('new-call','new tool','tool_call');
+        await update('new-call','status only');
+        await message(undefined,json.slice(30));
+      }else if(mode==='worker-anonymous'){
+        await message(undefined,'first ');
+        await flood();
+        await update('fresh','new tool','tool_call');
+        await message(undefined,'second 🧪');
+      }else if(mode==='split-surrogate'){
+        await flood();
+        await message('final','x'.repeat(100)+'\ud83e');
+        await update('flood','tool completion');
+        await message('final','\uddea');
+      }else if(mode==='cancel'||mode==='deadline'||mode==='disconnect'||mode==='refusal'){
+        await flood();
+        await message('final',json);
+        if(mode==='refusal')return {stopReason:'refusal'};
+        if(mode==='disconnect')process.exit(1);
+        await writeFile('c20r-ready','');
+        await stop.promise;
+        return {stopReason:'cancelled'};
+      }else if(mode.startsWith('scale-')){
+        const mib=Number(mode.slice(6));
+        await flood(Math.ceil(mib*1024*1024/8000));
+        await message('final',answer);
+      }else throw Error('unknown C20-R fixture '+mode);
+      return {stopReason:'end_turn'};
+    }
     if (scenario.startsWith('c20-overflow-')) {
       // Complete the long ordinary event stream *before* sending the valid
       // final result. All individual frames are below the transport bound.

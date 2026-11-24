@@ -946,3 +946,63 @@ test('C20-R: ACP Worker late final survives history overflow',{...linux,timeout:
     assert.equal(native?.completeness,'complete');
     assert.equal(native?.sourceId,'native-last');
   }));
+
+const c20rAnswer='# Result\nПроверка 🧪\n{"value":"a\\b"}';
+for(const mode of ['mid-message','new-id','anonymous','oversized','anonymous-too-large','anonymous-identity-limit']){
+  test('C20-R native result identity and completeness: '+mode,{...linux,timeout:15000},()=>
+    withOwnedRun('C20R-'+mode,async cwd=>{
+      const endpoint=provider(cwd,'c20r-'+mode,{controllerIntent:'text'});
+      const {api}=setup({provider:endpoint,profile,maxInvocations:1,invocationTimeoutMs:null});
+      try{
+        const state=await(await api.submit(request({workspaceContext:{cwd}}))).completion;
+        const obs=state.events.flatMap(e=>e.observations??[]);
+        const stop=obs.find(o=>o.providerRef==='acp-stop')?.value;
+        assert.equal(stop?.historyTruncated,true);
+        const valid=['mid-message','new-id','anonymous'].includes(mode);
+        assert.equal(stop?.resultTruncated,!valid);
+        assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,valid?1:0);
+        if(valid){
+          assert.equal(state.status,'finished');
+          assert.equal(state.assessment.answer,c20rAnswer);
+          const native=obs.find(o=>o.providerRef==='acp-current-result');
+          assert.equal(native.completeness,'complete');
+          assert.equal(native.source,'model_claim');
+          assert.equal(JSON.parse(native.value).finalAssessment.answer,c20rAnswer);
+          assert.equal(obs.filter(o=>o.providerRef==='acp-current-result').length,1);
+        }else{
+          assert.equal(state.attempts[0].outcome.diagnostics[0].code,'RESOURCE_LIMIT');
+          assert.ok(obs.some(o=>o.providerRef===(mode==='anonymous-identity-limit'?'acp-result-boundary-limit':'acp-result-limit')));
+          assert.ok(!obs.some(o=>o.providerRef==='acp-current-result'&&o.completeness==='complete'));
+        }
+      }finally{await api.close();}
+    }));
+}
+for(const [mode,expected] of [['worker-anonymous','first second 🧪'],['split-surrogate','x'.repeat(100)+'🧪']]){
+  test('C20-R Worker preserves native chunks: '+mode,linux,()=>withOwnedRun('C20R-'+mode,async cwd=>{
+    await using call=await invoke(provider(cwd,'c20r-'+mode),{timeoutMs:null});
+    const result=await call.completion;
+    assert.equal(result.outcome.terminal,'completed');
+    assert.equal(result.output,expected);
+    const native=call.observations.find(o=>o.ref===result.outputObservationRef);
+    assert.equal(native?.value,expected);
+    assert.equal(native?.completeness,'complete');
+    assert.equal(call.observations.find(o=>o.ref==='acp-stop').value.resultBytes,Buffer.byteLength(expected));
+  }));
+}
+for(const mode of ['cancel','deadline','disconnect','refusal']){
+  test('C20-R no admission after '+mode+' following history overflow',linux,()=>withOwnedRun('C20R-'+mode,async cwd=>{
+    const stop=new AbortController();
+    await using call=await invoke(provider(cwd,'c20r-'+mode,{controllerIntent:'text'}),{kind:'controller',timeoutMs:null,signal:stop.signal});
+    if(mode==='cancel'||mode==='deadline'){
+      await ready(cwd,'c20r-ready');
+      stop.abort(mode==='deadline'?'deadline':'client');
+    }
+    const result=await call.completion;
+    assert.notEqual(result.outcome.terminal,'completed');
+    assert.equal(result.controllerDeclaration,undefined);
+    assert.equal(result.outputObservationRef,undefined);
+    assert.ok(call.observations.some(o=>o.ref==='acp-output-limit'));
+    assert.ok(!call.observations.some(o=>o.ref==='acp-current-result'&&o.completeness==='complete'));
+    assert.equal(result.outcome.diagnostics[0].code,({cancel:'CANCELLED',deadline:'DEADLINE_EXCEEDED',disconnect:'PROVIDER_DISCONNECTED',refusal:'PROVIDER_REFUSED'})[mode]);
+  }));
+}
