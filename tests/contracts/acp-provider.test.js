@@ -909,3 +909,39 @@ for(const scenario of ['c20-silent-initialize','c20-silent-session-new']){
       assert.equal(fact.signal,'SIGKILL');
     }));
 }
+
+for(const mode of ['intent-mcp','intent-text','legacy']){
+  test('C20 no deadline: ACP late final after accumulated capture, '+mode,{...linux,timeout:15000},()=>
+    withOwnedRun('C20-overflow-'+mode,async cwd=>{
+      const endpoint=provider(cwd,'c20-overflow-'+mode,{mcpBridge:true,
+        controllerIntent:mode==='legacy'?undefined:'prefer_mcp'});
+      const {api}=setup({provider:endpoint,profile,maxInvocations:1,invocationTimeoutMs:null});
+      try{
+        const state=await(await api.submit(request({workspaceContext:{cwd}}))).completion;
+        const observations=state.events.flatMap(e=>e.observations??[]);
+        assert.ok(observations.some(o=>o.providerRef==='acp-output-limit'));
+        assert.ok(observations.some(o=>o.value?.truncated===true&&o.value?.stopReason==='end_turn'));
+        if(mode==='intent-mcp'){
+          assert.equal(state.status,'finished');
+          assert.equal(state.assessment.answer,'late final after capture');
+          assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+        }else{
+          // Existing cumulative capture bound cannot certify complete text.
+          assert.notEqual(state.status,'finished');
+          assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,0);
+          assert.ok(state.attempts[0].outcome.diagnostics.some(d=>d.code==='RESOURCE_LIMIT'));
+        }
+        assert.ok(!observations.some(o=>o.value==='late final after capture'&&o.completeness==='complete'));
+      }finally{await api.close();}
+    }));
+}
+test('C20 no deadline: ACP Worker late final remains explicitly capture-limited',{...linux,timeout:15000},()=>
+  withOwnedRun('C20-overflow-worker',async cwd=>{
+    const endpoint=provider(cwd,'c20-overflow-worker');
+    await using call=await invoke(endpoint,{timeoutMs:null});
+    const result=await call.completion;
+    assert.notEqual(result.outcome.terminal,'completed');
+    assert.ok(result.outcome.diagnostics.some(d=>d.code==='RESOURCE_LIMIT'));
+    assert.ok(call.observations.some(o=>o.ref==='acp-output-limit'));
+    assert.ok(!call.observations.some(o=>o.value==='late final after capture'&&o.completeness==='complete'));
+  }));

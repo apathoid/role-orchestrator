@@ -44,7 +44,7 @@ agent()
     if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
-      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
+      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario === 'c20-overflow-intent-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
   })
   .onRequest(a.session.new, async ({ params }) => {
     if (scenario === 'c20-silent-session-new') {
@@ -52,7 +52,7 @@ agent()
       return new Promise(()=>{});
     }
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
-    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
+    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario === 'c20-overflow-intent-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
       assert.equal(params.mcpServers[0]?.type, 'http');
       mcpUrl = params.mcpServers[0].url;
     }
@@ -421,6 +421,32 @@ agent()
       const packet=await result.json();
       assert.equal(JSON.parse(packet.result.content[0].text).kind,'proposal_pending');
       await message('native-last','Native final text is not the decision');
+      return {stopReason:'end_turn'};
+    }
+    if (scenario.startsWith('c20-overflow-')) {
+      // Complete the long ordinary event stream *before* sending the valid
+      // final result. All individual frames are below the transport bound.
+      for(let i=0;i<170;i++) await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:'large-native',
+        title:'native '+i+' '+'.'.repeat(8000),status:'in_progress',
+      }});
+      const answer='late final after capture';
+      if(scenario==='c20-overflow-intent-mcp'){
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id:77,method:'tools/call',params:{
+            name:'submit_decision',arguments:{intent:{finalAssessment:{overall:'complete',answer}}}}})});
+        assert.equal(JSON.parse((await response.json()).result.content[0].text).kind,'proposal_pending');
+        await message('native-last',answer);
+      }else if(scenario==='c20-overflow-intent-text'){
+        await message('native-last',JSON.stringify({finalAssessment:{overall:'complete',answer}}));
+      }else if(scenario==='c20-overflow-legacy'){
+        await message('native-last',JSON.stringify({schemaVersion:1,decisionId:'decision-'+attemptId,operationId,
+          contextCursor:0,additions:[],cancellations:[],finalAssessment:{author:profileId,overall:'complete',
+            requirements:[],observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer}}));
+      }else{
+        assert.equal(kind,'delegate');
+        await message('native-last',answer);
+      }
       return {stopReason:'end_turn'};
     }
     if (scenario.startsWith('c18-overflow-')) {

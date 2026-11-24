@@ -513,7 +513,7 @@ test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result
   const invoke=async activity=>{
     const signal=new AbortController().signal,session=await provider.open(profile,signal),observations=[];
     try{
-      const result=await provider.invoke(session,{attemptId:'attempt',operationId:'op',actionId:'worker',kind:'delegate',objective:'test',profile,instructions:[],context:[],userConstraints:[],authorityRef:'grant',timeoutMs:5000,signal},x=>{observations.push(x);return x.ref;},activity);
+      const result=await provider.invoke(session,{attemptId:'attempt',operationId:'op',actionId:'worker',kind:'delegate',objective:'test',profile,instructions:[],context:[],userConstraints:[],authorityRef:'grant',timeoutMs:null,signal},x=>{observations.push(x);return x.ref;},activity);
       assert.equal(result.outcome.terminal,'completed');assert.equal(result.output,'final result');assert.deepEqual(result.outcome.usage,{inputTokens:12,outputTokens:0,cost:null});
       const process=observations.find(x=>x.ref==='codex-process');
       assert.equal(process.value.stdoutCapture.truncated,true);assert.ok(process.value.stdoutCapture.receivedBytes>1024*1024);

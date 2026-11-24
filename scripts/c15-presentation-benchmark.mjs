@@ -84,6 +84,8 @@ await withOwnedRun('C15-benchmark',async cwd=>{
   const configure=async native=>writeFile(config,JSON.stringify({
     schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},
     providers:{test:native?{adapter:'acp',launch:{command:process.execPath,args:[join(root,'tests/fixtures/acp-contract-agent.js'),'host-native-ux']}}:{adapter:'host-fixture'}},
+    // Compare presentation under the same historical finite policy, not changed C20 defaults.
+    resources:{maxConcurrentInvocations:2,maxInvocationsPerOperation:40,invocationTimeoutMs:180000},
     storage:{directory:'state'},plugins:native?[]:[{id:'host-fixture',module:join(root,'tests/fixtures/host-plugin.js')}],
   }));
   const cases=[

@@ -61,6 +61,10 @@ jobs:
         run: nix develop --no-update-lock-file --command node --expose-gc scripts/c18n-mcp-memory-probe.mjs
       - name: C18N-R real ToolPort memory and preflight comparison (synthetic, GC)
         run: nix develop --no-update-lock-file --command node --expose-gc scripts/c18nr-correction-probe.mjs
+      - name: C20 timer inventory and durable operation scale (synthetic, GC)
+        run: |
+          grep -RnE 'setTimeout|AbortSignal\.timeout|setInterval|requestTimeout|headersTimeout|schedule\(' src
+          nix develop --no-update-lock-file --command node --expose-gc scripts/c20-scale-probe.mjs
       - name: Actual Linux PTY transport fixture (not native LLM)
         run: |
           command -v script
