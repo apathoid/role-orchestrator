@@ -19,7 +19,7 @@ const constraints=['Keep the requested format.',''];
 const answer='  # Result 🌍\n  ';
 await withOwnedRun('C21-comparison',async directory=>{
   const rows=[];
-  let invariant, nativeInvariant, c22Invariant;
+  let invariant, nativeInvariant, c22Invariant, c22CorrectionInvariant;
   for(const [label,sha] of builds){
     const dir=label==='D'?root:join(directory,label);
     if(label!=='D'){
@@ -112,6 +112,38 @@ await withOwnedRun('C21-comparison',async directory=>{
       assert.equal(state.status,'finished',fixture.respondErrors.map(String).join('\n'));
       assert.equal(state.assessment.answer,answer);
     }finally{await fixture.api.close()}
+
+    if(label==='C22A'||label==='D'){
+      const {decodeControllerIntent}=await at(dir,'src/core/controller-intent.js');
+      const {materializeControllerIntent}=await at(dir,'src/application/controller-intent.js');
+      const primary=({code,path,expected})=>({code,path,expected});
+      const stableResult=result=>result.kind==='rejected'?{kind:result.kind,reason:primary(result.reason)}:result;
+      const binding={operationId:'operation',attemptId:'attempt',contextCursor:1,profileId:'primary'};
+      const samples=[{finalAssessment:{overall:'complete',answer}}, {finalAssessment:{overall:'invalid',answer}},
+        {finalAssessment:{overall:'partial',answer,requirements:[{requirementId:'r',status:'unverified',unknown:true}]}},
+        {nextController:{continue:true,contextRequest:{refs:[{ref:{revision:1,index:0},offset:0}]}}},
+        {additions:[{actionId:'a',kind:'delegate',profileId:'primary',objective,expectedResult:'result'}]},
+        {schemaVersion:1,finalAssessment:{overall:'complete',answer}}, {finalAssessment:{overall:'complete',answer,author:'spoof'}}];
+      const stableDecodes=samples.map(input=>[stableResult(decodeControllerIntent(input)),stableResult(materializeControllerIntent(input,binding))]);
+      const correctionFixture=setup({respond(invocation,count){
+        if(count===1)return {...final(invocation),output:'ordinary native text',controllerDeclaration:{kind:'missing'}};
+        if(count===2)return {...final(invocation),controllerDeclaration:{kind:'intent',value:samples[2]}};
+        return final(invocation,{finalAssessment:{...final(invocation).output.finalAssessment,answer}});
+      }});
+      try{
+        const state=await(await correctionFixture.api.submit(request({text:objective,userConstraints:constraints}))).completion;
+        assert.equal(state.status,'finished');assert.equal(state.assessment.answer,answer);
+        const rejected=state.events.filter(e=>e.kind==='controller.invalid_proposal');
+        const stable={decodes:stableDecodes,attempts:state.attempts.map(a=>({attemptId:a.attemptId,status:a.status,outcome:a.outcome})),
+          rejected:rejected.map(e=>({...e,reason:primary(e.reason)})),assessment:state.assessment};
+        c22CorrectionInvariant??=stable;assert.deepEqual(stable,c22CorrectionInvariant);
+        rows.at(-1).c22.correction=correctionFixture.invocations.slice(1).map((invocation,index)=>{
+          let parts;const text=renderInvocationPrompt({...invocation,controllerDelivery:index?'intent_text':'intent_mcp'},'fixture',v=>{parts=v});
+          const decoded=readInvocationPrompt(text);assert.equal(decoded.objective,objective);assert.deepEqual(decoded.userConstraints,constraints);
+          return {totalBytes:Buffer.byteLength(text),correctionBytes:parts.correctionBytes,historyBytes:parts.historyBytes};
+        });
+      }finally{await correctionFixture.api.close();}
+    }
 
     // Historical production adapters and Orchestrators, same current SDK
     // agent fixture, actual live MCP responses and committed observations.

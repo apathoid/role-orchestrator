@@ -291,3 +291,20 @@ test('C22 F3 actual wire distinguishes allocated ref from registered lineage; un
     assert.equal(selected.value.finalAssessment.answer,'repaired');
   }finally{stop.abort();bridge.close();}
 });
+
+test('C22 bounded wire annotation omission preserves primary rejection and registered lineage',async()=>{
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,attemptId:'c22-wire-bound',controllerDelivery:'intent_mcp'});
+  try{
+    const primary={kind:'rejected',proposalRef:'proposal:c22-wire-bound:1',
+      reason:{code:'INVALID_PROPOSAL',path:'$.unknown',expected:'a model-owned ControllerIntent field (Host-owned metadata must be omitted)'}};
+    const envelope={jsonrpc:'2.0',id:'',result:{content:[{type:'text',text:JSON.stringify(primary)}],isError:true}};
+    const id='x'.repeat(256*1024-Buffer.byteLength(JSON.stringify(envelope)));
+    const response=await call(bridge.url,id,'submit_decision',{intent:{unknown:true}});
+    assert.equal(response.status,200);
+    assert.deepEqual(value(response),primary);
+    const corrected=value(await call(bridge.url,2,'submit_decision',{intent:intent('corrected'),replaces:primary.proposalRef}));
+    assert.equal(corrected.registered,true);
+    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'corrected');
+  }finally{stop.abort();bridge.close();}
+});
