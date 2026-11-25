@@ -61,13 +61,16 @@ const evidenceFetchTool = {
 };
 
 /** @param {boolean} enabled
- *  @param {{contextListToolName?:string,contextFetchToolName?:string,evidenceListToolName?:string,evidenceFetchToolName?:string}} [names] */
-export function retrievalDetail(enabled, names = {}) {
+ *  @param {{contextListToolName?:string,contextFetchToolName?:string,evidenceListToolName?:string,evidenceFetchToolName?:string}} [names]
+ *  @param {Invocation['kind']} [kind] */
+export function retrievalDetail(enabled, names = {}, kind = 'controller') {
   const list = names.contextListToolName ?? 'context_list';
   const fetch = names.contextFetchToolName ?? 'context_fetch';
   const context = enabled
     ? 'Optional MCP ' + list + ' and ' + fetch + ' retrieve omitted history when useful. Copy ' + list + ' nextCursor exactly; cursor 0 starts a fresh directory traversal. ' + fetch + ' offset reads saved data in bounded base64 chunks with nextOffset; retain original completeness. Report material unavailable evidence explicitly.'
-    : 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.';
+    : kind === 'controller'
+      ? 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.'
+      : 'Historical context retrieval via MCP is unavailable in this transport. Supplied context retains its original scope and completeness.';
   return context + (names.evidenceListToolName && names.evidenceFetchToolName
     ? '\nOptional current-invocation MCP ' + names.evidenceListToolName + ' and ' + names.evidenceFetchToolName +
       ' expose accepted observations and canonical refs. ' + names.evidenceListToolName +

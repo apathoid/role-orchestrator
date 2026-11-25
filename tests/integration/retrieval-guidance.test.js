@@ -76,3 +76,34 @@ test('C12R.9 review: no-MCP advisory still exposes optional nextController histo
   assert.match(enabled,/nextOffset/);
   assert.match(enabled,/saved data/);
 });
+
+test('C21 advertises negotiated aliases and only the role-appropriate no-MCP path',async()=>{
+  const {startMcpBridge}=await import('../../src/adapters/mcp-bridge.js');
+  const {renderCodexPrompt}=await import('../../src/adapters/cli/codex-prompt.js');
+  const {setup,final}=await import('../fixtures/application.js');
+  const {request}=await import('../fixtures/core.js');
+  const {api,respondErrors}=setup({async respond(invocation){
+    const bridge=await startMcpBridge({...invocation,
+      externalTools:{list:()=>['context_list','context_fetch','evidence_list','evidence_fetch'].map(id=>({
+        id,description:'External fixture '+id,effect:'read',inputSchema:{type:'object'}})),
+        async call(){return {status:'completed',effect:'none'}}}});
+    try{
+      const prompt=renderCodexPrompt(invocation,'fixture',true,undefined,bridge);
+      assert.match(prompt,/Optional MCP role_orchestrator_context_list and role_orchestrator_context_fetch/);
+      assert.doesNotMatch(prompt,/Optional MCP context_list and context_fetch/);
+      if(bridge.evidenceListToolName){
+        assert.ok(prompt.includes(bridge.evidenceListToolName+' resumeCursor'));
+        assert.ok(prompt.includes(bridge.evidenceFetchToolName));
+      }
+      const worker=renderCodexPrompt({...invocation,kind:'delegate',instructions:[]},'fixture',false);
+      assert.match(worker,/Historical context retrieval via MCP is unavailable/);
+      assert.doesNotMatch(worker,/nextController\.contextRequest/);
+      assert.doesNotMatch(retrievalDetail(false,{},'delegate'),/nextController/);
+      return final(invocation);
+    }finally{bridge.close()}
+  }});
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.equal(state.status,'finished',respondErrors.map(String).join('\n'));
+  }finally{await api.close()}
+});

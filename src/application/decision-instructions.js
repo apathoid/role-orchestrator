@@ -9,7 +9,7 @@ rather than merely reporting that it has been prepared. When the request is for 
 provide the appropriate outcome, artifact references and material limitations.`;
 
 export const decisionCoordinationContract = `Decision fields describe transport, not an obligatory workflow: a direct finalAssessment, optional delegation,
-wait for accepted Actions, clarification, cancellation, findings or explicit nextController.continue are all valid.
+wait for accepted Actions, clarification, cancellation or explicit nextController.continue are all valid. Optional findings may accompany a decision.
 Include at least one effective action: finalAssessment, clarification, waitPolicy, additions with waitPolicy/continue,
 cancellations or nextController.continue:true. No clarification with waitPolicy.
 Do not combine finalAssessment with additions, clarification or nextController. No nextController with clarification.

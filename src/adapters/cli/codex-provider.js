@@ -99,8 +99,8 @@ export function createCodexProvider({ providerId, configuration, environment = p
         let componentSizes={};
         const controllerDelivery = request.kind === 'controller' && configuration.controllerIntent ? 'intent_text' : undefined;
         const promptedRequest = {...request, controllerDelivery: /** @type {'intent_text' | undefined} */ (controllerDelivery)};
-        const prompt = renderCodexPrompt(promptedRequest, interactiveApprovalDetail, Boolean(mcp && request.contextAccess),
-          promptReporter?sizes=>{componentSizes=sizes;}:undefined);
+        const prompt = renderCodexPrompt(promptedRequest, interactiveApprovalDetail, Boolean(mcp?.contextListToolName),
+          promptReporter?sizes=>{componentSizes=sizes;}:undefined, mcp);
         reportPrompt(promptReporter,request,'prepared',{transport:'codex-cli',preparationMs:performance.now()-preparationStarted,...componentSizes},prompt);
         const launch = prepareCodexLaunch(configuration, {
           model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt, mcpUrl: mcp?.url,

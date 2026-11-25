@@ -90,7 +90,7 @@ await withOwnedRun('C21-comparison',async directory=>{
   for(const row of rows){
     assert.deepEqual(row.schema,rows[0].schema);
     assert.deepEqual(row.pageRefs,rows[0].pageRefs);
-    delete row.schema;delete row.pageRefs;
   }
+  for(const row of rows){delete row.schema;delete row.pageRefs;}
   console.log('C21_COMPARISON '+JSON.stringify({scope:'deterministic provider-boundary fixture; actual renderers and MCP tools; no real model/tokenizer or native-quality measurement',rows}));
 });
