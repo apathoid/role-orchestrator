@@ -44,7 +44,7 @@ agent()
     if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
-      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario === 'c20-overflow-intent-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
+      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario === 'c21r-compare-sparse' || scenario === 'c20-overflow-intent-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
   })
   .onRequest(a.session.new, async ({ params }) => {
     if (scenario === 'c20-silent-session-new') {
@@ -52,7 +52,7 @@ agent()
       return new Promise(()=>{});
     }
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
-    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario === 'c20-overflow-intent-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
+    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario === 'c21r-compare-sparse' || scenario === 'c20-overflow-intent-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
       assert.equal(params.mcpServers[0]?.type, 'http');
       mcpUrl = params.mcpServers[0].url;
     }
@@ -344,6 +344,42 @@ agent()
           findingRefs: [], unresolvedQuestions: [], answer: text },
       }));
       return { stopReason: 'end_turn' };
+    }
+    // Same raw events and real MCP calls for historical A/B/C and current D.
+    // No version-specific output is manufactured in this SDK fixture.
+    if (scenario === 'c21r-compare-sparse') {
+      assert.equal(kind,'controller');
+      const events=[
+        {sessionUpdate:'tool_call',toolCallId:'call-123',title:'git show HEAD',kind:'execute',status:'in_progress'},
+        {sessionUpdate:'tool_call_update',toolCallId:'call-123',status:'completed',
+          content:[{type:'content',content:{type:'text',text:'Synthetic receipt 🧪'}}]},
+      ];
+      for(const update of events) await client.notify(c.session.update,{sessionId,update});
+      const rpc=async(id,name,args)=>{
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})});
+        assert.equal(response.status,200);
+        const wire=await response.text();
+        const packet=JSON.parse(wire);
+        assert.ok(packet.result,wire);
+        return {value:JSON.parse(packet.result.content[0].text),wireBytes:Buffer.byteLength(wire)};
+      };
+      const directory=await rpc(1,'evidence_list',{});
+      assert.equal(directory.value.kind,'available');
+      const records=directory.value.items.filter(item=>item.provenance?.sourceId==='call-123');
+      assert.equal(records.length,2);
+      const fetched=await rpc(2,'evidence_fetch',{ref:records[1].ref});
+      assert.equal(fetched.value.kind,'chunk');
+      assert.deepEqual(fetched.value.item.native,records[1].native);
+      assert.equal(fetched.value.item.ref,records[1].ref);
+      const original=JSON.parse(Buffer.from(fetched.value.base64,'base64').toString('utf8'));
+      assert.deepEqual(JSON.parse(original.json),events[1]);
+      await writeFile('c21r-sparse-comparison.json',JSON.stringify({events,directory,fetched}));
+      const proposal=await rpc(3,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'  # Result 🌍\n  ',observationRefs:[records[1].ref],
+      }}});
+      assert.equal(proposal.value.kind,'proposal_pending');
+      return {stopReason:'end_turn'};
     }
     if (scenario === 'c18n-live') {
       assert.equal(kind,'controller');

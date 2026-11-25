@@ -96,7 +96,15 @@ test('C18N.2/4 actual MCP list/fetch, nonblocking preflight and same-turn correc
     assert.deepEqual(Object.keys(fetch.inputSchema.properties),['ref','offset','maxBytes']);
     assert.match(list.description,/inheritedFields/);
     assert.match(list.description,/hasCapturedValue/);
-    assert.match(list.description,/resumeCursor/);
+    assert.match(list.description,/resumeCursor works even after an empty\/exhausted page/);
+    assert.match(list.description,/nextCursor signals more entries already captured/);
+    assert.match(list.description,/canonical ref identifies a record, not proof/);
+    assert.match(list.description,/source\/provenance attribute the report/);
+    assert.match(list.description,/completeness describes capture, not tool success/);
+    assert.match(list.description,/native\.omittedFields marks capture-metadata omissions/);
+    assert.match(list.description,/omittedMetadataFields marks projection omissions/);
+    assert.match(fetch.description,/not capture completeness or tool status/);
+    assert.match(fetch.description,/do not establish full source capture or durable commit/);
     assert.match(fetch.description,/totalBytes/);
     assert.match(tools.find(t=>t.name==='submit_decision').description,/need not be repeated/);
     const listed=await call(bridge.url,2,'evidence_list',{});

@@ -1,5 +1,9 @@
 # Активный план реализации и приёмки
 
+## C21-R — Model-facing Clarity & Comparison Refinement (candidate; CI/native UNVERIFIED)
+
+Review baseline `71d6b2d64de96c43076021878e82387adc79a049`, CI #45663007700 SUCCESS. R0 baseline; R1 editorial guidance deduplication; R2 exact A/B/C/D comparison including actual ACP sparse events; R3 historical STATUS correction and hasCapturedValue unchanged; R4 focused regressions and full CI. See [STATUS](STATUS.md). No expanded evidence API, runtime policy, metadata capture or provider investigation. Native quality remains UNVERIFIED.
+
 ## C21 — Model-facing Information Clarity (ENGINEERING VERIFIED at 2ed30f83; real native UNVERIFIED)
 
 [Detailed executable plan](C21_MODEL_FACING_INFORMATION_CLARITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Implemented approved engineering scope on `feature/controller-intent-deferred-admission`; source baseline `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55` / [CI #45563489787](https://github.com/apathoid/role-orchestrator/actions/runs/45563489787) SUCCESS. Planning HEAD `16525506fd3dd4d4543b85377212234468f53037`; engineering checkpoint C `2ed30f83fddaf6d34ab562c4774bc4704277cd92`, [CI #45661813661](https://github.com/apathoid/role-orchestrator/actions/runs/45661813661) SUCCESS. See STATUS for measured A/B/C and limitations.

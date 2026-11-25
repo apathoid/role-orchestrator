@@ -35,7 +35,7 @@ const listTool = {
 };
 const decisionTool = {
   name: 'submit_decision',
-  description: 'Declare or correct a model-owned ControllerIntent proposal in this native turn. A received proposal is not final admission or end of turn. Use replaces with a prior proposalRef from this invocation for correction. Native work may continue; finalAssessment.answer carries the user-facing result and need not be repeated when ending the turn.',
+  description: 'Register a ControllerIntent proposal; correct it with replaces (a prior proposalRef in this invocation). Receipt is not admission or native turn completion; native work may continue. finalAssessment.answer need not be repeated in the final native message.',
   inputSchema: { type:'object', properties:{ intent:{}, replaces:{type:'string'} }, required:['intent'], additionalProperties:false },
 };
 const fetchTool = {
@@ -51,12 +51,12 @@ const fetchTool = {
 
 const evidenceListTool = {
   name:'evidence_list',
-  description:'Optionally list observations accepted in this invocation, in append-only order (up to 12 positions per page). Each ref identifies a captured record, not the truth of a claim. Source and provenance identify who reported it; completeness describes source capture, not tool success. Native title/kind are provider-reported; inheritedFields marks values from earlier reports of the same call. hasCapturedValue, when present, says whether a captured value exists, not whether every fetch will succeed. native.omittedFields and omittedMetadataFields describe capture-metadata and projection omissions; a positional unavailable entry is a budget gap, not tool failure. Resume from resumeCursor even after an empty/exhausted page; nextCursor marks additional entries already captured now. This is not a native tool or capability inventory.',
+  description:'Optional directory of accepted observations in this invocation (append-only, 12 positions per page), not a native tool inventory.\nIdentity: canonical ref identifies a record, not proof; source/provenance attribute the report. Native title/kind are provider-reported; inheritedFields marks earlier same-call values.\nAvailability: completeness describes capture, not tool success. hasCapturedValue, if present, indicates a stored value, not guaranteed fetch access. native.omittedFields marks capture-metadata omissions; omittedMetadataFields marks projection omissions. Positional unavailable entries are budget gaps, not tool failures.\nPaging: resumeCursor works even after an empty/exhausted page; nextCursor signals more entries already captured.',
   inputSchema:{type:'object',properties:{cursor:countSchema},additionalProperties:false},
 };
 const evidenceFetchTool = {
   name:'evidence_fetch',
-  description:'Read an accepted observation by canonical ref in this invocation (for example, from the live directory). A chunk contains bounded base64 bytes, format utf8 or json, offset and totalBytes of the saved value; nextOffset locates remaining saved bytes. Missing ref, unavailable payload, closed scope and budget are access outcomes, distinct from capture completeness or tool status. An exhausted chunk is not proof of full source capture or durable commit.',
+  description:'Read an accepted current-invocation observation by canonical ref. Chunk: bounded base64 of saved utf8/json bytes, offset, totalBytes and nextOffset (remaining bytes). Missing ref, payload, closed scope or budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.',
   inputSchema:{type:'object',properties:{ref:{type:'string',minLength:1},offset:countSchema,maxBytes:countSchema},required:['ref'],additionalProperties:false},
 };
 
@@ -67,14 +67,13 @@ export function retrievalDetail(enabled, names = {}, kind = 'controller') {
   const list = names.contextListToolName ?? 'context_list';
   const fetch = names.contextFetchToolName ?? 'context_fetch';
   const context = enabled
-    ? 'Optional MCP ' + list + ' and ' + fetch + ' retrieve omitted history when useful. Copy ' + list + ' nextCursor exactly; cursor 0 starts a fresh directory traversal. ' + fetch + ' offset reads saved data in bounded base64 chunks with nextOffset; retain original completeness. Report material unavailable evidence explicitly.'
+    ? 'Optional MCP ' + list + ' and ' + fetch + ' retrieve scoped historical records when useful.'
     : kind === 'controller'
       ? 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.'
       : 'Historical context retrieval via MCP is unavailable in this transport. Supplied context retains its original scope and completeness.';
   return context + (names.evidenceListToolName && names.evidenceFetchToolName
     ? '\nOptional current-invocation MCP ' + names.evidenceListToolName + ' and ' + names.evidenceFetchToolName +
-      ' expose accepted observations and canonical refs. ' + names.evidenceListToolName +
-      ' resumeCursor supports later live reads even if nextCursor is absent. Capture, directory coverage and payload availability are distinct; discovery is optional and observations are not durable until committed.'
+      ' expose accepted observations and canonical refs. Live observations are not durable until committed.'
     : '');
 }
 
