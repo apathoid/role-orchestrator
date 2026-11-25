@@ -94,3 +94,39 @@ test('C18.1 large fully valid model Assessment is not truncated in decoding/mate
   assert.equal(result.kind,'accepted');
   assert.equal(result.value.finalAssessment.answer,text);
 });
+
+test('C22 F1 lists actual external fields without altering the stable cause or canonical normalization', () => {
+  const root = decodeControllerIntent({...simple('x'),unknown:true});
+  assert.equal(root.kind,'rejected');
+  assert.equal(root.reason.expected,'a model-owned ControllerIntent field (Host-owned metadata must be omitted)');
+  assert.deepEqual(root.reason.allowedFields,['additions','cancellations','acceptedActionIds','waitPolicy',
+    'clarification','nextController','finalAssessment','findings']);
+  const nested = {...simple('x'),finalAssessment:{...simple('x').finalAssessment,unknown:true}};
+  const decoded = decodeControllerIntent(nested);
+  assert.equal(decoded.kind,'rejected');
+  assert.equal(decoded.reason.path,'$.finalAssessment.unknown');
+  assert.equal(decoded.reason.expected,'a supported field');
+  assert.deepEqual(decoded.reason.allowedFields,['overall','requirements','observationRefs','findingRefs','unresolvedQuestions','answer']);
+  const valid = materializeControllerIntent(simple('x'),binding);
+  assert.equal(valid.kind,'accepted');
+  const legacy = decodeDecision({...valid.value,finalAssessment:{...valid.value.finalAssessment,unknown:true}});
+  assert.equal(legacy.kind,'rejected');
+  assert.deepEqual(legacy.reason.allowedFields,['author',...decoded.reason.allowedFields]);
+  assert.equal(materializeControllerIntent(nested,binding).kind,'rejected');
+  const requirement = decodeControllerIntent({finalAssessment:{overall:'partial',answer:'x',
+    requirements:[{requirementId:'r',status:'unverified',name:'bad'}]}});
+  assert.equal(requirement.kind,'rejected');
+  assert.deepEqual(requirement.reason.allowedFields,['requirementId','status','observationRefs','findingRefs','reason']);
+  const finding = decodeControllerIntent({nextController:{continue:true},
+    findings:[{findingId:'f',claim:'x',subject:'y',unknown:true}]});
+  assert.equal(finding.kind,'rejected');
+  assert.deepEqual(finding.reason.allowedFields,['findingId','claim','subject','supports','uncertainties','supersedes']);
+  const position = decodeControllerIntent({nextController:{continue:true,contextRequest:{refs:[{revision:1,index:0,unknown:1}]}}});
+  assert.equal(position.kind,'rejected');
+  assert.deepEqual(position.reason.allowedFields,['revision','index']);
+  const wrongType = decodeControllerIntent({finalAssessment:{overall:'bad',answer:'x'}});
+  assert.equal(wrongType.kind,'rejected');
+  assert.equal(wrongType.reason.expected,'complete | partial | unresolved');
+  assert.equal(wrongType.reason.allowedFields,undefined);
+  assert.deepEqual(materializeControllerIntent(simple('x'),binding),valid);
+});

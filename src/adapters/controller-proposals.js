@@ -1,4 +1,6 @@
 import { decodeControllerIntent } from '../core/controller-intent.js';
+import { boundedFieldError } from '../core/decode.js';
+/** @import {FieldError} from '../core/decode.js' */
 
 /**
  * Technical, invocation-local proposal registry. No Action is admitted here.
@@ -17,7 +19,7 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
   const known = new Map();
   /** @type {{ref:string,root:string,value:unknown} | undefined} */
   let selected;
-  /** @type {{code:'INVALID_PROPOSAL',path:string,expected:string} | undefined} */
+  /** @type {FieldError | undefined} */
   let invalidReason;
   let conflicted = false;
   /** @type {'budget' | undefined} */
@@ -38,10 +40,10 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
    * @param {string} ref @param {unknown} input
    */
   function classify(ref, input) {
-    /** @param {{code:'INVALID_PROPOSAL',path:string,expected:string}} reason */
+    /** @param {FieldError} reason */
     const rejected = reason => {
-      invalidReason = reason;
-      return { kind:'rejected', proposalRef:ref, reason };
+      invalidReason = boundedFieldError(reason);
+      return { kind:'rejected', proposalRef:ref, registered:known.has(ref), reason:invalidReason };
     };
     if (signal.aborted || isActive?.() === false) return { kind:'unavailable', reason:'closed' };
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -90,7 +92,7 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
     let feedback;
     try { feedback = preflight?.(parsed.value); }
     catch { feedback = {kind:'unchecked',reason:'unavailable',advisory:true}; }
-    return {kind:'proposal_pending', proposalRef:ref,
+    return {kind:'proposal_pending', proposalRef:ref, registered:true,
       note:'Structurally received; no Action is admitted before native turn completion.',
       ...(feedback && {preflight:feedback})};
   }

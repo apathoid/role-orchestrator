@@ -420,3 +420,49 @@ test('C21 inherited identity and its attribution fit together or are omitted acr
   assert.deepEqual(boundContextItem(item,1536).native.inheritedFields,['kind']);
   assert.deepEqual(item.native,native);
 });
+
+test('C22 F2/F4 actual MCP argument errors and annotation-only Intent shape; no retrieval on invalid input',async()=>{
+  const stop=new AbortController();
+  let calls=0;
+  const bridge=await startMcpBridge({signal:stop.signal,attemptId:'c22-tools',controllerDelivery:'intent_mcp',
+    contextAccess:{list(){calls++;return {kind:'unavailable',reason:'closed'}},
+      async fetch(){calls++;return {kind:'unavailable',reason:'closed'}},
+      async captureArtifact(){throw Error('not called')}},
+    evidenceAccess:{list(){calls++;return {kind:'unavailable',reason:'closed'}},
+      fetch(){calls++;return {kind:'unavailable',reason:'closed'}}}});
+  try{
+    const first=(await listTools(bridge.url,1)).result;
+    const second=(await listTools(bridge.url,2,{cursor:first.nextCursor})).result;
+    const tools=[...first.tools,...second.tools];
+    const decision=tools.find(t=>t.name===bridge.decisionToolName);
+    assert.deepEqual(decision.inputSchema,{type:'object',properties:{intent:{},replaces:{type:'string'}},
+      required:['intent'],additionalProperties:false});
+    for(const part of ['additions?: Action[]','waitPolicy?:','clarification?:','nextController?:','contextRequest?:',
+      'Assessment:', 'requirementId:string','unverified','Finding:','after_model_acceptance','nested author','default only to empty arrays']){
+      assert.ok(decision.description.includes(part),part);
+    }
+    assert.match(tools.find(t=>t.name==='context_fetch').description,/maxBytes limits a range response only when offset is supplied/);
+    assert.match(tools.find(t=>t.name==='evidence_fetch').description,/maxBytes alone reads from offset 0/);
+    const samples=[
+      ['context_list',{cursor:false},'$.cursor','an object'],
+      ['context_fetch',{},'$.ref','an object'],
+      ['evidence_list',{bogus:1},'$.bogus','a supported field',['cursor']],
+      ['evidence_fetch',{ref:'x',offset:-1},'$.offset','a non-negative safe integer'],
+      ['context_fetch',{ref:'x',bogus:1},'$.bogus','a supported field',['ref','sourceOperationId','offset','maxBytes']],
+    ];
+    let n=2;
+    for(const [name,args,path,expected,allowedFields] of samples){
+      const result=value(await call(bridge.url,++n,name,args));
+      assert.equal(result.kind,'unavailable');
+      assert.equal(result.reason,'invalid_input');
+      assert.deepEqual(result.diagnostic,{code:'INVALID_PROPOSAL',path,expected,...(allowedFields&&{allowedFields})});
+    }
+    const key='🌍'.repeat(4000);
+    const large=value(await call(bridge.url,++n,'evidence_list',{[key]:1}));
+    assert.equal(large.reason,'invalid_input');
+    assert.equal(large.diagnostic.path.length,512);
+    assert.deepEqual(large.diagnostic.allowedFields,['cursor']);
+    assert.equal(calls,0);
+    assert.equal((await bridge.finalizeDecision()).kind,'missing');
+  }finally{stop.abort();bridge.close();}
+});

@@ -265,3 +265,29 @@ test('C18R.5 cross-invocation cancel and late callbacks cannot admit pending pro
    assert.equal(blocked.status,410);
  }finally{stop.abort();another.abort();old.close();live.close();}
 });
+
+test('C22 F3 actual wire distinguishes allocated ref from registered lineage; unchanged selected result',async()=>{
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,attemptId:'c22-receipts',controllerDelivery:'intent_mcp'});
+  try{
+    const a=value(await call(bridge.url,1,'submit_decision',{intent:intent('A')}));
+    assert.equal(a.registered,true);
+    const bad=value(await call(bridge.url,2,'submit_decision',{intent:intent('bad'),replaces:'foreign'}));
+    assert.equal(bad.kind,'rejected');
+    assert.equal(bad.registered,false);
+    const wrong=value(await call(bridge.url,3,'submit_decision',{intent:intent('bad'),replaces:bad.proposalRef}));
+    assert.equal(wrong.registered,false);
+    assert.equal(wrong.reason.expected,'a known proposalRef in this invocation');
+    const invalid=value(await call(bridge.url,4,'submit_decision',{intent:{...intent('bad'),extra:true},replaces:a.proposalRef}));
+    assert.equal(invalid.kind,'rejected');
+    assert.equal(invalid.registered,true);
+    assert.ok(invalid.reason.allowedFields.includes('finalAssessment'));
+    const repaired=value(await call(bridge.url,5,'submit_decision',{intent:intent('repaired'),replaces:invalid.proposalRef}));
+    assert.equal(repaired.kind,'proposal_pending');
+    assert.equal(repaired.registered,true);
+    const selected=await bridge.finalizeDecision();
+    assert.equal(selected.kind,'intent');
+    assert.equal(selected.proposalRef,repaired.proposalRef);
+    assert.equal(selected.value.finalAssessment.answer,'repaired');
+  }finally{stop.abort();bridge.close();}
+});

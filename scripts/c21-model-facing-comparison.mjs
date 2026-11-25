@@ -9,6 +9,7 @@ const builds=[
   ['A','16525506fd3dd4d4543b85377212234468f53037'],
   ['B','24ed4f5c24ffd717c860759fbc82a6ae70f9b094'],
   ['C','71d6b2d64de96c43076021878e82387adc79a049'],
+  ['C22A','f6d89a354724b9d11893c730d4f0871b1dfe067e'],
   ['D',execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()],
 ];
 const at=(dir,path)=>import(pathToFileURL(join(dir,path)).href);
@@ -18,7 +19,7 @@ const constraints=['Keep the requested format.',''];
 const answer='  # Result 🌍\n  ';
 await withOwnedRun('C21-comparison',async directory=>{
   const rows=[];
-  let invariant, nativeInvariant;
+  let invariant, nativeInvariant, c22Invariant;
   for(const [label,sha] of builds){
     const dir=label==='D'?root:join(directory,label);
     if(label!=='D'){
@@ -77,7 +78,29 @@ await withOwnedRun('C21-comparison',async directory=>{
           assert.deepEqual(data,invariant,'literal task/context/catalog and invocation identity must match A/B/C/D');
           prompts[delivery??'legacy']={totalBytes:Buffer.byteLength(text),...parts};
         }
-        rows.push({label,sha,prompts,toolSchemaBytes:bytes(tools),schemaWireBytes,
+        let c22;
+        if(label==='C22A'||label==='D'){
+          const invalid=await rpc('tools/call',{name:bridge.evidenceListToolName,arguments:{unknown:true}});
+          const invalidValue=JSON.parse(invalid.result.content[0].text);
+          assert.equal(invalidValue.kind,'unavailable');assert.equal(invalidValue.reason,'invalid_input');
+          const submit=async args=>{const reply=await rpc('tools/call',{name:bridge.decisionToolName,arguments:args});
+            return {value:JSON.parse(reply.result.content[0].text),wireBytes:reply.wireBytes};};
+          const accepted=await submit({intent:{finalAssessment:{overall:'complete',answer}}});
+          const wrong=await submit({intent:{},replaces:'foreign'});
+          const rejected=await submit({intent:{finalAssessment:{overall:'complete',answer,unknown:true}},replaces:accepted.value.proposalRef});
+          const corrected=await submit({intent:{finalAssessment:{overall:'complete',answer}},replaces:rejected.value.proposalRef});
+          const selected=await bridge.finalizeDecision();
+          assert.equal(selected.kind,'intent');assert.equal(selected.value.finalAssessment.answer,answer);
+          assert.equal(selected.proposalRef,corrected.value.proposalRef);
+          const primary=({code,path,expected})=>({code,path,expected});
+          const stable={invalidKind:invalidValue.kind,invalidReason:invalidValue.reason,
+            accepted:accepted.value.kind,wrong:primary(wrong.value.reason),rejected:primary(rejected.value.reason),selected};
+          c22Invariant??=stable;assert.deepEqual(stable,c22Invariant);
+          c22={invalidInputWireBytes:invalid.wireBytes,firstReceiptWireBytes:accepted.wireBytes,
+            unregisteredReceiptWireBytes:wrong.wireBytes,registeredRejectionWireBytes:rejected.wireBytes,
+            correctedReceiptWireBytes:corrected.wireBytes};
+        }
+        rows.push({label,sha,prompts,toolSchemaBytes:bytes(tools),schemaWireBytes,c22,
           combinedMcpPromptAndToolsBytes:prompts.intent_mcp.totalBytes+bytes(tools),
           evidenceListWireBytes:first.wireBytes,evidenceNextWireBytes:second.wireBytes,evidenceFetchWireBytes:fetched.wireBytes,
           schema:tools.map(({name,inputSchema})=>({name,inputSchema})),pageRefs:[...page.items,...rest.items].map(x=>x.ref)});

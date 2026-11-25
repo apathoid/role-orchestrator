@@ -343,7 +343,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       ...correction, attemptId: active.attemptId, category: active.category, stage: active.stage,
       consecutiveIdentical: recovery.consecutiveIdentical, totalRejected: recovery.totalRejected,
       thresholds: recovery.limits, result: resultDelivery ?? {kind:'unknown'},
-      guidance: 'Previous declared result rejected. Historical results and observations may be used or reconsidered as needed. Return a valid Decision for this invocation. The referenced body, if available, is scoped and bounded; retrieval is optional.',
+      guidance: 'The previous Controller invocation did not yield an accepted declaration. The recorded category, path and expected identify the technical failure, including a missing or conflicting proposal. Follow the current invocation\'s delivery instructions. Historical results and observations may be used or reconsidered as needed. The referenced declared result, if available, is scoped and bounded; retrieval is optional.',
     },
   } : undefined;
   const previous = state.events.findLast(item => item.kind === 'operation.finished');

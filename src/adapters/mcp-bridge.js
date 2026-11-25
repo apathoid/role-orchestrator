@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
-import { count, decode, id, optional, record } from '../core/decode.js';
+import { boundedFieldError, count, decode, id, optional, record } from '../core/decode.js';
+import { controllerIntentInputDescription } from '../application/controller-intent-instructions.js';
 import { contextReference, historyCursor } from '../core/contracts.js';
 import { createPendingControllerDecisions } from './controller-proposals.js';
 
@@ -35,11 +36,13 @@ const listTool = {
 };
 const decisionTool = {
   name: 'submit_decision',
-  description: 'Register a ControllerIntent proposal; correct it with replaces (a prior proposalRef in this invocation). Receipt is not admission or native turn completion; native work may continue. finalAssessment.answer need not be repeated in the final native message.',
+  // Annotation only: no new nested constraints that could suppress delivery
+  // of malformed replacements before the existing registration boundary.
+  description: 'Register a ControllerIntent proposal; optional replaces is a known registered proposalRef in this invocation (registered:true is a registration fact, not guaranteed replacement eligibility). Receipt is not admission or native turn completion; native work may continue. finalAssessment.answer need not be repeated in the final native message.\n' + controllerIntentInputDescription,
   inputSchema: { type:'object', properties:{ intent:{}, replaces:{type:'string'} }, required:['intent'], additionalProperties:false },
 };
 const fetchTool = {
-  name: 'context_fetch', description: 'Retrieve a visible historical record by ref or directory position. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; nextOffset locates further saved bytes. Source completeness and truncation remain as recorded; a complete chunk or exhausted offset does not restore missing source data.',
+  name: 'context_fetch', description: 'Retrieve a visible historical record by ref or directory position. Optional sourceOperationId selects another operation only under existing trusted sharing permissions. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; maxBytes limits a range response only when offset is supplied; nextOffset locates further saved bytes. Source completeness and truncation remain as recorded; a complete chunk or exhausted offset does not restore missing source data.',
   inputSchema: { type: 'object', properties: {
     ref: { anyOf: [{ type: 'string', minLength: 1 }, { type: 'object',
       properties: { revision: countSchema, index: countSchema }, required: ['revision', 'index'], additionalProperties: false }] },
@@ -56,7 +59,7 @@ const evidenceListTool = {
 };
 const evidenceFetchTool = {
   name:'evidence_fetch',
-  description:'Read an accepted current-invocation observation by canonical ref. Chunk fields: base64 (bounded saved bytes), format (utf8/json), offset, totalBytes, nextOffset (byte offset for the next chunk). Missing ref, unavailable payload, closed scope and budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.',
+  description:'Read an accepted current-invocation observation by canonical ref. Optional maxBytes alone reads from offset 0. Chunk fields: base64 (bounded saved bytes), format (utf8/json), offset, totalBytes, nextOffset (byte offset for the next chunk). Missing ref, unavailable payload, closed scope and budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.',
   inputSchema:{type:'object',properties:{ref:{type:'string',minLength:1},offset:countSchema,maxBytes:countSchema},required:['ref'],additionalProperties:false},
 };
 
@@ -87,9 +90,9 @@ function object(value) {
  * Return a bounded, model-visible MCP reply. Only in-flight ordinary requests
  * and bounded control receipts are retained for request-ID correlation.
  * Never retain an arbitrary completed ToolPort payload beyond settlement.
- * @param {unknown} value @param {string | number} requestId
+ * @param {unknown} value @param {string | number} requestId @param {boolean} [control]
  */
-function toolReply(value, requestId) {
+function toolReply(value, requestId, control = false) {
   const text = JSON.stringify(value);
   const full = { content: [{ type: 'text', text }], ...(object(value)?.kind === 'rejected' && {isError:true}) };
   // The JSON-RPC envelope and request id also consume response bytes.
@@ -100,6 +103,18 @@ function toolReply(value, requestId) {
   // receipt or execution status. A missing output is a delivery error,
   // not evidence of a no-effect pre-dispatch refusal.
   const tool = object(value);
+  // A very large control request ID can consume nearly the entire envelope.
+  // New receipt annotations must not replace a previously deliverable cause.
+  // Only our own control receipts are eligible; external payloads are untouched.
+  if (control && tool && Object.hasOwn(tool,'registered')) {
+    const {registered: _registered, reason, ...rest} = tool;
+    const detail = object(reason);
+    if (detail && Object.hasOwn(detail,'allowedFields')) {
+      const {allowedFields: _fields, ...primary} = detail;
+      return toolReply({...rest, reason:primary}, requestId);
+    }
+    return toolReply({...rest, ...(reason !== undefined && {reason})}, requestId);
+  }
   const limited = tool && typeof tool.status === 'string' && toolStatuses.has(tool.status) &&
       typeof tool.effect === 'string' && toolEffects.has(tool.effect)
     ? { status: tool.status, effect: tool.effect,
@@ -175,6 +190,11 @@ export async function startMcpBridge({ contextAccess, evidenceAccess, preflightI
   const controlCalls = new Map();
   let active = 0;
 
+  /** @param {import('../core/decode.js').FieldError} reason */
+  function invalidInput(reason) {
+    return {kind:'unavailable', reason:'invalid_input', diagnostic:boundedFieldError(reason)};
+  }
+
   /** @param {string} name @param {unknown} args */
   async function callTool(name, args) {
     if (closed || signal.aborted) return { kind: 'unavailable', reason: 'closed' };
@@ -185,11 +205,11 @@ export async function startMcpBridge({ contextAccess, evidenceAccess, preflightI
     try {
       if (name === contextListToolName && contextAccess) {
         const parsed = decode(listArgs, args);
-        return parsed.kind === 'accepted' ? contextAccess.list(parsed.value.cursor) : { kind: 'unavailable', reason: 'invalid_input' };
+        return parsed.kind === 'accepted' ? contextAccess.list(parsed.value.cursor) : invalidInput(parsed.reason);
       }
       if (name === contextFetchToolName && contextAccess) {
         const parsed = decode(fetchArgs, args);
-        if (parsed.kind === 'rejected') return { kind: 'unavailable', reason: 'invalid_input' };
+        if (parsed.kind === 'rejected') return invalidInput(parsed.reason);
         const { ref, sourceOperationId, offset, maxBytes } = parsed.value;
         // MCP JSON-RPC wraps the result as JSON-encoded text. Clamp the
         // requested ContextPort reply *independently* of fetchMaxBytes so a
@@ -206,12 +226,11 @@ export async function startMcpBridge({ contextAccess, evidenceAccess, preflightI
       }
       if (name === evidenceListToolName && evidenceAccess) {
         const parsed = decode(evidenceListArgs, args);
-        return parsed.kind === 'accepted' ? evidenceAccess.list(parsed.value.cursor) :
-          {kind:'unavailable',reason:'invalid_input'};
+        return parsed.kind === 'accepted' ? evidenceAccess.list(parsed.value.cursor) : invalidInput(parsed.reason);
       }
       if (name === evidenceFetchToolName && evidenceAccess) {
         const parsed = decode(evidenceFetchArgs, args);
-        if (parsed.kind === 'rejected') return {kind:'unavailable',reason:'invalid_input'};
+        if (parsed.kind === 'rejected') return invalidInput(parsed.reason);
         return evidenceAccess.fetch(parsed.value.ref,parsed.value.offset === undefined && parsed.value.maxBytes === undefined
           ? undefined : {offset:parsed.value.offset ?? 0,maxBytes:parsed.value.maxBytes});
       }
@@ -315,7 +334,7 @@ export async function startMcpBridge({ contextAccess, evidenceAccess, preflightI
               break;
             }
             decisionCalls++;
-            call = {fingerprint,response:callTool(params.name,args).then(value=>toolReply(value,requestId))};
+            call = {fingerprint,response:callTool(params.name,args).then(value=>toolReply(value,requestId,true))};
             controlCalls.set(requestId,call);
           }
           result = await call.response;

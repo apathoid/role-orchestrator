@@ -2,7 +2,7 @@ import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
 import { materializeControllerIntent } from './controller-intent.js';
-import { decode, jsonValue } from '../core/decode.js';
+import { boundedFieldError, decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, validRejectedResult, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
@@ -1547,7 +1547,7 @@ export function createOrchestrator(deps) {
         if (!correction) correction = {code:'INVALID_PROPOSAL',path:'$',expected:'a valid Decision'};
         // The decoder's path can contain an arbitrary unknown key. Keep the
         // technical correction bounded; never persist the rejected body here.
-        correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
+        correction = boundedFieldError(correction);
         const rejectedState = await transition(state, {kind:'controller.invalid_proposal', attemptId,
           decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined,
           category:rejectionCategory, reason:correction, result: response.declaredResult});

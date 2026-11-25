@@ -5,6 +5,8 @@ import { request, outcome } from '../fixtures/core.js';
 import { createOperation, applyEvent } from '../../src/core/operation.js';
 import { materializeControllerIntent } from '../../src/application/controller-intent.js';
 import { decodeSnapshot, encodeSnapshot } from '../../src/core/snapshot.js';
+import { renderInvocationPrompt } from '../../src/adapters/invocation-prompt.js';
+import { decisionRecovery } from '../../src/application/decision-recovery.js';
 
 test('C18.2 model-owned ControllerIntent uses unchanged Operation admission and a trusted context revision',async()=>{
  const answer='# Hello 🌿\n\nDirect result';
@@ -252,4 +254,65 @@ test('C18R.4 persisted Controller admission before Worker reservation resumes on
    assert.equal(state.attempts.filter(x=>x.actionId===action.actionId).length,1);
    assert.equal(state.status,'finished');
  }finally{await second.api.close();}
+});
+
+test('C22 F1/F5 missing, conflict and invalid declarations report prior facts independently of current delivery',async()=>{
+  const {api,invocations}=setup({maxInvocations:4,respond(invocation,count){
+    const base=final(invocation);
+    if(count===1)return {...base,output:'ordinary native message',controllerDeclaration:{kind:'missing'}};
+    if(count===2)return {...base,output:'ordinary native message',controllerDeclaration:{kind:'conflict'}};
+    if(count===3)return {...base,controllerDeclaration:{kind:'intent',value:{finalAssessment:{overall:'complete',answer:'x',unknown:true}}}};
+    return base;
+  }});
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.equal(state.status,'finished');
+    assert.equal(state.assessment.answer,'Direct answer');
+    assert.equal(invocations.length,4);
+    const errors=state.events.filter(e=>e.kind==='controller.invalid_proposal');
+    assert.equal(errors.length,3);
+    assert.equal(errors[0].result,undefined);
+    assert.equal(errors[1].result,undefined);
+    assert.equal(errors[0].reason.expected,'a ControllerIntent submission before native end_turn');
+    assert.equal(errors[1].reason.expected,'one unambiguous corrected ControllerIntent proposal');
+    assert.ok(errors[2].reason.allowedFields.includes('answer'));
+    assert.ok(!errors[2].reason.allowedFields.includes('author'));
+    for(const [index,delivery] of [[1,'intent_mcp'],[2,'intent_text'],[3,undefined]]){
+      const invocation=invocations[index];
+      const correction=invocation.context.find(item=>item.ref==='host:decision-error').value;
+      assert.equal(correction.expected,errors[index-1].reason.expected);
+      assert.equal(correction.totalRejected,index);
+      const prompt=renderInvocationPrompt({...invocation,controllerDelivery:delivery},'fixture');
+      assert.match(prompt,/Follow the current invocation's delivery instructions/);
+      assert.doesNotMatch(prompt,/Previous declared result rejected|Return a valid Decision for this invocation/);
+      if(delivery==='intent_mcp')assert.match(prompt,/Use the invocation-scoped MCP submit_decision/);
+      else if(delivery==='intent_text')assert.match(prompt,/Return exactly one model-owned ControllerIntent JSON object/);
+      else assert.match(prompt,/Return exactly one JSON object/);
+    }
+    const reopened=decodeSnapshot(encodeSnapshot(state));
+    assert.equal(reopened.kind,'accepted');
+    assert.deepEqual(reopened.value.events.filter(e=>e.kind==='controller.invalid_proposal')[2].reason.allowedFields,
+      errors[2].reason.allowedFields);
+    assert.equal(decisionRecovery(reopened.value).totalRejected,3);
+  }finally{await api.close();}
+});
+
+test('C22 optional diagnostic details do not participate in recovery identity and oversized details are omitted',async()=>{
+  const {api}=setup({maxInvocations:8,respond(invocation,count){
+    const allowedFields=count===1?['one']:count===2?['two']:count===3?['🌍'.repeat(4000)]:undefined;
+    return {...final(invocation),controllerDeclaration:{kind:'invalid',
+      reason:{code:'INVALID_PROPOSAL',path:'$.unknown',expected:'a supported field',allowedFields}}};
+  }});
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.equal(state.status,'waiting');
+    const recovery=decisionRecovery(state);
+    assert.equal(recovery.consecutiveIdentical,5);
+    assert.equal(recovery.totalRejected,5);
+    const rejected=state.events.filter(e=>e.kind==='controller.invalid_proposal');
+    assert.deepEqual(rejected[0].reason.allowedFields,['one']);
+    assert.deepEqual(rejected[1].reason.allowedFields,['two']);
+    assert.equal(rejected[2].reason.allowedFields,undefined);
+    assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
+  }finally{await api.close();}
 });

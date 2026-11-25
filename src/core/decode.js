@@ -1,19 +1,46 @@
 /** @template T @typedef {(input: unknown, path: string) => T} Decoder */
-/** @typedef {{code: 'INVALID_PROPOSAL', path: string, expected: string}} FieldError */
+/** @typedef {{code: 'INVALID_PROPOSAL', path: string, expected: string, allowedFields?: string[]}} FieldError */
 /** @template T @typedef {{kind: 'accepted', value: T} | {kind: 'rejected', reason: FieldError}} Decoded */
 
 class InvalidField extends Error {
-  /** @param {string} path @param {string} expected */
-  constructor(path, expected) {
+  /** @param {string} path @param {string} expected @param {unknown} [fields] */
+  constructor(path, expected, fields) {
     super(path + ': expected ' + expected);
     /** @type {FieldError} */
-    this.reason = { code: 'INVALID_PROPOSAL', path, expected };
+    const allowedFields = boundedAllowedFields(fields);
+    this.reason = { code: 'INVALID_PROPOSAL', path, expected, ...(allowedFields && {allowedFields}) };
   }
 }
 
-/** @param {string} path @param {string} expected @returns {never} */
-export function invalid(path, expected) {
-  throw new InvalidField(path, expected);
+/** @param {string} path @param {string} expected @param {unknown} [fields] @returns {never} */
+export function invalid(path, expected, fields) {
+  throw new InvalidField(path, expected, fields);
+}
+
+/**
+ * Optional local field names, never a validation rule or part of error identity.
+ * Omit the whole list rather than suggesting an incomplete set is exhaustive.
+ * @param {unknown} value @returns {string[] | undefined}
+ */
+export function boundedAllowedFields(value) {
+  if (!Array.isArray(value) || value.length > 32) return undefined;
+  /** @type {string[]} */
+  const fields = [];
+  for (const field of value) {
+    if (typeof field !== 'string' || !field.length || field.length > 64) return undefined;
+    fields.push(field);
+  }
+  return JSON.stringify(fields).length <= 512 ? fields : undefined;
+}
+
+/** Bound a diagnostic at a receipt/journal boundary, not at validation.
+ * Preserve the existing 512-code-unit correction identity for path/expected.
+ * @param {FieldError} reason @returns {FieldError}
+ */
+export function boundedFieldError(reason) {
+  const allowedFields = boundedAllowedFields(reason.allowedFields);
+  return {code:reason.code, path:reason.path.slice(0,512), expected:reason.expected.slice(0,512),
+    ...(allowedFields && {allowedFields})};
 }
 
 /** @template T @param {Decoder<T>} decoder @param {unknown} input @returns {Decoded<T>} */
@@ -68,7 +95,7 @@ export const record = fields => (input, path) => {
     return invalid(path, 'an object');
   }
   for (const field of Object.keys(input)) {
-    if (!Object.hasOwn(fields, field)) invalid(path + '.' + field, 'a supported field');
+    if (!Object.hasOwn(fields, field)) invalid(path + '.' + field, 'a supported field', Object.keys(fields));
   }
   const values = /** @type {Record<string, unknown>} */ (input);
   const entries = Object.entries(fields).map(([field, parse]) =>

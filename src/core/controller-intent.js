@@ -66,11 +66,11 @@ function assessmentIntent(value, path) {
  * @param {unknown} input
  */
 export function decodeControllerIntent(input) {
-  return decode((value, path) => {
+  const parsed = decode((value, path) => {
     const source = plain(value, path);
     for (const field of Object.keys(source)) {
       if (!intentFields.has(field)) invalid(path + '.' + field,
-        'a model-owned ControllerIntent field (Host-owned metadata must be omitted)');
+        'a model-owned ControllerIntent field (Host-owned metadata must be omitted)', [...intentFields]);
     }
     const complete = decision({
       schemaVersion: 1, decisionId: 'intent-draft', operationId: 'intent-draft', contextCursor: 0,
@@ -111,4 +111,12 @@ export function decodeControllerIntent(input) {
       })),
     };
   }, input);
+  // Canonical Decision validation supplies local fields. Author is Host-owned
+  // everywhere in the external Intent (unlike legacy Decision); never offer
+  // the normalization placeholder as an input field. No path-specific rules.
+  if (parsed.kind === 'rejected' && parsed.reason.allowedFields) {
+    return {...parsed, reason:{...parsed.reason,
+      allowedFields:parsed.reason.allowedFields.filter(field => field !== 'author')}};
+  }
+  return parsed;
 }
