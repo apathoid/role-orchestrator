@@ -1,5 +1,11 @@
 # Changelog
 
+### C22 — Model-facing Technical Information Accessibility (implemented; engineering verification pending; native UNVERIFIED)
+
+- Expose bounded local allowed fields and retain existing own retrieval decoder errors without changing validation or recovery identity.
+- Distinguish registered proposal refs from unregistered receipt refs; retain existing replacement/finality and primary wire cause. Reuse the external Intent structural reference in the MCP description without adding schema restrictions.
+- Clarify prior correction facts/current delivery and existing retrieval argument scope; no new state, tools, gates, context policy or provider-specific behavior.
+
 ### C21-R — Model-facing Clarity & Comparison Refinement (engineering PASS at dbcc6d88; real native UNVERIFIED)
 
 - Consolidate repeated retrieval and native completion guidance; keep role-specific and standalone tool information where necessary. Clarify evidence directory fields and byte-chunk pagination without changing schemas, bounds or runtime contracts.

@@ -201,3 +201,9 @@ Status lookup may wait indefinitely when the provider does not reply; explicit u
 ### C20-R capture boundary
 
 History omission does not prevent delivery of an independently complete ACP current message. Existing observations retain their identity and completeness, no reconstruction of omitted tools. The application `captureMaxBytes` bounds artifact capture by ContextPort; ordinary provider-result acceptance is not a cumulative history-byte gate. Context projections remain bounded and retrieval optional. An incomplete anonymous current message cannot be reconstructed from later suffixes; only an existing proven native boundary permits reset.
+
+## C22 — Correction and retrieval information
+
+A technical correction states the prior actual failure (including missing/conflicting proposal) and follows the current invocation's rendered delivery instructions. Ordinary native final text is not a submitted Intent or Assessment. No new result reference, capture, ranking or automatic reuse. The existing rejection journal may retain optional bounded allowedFields; older v1 records without it remain valid. Recovery identity remains [category, code, path, expected], not optional diagnostic detail; thresholds, invocation counts and user-turn boundaries are unchanged.
+
+Historical context_fetch maxBytes limits a range response only with offset, and sourceOperationId remains subject to existing trusted sharing scope. Current-invocation evidence_fetch maxBytes limits saved bytes and defaults to offset 0 when supplied alone. These are existing distinct contracts, clarified in own tool descriptions, not new fetch behavior.
