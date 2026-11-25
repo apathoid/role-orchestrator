@@ -416,3 +416,7 @@ In a standard graphical ACP client verify native question/form schema unchanged,
 ### C20-R native follow-up (UNVERIFIED)
 
 See [N1–N8](#c19c20-r--native-acceptance-procedure-n1n8) above, especially N3–N6. Engineering SDK fixture/scale probe does not establish real-model PASS.
+
+## C21 — Model-facing Information Clarity (real native UNVERIFIED)
+
+Use the [C21.8 comparison procedure](C21_MODEL_FACING_INFORMATION_CLARITY.md) and existing N1–N8. Checkpoints A (planning, source unchanged) `16525506fd3dd4d4543b85377212234468f53037`, B `24ed4f5c24ffd717c860759fbc82a6ae70f9b094`, C current candidate recorded in [STATUS](STATUS.md). Use installed exact builds with the same authorized target/skill, provider/model version, settings, permissions and comparable load/cache where possible; do not reset user worktrees. Record N01 actual changed-skill answer and referenced evidence relevance, tool availability, capture attribution and admission; repeat the available direct/no-evidence, pagination, native skills/scripts/subagents, independent Workers, continuation/replacement, text/legacy and independent-provider controls without prescribing tool choices or counts. Record differences and unavailable checks explicitly. Current execution environment has no authorized real model/client/skill/workspace or original private run. N01 and all C21 real-native controls remain UNVERIFIED. CI deterministic A/B/C and SDK fixture results do not substitute for native compatibility or decision quality.

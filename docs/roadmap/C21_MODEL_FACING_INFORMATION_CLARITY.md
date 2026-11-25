@@ -1,6 +1,6 @@
 # C21 — Model-facing Information Clarity
 
-**Status: PLANNED (implementation, regression and native acceptance UNVERIFIED).**
+**Status: implementation candidate on approved branch; exact-final-SHA engineering and native acceptance UNVERIFIED.** See [STATUS](STATUS.md) for checkpoints and evidence.
 **Approved working branch:** `feature/controller-intent-deferred-admission`.
 **Source/review baseline A:** `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55`, [CI #45563489787](https://github.com/apathoid/role-orchestrator/actions/runs/45563489787) SUCCESS on this exact SHA. Prior C19–C20-R implementation checkpoint `c86d3e5e47bffc7bb7eb4ff42763865b360faae5` / [CI #45488863848](https://github.com/apathoid/role-orchestrator/actions/runs/45488863848) is historical engineering evidence, not C21 verification. The commit introducing this plan is the planning HEAD; record its actual SHA and actual implementation baseline before edits. No master merge. This is the sole approved C21 scope; supersedes earlier proposals under the name Evidence Usability & Controller Efficiency.
 

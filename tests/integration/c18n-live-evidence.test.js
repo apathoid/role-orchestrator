@@ -267,10 +267,11 @@ test('C19 equivalent provider reports keep first metadata and canonical ref; his
   const {api,respondErrors}=setup({maxInvocations:2,async respond(invocation,count,observe){
     if(count===1){
       const report={ref:'native-report',kind:'provider_tool',sourceId:'call',completeness:'complete',
-        value:'original body',native:{eventKind:'tool_call',nativeToolCallId:'call',status:'in_progress'}};
+        value:'original body',native:{eventKind:'tool_call_update',nativeToolCallId:'call',status:'in_progress',
+          title:'Earlier title',kind:'read',inheritedFields:['title','kind']}};
       ref=observe(report);
       assert.match(ref,/^evidence:[a-f0-9]{64}$/);
-      assert.equal(observe({...report,native:{eventKind:'tool_call',nativeToolCallId:'call'}}),ref);
+      assert.equal(observe({...report,native:{...report.native,title:'Later title'}}),ref);
       assert.equal(observe({...report,value:'conflicting payload'}),undefined);
       return final(invocation,{finalAssessment:undefined,nextController:{continue:true}});
     }
@@ -278,9 +279,13 @@ test('C19 equivalent provider reports keep first metadata and canonical ref; his
     assert.equal(page.kind,'available');
     const item=page.items.find(item=>item.ref===ref);
     assert.equal(item.native.status,'in_progress');
+    assert.equal(item.native.title,'Earlier title');
+    assert.deepEqual(item.native.inheritedFields,['title','kind']);
     const fetched=await invocation.contextAccess.fetch(ref,invocation.operationId,{offset:0});
     assert.equal(fetched.kind,'chunk');
     assert.equal(fetched.item.native.status,'in_progress');
+    assert.deepEqual(fetched.item.native.inheritedFields,['title','kind']);
+    assert.equal(fetched.item.native.title,'Earlier title');
     assert.equal(Buffer.from(fetched.base64,'base64').toString('utf8'),'original body');
     return final(invocation);
   }});
@@ -290,6 +295,8 @@ test('C19 equivalent provider reports keep first metadata and canonical ref; his
     const accepted=state.events.flatMap(e=>e.observations??[]).filter(o=>o.ref===ref);
     assert.equal(accepted.length,1);
     assert.equal(accepted[0].native.status,'in_progress');
+    assert.equal(accepted[0].native.title,'Earlier title');
+    assert.deepEqual(accepted[0].native.inheritedFields,['title','kind']);
   }finally{await api.close();}
 });
 

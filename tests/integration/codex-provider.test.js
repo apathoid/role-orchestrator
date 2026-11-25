@@ -44,6 +44,8 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
     assert.ok(!Object.hasOwn(invocation, 'authorityRef'));
     assert.deepEqual(invocation.userConstraints, ['Keep the original task']);
     if (invocation.kind === 'delegate') {
+      assert.ok(prompt.includes('Historical context retrieval via MCP is unavailable'));
+      assert.ok(!prompt.includes('nextController.contextRequest'));
       assert.equal(invocation.expectedResult, 'Report command outcome');
       assert.deepEqual(invocation.skillInstructions, [{id:'checks',version:'v1',status:'complete',instructions:'Selected CLI skill'}]);
       assert.ok(!invocation.instructions.includes('Selected CLI skill'));
