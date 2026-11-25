@@ -310,7 +310,8 @@ test('history directory: MCP context_list shares journal cursor across bridges',
     assert.equal([...first.items,...second.items,...third.items].length,71);
     assert.equal((await call({cursor:0})).items[0].ref,'new-34');
     assert.deepEqual(await call({cursor:32}),{kind:'unavailable',reason:'invalid_cursor'});
-    assert.deepEqual(await call({cursor:{revision:1,index:-1}}),{kind:'unavailable',reason:'invalid_input'});
+    assert.deepEqual(await call({cursor:{revision:1,index:-1}}),{kind:'unavailable',reason:'invalid_input',
+      diagnostic:{code:'INVALID_PROPOSAL',path:'$.cursor.index',expected:'a non-negative safe integer'}});
   } finally {stop.abort();bridge.close();}
 });
 
