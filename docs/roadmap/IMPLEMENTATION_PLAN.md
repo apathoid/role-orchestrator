@@ -1,8 +1,8 @@
 # Активный план реализации и приёмки
 
-## C21 — Model-facing Information Clarity (implementation candidate; final engineering/native UNVERIFIED)
+## C21 — Model-facing Information Clarity (ENGINEERING VERIFIED at 2ed30f83; real native UNVERIFIED)
 
-[Detailed executable plan](C21_MODEL_FACING_INFORMATION_CLARITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Approved next engineering scope on `feature/controller-intent-deferred-admission`; source baseline `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55` / [CI #45563489787](https://github.com/apathoid/role-orchestrator/actions/runs/45563489787) SUCCESS. Planning HEAD is the commit introducing this entry; verify actual baseline before implementation.
+[Detailed executable plan](C21_MODEL_FACING_INFORMATION_CLARITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Implemented approved engineering scope on `feature/controller-intent-deferred-admission`; source baseline `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55` / [CI #45563489787](https://github.com/apathoid/role-orchestrator/actions/runs/45563489787) SUCCESS. Planning HEAD `16525506fd3dd4d4543b85377212234468f53037`; engineering checkpoint C `2ed30f83fddaf6d34ab562c4774bc4704277cd92`, [CI #45661813661](https://github.com/apathoid/role-orchestrator/actions/runs/45661813661) SUCCESS. See STATUS for measured A/B/C and limitations.
 
 | Checkpoint | Deliverable |
 | --- | --- |
@@ -16,7 +16,7 @@
 | C21.7 | Focused regressions using existing infrastructure and full exact-SHA CI |
 | C21.8 | A/B/C native comparison where available, separate native compatibility and model quality; UNVERIFIED where unavailable |
 
-No mandatory filters/order/limit, new store/registry, provider internals/diagnostics investigation, external-effect contract changes, forced retrieval/workflow, hidden capability selection, tool-count/latency or prompt-size target. Preserve existing user authority, real workspace, provider independence, C18–C20-R and prior native obligations. No master merge. Implementation and native results are not established by this planning commit.
+No mandatory filters/order/limit, new store/registry, provider internals/diagnostics investigation, external-effect contract changes, forced retrieval/workflow, hidden capability selection, tool-count/latency or prompt-size target. Preserve existing user authority, real workspace, provider independence, C18–C20-R and prior native obligations. No master merge. Engineering CI verified on checkpoint C; real native results remain UNVERIFIED.
 
 
 ## C19 — Model-facing Evidence & Answer Clarity (ENGINEERING VERIFIED at 876a33c7; native UNVERIFIED)

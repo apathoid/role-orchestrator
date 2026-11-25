@@ -1,6 +1,37 @@
 # Role Orchestrator — оперативный статус
 
-## C21 — Model-facing Information Clarity (implementation candidate; final engineering/native UNVERIFIED)
+## C21 — Model-facing Information Clarity (engineering CI PASS at 2ed30f83; real native UNVERIFIED)
+
+**Current disposition:** checkpoint C `2ed30f83fddaf6d34ab562c4774bc4704277cd92` / [CI #45661813661](https://github.com/apathoid/role-orchestrator/actions/runs/45661813661) SUCCESS, all 39 steps. Foundation 4/4, Core 29/29, Provider contracts 98/98, Integration 564/564, Acceptance 4/4, root npm 699/699, actual Linux PTY 15/15; C21 comparison, prior mandatory probes, Nix flake/build/install, NixOS systemPackages and package/release checks passed. Earlier candidate/pending entries below are historical. This documentation-only closure records actual results on C; the commit containing this entry requires its own exact-SHA CI. No master merge.
+
+**Comparable deterministic A/B/C evidence** (same fixture, actual historical and current renderers and MCP endpoints; bytes, not native token counts):
+
+- A `16525506fd3dd4d4543b85377212234468f53037` (planning, source unchanged from `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55`); exact planning CI #45657864097 SUCCESS.
+- B `24ed4f5c24ffd717c860759fbc82a6ae70f9b094`; CI #45660081670 root 698/698, integration 563/563; workflow cancelled after later push, not full PASS.
+- C `2ed30f83fddaf6d34ab562c4774bc4704277cd92`; exact full CI above.
+
+| Bytes | A | B | C |
+| --- | ---: | ---: | ---: |
+| Legacy Controller prompt | 12885 | 13115 | 13149 |
+| Intent text prompt | 12892 | 12312 | 12497 |
+| Intent MCP prompt | 13309 | 13331 | 13516 |
+| Legacy instructions | 10091 | 10321 | 10355 |
+| Intent instructions | 10087 | 9507 | 9692 |
+| MCP transport prefix | 899 | 1501 | 1501 |
+| MCP tool schemas/descriptions | 2662 | 3680 | 3680 |
+| Schema wire response | 2768 | 3786 | 3786 |
+| First evidence page wire | 2370 | 2682 | 2682 |
+| Next evidence page wire | 1068 | 1198 | 1198 |
+| Evidence fetch wire | 381 | 407 | 407 |
+| History | 1974 | 1974 | 1974 |
+| Objective | 172 | 172 | 172 |
+| Identity | 124 | 124 | 124 |
+
+Comparator passed context/schema/ordinary pagination (17 records, 12 + 5)/ref and answer fidelity. Metadata inheritance/duplicate and durable reopen are separately covered by actual SDK and integration regressions. This is a retrospective same-fixture comparison, not a contemporaneous real native run. Increased clarity can cost bytes; no size or invocation/call-count target.
+
+**C21.8 / limitations:** real model/client/authorized target skill and original private run are unavailable, and user's local worktree was not inspected (remote exact HEAD used; no destructive checkout). N01 and real native controls N1–N8 remain UNVERIFIED, including independent provider comparisons, evidence relevance, decision quality, and native timing/tokens. Reported image call root cause UNVERIFIED. Existing late-event, invocation-scope and C20-R regressions passed; do not infer separate C21-specific native acceptance of every empty-ID/reuse-ID/late inherited-metadata permutation. No provider-internal, daemon, teardown or external-effect investigation. No new mandatory retrieval, semantic admission, store or resource limit.
+
+**Historical implementation/checkpoint record (superseded by current disposition):**
 
 **Corrected final candidate / checkpoint C:** exact SHA is the commit containing this entry. Prior candidate `146e744ee57b7053c0415a817fc15055a40815db`, [CI #45661511942](https://github.com/apathoid/role-orchestrator/actions/runs/45661511942) failed Provider contracts 97/98: actual ACP Worker fixture expected old Controller-style no-MCP wording. Correct fixture to assert role-appropriate unavailability and absence of Controller continuation; no runtime change or relaxed capability check. Exact corrected CI pending. Prior final implementation candidate: production-code checkpoint `317870d645f982a05d777b17411e3619a732d7fb` (CI [#45661301371](https://github.com/apathoid/role-orchestrator/actions/runs/45661301371) pending when prepared). This final candidate adds targeted historical first-receipt/paired-attribution assertions, actual CLI child Worker assertion and normative/roadmap/native/matrix/changelog updates; no additional production changes. Full final-head CI and A/B/C comparison measurements pending. Initial C `31368cd3b71f7e02628db006676da1494fdb6a52` ([CI #45660725105](https://github.com/apathoid/role-orchestrator/actions/runs/45660725105), not final). Follow-up audit found existing Codex CLI prompt failed to name negotiated MCP aliases and no-MCP Worker prompt advertised Controller continuation; fix only presentation with actual bridge names and role. Preserve explicit applicable task instructions/permissions and real scoped IDs, clarify model-owned IDs and findings combination. Extend existing real local-store reopen test to inherited attribution; fix comparison fixture assertion bookkeeping before measuring. Full corrected C CI required. A and source-review differ only in three roadmap files (verified GitHub compare). First C21.2 [CI #45659589189](https://github.com/apathoid/role-orchestrator/actions/runs/45659589189) FAILED integration 562/563 because the new test compared absent optional keys with decoded undefined keys; corrected B integration/root npm and actual ACP/C20-R/PTY/acceptance passed, B full workflow cancelled after later push, not full PASS. **Initial C audit (C21.6–.8):** A = `16525506fd3dd4d4543b85377212234468f53037` (source/review `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55`); B = `24ed4f5c24ffd717c860759fbc82a6ae70f9b094`. [B CI #45660081670](https://github.com/apathoid/role-orchestrator/actions/runs/45660081670) Node24/checkJs/spec/boundaries/foundation/core/contracts/integration and C18N/C18N-R probes succeeded at observation; full run still in progress. C21.6 audit: preserve objective and original ContextItem (different required representations), literal later turns, role ownership, trusted authority, catalog and native capability distinctions, resource/workMap/coverage/unknown-effect/cancellation/recovery facts, retry/acceptance/wait semantics, exact answer guidance and user-required checks. No dynamic data dedup or context filtering. Remove the unsupported default prohibition on history enumeration; make native access and workspace reevaluation capability/ownership statements, not prescriptions. Remove duplicated delegation field list, reference and retrieval guidance; preserve optional empty evidence refs and material gaps. Share existing Decision coordination reference with Intent including actual combination constraints; no decoder/admission edits. Targeted regression updated to assert absence of the removed default strategy and both delivery contracts. Added same-fixture historical checkout comparison via existing owned-run benchmark pattern in mandatory CI; reports actual prompt section/schema/MCP bytes and verifies task/context identity, unchanged tool schemas/pagination and exact answer. A/B fixture collection before C was unavailable in local environment; retrospective same-fixture run on exact SHAs is required and not yet measured. Worker delivery and renderer framing unchanged. Full exact-C CI pending; no real authorized provider/model/skill/workspace available, N01 and native controls UNVERIFIED (including quality, tokens and performance). No master merge.
 
