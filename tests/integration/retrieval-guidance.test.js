@@ -6,7 +6,8 @@ import { retrievalDetail } from '../../src/adapters/mcp-bridge.js';
 test('C12R.8 optional history inspection remains a Controller choice rather than a mandatory workflow', () => {
   const instructions = controllerInstructions.join('\n');
   assert.match(instructions, /choose whether to use historical list\/fetch/);
-  assert.match(instructions, /do not enumerate history by default/);
+  assert.doesNotMatch(instructions, /do not enumerate history by default/);
+  assert.match(instructions, /Neither is mandatory/);
   assert.doesNotMatch(instructions, /page through metadata/i);
   // A separate model-owned summary is not elevated to a tool observation.
   assert.match(instructions, /Model summaries are separate claims citing covered observation references/);

@@ -1,6 +1,6 @@
 // Model-facing model-owned ControllerIntent, not an alternative admission
 // schema. The full canonical Decision v1 decoder remains authoritative.
-import { assessmentAnswerGuidance } from './decision-instructions.js';
+import { assessmentAnswerGuidance, decisionCoordinationContract } from './decision-instructions.js';
 
 export const controllerIntentExample = '{"finalAssessment":{"overall":"complete","answer":"Example answer"}}';
 
@@ -32,18 +32,7 @@ Requirement observationRefs/findingRefs default only to empty arrays when omitte
 Explicit null is invalid. The model owns all IDs, action semantics, references,
 overall/status/answer, uncertainty, dependencies and continuation. The Host does
 not invent a semantic default, resolve evidence relevance or choose a strategy.
-All existing Decision v1 combinations and admission/reference checks apply:
-direct answer, delegation, wait, clarification, cancellation, findings,
-partial/unresolved and optional continuation are all legitimate.
-Do not combine finalAssessment with additions or clarification; actions require
-an explicit waitPolicy or continue:true. Wait targets must be nonempty.
-Role Orchestrator records observations with scoped references and source provenance.
-When citing observations in Findings or Assessment, use available references
-from the orchestration context or optional observation discovery/retrieval
-capabilities. Retrieve details when useful and independently evaluate relevance,
-sufficiency and uncertainty. Retrieval is optional; do not invent unavailable
-references. History cursor 0 starts a traversal; a returned {revision,index}
-continues that traversal, not a numeric offset.
+${decisionCoordinationContract}
 
 ${assessmentAnswerGuidance}
 

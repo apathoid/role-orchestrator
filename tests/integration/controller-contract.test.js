@@ -1,7 +1,7 @@
 import { readInvocationPrompt } from '../fixtures/read-invocation-prompt.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { assessmentAnswerGuidance, decisionContract, decisionExample } from '../../src/application/decision-instructions.js';
+import { assessmentAnswerGuidance, decisionContract, decisionCoordinationContract, decisionExample } from '../../src/application/decision-instructions.js';
 import { controllerIntentContract } from '../../src/application/controller-intent-instructions.js';
 import { controllerInstructions } from '../../src/application/controller-context.js';
 import { decodeDecision } from '../../src/core/contracts.js';
@@ -228,6 +228,9 @@ test('C19 answer guidance is delivered once in every Controller transport withou
       assert.equal(prompt.split(assessmentAnswerGuidance).length, 2);
       assert.equal(prompt.split('Observation completeness describes capture completeness, not tool success or evidence sufficiency.').length, 2);
       assert.match(prompt,/canonical ref identifies a recorded item in its authorized scope/);
+      assert.equal(prompt.split(decisionCoordinationContract).length,2);
+      assert.match(prompt,/Evidence references may be empty/);
+      assert.doesNotMatch(prompt,/do not enumerate history by default/);
       if(controllerDelivery==='intent_mcp'){
         assert.match(prompt,/do not need to repeat the submitted answer/);
         assert.match(prompt,/registration-order last-wins/);

@@ -8,6 +8,18 @@ Provide the requested result directly, including its applicable content and form
 rather than merely reporting that it has been prepared. When the request is for an action or an external artifact,
 provide the appropriate outcome, artifact references and material limitations.`;
 
+export const decisionCoordinationContract = `Decision fields describe transport, not an obligatory workflow: a direct finalAssessment, optional delegation,
+wait for accepted Actions, clarification, cancellation, findings or explicit nextController.continue are all valid.
+Include at least one effective action: finalAssessment, clarification, waitPolicy, additions with waitPolicy/continue,
+cancellations or nextController.continue:true. No clarification with waitPolicy.
+Do not combine finalAssessment with additions, clarification or nextController. No nextController with clarification.
+Do not combine waitPolicy with nextController.continue:true. A reasoningLevel alone needs a separate reason for the next turn.
+Wait targets must be nonempty. acceptedActionIds must name terminal Actions.
+retryOf and retryBasis appear together; a new Action uses a fresh actionId.
+contextRequest needs continue:true plus a ref or cursor/workCursor. Requested refs must be unique;
+0 starts a traversal; a subsequent page uses the returned {revision,index}, not a numeric offset.
+An Assessment requirement reason, if present, must be a non-empty string.`;
+
 export const decisionContract = `Decision v1 — declared result of a completed Controller invocation, not a format for native thoughts, plans, tools, progress, Worker results or the user's answer.
 Required fields: {schemaVersion: 1, decisionId: fresh non-empty string, operationId: invocation.operationId,
   contextCursor: observed host:invocation-context.value.contextCursor (number), additions: Action[], cancellations: string[]}.
@@ -29,18 +41,9 @@ Assessment: {author: current profileId, overall: "complete" | "partial" | "unres
 Finding: {findingId: string, author: current profileId, claim: string, subject: string,
   supports: string[], uncertainties: string[], supersedes?: string}.
 
-Decision fields describe transport, not an obligatory workflow: a direct finalAssessment, optional delegation,
-wait for accepted Actions, clarification, cancellation, findings or explicit nextController.continue are all valid.
-Include at least one effective action: finalAssessment, clarification, waitPolicy, additions with waitPolicy/continue,
-cancellations or nextController.continue:true. No clarification with waitPolicy.
-Do not combine finalAssessment with additions, clarification or nextController. No nextController with clarification.
-Wait targets must be nonempty. acceptedActionIds must name terminal Actions.
-retryOf and retryBasis appear together; a new Action uses a fresh actionId.
-contextRequest needs continue:true plus a ref or cursor/workCursor. Requested refs must be unique;
-0 starts a traversal; a subsequent page uses the returned {revision,index}, not a numeric offset.
+${decisionCoordinationContract}
 Decision.contextCursor is the observed Decision revision, not a history/page cursor.
-Assessment requirements each have their own observationRefs and findingRefs, even when empty; reason, if present,
-must be a non-empty string. Use actual observed refs; never invent tool/observation evidence.
+Assessment requirements each have their own observationRefs and findingRefs, even when empty.
 
 ${assessmentAnswerGuidance} A text adapter returns a single JSON object without Markdown fences as the final Controller message;
 the native structured result contract may be used where available. Ordinary tool results, files, intermediate
