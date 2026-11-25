@@ -1,6 +1,6 @@
 # Активный план реализации и приёмки
 
-## C22 — Model-facing Technical Information Accessibility (IMPLEMENTED; engineering verification pending; native UNVERIFIED)
+## C22 — Model-facing Technical Information Accessibility (ENGINEERING VERIFIED at 8ad7f541; native UNVERIFIED)
 
 [Detailed executable plan](C22_MODEL_FACING_TECHNICAL_INFORMATION_ACCESSIBILITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Authorized on `feature/controller-intent-deferred-admission` from `7906710019d46debb4ec4cd9c226a2b13491d156` / [exact CI #45668749511](https://github.com/apathoid/role-orchestrator/actions/runs/45668749511) SUCCESS. The introducing commit is planning HEAD. Goal: improve accessibility of technical information already owned by RO, not expand the contract machinery. F1–F5 mandatory; conditional opportunities may end without edits. Joint design of .1/.3 before implementation, without mandatory shared framework.
 
@@ -16,7 +16,7 @@
 | C22.7 | Same-input invariants, focused regressions and exact-HEAD full CI |
 | C22.8 | Separate real-client contract compatibility and experimental model utility, UNVERIFIED if unavailable |
 
-Preserve existing runtime semantics and model autonomy; no extra gates/quotas, schema or diagnostic service, semantic history selection, automatic corrections or external provider work. F1–F5 implemented at the existing owners; H4 clarified in descriptions, H1–H3/H5 require no additional mechanisms. See [STATUS](STATUS.md) for exact implementation/checkpoint SHAs, scope, test evidence and outstanding verification. Native compatibility and model utility remain separately UNVERIFIED. No master merge or next cycle authorized.
+Preserve existing runtime semantics and model autonomy; no extra gates/quotas, schema or diagnostic service, semantic history selection, automatic corrections or external provider work. F1–F5 implemented at the existing owners; H4 clarified in descriptions, H1–H3/H5 require no additional mechanisms. Engineering PASS on `8ad7f5415de3be64286a41aa90d2a30634c78d4d`, [CI #45706899430](https://github.com/apathoid/role-orchestrator/actions/runs/45706899430) SUCCESS (39/39 steps; foundation/package 4/4, core 30/30, provider contracts 98/98, integration 570/570, acceptance 4/4, root 706/706, actual Linux PTY 15/15; all resource probes, historical comparisons, Nix and release checks). Documentation closure changes no runtime/test files; exact closure HEAD CI must be checked separately. See [STATUS](STATUS.md) for detailed checkpoint measurements and test evidence. Native compatibility and model utility remain separately UNVERIFIED. No master merge or next cycle authorized.
 
 ## C21-R — Model-facing Clarity & Comparison Refinement (ENGINEERING VERIFIED at dbcc6d88; real native UNVERIFIED)
 

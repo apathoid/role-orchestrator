@@ -1,6 +1,6 @@
 # C22 — Model-facing Technical Information Accessibility
 
-**Status: IMPLEMENTED — engineering verification pending; native compatibility and model utility UNVERIFIED.** See [STATUS](STATUS.md) for actual implementation/checkpoint SHAs and CI evidence. The remainder records the approved engineering scope.
+**Status: ENGINEERING VERIFIED at `8ad7f541` — native compatibility and model utility UNVERIFIED.** See [STATUS](STATUS.md) for actual implementation/checkpoint SHAs and CI evidence. The remainder records the approved engineering scope.
 **Working branch:** `feature/controller-intent-deferred-admission`.
 **Research/source baseline:** `7906710019d46debb4ec4cd9c226a2b13491d156`, [exact-SHA CI #45668749511](https://github.com/apathoid/role-orchestrator/actions/runs/45668749511) SUCCESS. The commit introducing this plan is the planning HEAD. Verify actual HEAD, worktree and CI before implementation. No master merge.
 

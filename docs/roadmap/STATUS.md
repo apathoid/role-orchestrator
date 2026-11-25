@@ -1,6 +1,6 @@
 # Role Orchestrator — оперативный статус
 
-## C22 — Model-facing Technical Information Accessibility (IMPLEMENTED; engineering verification pending; real native UNVERIFIED)
+## C22 — Model-facing Technical Information Accessibility (engineering PASS at 8ad7f541; real native UNVERIFIED)
 
 Branch `feature/controller-intent-deferred-admission`; research baseline `7906710019d46debb4ec4cd9c226a2b13491d156` / [CI #45668749511](https://github.com/apathoid/role-orchestrator/actions/runs/45668749511) SUCCESS. This also closes C21-R documentation HEAD engineering CI. Exact planning/baseline A `f6d89a354724b9d11893c730d4f0871b1dfe067e` / [CI #45705134009](https://github.com/apathoid/role-orchestrator/actions/runs/45705134009) SUCCESS. Remote branch HEAD and ancestry verified; local checkout/worktree inaccessible (GitHub DNS unavailable in execution container; no local repository). All edits use GitHub tree/commit with expected branch HEAD, non-force update, preserving unrelated files. No master merge.
 
@@ -15,12 +15,33 @@ Branch `feature/controller-intent-deferred-admission`; research baseline `790671
 | .4 F5 | Neutral prior correction with actual category/path/expected and current delivery instruction; missing/conflicting proposal is not rejected native final text. No result identity changes. |
 | .5 | H4: clarify historical maxBytes applies with offset, live maxBytes alone starts at 0 and counts saved bytes, trusted historical operation sharing. H5: existing negotiated alias, paging, port availability and fallback paths inspected; external tools unchanged. No runtime changes. |
 | .6 | Existing role/delivery paths retained; explicit non-empty identity/reference fields and safe integer positions, descriptions and prompt use shared text. No optimization or history reduction. |
-| .7 | Focused decoder, real MCP HTTP, correction and snapshot tests; pinned A/current comparison extends C21 fixture to errors, registration/selected proposal, decode/materialization, lifecycle/outcome/assessment and correction/definition bytes. Tests and full exact-HEAD CI must pass before declaring engineering verified. |
+| .7 | Focused decoder, real MCP HTTP, correction and snapshot tests; pinned A/current comparison extends C21 fixture to errors, registration/selected proposal, decode/materialization, lifecycle/outcome/assessment and correction/definition bytes. Full implementation CI SUCCESS; see exact results below. |
 | .8 | Native compatibility UNVERIFIED; model utility UNVERIFIED. No real provider/client or private debug archive accessible. |
 
 H1: existing reasoning-level availability already reaches rejection context; no extra enumeration. H2: adapter final-message ref is not an independently persisted correction reference for missing/invalid/conflict MCP; no new identity or heuristic selection. H3: no proven redundant representations with identical technical meaning; preserve context. H4/H5 as above. No provider internals or native skill/script/workspace changes.
 
-Implementation commits: `20110e474360747b40710a5228b37be0d4b3e0c4` (initial [CI #45705747865](https://github.com/apathoid/role-orchestrator/actions/runs/45705747865) failed checkJs due misplaced JSDoc); `527988a16390492fa7d9d31f0a490aaa6ff10e55` corrected annotation, snapshot projection, old test expectation and bounded receipt fallback ([CI #45706091880](https://github.com/apathoid/role-orchestrator/actions/runs/45706091880), checkJs, foundation and core PASS when inspected; full result not yet established here); code/test comparison checkpoint `771f95c12019e51528dc3269196d973077a6a898`; documentation checkpoint `4556752143b7d6c17a587f6ed58321ffac2e5fab`. Subsequent bounded listing refinement preserves formerly deliverable pages at the existing wire limit by omitting only additional own descriptions; full prompt reference remains. Both intermediate CI runs #45706091880 and #45706246341 were cancelled by newer branch updates. See exact final-HEAD CI, not prior SHA, for engineering acceptance. Deterministic comparisons are not measured model latency or token utility. No new runtime limits or validation; recovery signature [category,code,path,expected] and existing thresholds unchanged.
+Implementation commits: `20110e474360747b40710a5228b37be0d4b3e0c4` (initial [CI #45705747865](https://github.com/apathoid/role-orchestrator/actions/runs/45705747865) failed checkJs due misplaced JSDoc); `527988a16390492fa7d9d31f0a490aaa6ff10e55` corrected annotation, snapshot projection, old test expectation and bounded receipt fallback ([CI #45706091880](https://github.com/apathoid/role-orchestrator/actions/runs/45706091880), checkJs, foundation and core PASS when inspected; full result not yet established here); code/test comparison checkpoint `771f95c12019e51528dc3269196d973077a6a898`; documentation checkpoint `4556752143b7d6c17a587f6ed58321ffac2e5fab`. Subsequent bounded listing refinement preserves formerly deliverable pages at the existing wire limit by omitting only additional own descriptions; full prompt reference remains. Intermediate runs #45706091880, #45706246341 and #45706359597 were cancelled by newer branch updates. Listing-bound refinement `8037b1721bdbcc4f30387566c96856622d363c3b` / [CI #45706557983](https://github.com/apathoid/role-orchestrator/actions/runs/45706557983) passed checkJs, core and contracts (98/98); integration 569/570, solely old exact history-directory invalid_input expectation. `8ad7f5415de3be64286a41aa90d2a30634c78d4d` updates that assertion to preserve the old status and check the cursor decoder reason. Engineering PASS on `8ad7f5415de3be64286a41aa90d2a30634c78d4d`, [CI #45706899430](https://github.com/apathoid/role-orchestrator/actions/runs/45706899430) SUCCESS (39/39 steps; foundation/package 4/4, core 30/30, provider contracts 98/98, integration 570/570, acceptance 4/4, root 706/706, actual Linux PTY 15/15; all resource probes, historical comparisons, Nix and release checks). Documentation closure changes no runtime/test files; exact closure HEAD CI must be checked separately. **Exact same-input comparison C22A/current (A `f6d89a35`, implementation B/C `8ad7f541`, actual C21_COMPARISON in CI #45706899430):**
+
+| Bytes | A | B/C |
+| --- | ---: | ---: |
+| Legacy prompt | 12985 | 12985 |
+| Intent text prompt | 12333 | 12527 |
+| Intent MCP prompt | 12894 | 13317 |
+| Tool definitions JSON | 3493 | 6440 |
+| Tool list wire pages | 3599 | 6546 |
+| Combined MCP prompt + definitions | 16387 | 19757 |
+| Invalid retrieval wire | 128 | 264 |
+| First proposal receipt | 317 | 337 |
+| Unregistered rejection | 270 | 291 |
+| Registered rejection | 264 | 404 |
+| Corrected receipt | 318 | 338 |
+| Missing proposal correction section | 668 | 846 |
+| Invalid Intent correction section | 832 | 1094 |
+| First correction prompt total | 14069 | 14670 |
+| Second correction prompt total | 14487 | 14943 |
+| First/second correction history | 2726 / 3610 | 2726 / 3610 |
+
+Pinned fixture asserts unchanged literal task/context, inputSchema, decode/materialization results and stable rejection cause, selected proposal, attempts/outcomes, assessment and exact answer. Live directory/fetch 2682/1198/407 wire bytes unchanged; actual sparse ACP SDK directory/fetch/raw payload 1087/1010/256 unchanged, same canonical ref and source attribution. Additional information increases presentation bytes by design; no size target. B/C measured on the single final implementation checkpoint (no separate historical .1–.5 benchmark). Deterministic comparisons are not measured model latency or token utility. No new runtime limits or validation; recovery signature [category,code,path,expected] and existing thresholds unchanged.
 
 **Reported limited C21-R native evidence** (user-provided debug(7).zip analysis; installed SHA and post-provider LLM requests not independently established): 4 small + 4 medium changed-skill runs, 7 finished / 1 cancelled; 6 with final evidence refs. Inherited metadata and native skill access, MCP registration, correction and cancellation observed in relevant runs. Small 4 required two invocations and repeated corrections; Medium 3 cancelled after native repetitive shell calls, cause unknown. Evidence relevance, overall efficiency, stable model utility and the full native acceptance matrix remain UNVERIFIED. No private archive committed. Not a controlled before/after causal claim.
 

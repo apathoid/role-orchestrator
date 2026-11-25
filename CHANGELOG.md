@@ -1,6 +1,6 @@
 # Changelog
 
-### C22 — Model-facing Technical Information Accessibility (implemented; engineering verification pending; native UNVERIFIED)
+### C22 — Model-facing Technical Information Accessibility (engineering PASS at 8ad7f541; native UNVERIFIED)
 
 - Expose bounded local allowed fields and retain existing own retrieval decoder errors without changing validation or recovery identity.
 - Distinguish registered proposal refs from unregistered receipt refs; retain existing replacement/finality and primary wire cause. Reuse the external Intent structural reference in the MCP description without adding schema restrictions.
