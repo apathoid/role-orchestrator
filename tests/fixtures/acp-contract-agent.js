@@ -622,7 +622,15 @@ agent()
       await message('result', JSON.stringify(decision));
       return { stopReason: 'end_turn' };
     }
-    if (scenario === 'mcp-unsupported') assert.match(prompt, /Context retrieval is unavailable/);
+    if (scenario === 'mcp-unsupported') {
+      if (kind === 'delegate') {
+        assert.match(prompt, /Historical context retrieval via MCP is unavailable/);
+        assert.doesNotMatch(prompt, /nextController\.contextRequest/);
+      } else {
+        assert.match(prompt, /Context retrieval is unavailable in this transport via MCP/);
+        assert.match(prompt, /nextController\.contextRequest/);
+      }
+    }
     if (reasoningScenario) {
       await writeFile('prompt-effort', effort);
       await client.notify(c.session.update, {sessionId,update: {
