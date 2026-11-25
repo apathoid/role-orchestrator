@@ -38,7 +38,7 @@ const decisionTool = {
   name: 'submit_decision',
   // Annotation only: no new nested constraints that could suppress delivery
   // of malformed replacements before the existing registration boundary.
-  description: 'Register a ControllerIntent proposal; optional replaces is a known registered proposalRef in this invocation (registered:true is a registration fact, not guaranteed replacement eligibility). Receipt is not admission or native turn completion; native work may continue. finalAssessment.answer need not be repeated in the final native message.\n' + controllerIntentInputDescription,
+  description: 'Register a ControllerIntent proposal; optional replaces is a known registered proposalRef in this invocation (registered:true is a registration fact, not guaranteed replacement eligibility; registered:false means not registered; if absent, the receipt provides no registration fact). Receipt is not admission or native turn completion; native work may continue. finalAssessment.answer need not be repeated in the final native message.\n' + controllerIntentInputDescription,
   inputSchema: { type:'object', properties:{ intent:{}, replaces:{type:'string'} }, required:['intent'], additionalProperties:false },
 };
 const fetchTool = {
@@ -59,7 +59,7 @@ const evidenceListTool = {
 };
 const evidenceFetchTool = {
   name:'evidence_fetch',
-  description:'Read an accepted current-invocation observation by canonical ref. Optional maxBytes alone reads from offset 0. Chunk fields: base64 (bounded saved bytes), format (utf8/json), offset, totalBytes, nextOffset (byte offset for the next chunk). Missing ref, unavailable payload, closed scope and budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.',
+  description:'Read an accepted current-invocation observation by canonical ref. Optional maxBytes limits saved bytes in a chunk; maxBytes alone reads from offset 0. Chunk fields: base64 (bounded saved bytes), format (utf8/json), offset, totalBytes, nextOffset (byte offset for the next chunk). Missing ref, unavailable payload, closed scope and budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.',
   inputSchema:{type:'object',properties:{ref:{type:'string',minLength:1},offset:countSchema,maxBytes:countSchema},required:['ref'],additionalProperties:false},
 };
 
@@ -111,7 +111,7 @@ function toolReply(value, requestId, control = false) {
     const detail = object(reason);
     if (detail && Object.hasOwn(detail,'allowedFields')) {
       const {allowedFields: _fields, ...primary} = detail;
-      return toolReply({...rest, reason:primary}, requestId);
+      return toolReply({...tool, reason:primary}, requestId, true);
     }
     return toolReply({...rest, ...(reason !== undefined && {reason})}, requestId);
   }

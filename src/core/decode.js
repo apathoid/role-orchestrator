@@ -6,8 +6,8 @@ class InvalidField extends Error {
   /** @param {string} path @param {string} expected @param {unknown} [fields] */
   constructor(path, expected, fields) {
     super(path + ': expected ' + expected);
-    /** @type {FieldError} */
     const allowedFields = boundedAllowedFields(fields);
+    /** @type {FieldError} */
     this.reason = { code: 'INVALID_PROPOSAL', path, expected, ...(allowedFields && {allowedFields}) };
   }
 }

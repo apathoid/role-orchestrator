@@ -179,7 +179,7 @@ test('C12R.9 P2: MCP context_fetch accepts byte offsets and positional identity'
     }
     assert.equal(Buffer.concat(chunks).toString('utf8'),input);
     assert.deepEqual(await call(id++,{ref:'mcp-saved',offset:-1}),
-      {kind:'unavailable',reason:'invalid_input'});
+      {kind:'unavailable',reason:'invalid_input',diagnostic:{code:'INVALID_PROPOSAL',path:'$.offset',expected:'a non-negative safe integer'}});
   } finally {stop.abort();bridge.close();}
 });
 
