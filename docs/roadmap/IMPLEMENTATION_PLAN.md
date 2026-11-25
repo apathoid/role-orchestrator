@@ -1,5 +1,24 @@
 # Активный план реализации и приёмки
 
+## C21 — Model-facing Information Clarity (PLANNED; engineering/native UNVERIFIED)
+
+[Detailed executable plan](C21_MODEL_FACING_INFORMATION_CLARITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Approved next engineering scope on `feature/controller-intent-deferred-admission`; source baseline `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55` / [CI #45563489787](https://github.com/apathoid/role-orchestrator/actions/runs/45563489787) SUCCESS. Planning HEAD is the commit introducing this entry; verify actual baseline before implementation.
+
+| Checkpoint | Deliverable |
+| --- | --- |
+| C21.0 | Actual source/contract/fixture baseline and existing tests |
+| C21.1 | RO-owned native integration check only; defect fix, supported finding or UNVERIFIED |
+| C21.2 | Existing adapter-owned identity metadata, inherited attribution/paired omission, immutable refs and duplicate semantics, C20-R |
+| C21.3 | Evidence presentation first; preserve ordinary pagination/default 12; optional minimal API additions only if justified |
+| C21.4 | Clarify evidence identity, provenance, completeness and model-owned Assessment; no semantic admission |
+| C21.5 | Clarify MCP native turn completion; continued tools/replacement preserved; checkpoint B |
+| C21.6 | Comprehensive prompt audit last, retain technical and role contracts, remove unjustified prescriptions/dedup losslessly; checkpoint C |
+| C21.7 | Focused regressions using existing infrastructure and full exact-SHA CI |
+| C21.8 | A/B/C native comparison where available, separate native compatibility and model quality; UNVERIFIED where unavailable |
+
+No mandatory filters/order/limit, new store/registry, provider internals/diagnostics investigation, external-effect contract changes, forced retrieval/workflow, hidden capability selection, tool-count/latency or prompt-size target. Preserve existing user authority, real workspace, provider independence, C18–C20-R and prior native obligations. No master merge. Implementation and native results are not established by this planning commit.
+
+
 ## C19 — Model-facing Evidence & Answer Clarity (ENGINEERING VERIFIED at 876a33c7; native UNVERIFIED)
 
 [Detailed executable plan](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; source baseline `2650d327b01eddd5ed2939263ef73b803381be11`. Implement before C20, with separate exact-SHA acceptance.
