@@ -1,5 +1,23 @@
 # Активный план реализации и приёмки
 
+## C22 — Model-facing Technical Information Accessibility (PLANNED)
+
+[Detailed executable plan](C22_MODEL_FACING_TECHNICAL_INFORMATION_ACCESSIBILITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Authorized on `feature/controller-intent-deferred-admission` from `7906710019d46debb4ec4cd9c226a2b13491d156` / [exact CI #45668749511](https://github.com/apathoid/role-orchestrator/actions/runs/45668749511) SUCCESS. The introducing commit is planning HEAD. Goal: improve accessibility of technical information already owned by RO, not expand the contract machinery. F1–F5 mandatory; conditional opportunities may end without edits. Joint design of .1/.3 before implementation, without mandatory shared framework.
+
+| Checkpoint | Deliverable |
+| --- | --- |
+| C22.0 | Verify baseline, ownership and joint design; scoped C21 native evidence |
+| C22.1 | Accurate bounded technical error information and retained retrieval diagnostics |
+| C22.2 | Unambiguous proposal registration receipts, unchanged replacement/finality |
+| C22.3 | Accessible input format at tool-use boundary, prioritize information over schema strictness |
+| C22.4 | Truthful correction context and current delivery; optional existing reference only |
+| C22.5 | Limited owned availability/scope/retrieval audit, changes only if proven |
+| C22.6 | Actual model-facing consistency, not a prompt size optimization project |
+| C22.7 | Same-input invariants, focused regressions and exact-HEAD full CI |
+| C22.8 | Separate real-client contract compatibility and experimental model utility, UNVERIFIED if unavailable |
+
+Preserve existing runtime semantics and model autonomy; no extra gates/quotas, schema or diagnostic service, semantic history selection, automatic corrections or external provider work. Implementation and native verification not yet claimed. No master merge.
+
 ## C21-R — Model-facing Clarity & Comparison Refinement (ENGINEERING VERIFIED at dbcc6d88; real native UNVERIFIED)
 
 Review baseline `71d6b2d64de96c43076021878e82387adc79a049`, CI #45663007700 SUCCESS. R0 baseline; R1 editorial guidance deduplication; R2 exact A/B/C/D comparison including actual ACP sparse events; R3 historical STATUS correction and hasCapturedValue unchanged; R4 focused regressions and full CI SUCCESS on D `dbcc6d881074ceee8a8cd123f69962b0f92e4d45`, [CI #45667902352](https://github.com/apathoid/role-orchestrator/actions/runs/45667902352). See [STATUS](STATUS.md) for measured A/B/C/D and native limitations. No expanded evidence API, runtime policy, metadata capture or provider investigation. Native quality remains UNVERIFIED.
