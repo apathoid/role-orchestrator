@@ -34,15 +34,17 @@ const listTool = {
   inputSchema: { type: 'object', properties: { cursor: { anyOf: [{type:'integer',enum:[0]}, { type: 'object',
     properties: { revision: countSchema, index: countSchema }, required: ['revision','index'], additionalProperties: false }] } }, additionalProperties: false },
 };
+const decisionShortDescription = 'Register a ControllerIntent proposal; replaces must identify a registered ref in this invocation. Receipt is not admission or native turn completion; finalAssessment.answer need not be repeated.';
 const decisionTool = {
   name: 'submit_decision',
   // Annotation only: no new nested constraints that could suppress delivery
   // of malformed replacements before the existing registration boundary.
-  description: 'Register a ControllerIntent proposal; optional replaces is a known registered proposalRef in this invocation (registered:true is a registration fact, not guaranteed replacement eligibility; registered:false means not registered; if absent, the receipt provides no registration fact). Receipt is not admission or native turn completion; native work may continue. finalAssessment.answer need not be repeated in the final native message.\n' + controllerIntentInputDescription,
+  description: decisionShortDescription + ' registered:true is a registration fact, not guaranteed replacement eligibility; registered:false means not registered; if absent, no registration fact is provided. Native work may continue.\n' + controllerIntentInputDescription,
   inputSchema: { type:'object', properties:{ intent:{}, replaces:{type:'string'} }, required:['intent'], additionalProperties:false },
 };
+const fetchShortDescription = 'Retrieve a visible historical record by ref or directory position. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; nextOffset locates further saved bytes. Source completeness and truncation remain as recorded; a complete chunk or exhausted offset does not restore missing source data.';
 const fetchTool = {
-  name: 'context_fetch', description: 'Retrieve a visible historical record by ref or directory position. Optional sourceOperationId selects another operation only under existing trusted sharing permissions. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; maxBytes limits a range response only when offset is supplied; nextOffset locates further saved bytes. Source completeness and truncation remain as recorded; a complete chunk or exhausted offset does not restore missing source data.',
+  name: 'context_fetch', description: fetchShortDescription + ' Optional sourceOperationId selects another operation only under existing trusted sharing permissions; maxBytes limits a range response only when offset is supplied.',
   inputSchema: { type: 'object', properties: {
     ref: { anyOf: [{ type: 'string', minLength: 1 }, { type: 'object',
       properties: { revision: countSchema, index: countSchema }, required: ['revision', 'index'], additionalProperties: false }] },
@@ -57,9 +59,10 @@ const evidenceListTool = {
   description:'Optional directory of accepted observations in this invocation (append-only, up to 12 positions per page), not a native tool or capability inventory.\nIdentity: canonical ref identifies a record, not proof; source/provenance attribute the report. Native title/kind are provider-reported; inheritedFields marks earlier same-call values.\nAvailability: completeness describes capture, not tool success. hasCapturedValue, if present, indicates a stored value, not guaranteed fetch access. native.omittedFields marks capture-metadata omissions; omittedMetadataFields marks projection omissions. Positional unavailable entries are budget gaps, not tool failures.\nPaging: pass resumeCursor as cursor to read later, even after an empty/exhausted page; nextCursor signals more entries already captured.',
   inputSchema:{type:'object',properties:{cursor:countSchema},additionalProperties:false},
 };
+const evidenceFetchShortDescription = 'Read an accepted current-invocation observation by canonical ref. Chunk fields: base64 (bounded saved bytes), format (utf8/json), offset, totalBytes, nextOffset (byte offset for the next chunk). Missing ref, unavailable payload, closed scope and budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.';
 const evidenceFetchTool = {
   name:'evidence_fetch',
-  description:'Read an accepted current-invocation observation by canonical ref. Optional maxBytes limits saved bytes in a chunk; maxBytes alone reads from offset 0. Chunk fields: base64 (bounded saved bytes), format (utf8/json), offset, totalBytes, nextOffset (byte offset for the next chunk). Missing ref, unavailable payload, closed scope and budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.',
+  description:evidenceFetchShortDescription + ' Optional maxBytes limits saved bytes in a chunk; maxBytes alone reads from offset 0.',
   inputSchema:{type:'object',properties:{ref:{type:'string',minLength:1},offset:countSchema,maxBytes:countSchema},required:['ref'],additionalProperties:false},
 };
 
@@ -307,7 +310,18 @@ export async function startMcpBridge({ contextAccess, evidenceAccess, preflightI
           typeof params.cursor === 'string' && /^[0-9]+$/.test(params.cursor) ? Number(params.cursor) : -1;
         if (cursor < 0 || cursor > tools.length) { error = { code: -32602, message: 'Invalid cursor' }; break; }
         const end = cursor + 4;
-        result = { tools: tools.slice(cursor, end), ...(end < tools.length && { nextCursor: String(end) }) };
+        const page = { tools: tools.slice(cursor, end), ...(end < tools.length && { nextCursor: String(end) }) };
+        // Do not turn a formerly deliverable page into 413 because optional
+        // C22 descriptions share its envelope with arbitrary external tools.
+        if (Buffer.byteLength(JSON.stringify({jsonrpc:'2.0',id:requestId,result:page})) > maxResponseBytes) {
+          page.tools = page.tools.map(tool => {
+            const description = tool.name === decisionToolName ? decisionShortDescription :
+              tool.name === contextFetchToolName ? fetchShortDescription :
+                tool.name === evidenceFetchToolName ? evidenceFetchShortDescription : undefined;
+            return description === undefined ? tool : {...tool,description};
+          });
+        }
+        result = page;
         break;
       }
       case 'tools/call': {

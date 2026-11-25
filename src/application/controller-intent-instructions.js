@@ -29,7 +29,7 @@ Finding: {findingId:string,claim:string,subject:string,supports?:string[],
 Empty additions/cancellations, Action contextRefs/dependsOn, Finding supports/uncertainties,
 Assessment requirements/observationRefs/findingRefs/unresolvedQuestions and
 Requirement observationRefs/findingRefs default only to empty arrays when omitted.
-Explicit null is invalid. IDs, refs, clarification.question, Finding claim/subject and Requirement reason (if present) are non-empty strings. Revision, index and offset are non-negative safe integers. The model owns Action, Finding and requirement IDs, action semantics, references,
+Explicit null is invalid. String IDs and string refs, clarification.question, Finding claim/subject and Requirement reason (if present) are non-empty strings. Revision, index and offset are non-negative safe integers. The model owns Action, Finding and requirement IDs, action semantics, references,
 overall/status/answer, uncertainty, dependencies and continuation. The Host does
 not invent a semantic default, resolve evidence relevance or choose a strategy.`;
 

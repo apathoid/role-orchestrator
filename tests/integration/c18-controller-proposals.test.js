@@ -308,3 +308,28 @@ test('C22 bounded wire annotation omission preserves primary rejection and regis
     assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'corrected');
   }finally{stop.abort();bridge.close();}
 });
+
+test('C22 larger own descriptions do not hide a previously deliverable external tool page',async()=>{
+  const stop=new AbortController();
+  const description='x'.repeat(261000);
+  const inputSchema={type:'object',additionalProperties:true};
+  const externalTools={list:()=>[{id:'external',description,effect:'read',inputSchema}],
+    async call(){return {status:'completed',effect:'none',output:'external'};}};
+  const bridge=await startMcpBridge({signal:stop.signal,attemptId:'c22-page-bound',
+    controllerDelivery:'intent_mcp',externalTools});
+  try{
+    const response=await fetch(bridge.url,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})});
+    assert.equal(response.status,200);
+    const page=(await response.json()).result;
+    assert.deepEqual(page.tools.map(t=>t.name),[bridge.decisionToolName,'external']);
+    assert.deepEqual(page.tools[1],{name:'external',description,inputSchema,annotations:{readOnlyHint:true}});
+    assert.deepEqual(page.tools[0].inputSchema,{type:'object',properties:{intent:{},replaces:{type:'string'}},
+      required:['intent'],additionalProperties:false});
+    assert.ok(!page.tools[0].description.includes('Model-owned top-level fields'));
+    assert.equal(value(await call(bridge.url,2,'external',{})).output,'external');
+    const proposal=value(await call(bridge.url,3,bridge.decisionToolName,{intent:intent('done')}));
+    assert.equal(proposal.registered,true);
+    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'done');
+  }finally{stop.abort();bridge.close();}
+});
