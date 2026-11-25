@@ -198,7 +198,7 @@ Preflight constructs historical technical reference sets once per invocation, ex
 
 ### C19 — Optional native report metadata
 
-Typed AdapterObservation reports may supply optional native fields (`eventKind`, `nativeToolCallId`, `title`, `kind`, `status`) from the actual event. Only accepted provider-tool/provider-report provenance carries them; legacy and model claims do not manufacture native metadata. The existing v1 observation decoder/writer preserve optional accepted snapshots; old records remain valid. See [context and recovery](CONTEXT_AND_RECOVERY.md#c19--native-observation-metadata) for capture/omission and projection boundaries. No capability requirement or semantic gate.
+Typed AdapterObservation reports may supply optional native fields (`eventKind`, `nativeToolCallId`, `title`, `kind`, `status`) from the actual event. C21 permits same-call identification (`title`, `kind`) from existing adapter state with explicit `inheritedFields` attribution; current event kind, native ID and status are never inherited. This is still provider-reported metadata, not proof of what executed. Only accepted provider-tool/provider-report provenance carries them; legacy and model claims do not manufacture native metadata. The existing v1 observation decoder/writer preserve optional accepted snapshots; old records remain valid. See [context and recovery](CONTEXT_AND_RECOVERY.md#c19--native-observation-metadata) for capture/omission and projection boundaries. No capability requirement or semantic gate.
 
 
 ### C20 — Nullable invocation resources

@@ -34,12 +34,14 @@ const summaryReport = record({ kind: oneOf('model_summary'), text: id, ...summar
 const reportedContext = optional(record({
   location: optional(id), version: optional(id), reportedAt: optional(measurement),
 }));
-// A small optional snapshot of the current provider event, not an ontology or
-// a second source of evidence. The original captured value is unchanged.
+// A small optional provider-event snapshot, not an ontology or a second source
+// of evidence. Identification fields from an earlier same-call report must
+// retain explicit attribution. The original captured value is unchanged.
 const nativeFields = /** @type {const} */ (['eventKind', 'nativeToolCallId', 'title', 'kind', 'status']);
 /** @typedef {typeof nativeFields[number]} NativeField */
-/** @typedef {NativeField | 'metadata'} NativeOmission */
-/** @typedef {Partial<Record<NativeField, string>> & {omittedFields?: NativeOmission[]}} NativeMetadata */
+/** @typedef {'title' | 'kind'} InheritedNativeField */
+/** @typedef {NativeField | 'inheritedFields' | 'metadata'} NativeOmission */
+/** @typedef {Partial<Record<NativeField, string>> & {inheritedFields?: InheritedNativeField[], omittedFields?: NativeOmission[]}} NativeMetadata */
 
 /** @param {unknown} input @param {boolean} stored @returns {NativeMetadata | undefined} */
 function readNativeMetadata(input, stored) {
@@ -59,15 +61,46 @@ function readNativeMetadata(input, stored) {
       native[field] = descriptor.value;
     } else omitted.add(field);
   }
+  // Attribution is source metadata, not a receiver omission diagnostic.
+  // Validate it independently; malformed attribution must never expose an
+  // identification value as if it were newly reported.
+  const inherited = Object.getOwnPropertyDescriptor(input, 'inheritedFields');
+  if (inherited && (!('value' in inherited) || inherited.value !== undefined)) {
+    const values = 'value' in inherited ? inherited.value : undefined;
+    /** @type {Set<InheritedNativeField>} */
+    const fields = new Set();
+    let valid = Array.isArray(values) && values.length <= 2;
+    if (valid) for (let i = 0; i < values.length; i++) {
+      const descriptor = Object.getOwnPropertyDescriptor(values, String(i));
+      const field = descriptor && 'value' in descriptor ? descriptor.value : undefined;
+      if ((field !== 'title' && field !== 'kind') || fields.has(field)) {
+        valid = false;
+        break;
+      }
+      fields.add(field);
+    }
+    if (valid) {
+      const accepted = [...fields].filter(field => native[field] !== undefined);
+      if (accepted.length) native.inheritedFields = accepted;
+    } else {
+      omitted.add('inheritedFields');
+      for (const field of /** @type {const} */ (['title', 'kind'])) {
+        if (native[field] !== undefined) {
+          delete native[field];
+          omitted.add(field);
+        }
+      }
+    }
+  }
   // Only the persisted accepted record may carry the receiver's omission
   // markers. An adapter supplies source fields, not Host capture diagnostics.
   if (stored) {
     const descriptor = Object.getOwnPropertyDescriptor(input, 'omittedFields');
     if (descriptor && 'value' in descriptor && Array.isArray(descriptor.value)) {
       const values = descriptor.value;
-      if (values.length > nativeFields.length + 1) omitted.add('metadata');
+      if (values.length > nativeFields.length + 2) omitted.add('metadata');
       else for (const field of values) {
-        if (field === 'metadata' || nativeFields.some(name => name === field)) omitted.add(field);
+        if (field === 'metadata' || field === 'inheritedFields' || nativeFields.some(name => name === field)) omitted.add(field);
         else omitted.add('metadata');
       }
     } else if (descriptor && (!('value' in descriptor) || descriptor.value !== undefined)) omitted.add('metadata');

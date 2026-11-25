@@ -334,3 +334,57 @@ test('C19-R.2 omission-only and exact budget boundaries preserve the existing re
   assert.deepEqual(compactContext([item],bytes(base)+3,true).context,[base]);
   assert.deepEqual(item.native,native,'projection never mutates the stored snapshot');
 });
+
+test('C21 inherited identification is accepted immutably, validated and round-tripped',()=>{
+  const report={ref:'sparse',kind:'provider_tool',sourceId:'call',completeness:'complete',
+    value:{status:'completed'},native:{eventKind:'tool_call_update',nativeToolCallId:'call',
+      title:'Earlier title',kind:'read',status:'completed',inheritedFields:['title','kind']}};
+  const item=receiveProviderObservation(report,100);
+  assert.deepEqual(item.native,report.native);
+  report.native.inheritedFields.pop();
+  report.native.title='changed';
+  assert.deepEqual(item.native.inheritedFields,['title','kind']);
+  assert.equal(item.native.title,'Earlier title');
+  const reopened=decode(contextItem,JSON.parse(JSON.stringify(item)));
+  assert.equal(reopened.kind,'accepted');
+  assert.deepEqual(reopened.value,item);
+  const malformed=receiveProviderObservation({...report,native:{...report.native,inheritedFields:['status']}},101);
+  assert.equal(malformed.native.title,undefined);
+  assert.equal(malformed.native.kind,undefined);
+  assert.equal(malformed.native.status,'completed');
+  assert.ok(malformed.native.omittedFields.includes('inheritedFields'));
+  assert.deepEqual(malformed.value,report.value);
+  assert.equal(malformed.completeness,'complete');
+  const long=receiveProviderObservation({...report,native:{...report.native,title:'界'.repeat(1025),
+    inheritedFields:['title','kind']}},102);
+  assert.equal(long.native.title,undefined);
+  assert.deepEqual(long.native.inheritedFields,['kind']);
+  assert.ok(long.native.omittedFields.includes('title'));
+});
+
+test('C21 inherited identity and its attribution fit together or are omitted across byte bounds',()=>{
+  const base={ref:'evidence:fixture',source:'provider_reported',completeness:'complete',
+    provenance:{kind:'provider_tool',sourceId:'call',receivedAt:1},value:'original 🧪'};
+  const native={eventKind:'tool_call_update',nativeToolCallId:'call',title:'界"\\'.repeat(220),
+    kind:'read',status:'completed',inheritedFields:['title','kind']};
+  const item={...base,native};
+  const start=Buffer.byteLength(JSON.stringify(base)),end=Buffer.byteLength(JSON.stringify(item));
+  for(let budget=start;budget<=end;budget++){
+    const projected=projectNativeMetadata(base,native,budget);
+    assert.ok(Buffer.byteLength(JSON.stringify(projected))<=budget);
+    const fields=projected.native?.inheritedFields??[];
+    for(const field of native.inheritedFields) {
+      assert.equal(projected.native?.[field]!==undefined,fields.includes(field),
+        'attribution and value must be paired at '+budget);
+    }
+    assert.equal(projected.value,base.value);
+  }
+  const port=bindLiveEvidenceAccess({observations:[item],isActive:()=>true});
+  const row=port.list().items[0];
+  assert.equal(row.native.title,undefined);
+  assert.deepEqual(row.native.inheritedFields,['kind']);
+  assert.ok(row.omittedMetadataFields.includes('native.title'));
+  assert.deepEqual(port.fetch(item.ref).item.native,row.native);
+  assert.deepEqual(boundContextItem(item,1536).native.inheritedFields,['kind']);
+  assert.deepEqual(item.native,native);
+});

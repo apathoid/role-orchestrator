@@ -1,6 +1,6 @@
 # Активный план реализации и приёмки
 
-## C21 — Model-facing Information Clarity (PLANNED; engineering/native UNVERIFIED)
+## C21 — Model-facing Information Clarity (PARTIAL IMPLEMENTATION; engineering/native UNVERIFIED)
 
 [Detailed executable plan](C21_MODEL_FACING_INFORMATION_CLARITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Approved next engineering scope on `feature/controller-intent-deferred-admission`; source baseline `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55` / [CI #45563489787](https://github.com/apathoid/role-orchestrator/actions/runs/45563489787) SUCCESS. Planning HEAD is the commit introducing this entry; verify actual baseline before implementation.
 

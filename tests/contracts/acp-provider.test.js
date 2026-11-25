@@ -847,7 +847,8 @@ test('C18N.8 actual ACP SDK accepted native observation is discoverable in-turn 
       assert.equal(native.providerRef?.startsWith('acp-update-'),true);
       assert.equal(native.provenance.kind,'provider_tool');
       assert.equal(native.native.eventKind,'tool_call_update');
-      assert.equal(native.native.kind,undefined);
+      assert.equal(native.native.kind,'read');
+      assert.deepEqual(native.native.inheritedFields,['kind']);
       assert.equal(state.assessment.requirements[0].observationRefs[0],native.ref);
       assert.ok(state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[])
         .some(o=>o.provenance?.sourceId==='after-warning'),

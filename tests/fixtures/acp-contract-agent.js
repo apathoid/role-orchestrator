@@ -364,19 +364,45 @@ agent()
         sessionUpdate:'tool_call_update',toolCallId:nativeName,title:'Native inspection',status:'completed',
         content:[{type:'content',content:{type:'text',text:'native source receipt'}}],
       }});
-      await client.notify(c.session.update,{sessionId,update:{
+      const statusless={
         sessionUpdate:'tool_call_update',toolCallId:nativeName,
         content:[{type:'content',content:{type:'text',text:'status-less update'}}],
+      };
+      await client.notify(c.session.update,{sessionId,update:statusless});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call',toolCallId:'parallel-native',title:'Parallel',kind:'execute',
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,title:'Changed title',
+      }});
+      // A repeated source event must not be re-enriched or mutate its old record.
+      await client.notify(c.session.update,{sessionId,update:statusless});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,status:'in_progress',
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:'unknown-native',status:'completed',
       }});
       const directory=await call(1,'evidence_list',{});
       assert.equal(directory.kind,'available');
       const records=directory.items.filter(item=>item.provenance?.sourceId===nativeName);
-      assert.equal(records.length,3);
+      assert.equal(records.length,5);
       assert.deepEqual(records[0].native,{eventKind:'tool_call',nativeToolCallId:nativeName,
         title:'Native inspection',kind:'read',status:'in_progress'});
       assert.deepEqual(records[1].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
-        title:'Native inspection',status:'completed'});
-      assert.deepEqual(records[2].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName});
+        title:'Native inspection',kind:'read',status:'completed',inheritedFields:['kind']});
+      assert.deepEqual(records[2].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
+        title:'Native inspection',kind:'read',inheritedFields:['title','kind']});
+      assert.deepEqual(records[3].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
+        title:'Changed title',kind:'read',inheritedFields:['kind']});
+      assert.deepEqual(records[4].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
+        title:'Changed title',kind:'read',status:'in_progress',inheritedFields:['title','kind']});
+      assert.deepEqual(directory.items.find(item=>item.native?.nativeToolCallId==='unknown-native').native,
+        {eventKind:'tool_call_update',nativeToolCallId:'unknown-native',status:'completed'});
+      const sparse=await call(21,'evidence_fetch',{ref:records[2].ref});
+      assert.deepEqual(sparse.item.native,records[2].native);
+      const originalSparse=JSON.parse(JSON.parse(Buffer.from(sparse.base64,'base64').toString('utf8')).json);
+      assert.deepEqual(originalSparse,statusless);
       const native=records.find(item=>item.native?.status==='completed');
       assert.ok(native,JSON.stringify(directory));
       assert.match(native.ref,/^evidence:[a-f0-9]{64}$/);

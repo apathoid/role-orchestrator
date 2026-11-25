@@ -348,7 +348,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       if (retained) {
         // Previously accepted metadata remains available for permission requests.
         if (!known) toolIdentityBytes += Buffer.byteLength(JSON.stringify(update.toolCallId)) + 16;
-        tools.set(update.toolCallId, mergeToolCall(tools.get(update.toolCallId), update));
+        tools.set(update.toolCallId, mergeToolCall(update.sessionUpdate === 'tool_call_update'
+          ? tools.get(update.toolCallId) : undefined, update));
       } else if (!known && !toolIdentityIncomplete) {
         const bytes = Buffer.byteLength(JSON.stringify(update.toolCallId)) + 16;
         if (toolIdentityBytes + bytes <= maxOutputBytes) {
@@ -357,12 +358,24 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         } else toolIdentityIncomplete = true;
       }
       if (!retained || encoded === undefined) return;
+      // Snapshot only identification from the existing same-call state. A
+      // missing update field may inherit; an explicit clear may not. Never
+      // inherit status or content, and do not enrich a new call or empty ID.
+      const identity = update.sessionUpdate === 'tool_call_update' && update.toolCallId
+        ? tools.get(update.toolCallId) : undefined;
+      /** @type {import('../../core/observation.js').InheritedNativeField[]} */
+      const inheritedFields = [];
+      const title = update.title === undefined ? identity?.title : update.title;
+      const kind = update.kind === undefined ? identity?.kind : update.kind;
+      if (update.title === undefined && typeof title === 'string') inheritedFields.push('title');
+      if (update.kind === undefined && typeof kind === 'string') inheritedFields.push('kind');
       // Keep opaque native payload as text to avoid recursive decoding of unbounded shapes.
       publish({ ref: 'acp-update-' + ++line, sourceId: update.toolCallId, kind: 'provider_tool', completeness: 'complete',
         native: { eventKind: update.sessionUpdate, nativeToolCallId: update.toolCallId,
-          ...(typeof update.title === 'string' && {title: update.title}),
-          ...(typeof update.kind === 'string' && {kind: update.kind}),
-          ...(typeof update.status === 'string' && {status: update.status}) },
+          ...(typeof title === 'string' && {title}),
+          ...(typeof kind === 'string' && {kind}),
+          ...(typeof update.status === 'string' && {status: update.status}),
+          ...(inheritedFields.length && {inheritedFields}) },
         value: { status: update.status, type: update.sessionUpdate, json: encoded } });
     }
     /** @template {keyof ClientRequestParamsByMethod} M @param {M} method @param {boolean} enabled */
@@ -702,8 +715,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
 function mergeToolCall(previous, update) {
   return {
     toolCallId: update.toolCallId,
-    title: update.title ?? previous?.title,
-    kind: update.kind ?? previous?.kind,
+    title: update.title === undefined ? previous?.title : update.title,
+    kind: update.kind === undefined ? previous?.kind : update.kind,
     locations: update.locations ?? previous?.locations,
     rawInput: update.rawInput ?? previous?.rawInput,
     content: update.content ?? previous?.content,

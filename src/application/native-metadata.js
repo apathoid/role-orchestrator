@@ -14,11 +14,17 @@ export function projectNativeMetadata(entry, native, maxBytes) {
   if (!native) return entry;
   const {native: _previous, omittedMetadataFields: previous = [], ...base} = entry;
   const baseBytes = Buffer.byteLength(JSON.stringify(base));
-  const fields = Object.entries(native).filter(([,value]) => value !== undefined);
+  const inheritedFields = native.inheritedFields ?? [];
+  const fields = Object.entries(native).filter(([key,value]) => key !== 'inheritedFields' && value !== undefined);
   if (!fields.length) return entry;
   /** @param {NativeMetadata | undefined} selected @param {string[]} omitted */
   function extension(selected, omitted) {
-    return {...(selected && {native:selected}), ...(omitted.length && {omittedMetadataFields:omitted})};
+    // Attribution is part of each inherited field's representation. It is
+    // never an independently selected field that could be dropped to fit.
+    const inherited = inheritedFields.filter(field => selected?.[field] !== undefined);
+    return {...(selected && {native:{...selected,
+      ...(inherited.length && {inheritedFields:inherited})}}),
+      ...(omitted.length && {omittedMetadataFields:omitted})};
   }
   /** @param {ReturnType<typeof extension>} extra */
   function fits(extra) {
