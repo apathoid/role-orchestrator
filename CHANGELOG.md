@@ -3,6 +3,7 @@
 ### C21 — Model-facing Information Clarity (partial; engineering/native UNVERIFIED)
 
 - ACP same-call sparse updates can carry attributed prior identification fields in observations. Existing bounded projection preserves inherited attribution alongside each displayed value; raw captured payload and canonical evidence identity remain unchanged.
+- Clarify optional evidence discovery, captured-value availability and canonical ref/source/capture/projection distinctions, without changing list parameters or page defaults. MCP-only proposal guidance makes the separate native completion and exact final answer contract explicit.
 
 ### C20-R — Independent ACP result capture (engineering PASS at c86d3e5e; native UNVERIFIED)
 

@@ -29,17 +29,17 @@ const evidenceListArgs = record({cursor:optional(count)});
 const evidenceFetchArgs = record({ref:id,offset:optional(count),maxBytes:optional(count)});
 const countSchema = { type: 'integer', minimum: 0 };
 const listTool = {
-  name: 'context_list', description: 'List visible historical records by page. Copy nextCursor exactly to continue the same journal-prefix traversal; omit cursor or use 0 to start a fresh traversal.',
+  name: 'context_list', description: 'Optionally list visible historical records by page. Copy nextCursor exactly to continue the same journal-prefix traversal; omit cursor or use 0 to start a fresh traversal. A directory page describes its traversal, not all later records. Capture completeness is independent of projection omissions.',
   inputSchema: { type: 'object', properties: { cursor: { anyOf: [{type:'integer',enum:[0]}, { type: 'object',
     properties: { revision: countSchema, index: countSchema }, required: ['revision','index'], additionalProperties: false }] } }, additionalProperties: false },
 };
 const decisionTool = {
   name: 'submit_decision',
-  description: 'Declare or correct a model-owned ControllerIntent proposal in this native turn. A received proposal does not admit Actions; use replaces with a prior proposalRef for explicit correction. You may continue using all native tools and reasoning before end_turn.',
+  description: 'Declare or correct a model-owned ControllerIntent proposal in this native turn. A received proposal is not final admission or end of turn. Use replaces with a prior proposalRef from this invocation for correction. Native work may continue; finalAssessment.answer carries the user-facing result and need not be repeated when ending the turn.',
   inputSchema: { type:'object', properties:{ intent:{}, replaces:{type:'string'} }, required:['intent'], additionalProperties:false },
 };
 const fetchTool = {
-  name: 'context_fetch', description: 'Retrieve a visible record by ref or position returned by context_list. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; follow nextOffset to read more. Source completeness and truncation remain as recorded.',
+  name: 'context_fetch', description: 'Retrieve a visible historical record by ref or directory position. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; nextOffset locates further saved bytes. Source completeness and truncation remain as recorded; a complete chunk or exhausted offset does not restore missing source data.',
   inputSchema: { type: 'object', properties: {
     ref: { anyOf: [{ type: 'string', minLength: 1 }, { type: 'object',
       properties: { revision: countSchema, index: countSchema }, required: ['revision', 'index'], additionalProperties: false }] },
@@ -51,12 +51,12 @@ const fetchTool = {
 
 const evidenceListTool = {
   name:'evidence_list',
-  description:'Optionally list accepted observations captured in this invocation in append-only order. Resume later from resumeCursor even after an empty/exhausted snapshot; nextCursor only marks more entries already captured now. Explicit unavailable entries mark oversized metadata and do not block later records. This is not a native tool or capability inventory.',
+  description:'Optionally list observations accepted in this invocation, in append-only order (up to 12 positions per page). Each ref identifies a captured record, not the truth of a claim. Source and provenance identify who reported it; completeness describes source capture, not tool success. Native title/kind are provider-reported; inheritedFields marks values from earlier reports of the same call. hasCapturedValue, when present, says whether a captured value exists, not whether every fetch will succeed. native.omittedFields and omittedMetadataFields describe capture-metadata and projection omissions; a positional unavailable entry is a budget gap, not tool failure. Resume from resumeCursor even after an empty/exhausted page; nextCursor marks additional entries already captured now. This is not a native tool or capability inventory.',
   inputSchema:{type:'object',properties:{cursor:countSchema},additionalProperties:false},
 };
 const evidenceFetchTool = {
   name:'evidence_fetch',
-  description:'Read captured observation by the canonical ref returned by evidence_list. Bytes are bounded base64 UTF-8 or JSON; follow nextOffset. Provenance and completeness reflect capture, not durable commit or task success.',
+  description:'Read an accepted observation by canonical ref in this invocation (for example, from the live directory). A chunk contains bounded base64 bytes, format utf8 or json, offset and totalBytes of the saved value; nextOffset locates remaining saved bytes. Missing ref, unavailable payload, closed scope and budget are access outcomes, distinct from capture completeness or tool status. An exhausted chunk is not proof of full source capture or durable commit.',
   inputSchema:{type:'object',properties:{ref:{type:'string',minLength:1},offset:countSchema,maxBytes:countSchema},required:['ref'],additionalProperties:false},
 };
 
@@ -70,7 +70,8 @@ export function retrievalDetail(enabled, names = {}) {
     : 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.';
   return context + (names.evidenceListToolName && names.evidenceFetchToolName
     ? '\nOptional current-invocation MCP ' + names.evidenceListToolName + ' and ' + names.evidenceFetchToolName +
-      ' expose already captured observations and canonical refs. Continue later from evidence_list resumeCursor (even if nextCursor is absent); oversized metadata may be explicitly omitted. Discovery is not exhaustive, not durable until committed and never required. Continue independent native tools and reasoning as needed.'
+      ' expose accepted observations and canonical refs. ' + names.evidenceListToolName +
+      ' resumeCursor supports later live reads even if nextCursor is absent. Capture, directory coverage and payload availability are distinct; discovery is optional and observations are not durable until committed.'
     : '');
 }
 

@@ -106,7 +106,7 @@
  *   permissions?: Pick<AttemptPermissions, 'request'>, newId: () => string, maxBytes: number,
  *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
  * @typedef {'closed' | 'invalid_cursor' | 'invalid_ref' | 'invalid_offset' | 'missing' | 'payload' | 'budget'} LiveEvidenceUnavailableReason
- * @typedef {Pick<import('./observation.js').Observation, 'ref' | 'source' | 'completeness' | 'providerRef' | 'provenance' | 'reportedContext' | 'artifact' | 'summary' | 'native'> & {omittedMetadataFields?: string[]}} LiveEvidenceItem
+ * @typedef {Pick<import('./observation.js').Observation, 'ref' | 'source' | 'completeness' | 'providerRef' | 'provenance' | 'reportedContext' | 'artifact' | 'summary' | 'native'> & {omittedMetadataFields?: string[], hasCapturedValue?: boolean}} LiveEvidenceItem
  * @typedef {LiveEvidenceItem | {kind:'unavailable',reason:'budget',index:number}} LiveEvidenceListItem
  * @typedef {{kind:'available',cursor:number,items:LiveEvidenceListItem[],resumeCursor:number,nextCursor?:number} |
  *   {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceList

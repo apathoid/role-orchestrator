@@ -227,6 +227,16 @@ test('C19 answer guidance is delivered once in every Controller transport withou
       const prompt = renderInvocationPrompt({...invocation, controllerDelivery}, 'fixture');
       assert.equal(prompt.split(assessmentAnswerGuidance).length, 2);
       assert.equal(prompt.split('Observation completeness describes capture completeness, not tool success or evidence sufficiency.').length, 2);
+      assert.match(prompt,/canonical ref identifies a recorded item in its authorized scope/);
+      if(controllerDelivery==='intent_mcp'){
+        assert.match(prompt,/do not need to repeat the submitted answer/);
+        assert.match(prompt,/registration-order last-wins/);
+        assert.match(prompt,/native final message may be ordinary text or empty/);
+      }else{
+        assert.doesNotMatch(prompt,/do not need to repeat the submitted answer/);
+        assert.doesNotMatch(prompt,/native final message may be ordinary text or empty/);
+        assert.match(prompt,/Return exactly one .*JSON object/);
+      }
       const answer = '  # Результат 🧪\n{"artifact":"a\\\\b"}\n  ';
       const raw = JSON.stringify({finalAssessment:{answer}});
       assert.deepEqual(parseDecisionText(raw), {output:{finalAssessment:{answer}}});

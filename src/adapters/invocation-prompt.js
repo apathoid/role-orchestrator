@@ -1,7 +1,7 @@
 /** @import {Invocation} from '../core/ports.js' */
 
 import { decisionContract } from '../application/decision-instructions.js';
-import { controllerIntentContract } from '../application/controller-intent-instructions.js';
+import { controllerIntentContract, controllerIntentMcpDelivery } from '../application/controller-intent-instructions.js';
 
 /** @param {Invocation} request @param {string} transportDetail
  * @param {(sizes:Record<string,number>)=>void} [measure] */
@@ -10,7 +10,7 @@ export function renderInvocationPrompt(request, transportDetail, measure) {
     instructions, skillInstructions, userConstraints, context, expectedResult, continuationReference } = request;
   const decisionToolName = request.controllerDecisionToolName ?? 'submit_decision';
   const output = kind === 'controller' ? request.controllerDelivery === 'intent_mcp'
-    ? 'Use the invocation-scoped MCP ' + decisionToolName + ' tool to propose ControllerIntent. Continue native work as needed; no additional finalize is required and your final text may be ordinary or empty.'
+    ? controllerIntentMcpDelivery.replaceAll('submit_decision', decisionToolName)
     : request.controllerDelivery === 'intent_text'
       ? 'Return exactly one model-owned ControllerIntent JSON object as the final Controller message, with no Markdown fences. Intermediate native tools are allowed.'
       : 'Return exactly one JSON object as the final Controller message, with no Markdown fences. Intermediate progress and native tool calls are allowed.' :
@@ -41,7 +41,7 @@ export function renderInvocationPrompt(request, transportDetail, measure) {
     '## Invocation identity\n' + JSON.stringify({kind, operationId, attemptId, actionId, profileId}),
     '## Original objective and user constraints\n' + JSON.stringify({objective, userConstraints, expectedResult, continuationReference}),
     '## Role instructions before Decision reference\n' + jsonRecords(before),
-    (intentMode ? '## ControllerIntent reference\n' + controllerIntentContract.replaceAll('submit_decision', decisionToolName) : '## Decision v1 reference\n' + decisionContract),
+    (intentMode ? '## ControllerIntent reference\n' + controllerIntentContract : '## Decision v1 reference\n' + decisionContract),
     '## Remaining role instructions and materialized skills\n' + JSON.stringify({instructions: after, skillInstructions}),
     '## Orchestration context and history (RO-managed Catalog is not native capability inventory)\n' + jsonRecords(history),
     ...(correction ? ['## Active technical correction\n' + JSON.stringify(correction)] : []),

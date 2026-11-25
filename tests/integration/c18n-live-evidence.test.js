@@ -70,6 +70,7 @@ test('C18N.2 closed, empty, capture gap and independent historical cursor',()=>{
   assert.deepEqual(port.list(),{kind:'available',cursor:0,items:[],resumeCursor:0});
   items.push(sample('evidence:unavailable',undefined));
   assert.equal(port.list().items[0].completeness,'truncated');
+  assert.equal(port.list().items[0].hasCapturedValue,false);
   assert.deepEqual(port.fetch('evidence:unavailable'),{kind:'unavailable',reason:'payload'});
   active=false;
   assert.deepEqual(port.list(),{kind:'unavailable',reason:'closed'});
@@ -88,9 +89,16 @@ test('C18N.2/4 actual MCP list/fetch, nonblocking preflight and same-turn correc
     externalTools:{list:()=>[{id:'echo',description:'fixture',effect:'read',inputSchema:{type:'object'}}],
       async call(){external++;return {status:'completed',effect:'none'};}}});
   try{
-    const names=(await listTools(bridge.url,1)).result.tools.map(t=>t.name);
-    assert.ok(names.includes('evidence_list'));
-    assert.ok(names.includes('evidence_fetch'));
+    const tools=(await listTools(bridge.url,1)).result.tools;
+    const list=tools.find(t=>t.name==='evidence_list');
+    const fetch=tools.find(t=>t.name==='evidence_fetch');
+    assert.deepEqual(list.inputSchema,{type:'object',properties:{cursor:{type:'integer',minimum:0}},additionalProperties:false});
+    assert.deepEqual(Object.keys(fetch.inputSchema.properties),['ref','offset','maxBytes']);
+    assert.match(list.description,/inheritedFields/);
+    assert.match(list.description,/hasCapturedValue/);
+    assert.match(list.description,/resumeCursor/);
+    assert.match(fetch.description,/totalBytes/);
+    assert.match(tools.find(t=>t.name==='submit_decision').description,/need not be repeated/);
     const listed=await call(bridge.url,2,'evidence_list',{});
     assert.deepEqual(value(listed),{kind:'available',cursor:0,items:[],resumeCursor:0});
     const unknown='evidence:future';
@@ -105,6 +113,13 @@ test('C18N.2/4 actual MCP list/fetch, nonblocking preflight and same-turn correc
     observations.push(sample(unknown,'tool complete'));
     const page=value(await call(bridge.url,5,'evidence_list',{cursor:0}));
     assert.equal(page.items[0].ref,unknown);
+    assert.equal(page.items[0].hasCapturedValue,true);
+    observations.push(sample('evidence:payload-less',undefined));
+    const resumed=value(await call(bridge.url,51,'evidence_list',{cursor:page.resumeCursor}));
+    assert.equal(resumed.items[0].hasCapturedValue,false);
+    assert.equal(resumed.items[0].completeness,'truncated');
+    assert.deepEqual(value(await call(bridge.url,52,'evidence_fetch',{ref:'evidence:payload-less'})),
+      {kind:'unavailable',reason:'payload'});
     const fetched=value(await call(bridge.url,6,'evidence_fetch',{ref:unknown}));
     assert.equal(Buffer.from(fetched.base64,'base64').toString('utf8'),'tool complete');
     const corrected=await call(bridge.url,7,'submit_decision',{
@@ -347,7 +362,7 @@ test('C21 inherited identification is accepted immutably, validated and round-tr
   assert.equal(item.native.title,'Earlier title');
   const reopened=decode(contextItem,JSON.parse(JSON.stringify(item)));
   assert.equal(reopened.kind,'accepted');
-  assert.deepEqual(reopened.value,item);
+  assert.deepEqual(JSON.parse(JSON.stringify(reopened.value)),JSON.parse(JSON.stringify(item)));
   const malformed=receiveProviderObservation({...report,native:{...report.native,inheritedFields:['status']}},101);
   assert.equal(malformed.native.title,undefined);
   assert.equal(malformed.native.kind,undefined);

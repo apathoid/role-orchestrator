@@ -52,7 +52,11 @@ function directoryItem(item) {
     else Object.assign(entry, {[field]:value});
   }
   if (omittedMetadataFields.length) entry.omittedMetadataFields = omittedMetadataFields;
-  return projectNativeMetadata(entry, item.native, itemBytes);
+  const projected = projectNativeMetadata(entry, item.native, itemBytes);
+  // A cheap capture fact, not a fetch/access promise. It is secondary to
+  // existing identity, provenance and native metadata and may itself omit.
+  const withValue = {...projected,hasCapturedValue:item.value !== undefined};
+  return Buffer.byteLength(JSON.stringify(withValue)) <= itemBytes ? withValue : projected;
 }
 
 /**

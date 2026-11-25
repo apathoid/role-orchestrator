@@ -383,10 +383,16 @@ agent()
       await client.notify(c.session.update,{sessionId,update:{
         sessionUpdate:'tool_call_update',toolCallId:'unknown-native',status:'completed',
       }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,title:null,kind:null,
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,status:'failed',
+      }});
       const directory=await call(1,'evidence_list',{});
       assert.equal(directory.kind,'available');
       const records=directory.items.filter(item=>item.provenance?.sourceId===nativeName);
-      assert.equal(records.length,5);
+      assert.equal(records.length,7);
       assert.deepEqual(records[0].native,{eventKind:'tool_call',nativeToolCallId:nativeName,
         title:'Native inspection',kind:'read',status:'in_progress'});
       assert.deepEqual(records[1].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
@@ -399,6 +405,8 @@ agent()
         title:'Changed title',kind:'read',status:'in_progress',inheritedFields:['title','kind']});
       assert.deepEqual(directory.items.find(item=>item.native?.nativeToolCallId==='unknown-native').native,
         {eventKind:'tool_call_update',nativeToolCallId:'unknown-native',status:'completed'});
+      assert.deepEqual(records[5].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName});
+      assert.deepEqual(records[6].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,status:'failed'});
       const sparse=await call(21,'evidence_fetch',{ref:records[2].ref});
       assert.deepEqual(sparse.item.native,records[2].native);
       const originalSparse=JSON.parse(JSON.parse(Buffer.from(sparse.base64,'base64').toString('utf8')).json);

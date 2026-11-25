@@ -47,17 +47,14 @@ continues that traversal, not a numeric offset.
 
 ${assessmentAnswerGuidance}
 
-In text mode send ONLY one JSON ControllerIntent object as final Controller
-message (no Markdown fences). In MCP mode submit_decision({intent,replaces?})
-registers only a proposed result: it never dispatches Actions, completes the
-turn or disables native tools, skills, reading or reasoning. Its proposalRef
-can be used by a later correction in this SAME native invocation only (not across invocations); explicit
-same-lineage competing replacements use registration-order last-wins.
-Unrelated proposals without replaces conflict until corrected; errors can
-be corrected without a new Controller invocation. After the trusted native
-turn ends, at most one final validated intent enters existing admission.
-The native final message may be ordinary text or empty in MCP mode. No
-extra finalize call is required.
-
 Shape example ONLY (not task strategy):
 ${controllerIntentExample}`;
+
+// Only the MCP delivery path advertises this native-turn contract.
+export const controllerIntentMcpDelivery = `Use the invocation-scoped MCP submit_decision({intent,replaces?}) to register a model-owned ControllerIntent proposal.
+A received proposal never dispatches Actions, completes the native turn or disables native tools, skills, reading or reasoning.
+Its proposalRef is valid for correction in this same native invocation only; explicit same-lineage competing replacements use registration-order last-wins.
+Unrelated proposals without replaces conflict until corrected; errors can be corrected without a new Controller invocation.
+After the trusted native turn ends, at most one final validated intent enters existing admission.
+finalAssessment.answer carries the user-facing result. When ending the turn, you do not need to repeat the submitted answer.
+The native final message may be ordinary text or empty. No extra finalize call is required.`;

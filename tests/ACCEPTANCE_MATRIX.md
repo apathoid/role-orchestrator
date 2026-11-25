@@ -635,3 +635,5 @@ C20-R intermediate CI #45488246167: 94/96 contracts; all four delivery paths and
 ### C21 — Model-facing Information Clarity (partial; UNVERIFIED)
 
 C21.2 candidate extends existing C19/A05/A06/A21/A24 and C18N SDK fixtures: same-call inherited title/kind attribution, distinct current status, changed/parallel/unknown call identity and duplicate original event; immutable optional metadata validation and round-trip, paired omission across byte boundaries, canonical ref/raw payload preservation. `tests/fixtures/acp-contract-agent.js`, `tests/contracts/acp-provider.test.js`, `tests/integration/c18n-live-evidence.test.js`. Execution and additional acceptance scenarios remain UNVERIFIED; exact results in [STATUS](../docs/roadmap/STATUS.md). No new mandatory retrieval or native strategy.
+
+C21.3–.5 candidate: live MCP tool schemas unchanged; captured-value indicator (when budget permits), captured/absent body and resume, explicit ACP clear, canonical scope vs truth, and MCP-only end-of-turn guidance tested in existing suites. Existing actual ACP post-proposal/replacement/failure/cancel and text/legacy paths remain mandatory. Full exact-SHA verification UNVERIFIED.
