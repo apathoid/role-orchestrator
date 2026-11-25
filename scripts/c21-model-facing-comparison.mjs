@@ -122,7 +122,7 @@ await withOwnedRun('C21-comparison',async directory=>{
         .find(item=>item.ref===completion.ref);
       assert.ok(saved);
       assert.deepEqual(saved.native,completion.native);
-      assert.deepEqual(saved.provenance,completion.provenance);
+      assert.deepEqual(JSON.parse(JSON.stringify(saved.provenance)),completion.provenance);
       const original=JSON.parse(Buffer.from(fetched.value.base64,'base64').toString('utf8'));
       assert.deepEqual(saved.value,original);
       assert.deepEqual(JSON.parse(original.json),events[1]);

@@ -96,7 +96,7 @@ test('C18N.2/4 actual MCP list/fetch, nonblocking preflight and same-turn correc
     assert.deepEqual(Object.keys(fetch.inputSchema.properties),['ref','offset','maxBytes']);
     assert.match(list.description,/inheritedFields/);
     assert.match(list.description,/hasCapturedValue/);
-    assert.match(list.description,/resumeCursor works even after an empty\/exhausted page/);
+    assert.match(list.description,/pass resumeCursor as cursor to read later, even after an empty\/exhausted page/);
     assert.match(list.description,/nextCursor signals more entries already captured/);
     assert.match(list.description,/canonical ref identifies a record, not proof/);
     assert.match(list.description,/source\/provenance attribute the report/);
@@ -106,6 +106,8 @@ test('C18N.2/4 actual MCP list/fetch, nonblocking preflight and same-turn correc
     assert.match(fetch.description,/not capture completeness or tool status/);
     assert.match(fetch.description,/do not establish full source capture or durable commit/);
     assert.match(fetch.description,/totalBytes/);
+    assert.match(fetch.description,/format \(utf8\/json\)/);
+    assert.match(fetch.description,/nextOffset \(byte offset for the next chunk\)/);
     assert.match(tools.find(t=>t.name==='submit_decision').description,/need not be repeated/);
     const listed=await call(bridge.url,2,'evidence_list',{});
     assert.deepEqual(value(listed),{kind:'available',cursor:0,items:[],resumeCursor:0});

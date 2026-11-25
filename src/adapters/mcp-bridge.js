@@ -51,12 +51,12 @@ const fetchTool = {
 
 const evidenceListTool = {
   name:'evidence_list',
-  description:'Optional directory of accepted observations in this invocation (append-only, 12 positions per page), not a native tool inventory.\nIdentity: canonical ref identifies a record, not proof; source/provenance attribute the report. Native title/kind are provider-reported; inheritedFields marks earlier same-call values.\nAvailability: completeness describes capture, not tool success. hasCapturedValue, if present, indicates a stored value, not guaranteed fetch access. native.omittedFields marks capture-metadata omissions; omittedMetadataFields marks projection omissions. Positional unavailable entries are budget gaps, not tool failures.\nPaging: resumeCursor works even after an empty/exhausted page; nextCursor signals more entries already captured.',
+  description:'Optional directory of accepted observations in this invocation (append-only, up to 12 positions per page), not a native tool or capability inventory.\nIdentity: canonical ref identifies a record, not proof; source/provenance attribute the report. Native title/kind are provider-reported; inheritedFields marks earlier same-call values.\nAvailability: completeness describes capture, not tool success. hasCapturedValue, if present, indicates a stored value, not guaranteed fetch access. native.omittedFields marks capture-metadata omissions; omittedMetadataFields marks projection omissions. Positional unavailable entries are budget gaps, not tool failures.\nPaging: pass resumeCursor as cursor to read later, even after an empty/exhausted page; nextCursor signals more entries already captured.',
   inputSchema:{type:'object',properties:{cursor:countSchema},additionalProperties:false},
 };
 const evidenceFetchTool = {
   name:'evidence_fetch',
-  description:'Read an accepted current-invocation observation by canonical ref. Chunk: bounded base64 of saved utf8/json bytes, offset, totalBytes and nextOffset (remaining bytes). Missing ref, payload, closed scope or budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.',
+  description:'Read an accepted current-invocation observation by canonical ref. Chunk fields: base64 (bounded saved bytes), format (utf8/json), offset, totalBytes, nextOffset (byte offset for the next chunk). Missing ref, unavailable payload, closed scope and budget are access outcomes, not capture completeness or tool status. Exhausted bytes do not establish full source capture or durable commit.',
   inputSchema:{type:'object',properties:{ref:{type:'string',minLength:1},offset:countSchema,maxBytes:countSchema},required:['ref'],additionalProperties:false},
 };
 
@@ -67,7 +67,8 @@ export function retrievalDetail(enabled, names = {}, kind = 'controller') {
   const list = names.contextListToolName ?? 'context_list';
   const fetch = names.contextFetchToolName ?? 'context_fetch';
   const context = enabled
-    ? 'Optional MCP ' + list + ' and ' + fetch + ' retrieve scoped historical records when useful.'
+    ? 'Optional MCP ' + list + ' and ' + fetch + ' retrieve scoped historical records when useful.' +
+      (kind === 'delegate' ? ' Report material unavailable evidence explicitly.' : '')
     : kind === 'controller'
       ? 'Context retrieval is unavailable in this transport via MCP. Optional nextController.contextRequest can still select saved refs, positions, byte offsets or journal-prefix cursors (copy nextCursor exactly; 0 starts a fresh traversal) for a subsequent Controller turn without MCP; report material missing evidence when relevant.'
       : 'Historical context retrieval via MCP is unavailable in this transport. Supplied context retains its original scope and completeness.';

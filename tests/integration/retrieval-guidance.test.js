@@ -81,6 +81,8 @@ test('C12R.9 review: no-MCP advisory still exposes optional nextController histo
   const enabled=retrievalDetail(true);
   assert.match(enabled,/retrieve scoped historical records/);
   assert.doesNotMatch(enabled,/nextOffset|nextCursor/);
+  assert.match(retrievalDetail(true,{},'delegate'),/material unavailable evidence/);
+  assert.doesNotMatch(retrievalDetail(true,{},'delegate'),/nextController/);
 });
 
 test('C21 advertises negotiated aliases and only the role-appropriate no-MCP path',async()=>{
