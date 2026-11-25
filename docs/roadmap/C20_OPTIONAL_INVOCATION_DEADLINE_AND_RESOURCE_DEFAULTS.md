@@ -1,6 +1,6 @@
 # C20 — Optional Invocation Deadline & Resource Defaults
 
-**Status:** PLANNED, approved revised scope; implementation and native acceptance UNVERIFIED. **Working branch:** `feature/controller-intent-deferred-admission`. **Source/review baseline:** `2650d327b01eddd5ed2939263ef73b803381be11`; actual implementation baseline is the verified C19 head. Execute after [C19](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md), separately test and commit. No master merge.
+**Status:** ENGINEERING VERIFIED at `e092712f5400bee20ea5ab4bb6ef0fac619a9c1d` ([CI #45484371885](https://github.com/apathoid/role-orchestrator/actions/runs/45484371885), 37/37); C20-R correction verified at `c86d3e5e47bffc7bb7eb4ff42763865b360faae5` ([CI #45488863848](https://github.com/apathoid/role-orchestrator/actions/runs/45488863848), 38/38). Native acceptance UNVERIFIED. The following approved implementation plan is retained for traceability. **Working branch:** `feature/controller-intent-deferred-admission`. **Source/review baseline:** `2650d327b01eddd5ed2939263ef73b803381be11`; actual implementation baseline is the verified C19 head. Execute after [C19](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md), separately test and commit. No master merge.
 
 **Superseding decision:** this plan replaces the previously discussed Activity-Based Invocation Lifetime proposal. The operator explicitly rejected idle/tool/startup/interaction/recovery execution timeouts, activity tracking and watchdogs. Do not implement those earlier proposals, even as optional features. No automatic detection of stalled models. The user may allow work to continue indefinitely, cancel explicitly or configure one hard invocation deadline. This is a conscious reliability/resource trade-off, not a claim that the provider cannot hang.
 
@@ -142,13 +142,13 @@ Run full exact-SHA mandatory Node24/checkJs/foundation/core/contract/integration
 
 ## 10. Acceptance and executor handoff
 
-- [ ] Exactly approved three resource defaults and configurable override; finite old config and trusted limits preserved; nullable values handled throughout state, context and presentation.
-- [ ] No RO-imposed execution/startup/tool/interaction/recovery deadline unless the single optional hard invocation deadline applies. No idle/watchdog/liveness subsystem, no hidden static child-process deadline, no new timeout settings.
-- [ ] User cancellation works independently of deadline, including ACP setup and noncooperative provider; no false physical cleanup, no lost slot/late observation, no indefinite logical join on unresolved cleanup.
-- [ ] Existing technical post-stop/transport timers retained only with concrete justification; no native timeout policy changed.
-- [ ] Unlimited cumulative invocation budget does not weaken concurrent limit/authority, durable identity, C18R finality or no-blind-replay.
-- [ ] Long-operation/capture audit and scale measurements, explicit limitations, no new artificial caps or broad storage rearchitecture.
-- [ ] Exact-SHA CI, honest separate real-native status; no master merge.
+- [x] Exactly approved three resource defaults and configurable override; finite old config and trusted limits preserved; nullable values handled throughout state, context and presentation.
+- [x] No RO-imposed execution/startup/tool/interaction/recovery deadline unless the single optional hard invocation deadline applies. No idle/watchdog/liveness subsystem, no hidden static child-process deadline, no new timeout settings.
+- [x] User cancellation works independently of deadline, including ACP setup and noncooperative provider; no false physical cleanup, no lost slot/late observation, no indefinite logical join on unresolved cleanup.
+- [x] Existing technical post-stop/transport timers retained only with concrete justification; no native timeout policy changed.
+- [x] Unlimited cumulative invocation budget does not weaken concurrent limit/authority, durable identity, C18R finality or no-blind-replay.
+- [x] Long-operation/capture audit and scale measurements, explicit limitations, no new artificial caps or broad storage rearchitecture.
+- [x] Exact-SHA CI, honest separate real-native status; no master merge.
 
 Executor report: baseline/final SHA, actual config precedence and persisted limit semantics, complete before/after timer inventory (remove/retain owner and boundary), cancellation/recovery/cleanup races and results including ACP initialization, finality and slot guarantees, RED/GREEN and scale/capture findings, all remaining control/data bounds and provider limitations, exact-SHA CI and native evidence or UNVERIFIED. If inability to preserve safe cancellation/cleanup or deliver valid results is found, report it explicitly rather than claiming unconditional support. No automatic replay of unknown effects, no extra scheduler.
 
@@ -156,4 +156,4 @@ Executor report: baseline/final SHA, actual config precedence and persisted limi
 
 ## C20-R follow-up — independent ACP current result capture
 
-Baseline engineering CI passed at e092712f (37/37 steps). Review confirmed text/legacy/Worker failure after ACP aggregate history overflow, even with valid native end_turn. Correct within the existing adapter: bounded independent current message text, preserved native boundaries and finality, explicit history/result omissions, bounded identity retention, no new timeout or store. Verify actual SDK RED/GREEN and scale probe; native acceptance separately UNVERIFIED. See STATUS for exact SHA and results.
+Baseline engineering CI passed at e092712f (37/37 steps). Review confirmed text/legacy/Worker failure after ACP aggregate history overflow, even with valid native end_turn. Correct within the existing adapter: bounded independent current message text, preserved native boundaries and finality, explicit history/result omissions, bounded identity retention, no new timeout or store. Actual SDK RED→GREEN and scale probe PASS; all four paths independently deliver complete current result at native end_turn after history overflow, with distinct history/result diagnostics and bounded identity handling. Native acceptance separately UNVERIFIED. See [STATUS](STATUS.md) for exact SHA and measurements, and [native procedure](NATIVE_ACCEPTANCE.md#c19c20-r--native-acceptance-procedure-n1n8).

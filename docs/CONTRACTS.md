@@ -196,15 +196,15 @@ The invocation-local `evidence_list` response now always includes `resumeCursor`
 Preflight constructs historical technical reference sets once per invocation, extends an invocation-owned index only for newly accepted live observations, and checks only candidate-referenced identities in ephemeral sets. `admitFindings` may mutate only those temporary sets. No repeated full historical/live copy per correction, no extra journal, no semantic source classification and no authoritative veto. `submit_decision` registration, replacement, finalization and durable admission are unchanged.
 
 
-### C19 — Optional native report metadata (implementation candidate)
+### C19 — Optional native report metadata
 
-Typed AdapterObservation reports may supply optional native fields (`eventKind`, `nativeToolCallId`, `title`, `kind`, `status`) from the actual event. Only accepted provider-tool/provider-report provenance carries them; legacy and model claims do not manufacture native metadata. The existing v1 observation decoder/writer preserve optional accepted snapshots; old records remain valid. See [context and recovery](CONTEXT_AND_RECOVERY.md#c19--native-observation-metadata-implementation-candidate-engineering-unverified) for capture/omission and projection boundaries. No capability requirement or semantic gate.
+Typed AdapterObservation reports may supply optional native fields (`eventKind`, `nativeToolCallId`, `title`, `kind`, `status`) from the actual event. Only accepted provider-tool/provider-report provenance carries them; legacy and model claims do not manufacture native metadata. The existing v1 observation decoder/writer preserve optional accepted snapshots; old records remain valid. See [context and recovery](CONTEXT_AND_RECOVERY.md#c19--native-observation-metadata) for capture/omission and projection boundaries. No capability requirement or semantic gate.
 
 
-### C20 — Nullable invocation resources (candidate)
+### C20 — Nullable invocation resources
 
 `Limits.maxInvocations` and `resourceSnapshot.remaining` accept null for unlimited cumulative invocations; actual charged, active and usage counts remain numeric and finite concurrency is unchanged. Existing v1 finite snapshots remain legal; null is preserved in the same durable format. Default-derived resource ceilings cannot enlarge persisted finite authority on resume; explicit trusted user/launch reconfiguration retains the existing ResumeAuthority contract. `Invocation.timeoutMs` is nullable technical metadata; built-in providers use the owner signal, not a second timer. Only a configured finite deadline schedules execution cancellation. Recovery has no independent timeout; its provider lookup can wait until cancellation, without holding the serialized mutation queue. Late or unconfirmed detachment is not success, and cleanup-pending slots are retained until confirmed release.
 
-### ACP history and current result (C20-R candidate)
+### ACP history and current result (C20-R)
 
 The existing adapter execution owns bounded history and current text independently. `acp-output-limit` reports incomplete history; `acp-result-limit` / `acp-result-boundary-limit` report current text limit / unavailable anonymous boundary identity. The legacy `acp-stop.value.truncated` is history truncation; `historyTruncated`, `resultTruncated`, history/result bytes and omitted events distinguish capture facts from provider completion. A fully received current result after history omission may be published as `acp-current-result`, model claim with actual message identity or existing session fallback. OutputObservationRef only identifies complete exact text; ordinary fragmented output uses the existing declared-value fallback. Native refusal/cancel/disconnect and MCP proposal finality remain authoritative; no semantic choice of a final message.

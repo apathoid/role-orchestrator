@@ -1,6 +1,6 @@
 # C12.3–C12.4: протокол нативной приёмки
 
-## C19 — Model-facing Evidence & Answer Clarity (PLANNED; NATIVE UNVERIFIED)
+## C19 — Model-facing Evidence & Answer Clarity (ENGINEERING PASS; NATIVE UNVERIFIED)
 
 [Implementation specification](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md). Compare on pinned exact RO SHA, native agent/model/client versions, skill version, cwd/permissions, context, sampling/effort, and resource configuration; repeat comparable runs, distinguish actual user-result quality from successful admission. Earlier operator-supplied OpenCode/Ornith experiments reported successful direct answer and live list/fetch/canonical admission, weak evidence choice and report-instead-of-result, and Small in-turn structural `replaces` correction. They are not C19 acceptance, independently verified exact-build comparisons, or advisory-reference correction evidence.
 
@@ -9,7 +9,7 @@
 3. Natural advisory-ref warning then in-turn correction if observed (otherwise UNVERIFIED), independent provider/subagents and providers with no metadata where available.
 4. Exact answer round-trip and native tool use after pending proposal; compare independently with engineering fixtures. Do not commit private logs/prompts/source or deliberately teach production model to fail.
 
-## C20 — Optional Invocation Deadline & Resource Defaults (PLANNED; NATIVE UNVERIFIED)
+## C20 — Optional Invocation Deadline & Resource Defaults (ENGINEERING PASS; NATIVE UNVERIFIED)
 
 [Implementation specification](C20_OPTIONAL_INVOCATION_DEADLINE_AND_RESOURCE_DEFAULTS.md). Default three settings 5/null/null. No idle watchdog or additional execution timeout. Test under trusted permitted environment and record exact effective resource config and any native-provider limits.
 
@@ -19,6 +19,78 @@
 4. Multiple invocations/Workers and long Operation: independent authority, no arbitrary cumulative cap; preserve exact capture/truncation, proposal finality and no automatic replay.
 
 Record model task correctness, durations, configured vs actual cancellation cause, events and slot/cleanup outcomes, observable resource growth and limits. No inference of unbounded memory or guarantee of detecting hangs. Native provider limits remain independent. Exact-SHA engineering CI is separate; unavailable real native scenarios remain UNVERIFIED.
+
+
+## C19–C20-R — native acceptance procedure N1–N8
+
+Engineering implementation `c86d3e5e47bffc7bb7eb4ff42763865b360faae5` / [CI #45488863848](https://github.com/apathoid/role-orchestrator/actions/runs/45488863848) PASS, not real native acceptance. All N1–N8 initially **UNVERIFIED**. Run only in an authorized real workspace with actual available providers. Earlier C19/C20 guidance above remains applicable. This is a manual comparative procedure, not a runtime workflow, semantic gate or required model tool choice.
+
+### Pinned build and private run directory
+
+From a checkout containing the accepted commit (do not reset a dirty tree), use a detached build worktree, not the user's task workspace. Use the existing trusted provider configuration; preserve absolute provider/plugin/skill paths, native discovery, permissions, model settings, and equivalent task inputs across runs. Check project settings for resource reductions. For default tests omit user resource overrides or explicitly configure 5/null/null; ensure no launch/project override changes the intended effective values. For N6 finite-deadline case use a distinct trusted config with a recorded positive integer deadline. Do not change credentials, grant extra rights, or disable native provider limits.
+
+```bash
+umask 077
+OUT=$(mktemp -d "${TMPDIR:-/tmp}/ro-c19-c20.XXXXXXXX")
+SHA=c86d3e5e47bffc7bb7eb4ff42763865b360faae5
+git worktree add --detach "$OUT/src" "$SHA"
+(cd "$OUT/src" && git rev-parse HEAD &&
+  nix build --no-update-lock-file --out-link "$OUT/ro" .#role-orchestrator)
+RO="$OUT/ro/bin/role-orchestrator"
+"$RO" --help
+"$RO" run --help
+node --version
+nix --version
+# Record actual installed provider/ACP/client versions as applicable.
+# Supply absolute BASE_CONFIG, TASK_CWD and TASK_FILE (private UTF-8 task).
+# Choose a unique CASE such as N1-medium-01, N2-medium-01, N3-medium-small-01.
+: "${BASE_CONFIG:?}" "${TASK_CWD:?}" "${TASK_FILE:?}" "${CASE:?}"
+RUN="$OUT/$CASE"
+mkdir -p "$RUN/state"
+# Relocating config requires absolute paths for any provider/plugin/skill inputs.
+# Verify those paths and effective project config before use.
+jq --arg state "$RUN/state" '.storage = ((.storage // {}) + {directory:$state}) | .diagnostics = ((.diagnostics // {}) + {captureBodies:false})' "$BASE_CONFIG" > "$RUN/config.json"
+TASK=$(cat "$TASK_FILE"; printf .); TASK=${TASK%.}
+printf '%s\n' "$SHA" > "$RUN/implementation-sha.txt"
+# For non-interactive scenarios; no external timeout wrapper.
+(cd "$TASK_CWD" && /usr/bin/time -o "$RUN/time.txt" -f '%e %x' \
+  "$RO" run --config "$RUN/config.json" --cwd "$TASK_CWD" \
+    --request-id "$CASE" --format json "$TASK" > "$RUN/result.json" 2> "$RUN/stderr")
+printf '%s\n' "$?" > "$RUN/exit"
+# Read the actual Operation ID from result.json (or accepted TTY event).
+# Set OP to that ID; inspect in the same config/state.
+"$RO" inspect "$OP" --config "$RUN/config.json" --format json > "$RUN/inspect.json"
+"$RO" trace "$OP" --config "$RUN/config.json" --format json > "$RUN/trace.json"
+"$RO" export-diagnostics "$OP" --config "$RUN/config.json" --output "$RUN/export.json"
+```
+
+For interactive/cancel scenarios use the same pinned binary/config/state and a real TTY, with `--presentation compact` instead of JSON redirection; record original offered request, actual answer or Ctrl+C/explicit cancel and ensuing operation/cleanup status. For graphical ACP register the pinned binary with `acp --config "$RUN/config.json"` in the actual client. Do not assume negotiated form/permission/subagent support. Use private terminal capture if authorized; inspect raw observations locally, since trace/export intentionally omit bodies or redact them. If no Operation ID is returned, record that fact and actual exit/stderr rather than inventing an ID. Restore equivalent authorized fixtures for repeated comparative runs; preserve target diff/commit, exact task and native skill contents/version/hash. Keep diagnostic body capture off unless separately authorized for a safe diagnostic run.
+
+### Scenario matrix
+
+| ID | Real task and acceptance evidence (initially UNVERIFIED) |
+| --- | --- |
+| N1 | Repeat original native `changed` task. Match exact Git diff, skill version/format and user request, observe discovery/use, inspect actual Assessment.answer for requested content rather than preparation report, natural completion and no Host-mandated retrieval. |
+| N2 | Same task with explicit user request for supporting observations. Inspect actual native metadata and terminal tool observations, selected canonical refs and discovery/fetch counts, answer correctness and relevance outside Host. No requirement to retrieve on unrequested tasks. Compare N1/baseline under matched settings. |
+| N3 | Legitimate task where delegation may help. Observe Controller strategy and actual Worker objective/handoff, independent execution and native tools/skills, result and observations available to Controller, evaluation and unnecessary repeat work. A direct choice is valid; delegation portion stays UNVERIFIED if no Worker occurs. |
+| N4 | Real substantial task potentially exceeding ten minutes, no mandatory deadline/watchdog. Record invocation duration and any silent intervals, natural completion and result. A run under ten minutes does not verify long execution; no artificial delay or useless tool activity. |
+| N5 | Real task requiring substantial native tool output. If actual history overflow occurs, record acp-output-limit/acp-stop historyTruncated/resultTruncated, continued work, complete current result and Controller availability where applicable. MCP/text/legacy/Worker only where naturally supported; if no overflow, overflow portion UNVERIFIED. |
+| N6 | Separate real runs: cancel with null deadline during active tool or initialization if reproducible; wait for native user input, answer and continue; explicit trusted finite invocation deadline. Record actual cause, observations/effects and detachment/retained slot; do not infer physical cleanup from logical cancel. Unsupported or unobserved cases UNVERIFIED. |
+| N7 | Repeat applicable N1–N6 with a genuinely independent provider implementation (e.g. Codex CLI or independent ACP adapter). Different models through the same OpenCode ACP implementation do not verify provider independence. |
+| N8 | Observe naturally chosen native subagent use where available, tools/skills and result; no special system instruction forcing subagents. If not observed, UNVERIFIED. |
+
+Suggested order: Ornith Medium + changed, Small + changed, Medium + requested evidence, Medium Controller/Small Worker, Medium Controller/Medium Worker, legitimate long/large-output task, independent cloud provider. Use actual configured model/profile names, not assumed identifiers. Compare repeated independent runs where feasible, not deterministic strategy equality.
+
+### Per-run evidence record (private, existing diagnostics only)
+
+| Category | Record |
+| --- | --- |
+| Environment | Implementation SHA, installed binary/provider/adapter/version/client, model/profile/build/quantization, reasoning/sampling, effective resources and context budgets/model context window, authorized cwd and tested commit/diff, skill version/hash, exact request, cold/warm state. |
+| Execution | Actual Operation/Attempt status and Assessment.answer, Controller/Worker invocations, native tools and discovery/fetch counts if observable, duration/exits, technical reasons, capture gap/result bytes, canonical references, cancellation source, observed cleanup/slot status. |
+| Performance | Provider-reported prompt/cached/generated tokens, prefill/generation durations, throughput and total wall time where available; unknown is not zero. Explain metrics coverage, source, missing events and timing boundaries. |
+| Assessment | Separate technical success, user-task correctness/format, evidence relevance, model-selected strategy/efficiency, observed model limitations, reproduced RO defects and unverified hypotheses. Mark each scenario/subcase PASS/FAIL/UNVERIFIED with supporting artifact and reason. |
+
+Record actual commands/exits and private artifact locations; sanitize summaries before sharing. A single stochastic run or SDK fixture does not prove general model reliability. Do not commit credentials, raw private prompts, task workspace contents or logs. Further engineering requires reproducible evidence and separate scope authorization; no master merge.
 
 ## C18N — Live evidence and simplified MCP bridge (synthetic implementation; REAL NATIVE UNVERIFIED)
 
@@ -343,4 +415,4 @@ In a standard graphical ACP client verify native question/form schema unchanged,
 
 ### C20-R native follow-up (UNVERIFIED)
 
-On a pinned build/config/model/workspace, repeat legitimate long ACP Controller and Worker work with substantial native tool output. Check full current result and native end_turn independently of history omission; confirm canonical refs and Controller's voluntary evaluation. Exercise MCP/text/legacy as actually supported (no production default change), real user wait/cancel and optional hard deadline. Record actual capture limitations, result bytes, provider terminal state, quality and detachment; SDK fixture/scale probe does not establish real-model PASS.
+See [N1–N8](#c19c20-r--native-acceptance-procedure-n1n8) above, especially N3–N6. Engineering SDK fixture/scale probe does not establish real-model PASS.

@@ -1,6 +1,6 @@
 # Changelog
 
-### C20-R — Independent ACP result capture (candidate; engineering UNVERIFIED)
+### C20-R — Independent ACP result capture (engineering PASS at c86d3e5e; native UNVERIFIED)
 
 - Continue bounded current message capture after native history overflow; preserve message identity, exact output correlation, independent truncation diagnostics and native finality. No new execution deadline, resource default or store.
 
@@ -12,12 +12,12 @@
 
 ## Unreleased — C12–C18 integration and delivery
 
-### C19 — Answer guidance and native metadata (implementation / C19-R; engineering/native UNVERIFIED)
+### C19 — Answer guidance and native metadata (engineering PASS at 876a33c7; native UNVERIFIED)
 
 - Correct fixture-owned local-store reopen; preserve canonical refs and previously deliverable raw bytes when optional native metadata exceeds the projection budget. Try the complete native snapshot before partial omission labels. Exact saturated budgets retain primary evidence even when an omission marker cannot fit.
 
-- Clarify the actual user-facing `finalAssessment.answer` for Decision and ControllerIntent, including action/artifact outcomes and limitations; distinguish observation capture completeness from tool success. No change to answer decoding, admission or presentation. C20 is not implemented by this checkpoint.
-- Add optional native event metadata from ACP tool events and Codex completed command records to existing observation capture, live and historical projection; no inherited or synthesized status. Preserve existing source identity, provenance, original body and retrieval choice. Engineering/native verification pending.
+- Clarify the actual user-facing `finalAssessment.answer` for Decision and ControllerIntent, including action/artifact outcomes and limitations; distinguish observation capture completeness from tool success. No change to answer decoding, admission or presentation. No resource-policy change in C19.
+- Add optional native event metadata from ACP tool events and Codex completed command records to existing observation capture, live and historical projection; no inherited or synthesized status. Preserve existing source identity, provenance, original body and retrieval choice. Engineering verification PASS; native acceptance UNVERIFIED.
 
 ### C18N-R — External ToolPort and live discovery corrective fixes (engineering CI PASS at 0687a40; real native UNVERIFIED)
 

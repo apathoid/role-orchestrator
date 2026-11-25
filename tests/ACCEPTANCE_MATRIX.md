@@ -601,13 +601,13 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 **C18N-R final code verification:** [CI #45268444761](https://github.com/apathoid/role-orchestrator/actions/runs/45268444761) SUCCESS on `0687a40a8cf2d2886ab1f722aa8e91663e9e43eb` (36/36 steps; 29 foundation, 78 core, 543 integration, 15 PTY; full root npm/ACP SDK, Nix package/release); exact current documentation-only HEAD still requires its own successful CI. Native OpenCode/Ornith/Zed tests UNVERIFIED.
 
 
-## C19 — Model-facing evidence and answer clarity (PARTIAL; UNVERIFIED)
+## C19 — Model-facing evidence and answer clarity (ENGINEERING PASS; native UNVERIFIED)
 
 | Checkpoint | Regression | Engineering |
 | --- | --- | --- |
-| C19.3 (partial), C19.4 | `tests/integration/controller-contract.test.js`: shared answer guidance exactly once in Decision, text Intent and MCP Intent; capture completeness distinct from tool success; unchanged Unicode/Markdown answer parsing | [CI #45471947421](https://github.com/apathoid/role-orchestrator/actions/runs/45471947421) at 7ba7bffc: integration and root npm PASS; full workflow FAIL at historical C17 static contract equality. Later candidate requires its own full CI. |
+| C19.3 (partial), C19.4 | `tests/integration/controller-contract.test.js`: shared answer guidance exactly once in Decision, text Intent and MCP Intent; capture completeness distinct from tool success; unchanged Unicode/Markdown answer parsing | [CI #45471947421](https://github.com/apathoid/role-orchestrator/actions/runs/45471947421) at 7ba7bffc: integration and root npm PASS; full workflow FAIL at historical C17 static contract equality. Historical failure, superseded by verified C19-R checkpoint below. |
 
-| C19.1–C19.2 (candidate) | `c18n-live-evidence.test.js` optional current-event native metadata, invalid/oversized fields, canonical ref and first snapshot, historical list/fetch and live pagination; `acp-provider.test.js` actual SDK start/completion/status-less event and final admission | Added; NOT RUN on candidate. Additional local-store reopen, Codex command metadata, and 120-record directory byte/cost comparison; full exact-SHA CI remains open. |
+| C19.1–C19.2 | `c18n-live-evidence.test.js` optional current-event native metadata, invalid/oversized fields, canonical ref and first snapshot, historical list/fetch and live pagination; `acp-provider.test.js` actual SDK start/completion/status-less event and final admission | PASS on C19-R exact checkpoint below; includes local-store reopen, Codex command metadata, 120-record directory byte/cost comparison. |
 
 
 ### C19-R — Corrective review
@@ -617,15 +617,17 @@ Final engineering PASS is contingent on full mandatory CI on the **last** commit
 | R1 Local State Store reopen | [CI #45473023553](https://github.com/apathoid/role-orchestrator/actions/runs/45473023553) FAIL at 9fc48206: `STATE_STORE_IN_USE`; explicit fixture-owned close before reopen, full durable metadata/body/provenance assertions retained. |
 | R2 optional metadata boundary | `c18n-live-evidence.test.js`: complete snapshot vs temporary omission overhead, absent/full/whole/partial/marker-only/exact bounds, prior markers, escaped/Unicode, pagination and raw fetch. `context-chunks.test.js`: raw chunk capacity unchanged at saturated budget. |
 | R3 positional identity | `context-chunks.test.js`: both canonical and positional fetch with large optional native metadata, exact/large budget, genuine long-ref fallback, original bytes. |
-| Full engineering | Correction candidate requires full exact-SHA CI; native UNVERIFIED. |
+| Full engineering | [CI #45481524744](https://github.com/apathoid/role-orchestrator/actions/runs/45481524744) SUCCESS at `876a33c7e57c4fb2e0970905396149b28827eb0c`, 36/36 steps, 553/553 integration; RED #45481171483 reproduced all three defects. Native UNVERIFIED. |
 
 
-### C20 candidate (engineering UNVERIFIED)
+### C20 (ENGINEERING PASS; native UNVERIFIED)
 
-`c20-resource-lifetime.test.js`: default/null/finite authority precedence, 45 actual Controller invocations, snapshot roundtrip, no execution timer and cancellation; finite budget counterpart. `interactions.test.js`: inherited deadline only, indefinite user response and cancellation. `resume.test.js`: no recovery deadline, independent allowed work and cancellation. `acp-provider.test.js`: real SDK silent initialize/session.new with no deadline, owner cancellation and deadline attribution. Full C20.6/7 and native acceptance open.
+`c20-resource-lifetime.test.js`: default/null/finite authority precedence, 45 actual Controller invocations, snapshot roundtrip, no execution timer and cancellation; finite budget counterpart. `interactions.test.js`: inherited deadline only, indefinite user response and cancellation. `resume.test.js`: no recovery deadline, independent allowed work and cancellation. `acp-provider.test.js`: real SDK silent initialize/session.new with no deadline, owner cancellation and deadline attribution. [CI #45484371885](https://github.com/apathoid/role-orchestrator/actions/runs/45484371885) SUCCESS at `e092712f5400bee20ea5ab4bb6ef0fac619a9c1d`, 37/37 steps, 561 integration/84 contracts/15 PTY; 45/90/120-invocation scale probe PASS. Native UNVERIFIED.
 
-### C20-R corrective candidate
+### C20-R (ENGINEERING PASS; native UNVERIFIED)
 
-RED [#45487892013](https://github.com/apathoid/role-orchestrator/actions/runs/45487892013) (79/84 contracts): exact result/provenance missing in five new expectations. Actual SDK tests in `acp-provider.test.js`: all four paths after overflow, message ID transition/same ID, anonymous first-call/duplicate/status/Worker, oversized result/identity exhaustion, Unicode, refusal/cancel/deadline/disconnect. `c20r-acp-capture-probe.mjs`: actual SDK 1/4/16 MiB tool events; exact result and independent bounds. Exact GREEN and native acceptance pending.
+RED [#45487892013](https://github.com/apathoid/role-orchestrator/actions/runs/45487892013) (79/84 contracts): exact result/provenance missing in five new expectations. Actual SDK tests in `acp-provider.test.js`: all four paths after overflow, message ID transition/same ID, anonymous first-call/duplicate/status/Worker, oversized result/identity exhaustion, Unicode, refusal/cancel/deadline/disconnect. `c20r-acp-capture-probe.mjs`: actual SDK 1/4/16 MiB tool events; exact result and independent bounds. Exact GREEN below; native acceptance UNVERIFIED.
 
 C20-R intermediate CI #45488246167: 94/96 contracts; all four delivery paths and 12 new identity/failure tests pass. Update old oversize diagnostic reference and missing MCP declaration evidence expectation without changing failure/admission assertions. Added Controller retrieval and real StateStore reopen for an actual ACP Worker and exact rejected native result correlation/correction.
+
+**Final engineering PASS:** [`c86d3e5e47bffc7bb7eb4ff42763865b360faae5`](https://github.com/apathoid/role-orchestrator/commit/c86d3e5e47bffc7bb7eb4ff42763865b360faae5) / [CI #45488863848](https://github.com/apathoid/role-orchestrator/actions/runs/45488863848), 38/38 steps; 98/98 contracts, 561/561 integration, 15/15 PTY, root npm, checkJs, benchmarks and Nix/release. All four delivery paths and actual Worker retrieval/reopen, rejected-result correlation/correction, native identity/finality, capture/Unicode and cancellation regressions PASS; 1/4/16 MiB actual SDK traffic and exact 500000 bytes/50000 chunks probe PASS. Native N1–N8 UNVERIFIED; see [procedure](../docs/roadmap/NATIVE_ACCEPTANCE.md#c19c20-r--native-acceptance-procedure-n1n8) and [STATUS](../docs/roadmap/STATUS.md).
