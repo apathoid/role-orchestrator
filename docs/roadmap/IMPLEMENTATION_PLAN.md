@@ -1,8 +1,8 @@
 # Активный план реализации и приёмки
 
-## C21-R — Model-facing Clarity & Comparison Refinement (candidate; CI/native UNVERIFIED)
+## C21-R — Model-facing Clarity & Comparison Refinement (ENGINEERING VERIFIED at dbcc6d88; real native UNVERIFIED)
 
-Review baseline `71d6b2d64de96c43076021878e82387adc79a049`, CI #45663007700 SUCCESS. R0 baseline; R1 editorial guidance deduplication; R2 exact A/B/C/D comparison including actual ACP sparse events; R3 historical STATUS correction and hasCapturedValue unchanged; R4 focused regressions and full CI. See [STATUS](STATUS.md). No expanded evidence API, runtime policy, metadata capture or provider investigation. Native quality remains UNVERIFIED.
+Review baseline `71d6b2d64de96c43076021878e82387adc79a049`, CI #45663007700 SUCCESS. R0 baseline; R1 editorial guidance deduplication; R2 exact A/B/C/D comparison including actual ACP sparse events; R3 historical STATUS correction and hasCapturedValue unchanged; R4 focused regressions and full CI SUCCESS on D `dbcc6d881074ceee8a8cd123f69962b0f92e4d45`, [CI #45667902352](https://github.com/apathoid/role-orchestrator/actions/runs/45667902352). See [STATUS](STATUS.md) for measured A/B/C/D and native limitations. No expanded evidence API, runtime policy, metadata capture or provider investigation. Native quality remains UNVERIFIED.
 
 ## C21 — Model-facing Information Clarity (ENGINEERING VERIFIED at 2ed30f83; real native UNVERIFIED)
 

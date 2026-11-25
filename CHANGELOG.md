@@ -1,5 +1,10 @@
 # Changelog
 
+### C21-R — Model-facing Clarity & Comparison Refinement (engineering PASS at dbcc6d88; real native UNVERIFIED)
+
+- Consolidate repeated retrieval and native completion guidance; keep role-specific and standalone tool information where necessary. Clarify evidence directory fields and byte-chunk pagination without changing schemas, bounds or runtime contracts.
+- Extend the pinned comparison through actual historical ACP adapters and live MCP sparse observations, preserving raw payload, provenance, canonical ref and answer. No new evidence fields or mandatory model behavior.
+
 ### C21 — Model-facing Information Clarity (engineering PASS at 2ed30f83; real native UNVERIFIED)
 
 - ACP same-call sparse updates can carry attributed prior identification fields in observations. Existing bounded projection preserves inherited attribution alongside each displayed value; raw captured payload and canonical evidence identity remain unchanged.

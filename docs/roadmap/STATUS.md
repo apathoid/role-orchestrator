@@ -1,8 +1,34 @@
 # Role Orchestrator — оперативный статус
 
-## C21-R — Model-facing Clarity & Comparison Refinement (implementation candidate; CI/native UNVERIFIED)
+## C21-R — Model-facing Clarity & Comparison Refinement (engineering PASS at dbcc6d88; real native UNVERIFIED)
 
-Review baseline `71d6b2d64de96c43076021878e82387adc79a049` / [CI #45663007700](https://github.com/apathoid/role-orchestrator/actions/runs/45663007700) SUCCESS. Remote HEAD verified; local worktree inaccessible (GitHub DNS). R1: consolidate optional retrieval in role guidance, keep evidence semantics there for transports without MCP, use transport prefix for negotiated names and no-MCP continuation, and keep page/chunk details in self-contained tool descriptions; preserve essential short proposal/finality/answer reminder in submit_decision and detailed replacement contract in MCP prefix. R2: retain metadata-less deterministic renderer/MCP fixture, pin A/B/C and current D, add same actual ACP SDK event sequence through historical adapters/Orchestrator and real live MCP directory/fetch, verify canonical ref, source/provenance, raw payload, committed metadata and exact answer. R3: historical planning heading corrected and baseline CI recorded. R4: focused guidance assertions and mandatory CI; retain Worker-only missing-evidence advice when historical MCP is available (Workers do not get Controller role text); name fetch format and precise offset/cursor semantics in tool descriptions. First candidate `1f148eeed8c1262e763f1b40b94001a4d43fe031` superseded by this refinement before full CI. Execution and comparative measurements pending. P3.1: hasCapturedValue unchanged, practical utility UNVERIFIED; true includes intermediate events and is not evidence of result relevance. No runtime contract changes or merge. Real native acceptance remains UNVERIFIED.
+Review baseline `71d6b2d64de96c43076021878e82387adc79a049` / [CI #45663007700](https://github.com/apathoid/role-orchestrator/actions/runs/45663007700) SUCCESS. Remote HEAD verified; local worktree inaccessible (GitHub DNS). R1: consolidate optional retrieval in role guidance, keep evidence semantics there for transports without MCP, use transport prefix for negotiated names and no-MCP continuation, and keep page/chunk details in self-contained tool descriptions; preserve essential short proposal/finality/answer reminder in submit_decision and detailed replacement contract in MCP prefix. R2: retain metadata-less deterministic renderer/MCP fixture, pin A/B/C and current D, add same actual ACP SDK event sequence through historical adapters/Orchestrator and real live MCP directory/fetch, verify canonical ref, source/provenance, raw payload, committed metadata and exact answer. R3: historical planning heading corrected and baseline CI recorded. R4: focused guidance assertions and mandatory CI; retain Worker-only missing-evidence advice when historical MCP is available (Workers do not get Controller role text); name fetch format and precise offset/cursor semantics in tool descriptions. First candidate `1f148eeed8c1262e763f1b40b94001a4d43fe031` superseded by this refinement before full CI. **Engineering verification:** D implementation `dbcc6d881074ceee8a8cd123f69962b0f92e4d45`, [CI #45667902352](https://github.com/apathoid/role-orchestrator/actions/runs/45667902352) SUCCESS: root 699/699, Foundation 4/4, Core 29/29, Provider contracts 98/98, Integration 564/564, Acceptance 4/4, Linux PTY 15/15; full mandatory workflow including C21 comparison, previous probes and Nix/package/install/systemPackages/release passed. Documentation closure requires separate exact-HEAD CI.
+
+Same-input checkpoints: A `16525506fd3dd4d4543b85377212234468f53037`, B `24ed4f5c24ffd717c860759fbc82a6ae70f9b094`, C review `71d6b2d64de96c43076021878e82387adc79a049` (same code as original C), D `dbcc6d881074ceee8a8cd123f69962b0f92e4d45`.
+
+| Measured bytes | A | B | C | D |
+| --- | ---: | ---: | ---: | ---: |
+| Legacy prompt | 12885 | 13115 | 13149 | 12985 |
+| Intent text prompt | 12892 | 12312 | 12497 | 12333 |
+| Intent MCP prompt | 13309 | 13331 | 13516 | 12894 |
+| Legacy instructions | 10091 | 10321 | 10355 | 10191 |
+| Intent instructions | 10087 | 9507 | 9692 | 9528 |
+| MCP prefix | 899 | 1501 | 1501 | 1043 |
+| MCP tools (serialized definitions) | 2662 | 3680 | 3680 | 3493 |
+| MCP schema wire | 2768 | 3786 | 3786 | 3599 |
+| MCP prompt plus serialized tool definitions | 15971 | 17011 | 17196 | 16387 |
+| Plain directory first page wire | 2370 | 2682 | 2682 | 2682 |
+| Plain directory next page wire | 1068 | 1198 | 1198 | 1198 |
+| Plain fetch wire | 381 | 407 | 407 | 407 |
+| History | 1974 | 1974 | 1974 | 1974 |
+| Objective | 172 | 172 | 172 | 172 |
+| Sparse ACP directory wire | 945 | 1087 | 1087 | 1087 |
+| Sparse ACP fetch wire | 894 | 1010 | 1010 | 1010 |
+| Sparse ACP original payload | 256 | 256 | 256 | 256 |
+
+Actual historical ACP adapters with one common current deterministic SDK fixture: start title `git show HEAD`, kind `execute`, status `in_progress`; sparse completion reports only status `completed` and content. A completion metadata has eventKind/nativeToolCallId/status only; B/C/D additionally retain title/kind with inheritedFields [title,kind]. Same canonical ref `evidence:a00d48997f9b9e754834ca3a134601cc59419b3eca32a393602480bb8e5f163e`, raw value, source/provenance, status, committed snapshot and answer across all versions. Paired omission covered by existing integration regression. No synthetic version-specific output injection. Combined MCP presentation decreased 809 bytes (4.7%) relative to C; this is diagnostic only, not a token or quality target. P2.1/P2.2/P3.2 engineering corrections verified. P3.1 remains a native utility question. No authorized real model/client/target workspace; local worktree and prior N01/N1–N8 remain UNVERIFIED. 
+
+ P3.1: hasCapturedValue unchanged, practical utility UNVERIFIED; true includes intermediate events and is not evidence of result relevance. No runtime contract changes or merge. Real native acceptance remains UNVERIFIED.
 
 ## C21 — Model-facing Information Clarity (engineering CI PASS at 2ed30f83; real native UNVERIFIED)
 
