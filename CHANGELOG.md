@@ -1,5 +1,9 @@
 # Changelog
 
+### C22-R — Retrieval Argument Diagnostic Refinement (engineering PASS at 8061e88e; native UNVERIFIED)
+
+- Clarify existing alternative forms of historical references, cursors and context selections through a bounded optional error hint, preserving primary causes, nested diagnostics, decoder/retrieval semantics and recovery identity. Preserve wire receipt bounds and snapshot compatibility for existing records.
+
 ### C22 — Model-facing Technical Information Accessibility (engineering PASS at 8ad7f541; native UNVERIFIED)
 
 - Expose bounded local allowed fields and retain existing own retrieval decoder errors without changing validation or recovery identity.

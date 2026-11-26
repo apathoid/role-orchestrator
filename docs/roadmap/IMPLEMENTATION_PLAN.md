@@ -1,8 +1,8 @@
 # Активный план реализации и приёмки
 
-## C22-R — Retrieval Argument Diagnostic Refinement (implemented; engineering verification pending; native UNVERIFIED)
+## C22-R — Retrieval Argument Diagnostic Refinement (engineering PASS at 8061e88e; native UNVERIFIED)
 
-Only review P2.1: clarify historical reference/cursor/selection alternatives in the existing bounded error, preserve primary identity, exact nested errors, decoder/normalization, retrieval scope and legacy numeric cursor behavior. C22-R.0/.1/.2 implemented, .3 targeted regressions and full CI required, .4 documentation updated; see [STATUS](STATUS.md). Review baseline `e724030cfb6faabecbe0c77e0f4fbe862365c0b7` / [CI #45707658158](https://github.com/apathoid/role-orchestrator/actions/runs/45707658158) SUCCESS. P3.1/P3.2 unchanged pending real runs; no next engineering cycle authorized.
+Only review P2.1: clarify historical reference/cursor/selection alternatives in the existing bounded error, preserve primary identity, exact nested errors, decoder/normalization, retrieval scope and legacy numeric cursor behavior. C22-R.0–.4 implemented and engineering verified. Engineering PASS on `8061e88e0b6f40f05e41f43924e735f0d9b78908` / [CI #45747522796](https://github.com/apathoid/role-orchestrator/actions/runs/45747522796) SUCCESS (39/39 steps; foundation/package 4/4, core 31/31, provider contracts 98/98, integration 573/573, acceptance 4/4, root 710/710, actual Linux PTY 15/15; all historical comparisons, resource probes, Nix and release checks). See [STATUS](STATUS.md); documentation closure CI checked separately. Review baseline `e724030cfb6faabecbe0c77e0f4fbe862365c0b7` / [CI #45707658158](https://github.com/apathoid/role-orchestrator/actions/runs/45707658158) SUCCESS. P3.1/P3.2 unchanged pending real runs; no next engineering cycle authorized.
 
 ## C22 — Model-facing Technical Information Accessibility (ENGINEERING VERIFIED at 8ad7f541; native UNVERIFIED)
 
