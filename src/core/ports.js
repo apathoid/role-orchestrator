@@ -114,7 +114,7 @@
  *   base64:string,nextOffset?:number} | {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceFetch
  * @typedef {{list:(cursor?:number)=>LiveEvidenceList,
  *   fetch:(ref:string,range?:{offset:number,maxBytes?:number})=>LiveEvidenceFetch}} LiveEvidencePort
- * @typedef {{kind:'checked',issues:{path:string,expected:string,availability:'not_in_snapshot'|'ambiguous'}[],
+ * @typedef {{kind:'checked',issues:{path:string,expected:string,availability?:'not_in_snapshot'|'ambiguous'}[],
  *   omittedCount:number,advisory:true} | {kind:'unchecked',reason:'budget'|'closed'|'unavailable',advisory:true}} PreflightResult
  * @typedef {(intent:unknown)=>PreflightResult} ControllerPreflight
  * @typedef {{

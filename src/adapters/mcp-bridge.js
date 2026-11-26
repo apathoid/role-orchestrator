@@ -42,9 +42,9 @@ const decisionTool = {
   description: decisionShortDescription + ' registered:true is a registration fact, not guaranteed replacement eligibility; registered:false means not registered; if absent, no registration fact is provided. Native work may continue.\n' + controllerIntentInputDescription,
   inputSchema: { type:'object', properties:{ intent:{}, replaces:{type:'string'} }, required:['intent'], additionalProperties:false },
 };
-const fetchShortDescription = 'Retrieve a visible historical record by ref or directory position. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; nextOffset locates further saved bytes. Source completeness and truncation remain as recorded; a complete chunk or exhausted offset does not restore missing source data.';
+const fetchShortDescription = 'Fetch a visible historical record by string ref or current-operation position. Another operation requires a string ref and trusted sharing permission. offset reads bounded base64 chunks of saved UTF-8/JSON or binary bytes; nextOffset locates more. Exhaustion does not restore missing source data.';
 const fetchTool = {
-  name: 'context_fetch', description: fetchShortDescription + ' Optional sourceOperationId selects another operation only under existing trusted sharing permissions; maxBytes limits a range response only when offset is supplied.',
+  name: 'context_fetch', description: fetchShortDescription + ' sourceOperationId defaults to the current operation; an explicit current ID also accepts positional refs. Source completeness and truncation remain as recorded; maxBytes limits a range response only when offset is supplied.',
   inputSchema: { type: 'object', properties: {
     ref: { anyOf: [{ type: 'string', minLength: 1 }, { type: 'object',
       properties: { revision: countSchema, index: countSchema }, required: ['revision', 'index'], additionalProperties: false }] },
@@ -110,7 +110,11 @@ function toolReply(value, requestId, control = false) {
   // New receipt annotations must not replace a previously deliverable cause.
   // Only our own control receipts are eligible; external payloads are untouched.
   if (control && tool && Object.hasOwn(tool,'registered')) {
-    const {registered: _registered, reason, ...rest} = tool;
+    const {registered: _registered, selectedProposalRef, reason, ...rest} = tool;
+    if (selectedProposalRef !== undefined) {
+      const {selectedProposalRef: _selected, ...primary} = tool;
+      return toolReply(primary, requestId, true);
+    }
     const detail = object(reason);
     if (detail && (Object.hasOwn(detail,'allowedFields') || Object.hasOwn(detail,'hint'))) {
       const {allowedFields: _fields, hint: _hint, ...primary} = detail;
@@ -327,8 +331,19 @@ export async function startMcpBridge({ contextAccess, evidenceAccess, preflightI
       case 'tools/call': {
         if (typeof params?.name !== 'string') { error = { code: -32602, message: 'Invalid tool name' }; break; }
         const args = params.arguments ?? {};
-        const fingerprint = createHash('sha256').update(JSON.stringify([params.name, args])).digest('hex');
         const control = params.name === decisionToolName && pendingDecision !== undefined;
+        let fingerprint;
+        try {
+          fingerprint = createHash('sha256').update(JSON.stringify([params.name, args])).digest('hex');
+        } catch (cause) {
+          // The complete request is already parsed and attributable. Failed
+          // serialization does not erase a known explicit replacement.
+          // No digest means no established request-ID equivalence.
+          if (!control) throw cause;
+          pendingDecision.observeRejectedReplacement(args,'serialization_failed');
+          error = {code:-32603,message:'Request fingerprint serialization failed'};
+          break;
+        }
         const previousControl = controlCalls.get(requestId);
         const previousOrdinary = calls.get(requestId);
         if ((previousControl && (!control || previousControl.fingerprint !== fingerprint)) ||

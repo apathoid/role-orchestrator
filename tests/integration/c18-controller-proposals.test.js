@@ -384,6 +384,97 @@ test('C22-R2 F1 actual parsed replacement cannot resurrect previous selection on
     const final=await bridge.finalizeDecision();
     t.diagnostic(JSON.stringify({node:process.version,v8:process.versions.v8,bytes:Buffer.byteLength(body),
       serializationError:serializationError??null,http:reply.status,finalKind:final.kind,finalReason:final.reason??null}));
-    assert.notEqual(final.kind,'intent','observed replacement must not resurrect A');
+    if(serializationError){
+      assert.equal(serializationError,'RangeError');
+      assert.equal(reply.status,200);
+      assert.deepEqual(reply.body.error,{code:-32603,message:'Request fingerprint serialization failed'});
+      assert.deepEqual(final,{kind:'unavailable',reason:'serialization_failed'});
+    }else{
+      assert.equal(value(reply).kind,'rejected');
+      assert.equal(final.kind,'invalid');
+    }
+  }finally{stop.abort();bridge.close();}
+});
+
+test('C22-R2 F1 actual failed fingerprint is lineage-scoped; correction, correlation and cancellation remain available',async()=>{
+  const stop=new AbortController();
+  const bridges=[];
+  let externalCalls=0;
+  const open=async attemptId=>{
+    const bridge=await startMcpBridge({signal:stop.signal,attemptId,controllerDelivery:'intent_mcp',
+      externalTools:{list:()=>[{id:'ordinary',description:'fixture',effect:'read',inputSchema:{type:'object'}}],
+        async call(){externalCalls++;return {status:'completed',effect:'none'};}}});
+    bridges.push(bridge);
+    const a=value(await call(bridge.url,10,bridge.decisionToolName,{intent:intent('A')}));
+    return {bridge,a};
+  };
+  try{
+    const {bridge,a}=await open('c22r2-scoped');
+    for(const replaces of [undefined,'proposal:foreign:1']){
+      const reply=await rawCall(bridge.url,deepReplacementBody(replaces?12:11,bridge.decisionToolName,replaces));
+      assert.ok(reply.status===200);
+    }
+    const ordinary=await rawCall(bridge.url,deepReplacementBody(13,'ordinary',a.proposalRef));
+    if(ordinary.status===500)assert.equal(externalCalls,0);
+    else assert.equal(externalCalls,1);
+    assert.equal((await rawCall(bridge.url,'{malformed')).status,400);
+    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'A');
+    const other=await open('c22r2-correction');
+    const deep=await rawCall(other.bridge.url,deepReplacementBody(10,other.bridge.decisionToolName,other.a.proposalRef));
+    assert.ok([-32602,-32603].includes(deep.body.error?.code));
+    const correctedArgs={intent:intent('C'),replaces:other.a.proposalRef};
+    const corrected=await call(other.bridge.url,20,other.bridge.decisionToolName,correctedArgs);
+    assert.equal(value(corrected).kind,'proposal_pending');
+    const replay=await rawCall(other.bridge.url,JSON.stringify({jsonrpc:'2.0',id:20,method:'tools/call',
+      params:{name:other.bridge.decisionToolName,arguments:correctedArgs}},null,2));
+    assert.deepEqual(replay.body,corrected.body,'unchanged fingerprint equivalence for parsed arguments');
+    assert.equal((await other.bridge.finalizeDecision()).value.finalAssessment.answer,'C');
+    const canceled=await open('c22r2-canceled');
+    await rawCall(canceled.bridge.url,deepReplacementBody(11,canceled.bridge.decisionToolName,canceled.a.proposalRef));
+    stop.abort();
+    assert.deepEqual(await canceled.bridge.finalizeDecision(),{kind:'unavailable',reason:'closed'});
+  }finally{stop.abort();for(const bridge of bridges)bridge.close();}
+});
+
+test('C22-R2 F1 registry byte-accounting failure is ordered before finality without fabricating a proposal',async()=>{
+  const registry=make('c22r2-accounting');
+  const a=await registry.register({intent:intent('A')});
+  const input=JSON.parse(deepReplacementBody(2,'submit_decision',a.proposalRef)).params.arguments;
+  let failed=false;
+  try{JSON.stringify(input);}catch{failed=true;}
+  const observed=registry.register(input);
+  const finalizing=registry.finalize();
+  const reply=await observed;
+  const final=await finalizing;
+  if(failed){
+    assert.deepEqual(reply,{kind:'unavailable',reason:'serialization_failed'});
+    assert.deepEqual(final,{kind:'unavailable',reason:'serialization_failed'});
+  }else{
+    // On a V8 with a nonrecursive fast path this is still an invalid
+    // replacement. An accounting failure at its deeper call stack is also
+    // a valid technical outcome, never an accepted stale proposal.
+    assert.ok(['rejected','unavailable'].includes(reply.kind));
+    assert.ok(['invalid','unavailable'].includes(final.kind));
+  }
+});
+
+test('C22-R2 H1 conflict receipt reports existing selected ref without constraining correction and preserves wire bound',async()=>{
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,attemptId:'c22r2-conflict',controllerDelivery:'intent_mcp'});
+  try{
+    const first=value(await call(bridge.url,1,bridge.decisionToolName,{intent:intent('A')}));
+    const second=value(await call(bridge.url,2,bridge.decisionToolName,{intent:intent('B')}));
+    assert.equal(second.kind,'rejected');
+    assert.equal(second.registered,true);
+    assert.equal(second.selectedProposalRef,first.proposalRef);
+    const primary={kind:'rejected',proposalRef:'proposal:c22r2-conflict:3',
+      reason:{code:'INVALID_PROPOSAL',path:'$.replaces',expected:'a proposalRef from the currently selected lineage'}};
+    const envelope={jsonrpc:'2.0',id:'',result:{content:[{type:'text',text:JSON.stringify(primary)}],isError:true}};
+    const id='x'.repeat(256*1024-Buffer.byteLength(JSON.stringify(envelope)));
+    assert.deepEqual(value(await call(bridge.url,id,bridge.decisionToolName,{intent:intent('D')})),primary);
+    const corrected=value(await call(bridge.url,4,bridge.decisionToolName,{intent:intent('C'),replaces:second.proposalRef}));
+    assert.equal(corrected.kind,'proposal_pending','both registered conflict lineages remain correctable');
+    assert.equal(corrected.selectedProposalRef,undefined);
+    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'C');
   }finally{stop.abort();bridge.close();}
 });

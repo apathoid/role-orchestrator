@@ -991,7 +991,7 @@ export function createOrchestrator(deps) {
           ? bindLiveEvidenceAccess({observations, isActive}) : undefined;
         const preflightIntent = !handoff
           ? bindControllerPreflight({
-            requestId: dispatched.request.requestId, events: dispatched.events,
+            requestId: dispatched.request.requestId, attachments: dispatched.request.attachments, events: dispatched.events,
             observations, profileId: selectedProfile.profileId, isActive,
           }) : undefined;
         const externalTools = tools?.bind({

@@ -15,12 +15,14 @@ import { bindAssessmentEvidence, bindFindingEvidence, reservedEvidenceRef } from
  * identities into a temporary index so admitFindings cannot mutate shared
  * state. Nothing is indexed by relevance, content, effect or tool type.
  *
- * @param {{requestId:string,events:readonly Event[],observations:readonly Observation[],
+ * @param {{requestId:string,attachments?:readonly {ref:string}[],events:readonly Event[],observations:readonly Observation[],
  *   profileId:string,isActive:()=>boolean}} scope
  * @returns {ControllerPreflight}
  */
-export function bindControllerPreflight({requestId, events, observations, profileId, isActive}) {
+export function bindControllerPreflight({requestId, attachments = [], events, observations, profileId, isActive}) {
   const historical = evidenceRefs(requestId, events);
+  // Attachment identities are context selections, not evidence references.
+  const attachmentRefs = new Set(attachments.map(item=>item.ref));
   const live = new Set();
   const rawLive = new Set();
   const aliases = new Map();
@@ -94,19 +96,22 @@ export function bindControllerPreflight({requestId, events, observations, profil
       const issues = [];
       const findingError = admitFindings(refs,findings,'$.findings',profileId);
       if (findingError) issues.push({
-        path:findingError.path,expected:findingError.expected,availability:'not_in_snapshot',
+        path:findingError.path,expected:findingError.expected,
       });
       if (!findingError && assessmentValue) {
         const assessmentError = checkAssessment(refs,assessmentValue,profileId);
         if (assessmentError) issues.push({
-          path:assessmentError.path,expected:assessmentError.expected,availability:'not_in_snapshot',
+          path:assessmentError.path,expected:assessmentError.expected,
         });
       }
+      // Shared admission validators report addressable errors (including
+      // identity/uniqueness), not an availability classification. Only the
+      // explicit reference check here can supply that additional fact.
       if (!issues.length) for (const [i,action] of actions.entries()) {
-        const j = action.contextRefs.findIndex(ref=>!refs.observations.has(ref) && !refs.findings.has(ref));
+        const j = action.contextRefs.findIndex(ref=>!refs.observations.has(ref) && !refs.findings.has(ref) && !attachmentRefs.has(ref));
         if (j >= 0) {
           issues.push({path:'$.additions['+i+'].contextRefs['+j+']',
-            expected:'a visible observation or finding reference',availability:'not_in_snapshot'});
+            expected:'a visible observation, finding or attachment reference',availability:'not_in_snapshot'});
           break;
         }
       }

@@ -7,6 +7,7 @@ import { materializeControllerIntent } from '../../src/application/controller-in
 import { decodeSnapshot, encodeSnapshot } from '../../src/core/snapshot.js';
 import { renderInvocationPrompt } from '../../src/adapters/invocation-prompt.js';
 import { decisionRecovery } from '../../src/application/decision-recovery.js';
+import { startMcpBridge } from '../../src/adapters/mcp-bridge.js';
 
 test('C18.2 model-owned ControllerIntent uses unchanged Operation admission and a trusted context revision',async()=>{
  const answer='# Hello 🌿\n\nDirect result';
@@ -362,5 +363,91 @@ test('C22-R old and enriched reasons count identically and round-trip; correctio
     assert.equal(bounded.kind,'accepted');
     assert.deepEqual(bounded.value.events.find(e=>e.kind==='controller.invalid_proposal').reason,reason);
     assert.equal(decisionRecovery(bounded.value).consecutiveIdentical,5);
+  }finally{await api.close();}
+});
+
+test('C22-R2 actual MCP advisory attachment refs match resolved Worker handoff and do not change admission',async()=>{
+  const attachments=[{ref:'document',mediaType:'text/plain'},{ref:'request-attachment',mediaType:'text/plain'},
+    {ref:'provider-alias',mediaType:'text/plain'}];
+  let canonical;
+  const {api,invocations,respondErrors}=setup({maxInvocations:5,async respond(invocation,count,observe){
+    if(invocation.kind==='delegate'){
+      assert.deepEqual(invocation.attachments,attachments.slice(0,2));
+      assert.ok(invocation.context.some(item=>item.ref===canonical && item.value==='observed alias'));
+      assert.ok(invocation.context.some(item=>item.ref==='finding:local'));
+      assert.ok(!invocation.attachments.some(item=>item.ref==='provider-alias'));
+      return {dispatchCertainty:'sent',outcome:outcome(invocation.attemptId),output:'worker completed'};
+    }
+    if(count!==1)return final(invocation);
+    canonical=observe({ref:'provider-alias',kind:'provider_report',sourceId:'fixture',
+      completeness:'complete',value:'observed alias'});
+    assert.ok(canonical.startsWith('evidence:'));
+    const bridge=await startMcpBridge({...invocation,controllerDelivery:'intent_mcp'});
+    const action={actionId:'with-attachments',kind:'delegate',profileId:'primary',objective:'Read selected attachments',
+      expectedResult:'result',contextRefs:['document','request-attachment','provider-alias','finding:local']};
+    const candidate={additions:[action],findings:[{findingId:'local',claim:'observed',subject:'context',supports:[canonical]}],
+      waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:action.actionId}]}};
+    let id=0;
+    const submit=async(intent,replaces)=>{
+      const response=await fetch(bridge.url,{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:++id,method:'tools/call',
+          params:{name:bridge.decisionToolName,arguments:{intent,replaces}}})});
+      assert.equal(response.status,200);
+      return JSON.parse((await response.json()).result.content[0].text);
+    };
+    try{
+      const first=await submit({...candidate,additions:[{...action,contextRefs:[...action.contextRefs,'missing']}]});
+      assert.equal(first.kind,'proposal_pending');assert.equal(first.registered,true);
+      assert.deepEqual(first.preflight.issues,[{path:'$.additions[0].contextRefs[4]',
+        expected:'a visible observation, finding or attachment reference',availability:'not_in_snapshot'}]);
+      const corrected=await submit(candidate,first.proposalRef);
+      assert.equal(corrected.kind,'proposal_pending');
+      assert.deepEqual(corrected.preflight.issues,[]);
+      const selected=await bridge.finalizeDecision();
+      assert.equal(selected.kind,'intent');
+      return {...final(invocation),controllerDeclaration:{kind:'intent',value:selected.value}};
+    }finally{bridge.close();}
+  }});
+  try{
+    const state=await(await api.submit(request({requestId:'request-attachment',attachments}))).completion;
+    assert.deepEqual(respondErrors,[]);
+    assert.equal(state.status,'finished');
+    assert.equal(state.events.filter(e=>e.kind==='controller.invalid_proposal').length,0);
+    const worker=invocations.find(item=>item.kind==='delegate');
+    assert.ok(worker);
+    const responded=state.events.find(e=>e.kind==='controller.responded');
+    assert.deepEqual(responded.decision.additions[0].contextRefs,['document','request-attachment',canonical,'finding:local']);
+  }finally{await api.close();}
+});
+
+test('C22-R2 actual MCP uniqueness issue is advisory; final admission still rejects it',async()=>{
+  const {api,invocations,respondErrors}=setup({maxInvocations:3,async respond(invocation,count){
+    if(count!==1)return final(invocation);
+    const bridge=await startMcpBridge({...invocation,controllerDelivery:'intent_mcp'});
+    const requirement={requirementId:'duplicate',status:'fulfilled'};
+    try{
+      const response=await fetch(bridge.url,{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{
+          name:bridge.decisionToolName,arguments:{intent:{finalAssessment:{overall:'complete',answer:'bad',
+            requirements:[requirement,requirement]}}}}})});
+      const receipt=JSON.parse((await response.json()).result.content[0].text);
+      assert.equal(receipt.kind,'proposal_pending');assert.equal(receipt.registered,true);
+      assert.deepEqual(receipt.preflight.issues,[{path:'$.finalAssessment.requirements[1].requirementId',
+        expected:'a unique requirement id in this assessment'}]);
+      const selected=await bridge.finalizeDecision();
+      assert.equal(selected.kind,'intent');
+      return {...final(invocation),controllerDeclaration:{kind:'intent',value:selected.value}};
+    }finally{bridge.close();}
+  }});
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.deepEqual(respondErrors,[]);
+    assert.equal(state.status,'finished');
+    assert.equal(invocations.length,2);
+    const errors=state.events.filter(e=>e.kind==='controller.invalid_proposal');
+    assert.equal(errors.length,1);
+    assert.deepEqual(errors[0].reason,{code:'INVALID_PROPOSAL',path:'$.finalAssessment.requirements[1].requirementId',
+      expected:'a unique requirement id in this assessment'});
+    assert.equal(state.assessment.answer,'Direct answer');
   }finally{await api.close();}
 });

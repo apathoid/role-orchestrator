@@ -24,7 +24,7 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
   let conflicted = false;
   /** @type {'budget' | undefined} */
   let fatal;
-  /** @type {{root: string, reason: 'request_id_conflict'} | undefined} */
+  /** @type {{root: string, reason: 'request_id_conflict' | 'serialization_failed'} | undefined} */
   let unresolvedTransport;
   let processing = Promise.resolve();
 
@@ -79,7 +79,7 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
     }
     if (selected && (args.replaces === undefined || selected.root !== root)) {
       conflicted = true;
-      return rejected(error('$.replaces', 'a proposalRef from the currently selected lineage'));
+      return {...rejected(error('$.replaces', 'a proposalRef from the currently selected lineage')), selectedProposalRef:selected.ref};
     }
     // Same-lineage explicit replacements use registration order; a correction
     // to either side of a conflict may select a new unique candidate.
@@ -104,8 +104,15 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
    */
   function register(input) {
     if (!live()) return Promise.resolve({kind:'unavailable',reason:'closed'});
+    let size;
+    try { size = Buffer.byteLength(JSON.stringify(input) ?? '', 'utf8'); }
+    catch {
+      // A second serialization at the registry's existing byte accounting
+      // boundary can also fail. Keep the same ordered transport observation.
+      observeRejectedReplacement(input,'serialization_failed');
+      return Promise.resolve({kind:'unavailable',reason:'serialization_failed'});
+    }
     const ref = 'proposal:' + attemptId + ':' + (++sequence);
-    const size = Buffer.byteLength(JSON.stringify(input) ?? '', 'utf8');
     if (bytes + size > maxPendingIntentBytes) {
       // This is technical loss, never an invalid model Decision or permission
       // to resurrect a previous candidate as though the request was unseen.
@@ -118,12 +125,13 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
   }
 
   /**
-   * A structurally observed tools/call with a reused JSON-RPC id may fail
-   * before ordinary proposal validation. Account only for a reliably known
-   * explicit replacement of the selected lineage. No model-text inference.
+   * A complete attributable tools/call may fail before ordinary proposal
+   * validation (reused JSON-RPC id or failed serialization). Account only
+   * for a reliably known explicit replacement of the selected lineage.
    * @param {unknown} input
+   * @param {'request_id_conflict' | 'serialization_failed'} [reason]
    */
-  function observeRejectedReplacement(input) {
+  function observeRejectedReplacement(input, reason = 'request_id_conflict') {
     if (!live()) return;
     // Register this transport fact in the same trusted arrival-order queue
     // as successful submissions; do not invent a proposalRef for it.
@@ -134,7 +142,7 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
         ? known.get(args.replaces) : undefined;
       if (!source || selected?.root !== source.root) return;
       selected = undefined;
-      unresolvedTransport = { root:source.root, reason:'request_id_conflict' };
+      unresolvedTransport = { root:source.root, reason };
     });
     processing = observed.then(() => {}, () => {});
   }

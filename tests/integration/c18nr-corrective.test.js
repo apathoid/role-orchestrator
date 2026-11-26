@@ -204,10 +204,10 @@ test('C18N-R R2 parity: history, inherited findings, ambiguous aliases and late 
   assert.deepEqual(run(good).issues,[]);
   assert.deepEqual(run(good).issues,[],'temporary finding-index mutation must not leak between proposals');
   const duplicate=run({...good,findings:[{...good.findings[0],findingId:'prior'}]});
-  assert.equal(duplicate.issues[0].path,'$.findings[0].findingId');
+  assert.deepEqual(duplicate.issues[0],{path:'$.findings[0].findingId',expected:'a new finding id in this operation'});
   const missing=run({finalAssessment:{overall:'complete',answer:'pending',
     observationRefs:['evidence:late-worker']}});
-  assert.equal(missing.issues[0].availability,'not_in_snapshot');
+  assert.deepEqual(missing.issues[0],{path:'$.finalAssessment.observationRefs[0]',expected:'an available observation in this operation'});
   observations.push(native('evidence:late-worker'));
   assert.deepEqual(run({finalAssessment:{overall:'complete',answer:'received',
     observationRefs:['evidence:late-worker']}}).issues,[]);
@@ -318,4 +318,36 @@ test('C18N-R R4/R5: more than 100 live reads, oversized reportedContext/summary/
     const fetched=value(await call(bridge.url,124,bridge.evidenceFetchToolName,{ref:'evidence:after-120'}));
     assert.equal(Buffer.from(fetched.base64,'base64').toString('utf8'),'🌍 value');
   }finally{stop.abort();bridge.close();}
+});
+
+test('C22-R2 preflight distinguishes explicit availability from general validation without making attachments evidence',()=>{
+  const previous={findingId:'prior',author:'controller',claim:'prior',subject:'subject',supports:[],uncertainties:[]};
+  const events=[{kind:'attempt.outcome',outcome:{outputRefs:[]},observations:[native('evidence:past')],findings:[previous]}];
+  const preflight=bindControllerPreflight({requestId:'request',attachments:[{ref:'document'}],events,
+    observations:[native('evidence:live')],profileId:'controller',isActive:()=>true});
+  const finding={findingId:'new',claim:'claim',subject:'subject'};
+  const requirement={requirementId:'r',status:'fulfilled'};
+  const assessment={overall:'complete',answer:'done'};
+  const action={actionId:'action',kind:'delegate',profileId:'controller',objective:'read',expectedResult:'result'};
+  const run=raw=>{
+    const parsed=decodeControllerIntent(raw);
+    assert.equal(parsed.kind,'accepted');
+    const result=preflight(parsed.value);
+    assert.equal(result.kind,'checked');
+    return result.issues;
+  };
+  const cases=[
+    [{findings:[finding,finding],finalAssessment:assessment},'$.findings[1].findingId','a new finding id in this operation'],
+    [{findings:[{...finding,findingId:'prior'}],finalAssessment:assessment},'$.findings[0].findingId','a new finding id in this operation'],
+    [{finalAssessment:{...assessment,requirements:[requirement,requirement]}},'$.finalAssessment.requirements[1].requirementId','a unique requirement id in this assessment'],
+    [{finalAssessment:{...assessment,observationRefs:['document']}},'$.finalAssessment.observationRefs[0]','an available observation in this operation'],
+    [{finalAssessment:{...assessment,findingRefs:['document']}},'$.finalAssessment.findingRefs[0]','an available finding in this operation'],
+    [{finalAssessment:{...assessment,requirements:[{...requirement,observationRefs:['document']}]}},'$.finalAssessment.requirements[0].observationRefs[0]','an available observation in this operation'],
+    [{findings:[{...finding,supports:['document']}],finalAssessment:assessment},'$.findings[0].supports[0]','an available observation or earlier finding in this operation'],
+    [{findings:[{...finding,supersedes:'finding:unknown'}],finalAssessment:assessment},'$.findings[0].supersedes','an earlier finding reference in this operation'],
+  ];
+  for(const [raw,path,expected] of cases)assert.deepEqual(run(raw),[{path,expected}]);
+  assert.deepEqual(run({additions:[{...action,contextRefs:['document','evidence:past','evidence:live','finding:prior']}]}),[]);
+  assert.deepEqual(run({additions:[{...action,contextRefs:['document','unknown']}]}),
+    [{path:'$.additions[0].contextRefs[1]',expected:'a visible observation, finding or attachment reference',availability:'not_in_snapshot'}]);
 });
