@@ -356,3 +356,34 @@ test('C22-R context selection hint is optional at the existing control wire limi
     assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'corrected');
   }finally{stop.abort();bridge.close();}
 });
+
+/** Raw JSON avoids client-side serialization of the nested fixture. */
+function deepReplacementBody(id,name,replaces) {
+  return '{"jsonrpc":"2.0","id":'+JSON.stringify(id)+',"method":"tools/call","params":{"name":'+JSON.stringify(name)+
+    ',"arguments":{"intent":{"unknown":'+'['.repeat(15000)+'0'+']'.repeat(15000)+'}'+
+    (replaces===undefined?'':',"replaces":'+JSON.stringify(replaces))+'}}}';
+}
+async function rawCall(url,body){
+  const response=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body});
+  const raw=await response.text();
+  return {status:response.status,body:raw?JSON.parse(raw):undefined};
+}
+test('C22-R2 F1 actual parsed replacement cannot resurrect previous selection on fingerprint failure',async t=>{
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,attemptId:'c22r2-deep',controllerDelivery:'intent_mcp'});
+  try{
+    const a=value(await call(bridge.url,1,bridge.decisionToolName,{intent:intent('A')}));
+    const body=deepReplacementBody(2,bridge.decisionToolName,a.proposalRef);
+    assert.ok(Buffer.byteLength(body)<2*1024*1024);
+    const parsed=JSON.parse(body);
+    assert.equal(parsed.params.arguments.replaces,a.proposalRef);
+    let serializationError;
+    try{JSON.stringify([parsed.params.name,parsed.params.arguments]);}
+    catch(error){serializationError=error.name;}
+    const reply=await rawCall(bridge.url,body);
+    const final=await bridge.finalizeDecision();
+    t.diagnostic(JSON.stringify({node:process.version,v8:process.versions.v8,bytes:Buffer.byteLength(body),
+      serializationError:serializationError??null,http:reply.status,finalKind:final.kind,finalReason:final.reason??null}));
+    assert.notEqual(final.kind,'intent','observed replacement must not resurrect A');
+  }finally{stop.abort();bridge.close();}
+});
