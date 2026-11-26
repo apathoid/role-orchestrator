@@ -81,8 +81,9 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
       conflicted = true;
       return {...rejected(error('$.replaces', 'a proposalRef from the currently selected lineage')), selectedProposalRef:selected.ref};
     }
-    // Same-lineage explicit replacements use registration order; a correction
-    // to either side of a conflict may select a new unique candidate.
+    // Same-lineage explicit replacements use registration order. While a
+    // candidate is selected, other lineages conflict; after invalidation a
+    // new valid proposal may be selected.
     selected = {ref, root, value:parsed.value};
     if (unresolvedTransport?.root === root) unresolvedTransport = undefined;
     invalidReason = undefined;
@@ -141,7 +142,11 @@ export function createPendingControllerDecisions({ signal, isActive, attemptId, 
       const source = typeof args?.replaces === 'string' && args.replaces.trim()
         ? known.get(args.replaces) : undefined;
       if (!source || selected?.root !== source.root) return;
+      // As with a structurally invalid replacement, invalidating the selected
+      // candidate also removes its conflict. Other known lineages are retained,
+      // but none is automatically selected. Preserve the actual transport cause.
       selected = undefined;
+      conflicted = false;
       unresolvedTransport = { root:source.root, reason };
     });
     processing = observed.then(() => {}, () => {});

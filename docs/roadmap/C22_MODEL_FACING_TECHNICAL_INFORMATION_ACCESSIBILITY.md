@@ -1,6 +1,6 @@
 # C22 — Model-facing Technical Information Accessibility
 
-**Status: ENGINEERING VERIFIED at `8ad7f541`; C22-R P2.1 refinement ENGINEERING VERIFIED at `8061e88e`; C22-R2 F1–F4/H1 ENGINEERING VERIFIED at `6bbdbcb6` — native compatibility and model utility UNVERIFIED.** See [STATUS](STATUS.md) for actual implementation/checkpoint SHAs and CI evidence. The remainder records the approved engineering scope.
+**Status: ENGINEERING VERIFIED at `8ad7f541`; C22-R P2.1 refinement ENGINEERING VERIFIED at `8061e88e`; C22-R2 F1–F4/H1 ENGINEERING VERIFIED at `6bbdbcb6`; review P2.1/P3.1 follow-up implemented, exact-HEAD CI pending — native compatibility and model utility UNVERIFIED.** See [STATUS](STATUS.md) for actual implementation/checkpoint SHAs and CI evidence. The remainder records the approved engineering scope.
 **Working branch:** `feature/controller-intent-deferred-admission`.
 **Research/source baseline:** `7906710019d46debb4ec4cd9c226a2b13491d156`, [exact-SHA CI #45668749511](https://github.com/apathoid/role-orchestrator/actions/runs/45668749511) SUCCESS. The commit introducing this plan is the planning HEAD. Verify actual HEAD, worktree and CI before implementation. No master merge.
 

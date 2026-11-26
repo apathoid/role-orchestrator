@@ -506,3 +506,70 @@ for (const reason of ['serialization_failed','request_id_conflict']) {
     }finally{stop.abort();bridge.close();}
   });
 }
+
+for (const reason of ['serialization_failed','request_id_conflict']) {
+  test('C22-R2 review P2.1: '+reason+' clears only the invalidated selection conflict',async()=>{
+    const open=async suffix=>{
+      const stop=new AbortController();
+      const registry=createPendingControllerDecisions({attemptId:'mixed-'+reason+'-'+suffix,signal:stop.signal});
+      const a=await registry.register({intent:intent('A')});
+      assert.equal(a.kind,'proposal_pending');
+      const b=await registry.register({intent:intent('B')});
+      assert.equal(b.kind,'rejected');
+      assert.equal(b.registered,true);
+      assert.equal(b.selectedProposalRef,a.proposalRef);
+      return {registry,a,b,stop};
+    };
+
+    // A queued conflict and subsequent transport observation must both be
+    // accounted for before finalization, even without awaiting the former.
+    const queued=make('mixed-queued-'+reason);
+    const a=await queued.register({intent:intent('A')});
+    const b=queued.register({intent:intent('B')});
+    queued.observeRejectedReplacement({replaces:a.proposalRef},reason);
+    const finalizing=queued.finalize();
+    assert.equal((await b).kind,'rejected');
+    assert.deepEqual(await finalizing,{kind:'unavailable',reason});
+
+    const unrelated=await open('unrelated');
+    for(const input of [{replaces:unrelated.b.proposalRef},{replaces:'unknown'},{}]){
+      unrelated.registry.observeRejectedReplacement(input,reason);
+    }
+    assert.deepEqual(await unrelated.registry.finalize(),{kind:'conflict'});
+
+    // The observed failure does not remove known lineage identities. A
+    // correction of A clears its unresolved transport; B can also be selected
+    // by a valid new submission once no selected candidate remains.
+    for(const source of ['a','b']){
+      const corrected=await open('correct-'+source);
+      corrected.registry.observeRejectedReplacement({replaces:corrected.a.proposalRef},reason);
+      const c=await corrected.registry.register({intent:intent('corrected'),replaces:corrected[source].proposalRef});
+      assert.equal(c.kind,'proposal_pending');
+      const final=await corrected.registry.finalize();
+      assert.equal(final.kind,'intent');
+      assert.equal(final.proposalRef,c.proposalRef);
+      assert.equal(final.value.finalAssessment.answer,'corrected');
+    }
+
+    // The old transport observation must NOT outrank a genuine new conflict
+    // involving a later selected lineage (the old A failure is still retained).
+    const fresh=await open('fresh');
+    fresh.registry.observeRejectedReplacement({replaces:fresh.a.proposalRef},reason);
+    const c=await fresh.registry.register({intent:intent('C'),replaces:fresh.b.proposalRef});
+    assert.equal(c.kind,'proposal_pending');
+    const d=await fresh.registry.register({intent:intent('D')});
+    assert.equal(d.kind,'rejected');
+    assert.equal(d.selectedProposalRef,c.proposalRef);
+    assert.deepEqual(await fresh.registry.finalize(),{kind:'conflict'});
+
+    const bounded=await open('budget');
+    bounded.registry.observeRejectedReplacement({replaces:bounded.a.proposalRef},reason);
+    bounded.registry.exceedLimit();
+    assert.deepEqual(await bounded.registry.finalize(),{kind:'unavailable',reason:'budget'});
+
+    const canceled=await open('cancel');
+    canceled.registry.observeRejectedReplacement({replaces:canceled.a.proposalRef},reason);
+    canceled.stop.abort();
+    assert.deepEqual(await canceled.registry.finalize(),{kind:'unavailable',reason:'closed'});
+  });
+}

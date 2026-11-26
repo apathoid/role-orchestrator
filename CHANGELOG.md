@@ -1,5 +1,7 @@
 # Changelog
 
+- C22-R2 follow-up: retain the actual transport failure at native finality when a reliably observed replacement invalidates a previously conflicted selected proposal; preserve later genuine conflicts and existing correction rules.
+
 ### C22-R2 — Technical Interface Reliability & Diagnostic Accuracy (engineering PASS at 6bbdbcb6; native UNVERIFIED)
 
 - Account for observed known-lineage replacement on fingerprint or registry serialization failure, preserving the existing finality barrier and technical failure provenance. Correct advisory attachment and availability diagnostics without changing evidence or admission. Clarify cross-operation reference forms in bounded tool descriptions and expose the existing selected proposal identity on conflict without changing replacement rules.
