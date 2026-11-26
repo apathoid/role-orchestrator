@@ -1,6 +1,6 @@
 # Активный план реализации и приёмки
 
-C22-R2 review follow-up (P2.1/P3.1 only): actual HTTP RED for both transport causes, local conflict-invalidation correction, comment clarification, existing finality/lineage semantics and focused regression tests. See [STATUS](STATUS.md) for exact evidence; full CI pending. No further engineering cycle; native utility and compatibility remain UNVERIFIED.
+C22-R2 review follow-up (P2.1/P3.1 only): actual HTTP RED for both transport causes, local conflict-invalidation correction, comment clarification, existing finality/lineage semantics and focused regression tests. See [STATUS](STATUS.md) for exact evidence. Engineering PASS on `acb93c62e4e792459576ec3f491e979106af907f` / [CI #45752408795](https://github.com/apathoid/role-orchestrator/actions/runs/45752408795) SUCCESS (39/39 steps; root 722/722, integration 585/585, Linux PTY 15/15; all four new regressions, historical comparisons, resource probes, Nix and release checks). No further engineering cycle; native utility and compatibility remain UNVERIFIED.
 
 ## C22-R2 — Technical Interface Reliability & Diagnostic Accuracy (engineering PASS at 6bbdbcb6; native UNVERIFIED)
 
