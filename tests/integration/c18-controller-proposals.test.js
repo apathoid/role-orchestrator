@@ -472,9 +472,15 @@ test('C22-R2 H1 conflict receipt reports existing selected ref without constrain
     const envelope={jsonrpc:'2.0',id:'',result:{content:[{type:'text',text:JSON.stringify(primary)}],isError:true}};
     const id='x'.repeat(256*1024-Buffer.byteLength(JSON.stringify(envelope)));
     assert.deepEqual(value(await call(bridge.url,id,bridge.decisionToolName,{intent:intent('D')})),primary);
-    const corrected=value(await call(bridge.url,4,bridge.decisionToolName,{intent:intent('C'),replaces:second.proposalRef}));
-    assert.equal(corrected.kind,'proposal_pending','both registered conflict lineages remain correctable');
+    // Preserve the actual conflict rule: while A is selected, a valid
+    // replacement of the other registered lineage still conflicts.
+    const other=value(await call(bridge.url,4,bridge.decisionToolName,{intent:intent('C'),replaces:second.proposalRef}));
+    assert.equal(other.kind,'rejected');
+    assert.equal(other.registered,true);
+    assert.equal(other.selectedProposalRef,first.proposalRef);
+    const corrected=value(await call(bridge.url,5,bridge.decisionToolName,{intent:intent('corrected'),replaces:first.proposalRef}));
+    assert.equal(corrected.kind,'proposal_pending');
     assert.equal(corrected.selectedProposalRef,undefined);
-    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'C');
+    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'corrected');
   }finally{stop.abort();bridge.close();}
 });

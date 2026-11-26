@@ -42,7 +42,7 @@ const decisionTool = {
   description: decisionShortDescription + ' registered:true is a registration fact, not guaranteed replacement eligibility; registered:false means not registered; if absent, no registration fact is provided. Native work may continue.\n' + controllerIntentInputDescription,
   inputSchema: { type:'object', properties:{ intent:{}, replaces:{type:'string'} }, required:['intent'], additionalProperties:false },
 };
-const fetchShortDescription = 'Fetch a visible historical record by string ref or current-operation position. Another operation requires a string ref and trusted sharing permission. offset reads bounded base64 chunks of saved UTF-8/JSON or binary bytes; nextOffset locates more. Exhaustion does not restore missing source data.';
+const fetchShortDescription = 'Fetch a visible historical record by string ref or current-operation position. Another operation requires a string ref and trusted sharing permission. offset reads bounded base64 chunks of saved UTF-8/JSON or binary data; nextOffset locates more. A complete chunk or exhaustion does not restore missing source data.';
 const fetchTool = {
   name: 'context_fetch', description: fetchShortDescription + ' sourceOperationId defaults to the current operation; an explicit current ID also accepts positional refs. Source completeness and truncation remain as recorded; maxBytes limits a range response only when offset is supplied.',
   inputSchema: { type: 'object', properties: {
