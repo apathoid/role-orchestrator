@@ -1,5 +1,9 @@
 # Changelog
 
+### C22-R2 — Technical Interface Reliability & Diagnostic Accuracy (engineering PASS at 6bbdbcb6; native UNVERIFIED)
+
+- Account for observed known-lineage replacement on fingerprint or registry serialization failure, preserving the existing finality barrier and technical failure provenance. Correct advisory attachment and availability diagnostics without changing evidence or admission. Clarify cross-operation reference forms in bounded tool descriptions and expose the existing selected proposal identity on conflict without changing replacement rules.
+
 ### C22-R — Retrieval Argument Diagnostic Refinement (engineering PASS at 8061e88e; native UNVERIFIED)
 
 - Clarify existing alternative forms of historical references, cursors and context selections through a bounded optional error hint, preserving primary causes, nested diagnostics, decoder/retrieval semantics and recovery identity. Preserve wire receipt bounds and snapshot compatibility for existing records.
