@@ -484,3 +484,25 @@ test('C22-R2 H1 conflict receipt reports existing selected ref without constrain
     assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'corrected');
   }finally{stop.abort();bridge.close();}
 });
+
+for (const reason of ['serialization_failed','request_id_conflict']) {
+  test('C22-R2 review P2.1: actual MCP conflict followed by '+reason+' retains the transport cause',async()=>{
+    const stop=new AbortController();
+    const bridge=await startMcpBridge({signal:stop.signal,attemptId:'c22r2-mixed-'+reason,controllerDelivery:'intent_mcp'});
+    try{
+      const a=value(await call(bridge.url,1,bridge.decisionToolName,{intent:intent('A')}));
+      assert.equal(a.kind,'proposal_pending');
+      const b=value(await call(bridge.url,2,bridge.decisionToolName,{intent:intent('B')}));
+      assert.equal(b.kind,'rejected');
+      assert.equal(b.registered,true);
+      assert.equal(b.selectedProposalRef,a.proposalRef);
+      const failed=reason==='serialization_failed'
+        ? await rawCall(bridge.url,deepReplacementBody(3,bridge.decisionToolName,a.proposalRef))
+        : await call(bridge.url,1,bridge.decisionToolName,{intent:intent('replacement'),replaces:a.proposalRef});
+      assert.equal(failed.status,200);
+      assert.equal(failed.body.error?.code,reason==='serialization_failed'?-32603:-32602);
+      assert.deepEqual(await bridge.finalizeDecision(),{kind:'unavailable',reason},
+        'a stale conflict must not mask '+reason);
+    }finally{stop.abort();bridge.close();}
+  });
+}
