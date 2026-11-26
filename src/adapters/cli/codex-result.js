@@ -132,6 +132,7 @@ export function receiveCodexResult(result, { attemptId, kind }, observe) {
       outputRefs, usage,
     },
     ...(code || message === undefined ? { output: undefined } : kind === 'controller' ? parseDecisionText(message) : { output: message }),
-    ...(!code && messageRef ? { outputObservationRef: messageRef } : {}),
+    ...(!code && messageRef ? { outputObservationRef: messageRef,
+      ...(kind === 'controller' && {outputObservationParsed: /** @type {const} */ (true)}) } : {}),
   };
 }

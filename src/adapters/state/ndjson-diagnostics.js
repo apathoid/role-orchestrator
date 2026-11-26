@@ -2,26 +2,29 @@ import { appendFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** @import {DiagnosticEvent, DiagnosticPort} from '../../core/diagnostics.js' */
+export const defaultDiagnosticQueueMaxBytes = 8 * 1024 * 1024;
+export const defaultDiagnosticMaxFileBytes = 1048576;
 
 /**
  * The diagnostic sink is deliberately independent of the StateStore ledger:
  * no failure here can change a task outcome or reserve a task resource.
- * @param {{directory: string, maxFileBytes?: number, retainedFiles?: number, queueSize?: number,
+ * @param {{directory: string, maxFileBytes?: number, retainedFiles?: number, queueSize?: number, queueMaxBytes?: number,
  *   flushDeadlineMs?: number, stderr?: {write: (text: string) => unknown},
  *   writeLine?: (path: string, line: string) => Promise<void>}} options
  * @returns {DiagnosticPort & {stats: () => {dropped: number, failed: number}}}
  */
 export function createNdjsonSink(options) {
-  const { directory, maxFileBytes = 1_048_576, retainedFiles = 3,
-    queueSize = 128, flushDeadlineMs = 1000, stderr = process.stderr,
+  const { directory, maxFileBytes = defaultDiagnosticMaxFileBytes, retainedFiles = 3,
+    queueSize = 128, queueMaxBytes = defaultDiagnosticQueueMaxBytes, flushDeadlineMs = 1000, stderr = process.stderr,
     writeLine = (path, line) => appendFile(path, line, { mode: 0o600 }) } = options;
-  for (const n of [maxFileBytes, retainedFiles, queueSize]) {
+  for (const n of [maxFileBytes, retainedFiles, queueSize, queueMaxBytes]) {
     if (!Number.isSafeInteger(n) || n < 1) throw new RangeError('Invalid diagnostic bound');
   }
   if (!Number.isFinite(flushDeadlineMs) || flushDeadlineMs < 0) throw new RangeError('Invalid flush deadline');
   const path = join(directory, 'diagnostics.ndjson');
-  /** @type {DiagnosticEvent[]} */
+  /** @type {{line:string,size:number}[]} */
   const pending = [];
+  let pendingBytes=0;
   let dropped = 0, failed = 0, bytes = 0, initialized = false, stopped = false;
   /** @type {Promise<void> | undefined} */
   let worker;
@@ -68,13 +71,12 @@ export function createNdjsonSink(options) {
   }
   async function drain() {
     while (pending.length) {
-      const event = pending.shift();
-      if (!event) continue;
+      const record = pending.shift();
+      if (!record) continue;
+      const {line,size}=record;
+      pendingBytes-=size;
       try {
         await initialize();
-        const line = JSON.stringify(event) + '\n';
-        const size = Buffer.byteLength(line);
-        if (size > maxFileBytes) { dropped++; reportFailure(); continue; }
         if (bytes + size > maxFileBytes) await rotate();
         await writeLine(path, line);
         bytes += size;
@@ -98,8 +100,18 @@ export function createNdjsonSink(options) {
         reportFailure();
         return;
       }
-      pending.push(event);
-      start();
+      // Queue the exact persisted representation, not potentially large
+      // objects. Include newline and bound pending bytes independently of
+      // the record count. The one in-flight record is itself bounded.
+      try {
+        const line=JSON.stringify(event)+'\n';
+        const size=Buffer.byteLength(line);
+        if(size>maxFileBytes||size>queueMaxBytes||pendingBytes+size>queueMaxBytes){
+          dropped++;reportFailure();return;
+        }
+        pending.push({line,size});pendingBytes+=size;
+        start();
+      }catch{failed++;reportFailure();}
     },
     async flush() {
       stopped = true;
@@ -115,6 +127,7 @@ export function createNdjsonSink(options) {
       if (!complete) {
         dropped += pending.length;
         pending.length = 0;
+        pendingBytes=0;
         reportFailure();
         reportSummary();
       } else reportSummary();

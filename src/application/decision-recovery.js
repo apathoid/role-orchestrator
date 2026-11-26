@@ -22,12 +22,14 @@ export function decisionRecovery(state) {
   let previousSignature;
   /** @type {Extract<Operation['events'][number], {kind: 'controller.invalid_proposal'}> | undefined} */
   let lastRejection;
+  let correctionActive = false;
   /** @type {typeof lastRejection} */
   let thresholdRejection;
   for (const event of current) {
     if (event.kind === 'controller.responded') {
       consecutiveIdentical = 0;
       previousSignature = undefined;
+      correctionActive = false;
       continue;
     }
     if (event.kind !== 'controller.invalid_proposal' || countedAttempts.has(event.attemptId)) continue;
@@ -39,6 +41,7 @@ export function decisionRecovery(state) {
     previousSignature = signature;
     totalRejected++;
     lastRejection = event;
+    correctionActive = true;
     if (!thresholdRejection && (consecutiveIdentical >= decisionRecoveryLimits.consecutiveIdentical ||
         totalRejected >= decisionRecoveryLimits.totalRejected)) thresholdRejection = event;
   }
@@ -58,6 +61,8 @@ export function decisionRecovery(state) {
       path: lastDurableRejection.reason.path,
       expected: lastDurableRejection.reason.expected,
       scope: lastRejection ? 'current_user_turn' : 'prior_user_turn',
+      active: Boolean(lastRejection && correctionActive),
+      ...(lastDurableRejection.result && {result: lastDurableRejection.result}),
     },
   };
 }

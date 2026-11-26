@@ -1,3 +1,4 @@
+import { reportPrompt } from '../prompt-diagnostics.js';
 import { randomUUID } from 'node:crypto';
 import { unavailableCapabilities } from '../../application/configuration/catalog.js';
 import { startMcpBridge } from '../mcp-bridge.js';
@@ -31,10 +32,10 @@ const baseCapabilities = Object.freeze({
 /**
  * Compose a Codex CLI endpoint from trusted configuration.
  * Each ProviderPort session owns at most one process.
- * @param {{providerId: string, configuration: ProviderConfig, environment?: NodeJS.ProcessEnv}} options
+ * @param {{providerId: string, configuration: ProviderConfig, environment?: NodeJS.ProcessEnv, promptReporter?:import('../prompt-diagnostics.js').PromptReporter}} options
  * @returns {ProviderPort}
  */
-export function createCodexProvider({ providerId, configuration, environment = process.env }) {
+export function createCodexProvider({ providerId, configuration, environment = process.env, promptReporter }) {
   const bridgeEnabled = configuration.mcpBridge === true;
   /** @type {Readonly<Record<string, Capability>>} */
   const capabilities = bridgeEnabled ? { ...baseCapabilities,
@@ -93,11 +94,18 @@ export function createCodexProvider({ providerId, configuration, environment = p
           mcp = await (state.bridgeStartup = startMcpBridge(request));
         }
         if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
-        const prompt = renderCodexPrompt(request, interactiveApprovalDetail, Boolean(mcp && request.contextAccess));
+        const preparationStarted=performance.now();
+        /** @type {Record<string,number>} */
+        let componentSizes={};
+        const prompt = renderCodexPrompt(request, interactiveApprovalDetail, Boolean(mcp && request.contextAccess),
+          promptReporter?sizes=>{componentSizes=sizes;}:undefined);
+        reportPrompt(promptReporter,request,'prepared',{transport:'codex-cli',preparationMs:performance.now()-preparationStarted,...componentSizes},prompt);
         const launch = prepareCodexLaunch(configuration, {
           model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt, mcpUrl: mcp?.url,
           reasoning: request.reasoning,
         }, environment);
+        const sendStarted=performance.now();
+        reportPrompt(promptReporter,request,'launch_attempted',{transport:'codex-cli'});
         const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal,
           onFrame: activity ? event => {
             if (request.signal.aborted || !['item.started', 'item.updated', 'item.completed'].includes(event.type)) return;
@@ -113,7 +121,12 @@ export function createCodexProvider({ providerId, configuration, environment = p
           } : undefined,
         });
         state.process = process;
-        return receiveCodexResult(await process.finished, request, observe);
+        const finished=await process.finished;
+        reportPrompt(promptReporter,request,'reply',{transport:'codex-cli',elapsedMs:performance.now()-sendStarted,
+          providerTurnObserved:finished.execution.sent,stopReason:finished.execution.terminal??null,
+          nativeSessionId:finished.execution.threadId??null,observedToolCompletions:finished.execution.toolCompletions,
+          reportedInputCount:finished.execution.usage.inputTokens,reportedOutputCount:finished.execution.usage.outputTokens});
+        return receiveCodexResult(finished, request, observe);
       } catch (error) {
         if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
         if (state.process) throw error;

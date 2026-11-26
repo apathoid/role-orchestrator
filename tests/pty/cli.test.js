@@ -180,6 +180,8 @@ test('C15R.6 actual SDK/PTY permission and titled form preserve identity and Mar
   assert.match(output,/What should happen next\?/);
   assert.match(output,/Continue work/);assert.match(output,/Stop work/);
   assert.match(output,/Optional context/);
+  assert.match(output,/Additional text \(optional\)/);
+  assert.match(output,/Enter text, or :skip to omit this field\./);
   // Real interaction and lifecycle notices may legitimately interrupt Thinking.
   // They cannot produce one header per native fragment while readline redraws.
   assert.ok((output.match(/Thinking · Controller/g)??[]).length<=6,output);
@@ -303,4 +305,26 @@ test('P1 actual Linux PTY keeps native prompt working with padding across color 
     if(i<3)assert.match(output,/\x1b\[[0-9;]*m/);
     else assert.doesNotMatch(output,/\x1b\[[0-9;]*m/);
   }
+}));
+
+test('C17 actual Linux PTY compact cancellation progress and one summary, direct and attached',{
+  timeout:35000},()=>withOwnedRun('C17-pty-cancel',async cwd=>{
+  const path=await config(cwd);
+  const exercise=async()=>{
+    const output=await ttyDialogue(cwd,['run','hold-c17','--config',path,'--presentation','compact'],
+      [{when:'Fixture native hold',value:'\x03'}]);
+    assert.match(output,/Cancellation recorded · source=client · unsettled attempts: 1/);
+    assert.equal((output.match(/Operation cancelled/g)??[]).length,1,output);
+    assert.match(output,/source: client|source=client/);
+  };
+  await exercise();
+  const owner=spawn(process.execPath,[entry,'run','hold','--config',path,'--format','json'],
+    {cwd,stdio:['ignore','pipe','pipe']});
+  owner.stdout.resume();owner.stderr.resume();
+  const closed=once(owner,'close');
+  try{
+    for(let i=0;!await readDescriptor(join(cwd,'state'));i++){assert.ok(i<500);await delay(10);}
+    await exercise();
+    assert.equal(owner.exitCode,null);
+  }finally{owner.kill('SIGINT');await closed;}
 }));

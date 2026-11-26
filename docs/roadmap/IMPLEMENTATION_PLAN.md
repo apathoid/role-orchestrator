@@ -1,12 +1,34 @@
 # Активный план реализации и приёмки
 
+## C17R — Recovery Delivery & Diagnostic Verification
+
+Corrective scope approved after C17 review; baseline `e7e8bf84` (full CI PASS), branch `feature/controller-reliability`. C17R.0–.2 baseline/recovery packing/chronology; .3 bounded configurable capture; .4 source correlation; .5 existing durable/concurrency paths; .6 diagnostic isolation and exact-build synthetic overhead; .7 two main native comparisons; .8 full exact-SHA verification. Existing [C17R scope and criteria](C17_CONTROLLER_CONTEXT_AND_DECISION_RELIABILITY.md#c17r--recovery-delivery--diagnostic-verification), [STATUS](STATUS.md) and [native procedure](NATIVE_ACCEPTANCE.md). No new model workflow, Decision transport or default context budget. Engineering evidence is exact-SHA only; native UNVERIFIED.
+
+## C17 — Controller Context Efficiency & Decision Reliability (historical exact-SHA CI PASS; corrective C17R above)
+
+**Approved implementation scope:** [C17 plan](C17_CONTROLLER_CONTEXT_AND_DECISION_RELIABILITY.md). **Branch:** `feature/controller-reliability`, from master at `d80638609d86da92e2a88d939fa09a90a1a3cfbf` (merge PR #3). Scoped implementation and regression changes are committed; see [STATUS](STATUS.md) and [native comparison procedure](NATIVE_ACCEPTANCE.md). Native acceptance remains UNVERIFIED. This is the active development milestone; older entries below are historical, with their original verification boundaries. No master merge by the implementation agent.
+
+| Step | Executable result |
+|---|---|
+| C17.0 | Exact baseline, actual parser/decoder/admission and deterministic RED fixtures where needed |
+| C17.1 | Faithful model-neutral Controller Invocation presentation; unchanged Decision v1 and native capabilities |
+| C17.2 | Proven rejected-result correlation, bounded addressable recovery and existing C16 lifecycle |
+| C17.3 | Proven inline deduplication; passive bounded diagnostic measurements and opt-in capture |
+| C17.4 | Reproducible comparison of native direct/baseline/presentation/recovery builds; real results or explicit UNVERIFIED |
+| C17.6 | Native optional-field CLI UX; original schema, payload and broker authority |
+| C17.7 | Compact terminal summary without loss of significant outcomes or machine output changes |
+| C17.8 | Architecture audit, focused and full regressions, exact-SHA mandatory CI, docs and handoff |
+
+C17.6/7 may progress independently. Minimal measurement precedes comparisons. Preserve model-owned strategy, native discovery/tools/skills/subagents, existing Decision parser/decoder/admission, authorization, budgets, journal, cancellation and independent Workers. No new transport, scheduler, semantic Host decisions, mandatory retrieval or provider-specific core. No default resource changes, steering or persistent native sessions. Acceptance is quality + effectiveness + technical integrity, not JSON acceptance alone. Engineering verification and native verification are separate. See [STATUS](STATUS.md) for actual evidence; do not transfer previous CI PASS to new SHA.
+
+
 ## C16R — follow-up regression completion (code verified; final-doc-SHA CI pending)
 
 **Review baseline:** `8e8f55212ef5070b8c0a9624770821b4a505b683`, [baseline full CI #44624794657](https://github.com/apathoid/role-orchestrator/actions/runs/44624794657) SUCCESS. Only `tests/integration/c16-controller-reliability.test.js` changed in production/test portion. C16R.1 added a real local StateStore restart test for an accepted unsent reserved independent Worker (same attemptId/budget/threshold) and two dispatched unknown-effect cases with and without negotiated lookup; no blind replay. C16R.2 added parser `non_object` and `depth` via declared ProviderResult, Application, persisted rejection and snapshot, lost commit-ACK crash gap and restarted correction; explicit Provider failure without a completed Decision does not count. C16R.3 corrected a test-only mistake requiring removal of original model output evidence; no production defect was found. No steering, runtime policy, schema, prompt or new scheduler.
 
 **Code/tests GREEN:** `d930af087209551bade0b77d3cc89fd351c9bc26` [CI #44629076306](https://github.com/apathoid/role-orchestrator/actions/runs/44629076306) **SUCCESS**: 577 root/475 integration/14 PTY, Node 24 specification/checkJs/contracts/ACP/C15 comparators, full locked Nix/package/NixOS/release/lock checks. Previous parser-test false-negative [#44628672064](https://github.com/apathoid/role-orchestrator/actions/runs/44628672064), 2 failures, was fixture-only and corrected at `d930af08`. Final docs-only commit must get its own exact-SHA full CI; do not transfer the code-SHA PASS to it. Native C16.6 real model/provider comparison and graphical client verification remain **UNVERIFIED**. Full evidence and environment limitations: [STATUS](STATUS.md), [A124/A125](../../tests/ACCEPTANCE_MATRIX.md).
 
-**Next:** verify the final documentation SHA with mandatory Actions; separately perform C16.6 real provider comparison. Do not extend the implementation into active-operation steering or Decision prompt tuning.
+**Historical C16R handoff:** verify the final documentation SHA with mandatory Actions; separately perform C16.6 real provider comparison. The C16R scope did not include active-operation steering or prompt tuning. The separately approved C17 scope above is now active; prior native obligations remain recorded as UNVERIFIED.
 
 ## C16 — Controller Reliability & Decision Recovery (ENGINEERING VERIFIED at 8e8f5521; C16R follow-up above)
 

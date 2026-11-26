@@ -59,6 +59,9 @@ export function formFieldView(form,index,offset=0){
   const shape=field.shape,caption=typeof shape.title==='string'?shape.title:
     typeof shape.description==='string'?shape.description:field.key;
   const type=shape.type==='array'?'choose multiple':shape.type==='string'&&!field.options?'text':String(shape.type);
+  // Optionality is a schema fact, independent of key, title and position.
+  const optionalText=shape.type==='string'&&!field.options&&!field.required;
+  if(optionalText)add(parts,'\n\n  Additional text (optional)','accent');
   add(parts,'\n  '+(index+1)+'/'+form.fields.length+'  ','muted');
   add(parts,short(caption,1000),'bold');
   add(parts,' ('+type+(field.required?', required':', optional')+')','muted');
@@ -90,8 +93,8 @@ export function formFieldView(form,index,offset=0){
   if(total>size)add(parts,'\n  Showing '+(from+1)+'–'+Math.min(total,from+size)+' of '+total+
     ' choices. Enter :choices N to view starting at choice N.','muted');
   add(parts,field.options?'\n  Enter a displayed number'+(shape.type==='array'?' list separated by commas':'')+'.':
-    '\n  Enter the value as text.','muted');
-  if(!field.required)add(parts,'\n  :skip omits this field.','muted');
+    optionalText?'\n  Enter text, or :skip to omit this field.':'\n  Enter the value as text.','muted');
+  if(!field.required&&!optionalText)add(parts,'\n  :skip omits this field.','muted');
   add(parts,'\n  :back edits the preceding field; :decline or :cancel stops the form.','muted');
   return parts;
 }

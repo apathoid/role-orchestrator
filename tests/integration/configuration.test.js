@@ -38,6 +38,9 @@ test('schema failures point to unknown keys, versions, missing controller and ba
     [{ resources: { maxInvocationsPerOperation: 0 } }, '/resources/maxInvocationsPerOperation', 'minimum'],
     [{ resources: { invocationTimeoutMs: 2 ** 31 } }, '/resources/invocationTimeoutMs', 'maximum'],
     [{ context: { maxBytes: 0 } }, '/context/maxBytes', 'minimum'],
+    [{ diagnostics:{promptCaptureMaxBytes:0} }, '/diagnostics/promptCaptureMaxBytes','minimum'],
+    [{ diagnostics:{promptCaptureMaxBytes:1048577} }, '/diagnostics/promptCaptureMaxBytes','maximum'],
+    [{ diagnostics:{promptCaptureMaxBytes:1.5} }, '/diagnostics/promptCaptureMaxBytes','type'],
     [{ storage: { directory: '/path/to/state', artifactRetention: { maxBytes: -1 } } }, '/storage/artifactRetention/maxBytes', 'minimum'],
   ];
   for (const [overrides, path, constraint] of cases) {

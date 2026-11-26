@@ -1,3 +1,4 @@
+import { readInvocationPrompt } from './read-invocation-prompt.js';
 import assert from 'node:assert/strict';
 import { retrieveContext } from './mcp-client.js';
 
@@ -8,8 +9,7 @@ const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
 const prompt = Buffer.concat(chunks).toString('utf8');
 assert.match(prompt, /Optional MCP context_list and context_fetch/);
-const separator = '\n\nInvocation (JSON):\n';
-const invocation = JSON.parse(prompt.slice(prompt.indexOf(separator) + separator.length));
+const invocation = readInvocationPrompt(prompt);
 const decision = await retrieveContext(url, invocation);
 for (const event of [
   { type: 'thread.started', thread_id: 'mcp-fixture' }, { type: 'turn.started' },

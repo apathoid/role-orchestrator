@@ -6,11 +6,13 @@
  * @returns {unknown}
  */
 export function redactDiagnostic(value, { secrets = [], captureBodies = false } = {}) {
-  const known = secrets.filter(s => typeof s === 'string' && s.length >= 4);
+  const known = [...new Set(secrets.filter(s => typeof s === 'string' && s.length >= 4)
+    .flatMap(s=>[s,JSON.stringify(s).slice(1,-1)]))].sort((a,b)=>b.length-a.length);
   const sensitive = /(?:password|secret|credential|token|api[_-]?key|authorization|cookie|private[_-]?key)/i;
   const body = /^(?:prompt|rawPrompt|requestBody|responseBody|toolBody|toolInput|toolOutput|body|input|output)$/i;
   /** @param {unknown} node @param {string} [key] @returns {unknown} */
   function visit(node, key = '') {
+    if ((key==='inputTokens'||key==='outputTokens') && (node===null||typeof node==='number')) return node;
     if (sensitive.test(key)) return '[REDACTED]';
     if (!captureBodies && body.test(key)) return '[BODY OMITTED]';
     if (typeof node === 'string') {

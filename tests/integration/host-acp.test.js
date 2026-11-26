@@ -871,3 +871,21 @@ test('R2F live ACP SDK preserves non-complete assessments and original model ans
     }finally{await host.close();}
   }
 }));
+
+test('C17R external ACP never forwards private configured Controller capture',{timeout:12000},()=>withOwnedRun('C17R-acp-private',async cwd=>{
+  const config=await fixture(cwd,{
+    providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[fileURLToPath(new URL('../fixtures/acp-contract-agent.js',import.meta.url)),'controller-contract']}}},
+    plugins:[],diagnostics:{captureBodies:true,promptCaptureMaxBytes:262144}});
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const session=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    assert.equal((await prompt(host.agent,session.sessionId,'fixture task')).stopReason,'end_turn');
+    assert.ok(host.messages.some(m=>m.update.content?.text?.includes('Проверка')));
+    assert.doesNotMatch(JSON.stringify(host.messages),/adapter\.prompt\.capture|Controller Invocation \(sectioned JSON\)/);
+  }finally{await host.close();}
+  const events=(await readFile(join(cwd,'state','diagnostics','diagnostics.ndjson'),'utf8')).trim().split('\n').map(line=>JSON.parse(line));
+  const capture=events.find(e=>e.eventName==='adapter.prompt.capture');
+  assert.match(capture.details.prompt,/Controller Invocation \(sectioned JSON\)/);
+  assert.equal(capture.details.captureLimitBytes,262144);
+}));

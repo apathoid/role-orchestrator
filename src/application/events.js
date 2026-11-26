@@ -21,7 +21,7 @@ function gapFor(prior, dropped) {
   });
 }
 
-/** @param {DiagnosticPort} sink @param {{secrets?: readonly string[], captureBodies?: boolean}} [redaction] */
+/** @param {DiagnosticPort} sink @param {{secrets?: readonly string[], captureBodies?: boolean, maxPrivateRecordBytes?: number}} [redaction] */
 export function createEventStream(sink = noopDiagnostics, redaction = {}) {
   /** @type {Set<{scope?: ActivityScope, delivery: ReturnType<typeof createBoundedDelivery<ExecutionNotice, ExecutionNotice>>}>} */
   const subscribers = new Set();
@@ -55,6 +55,30 @@ export function createEventStream(sink = noopDiagnostics, redaction = {}) {
   }
   return {
     emit,
+    // Explicit diagnostic bodies are sink-only, never execution notices or ACP output.
+    /** @param {DiagnosticEvent} event */
+    emitPrivate(event) {
+      if (closed || !redaction.captureBodies) return;
+      const safe = /** @type {DiagnosticEvent} */ (redactDiagnostic(event, redaction));
+      // The raw UTF-8 limit is not the NDJSON size: escaping and redaction
+      // can expand it. Do not enqueue a known-undeliverable large body.
+      if (event.eventName === 'adapter.prompt.capture' && typeof safe.details?.prompt === 'string') {
+        const storedBytes=Buffer.byteLength(safe.details.prompt);
+        /** @type {Record<string,string|number|boolean|null>} */
+        const details = {...safe.details, captureStoredBytes:storedBytes};
+        const limit = redaction.maxPrivateRecordBytes ?? 1048576;
+        const full = {...safe,details};
+        if (storedBytes <= Number(details.captureLimitBytes) &&
+            Buffer.byteLength(JSON.stringify(full)+'\n') <= limit) {
+          emitDiagnostic(sink, full);
+        } else {
+          emitDiagnostic(sink,{...safe,details:{...details,prompt:'',captureStoredBytes:0,
+            captureCompleteness:'unavailable',captureUnavailableReason:'serialized_record_limit'}});
+        }
+        return;
+      }
+      emitDiagnostic(sink,safe);
+    },
     flush: () => sink.flush(),
     /** @param {EventListener} listener @param {ActivityScope} [scope] */
     subscribe(listener, scope) {

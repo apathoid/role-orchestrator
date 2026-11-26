@@ -5,6 +5,7 @@ import { request, outcome, decision } from '../fixtures/core.js';
 import { applyEvent, acceptedWorkerAllowed, createOperation, resourceSnapshot } from '../../src/core/operation.js';
 import { encodeSnapshot, decodeSnapshot } from '../../src/core/snapshot.js';
 import { createLocalStateStore } from '../../src/adapters/state/local-store.js';
+import { controllerContext } from '../../src/application/controller-context.js';
 import { decisionRecovery } from '../../src/application/decision-recovery.js';
 import { parseDecisionText } from '../../src/adapters/invocation-prompt.js';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -178,6 +179,12 @@ test('C16.5: new accepted user input resets turn-local recovery, never the opera
     assert.equal(invocations.length, 11);
     assert.equal(third.attempts.length, 11);
     assert.equal(third.limits.maxInvocations, 11);
+    for(const index of [5,10]){
+      const invocation=invocations[index];
+      assert.equal(invocation.context.some(item=>item.ref==='host:decision-error'),false);
+      assert.equal(hostOf(invocation).decisionRecovery.lastRejection.active,false);
+      assert.equal(hostOf(invocation).decisionRecovery.lastRejection.result.representation,'declared_value');
+    }
   } finally { await api.close(); }
 });
 
@@ -317,6 +324,11 @@ test('C16.5: Controller reaching the rejection threshold does not cancel indepen
     assert.equal(complete.status,'waiting');
     assert.equal(complete.attempts.find(item=>item.actionId==='independent').outcome.terminal,'completed');
     assert.equal(invocations.filter(item=>item.kind==='controller').length,6);
+    const rejection=complete.events.findLast(e=>e.kind==='controller.invalid_proposal');
+    const projected=controllerContext(complete,[],rejection.reason,undefined,65536);
+    const rejectedIndex=projected.findIndex(e=>e.ref===rejection.result.ref);
+    const workerIndex=projected.findIndex(e=>e.attemptId===worker.attemptId&&e.value==='Independent report');
+    assert.ok(rejectedIndex>=0&&workerIndex>rejectedIndex,'real independent Worker receipt retains later position');
   } finally { release.resolve(); await api.close(); }
 });
 
@@ -363,9 +375,12 @@ async function seedC16RejectedControllerWithWorker(store, dispatched) {
     await append({kind:'attempt.reserved',attemptId,actionId:attemptId,
       ...(index===0 ? {reasoningDecisionId:'accepted-worker-decision'} : {})});
     await append({kind:'attempt.dispatched',attemptId,route});
-    await append({kind:'attempt.outcome',outcome:outcome(attemptId),dispatchCertainty:'sent'});
+    const ref='controller-output:'+attemptId;
+    await append({kind:'attempt.outcome',outcome:outcome(attemptId),dispatchCertainty:'sent',
+      observations:[{ref,source:'model_claim',completeness:'complete',value:{schemaVersion:2},
+        provenance:{kind:'model',sourceId:attemptId,receivedAt:serial+1}}]});
     await append({kind:'controller.invalid_proposal',attemptId,category:'schema_invalid',
-      reason:{code:'INVALID_PROPOSAL',path:'$.schemaVersion',expected:'1'}});
+      result:{ref,representation:'declared_value'},reason:{code:'INVALID_PROPOSAL',path:'$.schemaVersion',expected:'1'}});
   }
   const lastController = 'rejected-controller-4';
   await append({kind:'operation.waiting',waiting:{kind:'technical',
@@ -378,6 +393,7 @@ async function seedC16RejectedControllerWithWorker(store, dispatched) {
   assert.equal(resourceSnapshot(snapshot.value).charged,7);
   assert.equal(decisionRecovery(snapshot.value).totalRejected,5);
   assert.equal(decisionRecovery(snapshot.value).consecutiveIdentical,5);
+  assert.deepEqual(decisionRecovery(snapshot.value).lastRejection.result,{ref:'controller-output:'+lastController,representation:'declared_value'});
   assert.equal(acceptedWorkerAllowed(snapshot.value,worker.actionId),true);
   return {operationId:state.operationId,worker,workerAttemptId,lastController,limits};
 }
@@ -410,6 +426,7 @@ test('C16R.1A: after restart a reserved unsent independent Worker reuses its ide
     assert.equal(restored.waiting.kind,'technical');
     assert.equal(restored.waiting.reason.resource,'controller_decision_recovery');
     assert.equal(restored.waiting.reason.attemptId,seed.lastController);
+    assert.deepEqual(decisionRecovery(restored).lastRejection.result,{ref:'controller-output:'+seed.lastController,representation:'declared_value'});
     assert.equal(restored.attempts.length,7);
     assert.equal(resourceSnapshot(restored).charged,7);
     assert.equal(resourceSnapshot(restored).remaining,2);
@@ -473,6 +490,7 @@ for (const resolvedByLookup of [false,true]) {
       assert.equal(worker.dispatchCertainty,'unknown');
       assert.equal(worker.outcome.terminal,resolvedByLookup?'completed':'unknown');
       assert.equal(worker.outcome.effect,resolvedByLookup?'confirmed':'unknown');
+      assert.deepEqual(decisionRecovery(restored).lastRejection.result,{ref:'controller-output:'+seed.lastController,representation:'declared_value'});
       assert.equal(restored.events.filter(e=>e.kind==='controller.invalid_proposal').length,5);
       assert.equal(restored.events.filter(e=>e.kind==='operation.continued').length,0);
       assert.equal(restored.events.filter(e=>e.kind==='action.cancelled').length,0);
@@ -563,6 +581,7 @@ for (const sample of [
       assert.equal(originalOutputs.length,1);
       assert.equal(originalOutputs[0].ref,'controller-output:'+parserReports[0].attemptId);
       assert.equal(originalOutputs[0].source,'model_claim');
+      assert.deepEqual(invalid[0].result,{ref:originalOutputs[0].ref,representation:'declared_value'});
       assert.equal(originalOutputs[0].provenance.kind,'model');
       assert.equal(JSON.stringify(invalid[0]).includes('C16R_REJECTED_PAYLOAD_'),false);
       assert.equal(JSON.stringify(decisionRecovery(failed)).includes('C16R_REJECTED_PAYLOAD_'),false);
@@ -573,9 +592,11 @@ for (const sample of [
       await firstStore.close();
       await secondStore.open();
       const corrections=[];
+      let retrieved;
       const second = setup({store:secondStore,idPrefix:'c16r-correction-',maxInvocations:4,
-        respond(invocation) {
+        async respond(invocation) {
           const error = invocation.context.find(item=>item.ref==='host:decision-error')?.value;
+          if(error?.result?.ref)retrieved=await invocation.contextAccess.fetch(error.result.ref);
           const history = invocation.context.find(item=>item.ref==='host:invocation-context')?.value?.decisionRecovery;
           corrections.push({kind:invocation.kind,attemptId:invocation.attemptId,
             correction:error,history});
@@ -600,6 +621,11 @@ for (const sample of [
         category:sample.category,stage:'parser',attemptId:parserReports[0].attemptId,
         path:'$',expected:sample.expected,totalRejected:1,consecutiveIdentical:1,
       });
+      assert.deepEqual(corrections[0].correction.result.ref,invalid[0].result.ref);
+      assert.equal(corrections[0].correction.result.representation,'declared_value');
+      assert.equal(retrieved.kind,'available');
+      assert.equal(retrieved.item.value,originalOutputs[0].value);
+      assert.deepEqual(retrieved.item.provenance,originalOutputs[0].provenance);
       assert.equal(corrections[0].history?.totalRejected,1);
       assert.equal(corrections[0].history?.consecutiveIdentical,1);
       assert.equal(corrections[0].history?.lastRejection?.category,sample.category);

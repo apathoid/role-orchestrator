@@ -11,7 +11,7 @@ import { createOrchestrator } from '../application/orchestrator.js';
 import { createEventStream } from '../application/events.js';
 import { operationTrace } from '../hosts/commands.js';
 import { loadExtensions } from './extensions.js';
-import { createNdjsonSink } from '../adapters/state/ndjson-diagnostics.js';
+import { createNdjsonSink, defaultDiagnosticMaxFileBytes, defaultDiagnosticQueueMaxBytes } from '../adapters/state/ndjson-diagnostics.js';
 
 /** @import {DiagnosticPort} from '../core/diagnostics.js' */
 /** @import {AuthorityPort} from '../core/ports.js' */
@@ -51,7 +51,11 @@ export async function openRuntime(options, onStoreOpen) {
     directory: resolve(directory, 'diagnostics'),
     maxFileBytes: config.value.diagnostics?.maxFileBytes,
     retainedFiles: config.value.diagnostics?.retainedFiles,
-  }), { secrets: secretValues, captureBodies: config.value.diagnostics?.captureBodies });
+  }), { secrets: secretValues, captureBodies: config.value.diagnostics?.captureBodies,
+    maxPrivateRecordBytes: Math.min(config.value.diagnostics?.maxFileBytes ?? defaultDiagnosticMaxFileBytes, defaultDiagnosticQueueMaxBytes) });
+  if (config.value.diagnostics?.captureBodies) {
+    try { process.stderr.write('Warning: diagnostic prompt capture is enabled; arbitrary prompt text may contain sensitive data.\n'); } catch { /* Best effort warning. */ }
+  }
   const store = createLocalStateStore(directory);
   const clock = { now: Date.now, monotonicNow: () => performance.now() };
   const ids = { newId: randomUUID };
@@ -66,7 +70,8 @@ export async function openRuntime(options, onStoreOpen) {
   try {
     await onStoreOpen?.();
     const registry = extensions = await loadExtensions(config.value, {
-      directory: options.configurationDirectory, clock, ids, diagnostics, launchOptions: options.launch, acp: options.acp,
+      directory: options.configurationDirectory, clock, ids, diagnostics,
+      privateDiagnostics:{emit:diagnostics.emitPrivate,flush:()=>{}}, launchOptions: options.launch, acp: options.acp,
     });
     const { selection, catalog } = registry;
     /** @param {typeof selection} resolved */

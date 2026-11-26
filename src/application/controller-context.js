@@ -311,7 +311,9 @@ export function pendingControllerHistoryRequest(state, attemptId) {
  * @param {number | {revision: number, index: number}} [workCursor]
  * @returns {ContextItem[]}
  */
-export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor = 0) {
+export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor) {
+  const explicitWorkPage = workCursor !== undefined;
+  workCursor ??= 0;
   const [request, ...history] = operationHistory(state);
   // References point to the original user ContextItems. Chronology is a
   // transport fact, not a Host decision about the current task or priority.
@@ -321,6 +323,28 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     latest: { ref: latestUser.ref, receivedSequence: latestUser.receivedSequence },
   };
   const recovery = decisionRecovery(state);
+  const active = correction && recovery.lastRejection?.active ? recovery.lastRejection : undefined;
+  const result = active?.result;
+  const stored = result && history.find(item => item.ref === result.ref && item.attemptId === active?.attemptId);
+  const source = stored && stored.completeness !== 'unavailable' && stored.value !== undefined ? stored : undefined;
+  // The stored body and the inline representation are separate facts. An
+  // existing scoped request is optional; neither it nor MCP promises a full body.
+  const resultDelivery = result ? {
+    kind: 'reference', ...result,
+    storedCompleteness: stored?.completeness ?? 'unknown',
+    retrieval: source ? 'bounded_context_request' : 'unknown',
+    inline: 'duplicate_inline', // longest placeholder, reserved before packing
+  } : undefined;
+  /** @type {ContextItem | undefined} */
+  const correctionItem = active && correction ? {
+    ref:'host:decision-error', source:'host_observed', completeness:'complete',
+    value: {
+      ...correction, attemptId: active.attemptId, category: active.category, stage: active.stage,
+      consecutiveIdentical: recovery.consecutiveIdentical, totalRejected: recovery.totalRejected,
+      thresholds: recovery.limits, result: resultDelivery ?? {kind:'unknown'},
+      guidance: 'Previous declared result rejected. Historical results and observations may be used or reconsidered as needed. Return a valid Decision for this invocation. The referenced body, if available, is scoped and bounded; retrieval is optional.',
+    },
+  } : undefined;
   const previous = state.events.findLast(item => item.kind === 'operation.finished');
   const unresolved = previous?.assessment.requirements.flatMap(({ requirementId, status }) =>
     status === 'fulfilled' ? [] : [{ requirementId, status }]);
@@ -461,11 +485,49 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // A requested historical source must not be crowded out by derived map
   // rows. Reserve only the bytes its actual bounded materialization would
   // consume, not a fixed percentage or a per-role allocation.
-  const baseBytes = byteLength([host]);
-  const requestedBudget = compactContext(requested, Math.max(0, maxBytes - baseBytes + 1), false);
-  const requestedBytes = byteLength(requestedBudget.context) - 2 +
-    (requestedBudget.context.length ? 1 : 0);
+  const baseBytes = byteLength(correctionItem ? [host, correctionItem] : [host]);
+  const requestedRefs = new Set(requested.map(item => item.ref));
+  const requestedPositions = new Set(requested.flatMap(item => item.receivedSequence
+    ? [JSON.stringify(item.receivedSequence)] : []));
+  const ordinary = history.filter(item => !requestedRefs.has(item.ref) &&
+    (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence))));
+  const prefer = source && ordinary.includes(source);
+  const candidates = deduplicateInlineResults([...requested, ...(prefer ? [source] : []),
+    ...ordinary.slice().reverse().filter(item => !prefer || item !== source)]);
+  // Reserve the actual bounded representation using the same packer/order
+  // as final delivery. Explicit work pages precede recovery; default map
+  // rows and legacy previews do not. No separate budget or percentage.
+  const digits = String(maxBytes).length;
+  const requestedCount = requested.length;
+  const priority = candidates.slice(0, requestedCount + (prefer ? 1 : 0));
+  const requestedBudget = compactContext(priority.slice(0, requestedCount),
+    Math.max(0, maxBytes - baseBytes + 1 - digits), false);
+  const reservedBytes = (/** @type {ContextItem[]} */ records) =>
+    records.length ? byteLength(records) - 1 : 0;
+  const requestedBytes = reservedBytes(requestedBudget.context);
   let used = baseBytes + requestedBytes;
+  /** @param {typeof workRows[number]} row */
+  function minimalWorkRow(row) {
+    const { outputRefs, observationRefs, ...identity } = row;
+    return { ...identity, outputRefsTotal: outputRefs.length,
+      observationRefsTotal: observationRefs.length, refsOmitted: true };
+  }
+  function reserveRecovery() {
+    if (!prefer) return;
+    const available = Math.max(0, maxBytes - used + 1 - digits);
+    const recoveryItems = priority.slice(requestedCount);
+    // Where both fit, keep at least the existing minimal addressable
+    // identity of the first default work row. A large full body must not
+    // automatically erase the whole map when an ordinary excerpt and
+    // that identity can coexist. There is no fixed byte/percentage quota.
+    const row = !explicitWorkPage && workRows[from];
+    const together = row && compactContext(recoveryItems,
+      Math.max(0, available - byteLength(minimalWorkRow(row))), false);
+    const bounded = together && together.context.length ? together :
+      compactContext(recoveryItems, available, false);
+    used += reservedBytes(bounded.context);
+  }
+  if (!explicitWorkPage) reserveRecovery();
   /** @param {unknown[]} target @param {unknown} value */
   function tryAdd(target, value) {
     const size = byteLength(value) + (target.length ? 1 : 0);
@@ -485,10 +547,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     if (!tryAdd(host.value.workMap.entries, row)) {
       // A very long original ref must not prevent even the compact lifecycle
       // identity from being shown when that identity can still fit.
-      const { outputRefs, observationRefs, ...identity } = row;
-      const minimal = { ...identity, outputRefsTotal: outputRefs.length,
-        observationRefsTotal: observationRefs.length, refsOmitted: true };
-      if (!tryAdd(host.value.workMap.entries, minimal)) break;
+      if (!tryAdd(host.value.workMap.entries, minimalWorkRow(row))) break;
     }
     represented++;
   }
@@ -502,6 +561,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   if (cursorAvailable && represented === 0 && from < workRows.length) {
     host.value.workMap.unavailableReason = 'budget';
   }
+  if (explicitWorkPage) reserveRecovery();
   // Existing legacy technical fields remain short, budgeted previews.
   for (const value of facts.unresolvedAttempts) if (!tryAdd(host.value.unresolvedAttempts, value)) break;
   for (const value of facts.effectUncertainties) if (!tryAdd(host.value.effectUncertainties, value)) break;
@@ -541,24 +601,19 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // own decimal digits, rather than reporting the pre-update JSON length.
   function measureHost() {
     for (let i = 0; i < 4; i++) {
-      const actual = byteLength([host]);
+      const actual = byteLength(correctionItem ? [host, correctionItem] : [host]);
       const overflow = actual > maxBytes;
       if (host.value.technicalBudget.mandatoryBytes === actual &&
           host.value.technicalBudget.mandatoryOverflow === overflow) break;
       host.value.technicalBudget.mandatoryBytes = actual;
       host.value.technicalBudget.mandatoryOverflow = overflow;
     }
-    return byteLength([host]);
+    return byteLength(correctionItem ? [host, correctionItem] : [host]);
   }
   used = measureHost();
   // Explicitly requested records take precedence without duplicating their
   // original inline bodies from the ordinary newest-first history.
-  const requestedRefs = new Set(requested.map(item => item.ref));
-  const requestedPositions = new Set(requested.flatMap(item => item.receivedSequence
-    ? [JSON.stringify(item.receivedSequence)] : []));
-  const candidates = [...requested, ...history.reverse().filter(item => !requestedRefs.has(item.ref) &&
-    (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence))))];
-  const bounded = compactContext(deduplicateInlineResults(candidates),
+  const bounded = compactContext(candidates,
     Math.max(0, maxBytes - used + 1), false);
   host.value.historyBudget.omitted = bounded.omitted;
   host.value.historyBudget.excerpted = bounded.excerpted;
@@ -584,22 +639,36 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
         page.kind === 'unavailable' && 'reason' in page ? String(page.reason) : 'budget';
     }
   }
+  if (resultDelivery) {
+    const delivered = bounded.context.find(item => item.ref === resultDelivery.ref ||
+      (source?.receivedSequence && item.receivedSequence &&
+        item.receivedSequence.revision === source.receivedSequence.revision &&
+        item.receivedSequence.index === source.receivedSequence.index));
+    resultDelivery.inline = !delivered ? (stored && !source ? 'unavailable' : 'omitted') :
+      delivered.duplicateOf ? 'duplicate_inline' : delivered.excerpt !== undefined ? 'excerpt' :
+        delivered.completeness === 'unavailable' || delivered.value === undefined ? 'unavailable' : delivered.completeness;
+  }
   // History budget counters can shrink after optional packing; final
   // measured technical bytes must describe the actual delivered host record.
   measureHost();
+  // Keep ordinary history in its journal order, independently of packing.
+  // Explicit materializations (including positional and byte chunks) keep
+  // the existing separate request projection and its ordering.
+  const selectedByRef = new Map(bounded.context.map(item=>[item.ref,item]));
   /** @type {ContextItem[]} */
-  const items = [request, host, ...bounded.context.reverse()];
-  if (correction) items.push({ref:'host:decision-error',source:'host_observed',
-    completeness:'complete',value: {
-      ...correction,
-      ...(recovery.lastRejection?.scope === 'current_user_turn' && {
-        attemptId: recovery.lastRejection.attemptId,
-        category: recovery.lastRejection.category,
-        stage: recovery.lastRejection.stage,
-        consecutiveIdentical: recovery.consecutiveIdentical,
-        totalRejected: recovery.totalRejected,
-        thresholds: recovery.limits,
-      }),
-    }});
+  const selectedHistory = [];
+  // operationHistory is generated by increasing journal revision and
+  // event-local index; reuse that order (also for positionless previews).
+  for (const original of ordinary) {
+    const selected = selectedByRef.get(original.ref);
+    if (selected) {
+      selectedHistory.push(selected);
+      selectedByRef.delete(original.ref);
+    }
+  }
+  const selectedRequests = bounded.context.filter(item=>selectedByRef.has(item.ref)).reverse();
+  /** @type {ContextItem[]} */
+  const items = [request, host, ...selectedHistory, ...selectedRequests];
+  if (correctionItem) items.push(correctionItem);
   return items;
 }

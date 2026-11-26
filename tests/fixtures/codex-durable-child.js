@@ -1,13 +1,11 @@
+import { readInvocationPrompt } from './read-invocation-prompt.js';
 import { access, appendFile, readFile, rename, writeFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
 const prompt = Buffer.concat(chunks).toString('utf8');
-const separator = '\n\nInvocation (JSON):\n';
-const boundary = prompt.indexOf(separator);
-if (boundary < 0) throw new Error('Missing invocation JSON');
-const { attemptId, operationId, objective, context, kind, profileId } = JSON.parse(prompt.slice(boundary + separator.length));
+const { attemptId, operationId, objective, context, kind, profileId } = readInvocationPrompt(prompt);
 const facts = context.find(item => item.ref === 'host:invocation-context')?.value;
 
 const emit = event => new Promise((resolve, reject) => {
