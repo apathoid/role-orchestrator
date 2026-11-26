@@ -444,18 +444,21 @@ test('C22 F2/F4 actual MCP argument errors and annotation-only Intent shape; no 
     assert.match(tools.find(t=>t.name==='context_fetch').description,/maxBytes limits a range response only when offset is supplied/);
     assert.match(tools.find(t=>t.name==='evidence_fetch').description,/maxBytes alone reads from offset 0/);
     const samples=[
-      ['context_list',{cursor:false},'$.cursor','an object'],
-      ['context_fetch',{},'$.ref','an object'],
+      ['context_list',{cursor:false},'$.cursor','an object',undefined,/use 0.*\{revision, index\}.*legacy Decisions.*not valid retrieval cursors/],
+      ['context_fetch',{},'$.ref','an object',undefined,/non-empty reference string or an object \{revision, index\}/],
       ['evidence_list',{bogus:1},'$.bogus','a supported field',['cursor']],
       ['evidence_fetch',{ref:'x',offset:-1},'$.offset','a non-negative safe integer'],
       ['context_fetch',{ref:'x',bogus:1},'$.bogus','a supported field',['ref','sourceOperationId','offset','maxBytes']],
     ];
     let n=2;
-    for(const [name,args,path,expected,allowedFields] of samples){
+    for(const [name,args,path,expected,allowedFields,hintPattern] of samples){
       const result=value(await call(bridge.url,++n,name,args));
       assert.equal(result.kind,'unavailable');
       assert.equal(result.reason,'invalid_input');
-      assert.deepEqual(result.diagnostic,{code:'INVALID_PROPOSAL',path,expected,...(allowedFields&&{allowedFields})});
+      const {hint,...primary}=result.diagnostic;
+      assert.deepEqual(primary,{code:'INVALID_PROPOSAL',path,expected,...(allowedFields&&{allowedFields})});
+      if(hintPattern)assert.match(hint,hintPattern);
+      else assert.equal(hint,undefined);
     }
     const key='🌍'.repeat(4000);
     const large=value(await call(bridge.url,++n,'evidence_list',{[key]:1}));

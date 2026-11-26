@@ -316,3 +316,51 @@ test('C22 optional diagnostic details do not participate in recovery identity an
     assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
   }finally{await api.close();}
 });
+
+test('C22-R old and enriched reasons count identically and round-trip; correction retains bounded hint',async()=>{
+  const path='$.nextController.contextRequest.refs[0]';
+  const reason={code:'INVALID_PROPOSAL',path,expected:'an object'};
+  const malformed={nextController:{continue:true,contextRequest:{refs:[false]}}};
+  const {api,invocations}=setup({maxInvocations:8,respond(invocation,count){
+    const base=final(invocation);
+    if(count===1)return {...base,controllerDeclaration:{kind:'invalid',reason}};
+    if(count===2||count===5)return {...base,controllerDeclaration:{kind:'intent',value:malformed}};
+    if(count===3)return {...base,controllerDeclaration:{kind:'invalid',reason:{...reason,hint:'界"'.repeat(600)}}};
+    return {...base,controllerDeclaration:{kind:'invalid',reason:{...reason,hint:'different diagnostic'}}};
+  }});
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.equal(state.status,'waiting');
+    assert.equal(invocations.length,5);
+    const errors=state.events.filter(e=>e.kind==='controller.invalid_proposal');
+    assert.equal(errors.length,5);
+    for(const error of errors){
+      const {hint,...primary}=error.reason;
+      assert.deepEqual(primary,reason);
+    }
+    assert.equal(errors[0].reason.hint,undefined);
+    assert.match(errors[1].reason.hint,/\{ref, offset\}/);
+    assert.equal(errors[2].reason.hint,undefined);
+    assert.equal(errors[3].reason.hint,'different diagnostic');
+    const correction=invocations[2].context.find(item=>item.ref==='host:decision-error').value;
+    assert.equal(correction.hint,errors[1].reason.hint);
+    assert.equal(correction.totalRejected,2);
+    for(const delivery of ['intent_mcp','intent_text',undefined]){
+      const prompt=renderInvocationPrompt({...invocations[2],controllerDelivery:delivery},'fixture');
+      assert.ok(prompt.includes(correction.hint));
+    }
+    const saved=encodeSnapshot(state);
+    const reopened=decodeSnapshot(saved);
+    assert.equal(reopened.kind,'accepted');
+    assert.deepEqual(reopened.value.events.filter(e=>e.kind==='controller.invalid_proposal').map(e=>e.reason),
+      errors.map(e=>e.reason));
+    assert.equal(decisionRecovery(reopened.value).consecutiveIdentical,5);
+    assert.equal(decisionRecovery(reopened.value).totalRejected,5);
+    const tampered=JSON.parse(saved);
+    tampered.events.find(e=>e.kind==='controller.invalid_proposal').reason.hint='x'.repeat(513);
+    const bounded=decodeSnapshot(JSON.stringify(tampered));
+    assert.equal(bounded.kind,'accepted');
+    assert.deepEqual(bounded.value.events.find(e=>e.kind==='controller.invalid_proposal').reason,reason);
+    assert.equal(decisionRecovery(bounded.value).consecutiveIdentical,5);
+  }finally{await api.close();}
+});

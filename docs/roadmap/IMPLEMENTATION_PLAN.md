@@ -1,5 +1,9 @@
 # Активный план реализации и приёмки
 
+## C22-R — Retrieval Argument Diagnostic Refinement (implemented; engineering verification pending; native UNVERIFIED)
+
+Only review P2.1: clarify historical reference/cursor/selection alternatives in the existing bounded error, preserve primary identity, exact nested errors, decoder/normalization, retrieval scope and legacy numeric cursor behavior. C22-R.0/.1/.2 implemented, .3 targeted regressions and full CI required, .4 documentation updated; see [STATUS](STATUS.md). Review baseline `e724030cfb6faabecbe0c77e0f4fbe862365c0b7` / [CI #45707658158](https://github.com/apathoid/role-orchestrator/actions/runs/45707658158) SUCCESS. P3.1/P3.2 unchanged pending real runs; no next engineering cycle authorized.
+
 ## C22 — Model-facing Technical Information Accessibility (ENGINEERING VERIFIED at 8ad7f541; native UNVERIFIED)
 
 [Detailed executable plan](C22_MODEL_FACING_TECHNICAL_INFORMATION_ACCESSIBILITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Authorized on `feature/controller-intent-deferred-admission` from `7906710019d46debb4ec4cd9c226a2b13491d156` / [exact CI #45668749511](https://github.com/apathoid/role-orchestrator/actions/runs/45668749511) SUCCESS. The introducing commit is planning HEAD. Goal: improve accessibility of technical information already owned by RO, not expand the contract machinery. F1–F5 mandatory; conditional opportunities may end without edits. Joint design of .1/.3 before implementation, without mandatory shared framework.

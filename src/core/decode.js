@@ -1,20 +1,28 @@
 /** @template T @typedef {(input: unknown, path: string) => T} Decoder */
-/** @typedef {{code: 'INVALID_PROPOSAL', path: string, expected: string, allowedFields?: string[]}} FieldError */
+/** @typedef {{code: 'INVALID_PROPOSAL', path: string, expected: string, allowedFields?: string[], hint?: string}} FieldError */
 /** @template T @typedef {{kind: 'accepted', value: T} | {kind: 'rejected', reason: FieldError}} Decoded */
 
 class InvalidField extends Error {
-  /** @param {string} path @param {string} expected @param {unknown} [fields] */
-  constructor(path, expected, fields) {
+  /** @param {string} path @param {string} expected @param {unknown} [fields] @param {string} [hint] */
+  constructor(path, expected, fields, hint) {
     super(path + ': expected ' + expected);
     const allowedFields = boundedAllowedFields(fields);
     /** @type {FieldError} */
-    this.reason = { code: 'INVALID_PROPOSAL', path, expected, ...(allowedFields && {allowedFields}) };
+    this.reason = { code: 'INVALID_PROPOSAL', path, expected, ...(allowedFields && {allowedFields}), ...(hint && {hint}) };
   }
 }
 
-/** @param {string} path @param {string} expected @param {unknown} [fields] @returns {never} */
-export function invalid(path, expected, fields) {
-  throw new InvalidField(path, expected, fields);
+/** @param {string} path @param {string} expected @param {unknown} [fields] @param {string} [hint] @returns {never} */
+export function invalid(path, expected, fields, hint) {
+  throw new InvalidField(path, expected, fields, boundedFieldHint(hint));
+}
+
+/** Optional diagnostic text, never part of recovery identity. Omit rather than truncate.
+ * @param {unknown} value @returns {string | undefined}
+ */
+export function boundedFieldHint(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 512 &&
+    JSON.stringify(value).length <= 512 ? value : undefined;
 }
 
 /**
@@ -39,8 +47,9 @@ export function boundedAllowedFields(value) {
  */
 export function boundedFieldError(reason) {
   const allowedFields = boundedAllowedFields(reason.allowedFields);
+  const hint = boundedFieldHint(reason.hint);
   return {code:reason.code, path:reason.path.slice(0,512), expected:reason.expected.slice(0,512),
-    ...(allowedFields && {allowedFields})};
+    ...(allowedFields && {allowedFields}), ...(hint && {hint})};
 }
 
 /** @template T @param {Decoder<T>} decoder @param {unknown} input @returns {Decoded<T>} */
@@ -87,12 +96,13 @@ export const nullable = item => (input, path) => input === null ? null : item(in
 /**
  * @template {Record<string, Decoder<unknown>>} F
  * @param {F} fields
+ * @param {string} [objectHint] Additional information when the input is not a plain object.
  * @returns {Decoder<{[K in keyof F]: ReturnType<F[K]>}>}
  */
-export const record = fields => (input, path) => {
+export const record = (fields, objectHint) => (input, path) => {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       (Object.getPrototypeOf(input) !== Object.prototype && Object.getPrototypeOf(input) !== null)) {
-    return invalid(path, 'an object');
+    return invalid(path, 'an object', undefined, objectHint);
   }
   for (const field of Object.keys(input)) {
     if (!Object.hasOwn(fields, field)) invalid(path + '.' + field, 'a supported field', Object.keys(fields));

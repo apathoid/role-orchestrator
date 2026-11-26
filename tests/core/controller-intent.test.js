@@ -130,3 +130,72 @@ test('C22 F1 lists actual external fields without altering the stable cause or c
   assert.equal(wrongType.reason.allowedFields,undefined);
   assert.deepEqual(materializeControllerIntent(simple('x'),binding),valid);
 });
+
+test('C22-R context selections and cursors retain old primary causes and normalized forms in Intent and legacy Decision',()=>{
+  const prefix='$.nextController.contextRequest';
+  const intent=request=>({nextController:{continue:true,contextRequest:request}});
+  const canonical=materializeControllerIntent(intent({refs:['existing']}),binding).value;
+  const decoders=[
+    request=>decodeControllerIntent(intent(request)),
+    request=>decodeDecision({...canonical,...intent(request)}),
+    request=>materializeControllerIntent(intent(request),binding),
+  ];
+  const pos={revision:10,index:2};
+  const valid=[
+    {refs:['ref']}, {refs:[pos]}, {refs:[{ref:'ref',offset:0}]},
+    {refs:[{ref:pos,offset:3}]}, {cursor:0}, {cursor:17}, {cursor:pos},
+    {workCursor:0}, {workCursor:17}, {workCursor:pos},
+  ];
+  for(const request of valid){
+    const [external,legacy,bound]=decoders.map(decode=>decode(request));
+    for(const decoded of [external,legacy,bound]){
+      assert.equal(decoded.kind,'accepted');
+      assert.deepEqual(JSON.parse(JSON.stringify(decoded.value.nextController.contextRequest)),request);
+    }
+    assert.deepEqual(bound.value.nextController,legacy.value.nextController);
+  }
+  const reference=/non-empty reference string or an object \{revision, index\}/;
+  const selection=/\{ref, offset\}/;
+  const cursor=/use 0.*\{revision, index\}.*legacy Decisions.*not valid retrieval cursors/;
+  for(const decode of decoders){
+    for(const invalid of [false,null,[],1,undefined]){
+      const rejected=decode({refs:[invalid]});
+      assert.equal(rejected.kind,'rejected');
+      assert.equal(rejected.reason.path,prefix+'.refs[0]');
+      assert.equal(rejected.reason.expected,'an object');
+      assert.match(rejected.reason.hint,reference);
+      assert.match(rejected.reason.hint,selection);
+      const nested=decode({refs:[{ref:invalid,offset:0}]});
+      assert.equal(nested.kind,'rejected');
+      assert.equal(nested.reason.path,prefix+'.refs[0].ref');
+      assert.equal(nested.reason.expected,'an object');
+      assert.match(nested.reason.hint,reference);
+      assert.doesNotMatch(nested.reason.hint,selection);
+    }
+    for(const key of ['cursor','workCursor']){
+      for(const invalid of [false,null,[], '0']){
+        const result=decode({[key]:invalid});
+        assert.equal(result.kind,'rejected');
+        assert.equal(result.reason.path,prefix+'.'+key);
+        assert.equal(result.reason.expected,'an object');
+        assert.match(result.reason.hint,cursor);
+      }
+      const negative=decode({[key]:-1});
+      assert.deepEqual(negative.reason,{code:'INVALID_PROPOSAL',path:prefix+'.'+key,expected:'a non-negative safe integer'});
+    }
+    for(const [request,path,expected,allowedFields] of [
+      [{refs:['']},'.refs[0]','a non-empty string'],
+      [{refs:[{ref:'',offset:0}]},'.refs[0].ref','a non-empty string'],
+      [{refs:[{revision:-1,index:0}]},'.refs[0].revision','a non-negative safe integer'],
+      [{refs:[{ref:{revision:1,index:-1},offset:0}]},'.refs[0].ref.index','a non-negative safe integer'],
+      [{refs:[{ref:'r',offset:-1}]},'.refs[0].offset','a non-negative safe integer'],
+      [{refs:[{revision:1,index:0,bad:true}]},'.refs[0].bad','a supported field',['revision','index']],
+      [{refs:[{ref:'r',offset:0,bad:true}]},'.refs[0].bad','a supported field',['ref','offset']],
+      [{cursor:{revision:1,index:-1}},'.cursor.index','a non-negative safe integer'],
+    ]){
+      const result=decode(request);
+      assert.equal(result.kind,'rejected');
+      assert.deepEqual(result.reason,{code:'INVALID_PROPOSAL',path:prefix+path,expected,...(allowedFields&&{allowedFields})});
+    }
+  }
+});

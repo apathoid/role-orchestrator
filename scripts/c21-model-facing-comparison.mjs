@@ -122,6 +122,10 @@ await withOwnedRun('C21-comparison',async directory=>{
       const samples=[{finalAssessment:{overall:'complete',answer}}, {finalAssessment:{overall:'invalid',answer}},
         {finalAssessment:{overall:'partial',answer,requirements:[{requirementId:'r',status:'unverified',unknown:true}]}},
         {nextController:{continue:true,contextRequest:{refs:[{ref:{revision:1,index:0},offset:0}]}}},
+        ...[{refs:['r']},{refs:[{revision:1,index:0}]},{refs:[false]},{refs:[{ref:null,offset:0}]},
+          {refs:[{revision:1,index:-1}]},{refs:[{revision:1,index:0,unknown:true}]},
+          {cursor:0},{cursor:17},{cursor:false},{cursor:null},{cursor:{revision:1,index:-1}},
+          {workCursor:17},{workCursor:false}].map(contextRequest=>({nextController:{continue:true,contextRequest}})),
         {additions:[{actionId:'a',kind:'delegate',profileId:'primary',objective,expectedResult:'result'}]},
         {schemaVersion:1,finalAssessment:{overall:'complete',answer}}, {finalAssessment:{overall:'complete',answer,author:'spoof'}}];
       const stableDecodes=samples.map(input=>[stableResult(decodeControllerIntent(input)),stableResult(materializeControllerIntent(input,binding))]);

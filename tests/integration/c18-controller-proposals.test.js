@@ -333,3 +333,26 @@ test('C22 larger own descriptions do not hide a previously deliverable external 
     assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'done');
   }finally{stop.abort();bridge.close();}
 });
+
+test('C22-R context selection hint is optional at the existing control wire limit, not a lineage change',async()=>{
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,attemptId:'c22r-wire',controllerDelivery:'intent_mcp'});
+  const malformed={nextController:{continue:true,contextRequest:{refs:[false]}}};
+  try{
+    const first=value(await call(bridge.url,1,'submit_decision',{intent:malformed}));
+    const reason={code:'INVALID_PROPOSAL',path:'$.nextController.contextRequest.refs[0]',expected:'an object'};
+    assert.equal(first.registered,true);
+    assert.match(first.reason.hint,/non-empty reference string.*\{revision, index\}.*\{ref, offset\}/);
+    const {hint,...primaryReason}=first.reason;
+    assert.deepEqual(primaryReason,reason);
+    const primary={kind:'rejected',proposalRef:'proposal:c22r-wire:2',reason};
+    const envelope={jsonrpc:'2.0',id:'',result:{content:[{type:'text',text:JSON.stringify(primary)}],isError:true}};
+    const id='x'.repeat(256*1024-Buffer.byteLength(JSON.stringify(envelope)));
+    const response=await call(bridge.url,id,'submit_decision',{intent:malformed,replaces:first.proposalRef});
+    assert.equal(response.status,200);
+    assert.deepEqual(value(response),primary);
+    const corrected=value(await call(bridge.url,3,'submit_decision',{intent:intent('corrected'),replaces:primary.proposalRef}));
+    assert.equal(corrected.registered,true);
+    assert.equal((await bridge.finalizeDecision()).value.finalAssessment.answer,'corrected');
+  }finally{stop.abort();bridge.close();}
+});

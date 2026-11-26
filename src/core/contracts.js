@@ -47,21 +47,28 @@ export const assessment = record({
 
 export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext });
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
-/** @param {unknown} input @param {string} path */
-const contextPosition = record({ revision: count, index: count });
+const contextPositionFields = { revision: count, index: count };
+// These are annotations of the existing object-branch error, not new
+// rejection conditions. The position fields and their checks remain shared.
+const referenceForm = 'a non-empty reference string or an object {revision, index} (non-negative safe integers)';
+const referencePosition = record(contextPositionFields, 'A reference may be ' + referenceForm + '.');
+const cursorPosition = record(contextPositionFields,
+  'Omit the cursor where optional or use 0 for a fresh traversal; use {revision, index} (non-negative safe integers) for a journal-prefix traversal. Other non-negative safe integers decode for legacy Decisions but are not valid retrieval cursors.');
+const selectionPosition = record(contextPositionFields,
+  'A selection may be ' + referenceForm + ', or an object {ref, offset} where ref has either reference form and offset is a non-negative safe integer.');
 /** Journal-prefix page cursor. Legacy nonzero numbers decode for persisted Decisions;
  * the ContextPort rejects them instead of silently reinterpreting a moving offset. */
 /** @param {unknown} value @param {string} at */
-export const historyCursor = (value, at) => typeof value === 'number' ? count(value, at) : contextPosition(value, at);
+export const historyCursor = (value, at) => typeof value === 'number' ? count(value, at) : cursorPosition(value, at);
 /** A history reference is the same identity used by ContextPort.fetch. */
 /** @param {unknown} input @param {string} path */
 export const contextReference = (input, path) => typeof input === 'string'
-  ? id(input, path) : contextPosition(input, path);
+  ? id(input, path) : referencePosition(input, path);
 /** @param {unknown} input @param {string} path */
 const contextSelection = (input, path) => input && typeof input === 'object' &&
     !Array.isArray(input) && Object.hasOwn(input, 'ref')
   ? record({ref:contextReference,offset:count})(input,path)
-  : contextReference(input,path);
+  : typeof input === 'string' ? id(input,path) : selectionPosition(input,path);
 const contextReferences = arrayOf(contextSelection);
 /** @param {ReturnType<typeof contextSelection>} ref */
 function contextSelectionKey(ref) {

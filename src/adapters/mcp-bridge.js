@@ -112,8 +112,8 @@ function toolReply(value, requestId, control = false) {
   if (control && tool && Object.hasOwn(tool,'registered')) {
     const {registered: _registered, reason, ...rest} = tool;
     const detail = object(reason);
-    if (detail && Object.hasOwn(detail,'allowedFields')) {
-      const {allowedFields: _fields, ...primary} = detail;
+    if (detail && (Object.hasOwn(detail,'allowedFields') || Object.hasOwn(detail,'hint'))) {
+      const {allowedFields: _fields, hint: _hint, ...primary} = detail;
       return toolReply({...tool, reason:primary}, requestId, true);
     }
     return toolReply({...rest, ...(reason !== undefined && {reason})}, requestId);
