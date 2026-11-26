@@ -1,8 +1,77 @@
 # Changelog
 
+- C22-R2 follow-up: retain the actual transport failure at native finality when a reliably observed replacement invalidates a previously conflicted selected proposal; preserve later genuine conflicts and existing correction rules.
+
+### C22-R2 — Technical Interface Reliability & Diagnostic Accuracy (engineering PASS at 6bbdbcb6; native UNVERIFIED)
+
+- Account for observed known-lineage replacement on fingerprint or registry serialization failure, preserving the existing finality barrier and technical failure provenance. Correct advisory attachment and availability diagnostics without changing evidence or admission. Clarify cross-operation reference forms in bounded tool descriptions and expose the existing selected proposal identity on conflict without changing replacement rules.
+
+### C22-R — Retrieval Argument Diagnostic Refinement (engineering PASS at 8061e88e; native UNVERIFIED)
+
+- Clarify existing alternative forms of historical references, cursors and context selections through a bounded optional error hint, preserving primary causes, nested diagnostics, decoder/retrieval semantics and recovery identity. Preserve wire receipt bounds and snapshot compatibility for existing records.
+
+### C22 — Model-facing Technical Information Accessibility (engineering PASS at 8ad7f541; native UNVERIFIED)
+
+- Expose bounded local allowed fields and retain existing own retrieval decoder errors without changing validation or recovery identity.
+- Distinguish registered proposal refs from unregistered receipt refs; retain existing replacement/finality and primary wire cause. Reuse the external Intent structural reference in the MCP description without adding schema restrictions.
+- Clarify prior correction facts/current delivery and existing retrieval argument scope; no new state, tools, gates, context policy or provider-specific behavior.
+
+### C21-R — Model-facing Clarity & Comparison Refinement (engineering PASS at dbcc6d88; real native UNVERIFIED)
+
+- Consolidate repeated retrieval and native completion guidance; keep role-specific and standalone tool information where necessary. Clarify evidence directory fields and byte-chunk pagination without changing schemas, bounds or runtime contracts.
+- Extend the pinned comparison through actual historical ACP adapters and live MCP sparse observations, preserving raw payload, provenance, canonical ref and answer. No new evidence fields or mandatory model behavior.
+
+### C21 — Model-facing Information Clarity (engineering PASS at 2ed30f83; real native UNVERIFIED)
+
+- ACP same-call sparse updates can carry attributed prior identification fields in observations. Existing bounded projection preserves inherited attribution alongside each displayed value; raw captured payload and canonical evidence identity remain unchanged.
+- Clarify optional evidence discovery, captured-value availability and canonical ref/source/capture/projection distinctions, without changing list parameters or page defaults. MCP-only proposal guidance makes the separate native completion and exact final answer contract explicit.
+- Audit Controller prompts: preserve role responsibility, user and technical contracts, remove default history strategy and duplicated guidance. Advertise actual negotiated MCP aliases and role-appropriate continuation capabilities.
+
+### C20-R — Independent ACP result capture (engineering PASS at c86d3e5e; native UNVERIFIED)
+
+- Continue bounded current message capture after native history overflow; preserve message identity, exact output correlation, independent truncation diagnostics and native finality. No new execution deadline, resource default or store.
+
+### C20 — Optional invocation deadline and resource defaults (baseline engineering PASS at e092712f; native UNVERIFIED)
+
+- Default concurrency 5, cumulative invocation limit and hard invocation deadline disabled (`null`). Preserve finite trusted limits and optional single owner timer; no independent adapter, interaction or recovery execution timers. Cancellation during ACP setup and post-stop cleanup retain actual resource ownership.
+
 Публичные изменения и основные продуктовые вехи (не журнал всех коммитов). Текущий operational status и доказательства исполнения — [roadmap STATUS](docs/roadmap/STATUS.md).
 
-## Unreleased — C12–C17 integration and delivery
+## Unreleased — C12–C18 integration and delivery
+
+### C19 — Answer guidance and native metadata (engineering PASS at 876a33c7; native UNVERIFIED)
+
+- Correct fixture-owned local-store reopen; preserve canonical refs and previously deliverable raw bytes when optional native metadata exceeds the projection budget. Try the complete native snapshot before partial omission labels. Exact saturated budgets retain primary evidence even when an omission marker cannot fit.
+
+- Clarify the actual user-facing `finalAssessment.answer` for Decision and ControllerIntent, including action/artifact outcomes and limitations; distinguish observation capture completeness from tool success. No change to answer decoding, admission or presentation. No resource-policy change in C19.
+- Add optional native event metadata from ACP tool events and Codex completed command records to existing observation capture, live and historical projection; no inherited or synthesized status. Preserve existing source identity, provenance, original body and retrieval choice. Engineering verification PASS; native acceptance UNVERIFIED.
+
+### C18N-R — External ToolPort and live discovery corrective fixes (engineering CI PASS at 0687a40; real native UNVERIFIED)
+
+- Remove the hidden cumulative 32-call limit from the **registered** External ToolPort while retaining input/output sizes, permissions, cancellation, late receipts and source provenance; >64 real external invocations are now covered by integration regression.
+- Make optional Controller preflight reuse invocation-scoped historical/live identity indexes and check only referenced entries, instead of copying/scanning every prior observation per correction; the authoritative Decision remains unchanged.
+- Allow external tools to register names colliding with RO MCP built-ins, using existing deterministic aliasing; add `evidence_list.resumeCursor` and explicit omission/gap markers for oversized metadata so later captured observations remain discoverable.
+
+
+### C18N — Live evidence discovery and ordinary MCP simplification (engineering CI PASS on 42293b6; real native UNVERIFIED)
+
+- Introduce optional invocation-local `evidence_list/evidence_fetch` over already accepted observations with stable canonical refs, bounded paging/bytes, actual provenance and no early durability claim; historical context cursors are unchanged.
+- Add nonblocking advisory reference preflight **after** proposal registration with independently copied reference indices. Controller correction stays in the same native turn; the final journal admission remains sole authority.
+- Remove the cumulative 64 ordinary MCP calls limit and release completed ordinary request results. Concurrent same-ID calls remain correlated, but post-completion same-ID redelivery can run anew. Preserve strong `submit_decision` identity/last-wins/finality and durable unknown-effect handling.
+- Alias all colliding built-in MCP tools instead of shadowing extension names; general evidence guidance does not restrict model strategy or provider-native tools. Add live-HTTP and ACP SDK regressions; actual independent-provider/native model verification remains separate.
+
+
+### C18R — ControllerIntent corrective reliability (engineering CI PASS at `fab92fd037a0`; native UNVERIFIED)
+- An independently completed MCP ControllerIntent survives auxiliary ACP observation-capture overflow while truncation remains visible and incomplete native text is never promoted to full evidence.
+- Rejected explicit replacements from a known JSON-RPC request-ID conflict invalidate the selected lineage; successful same-turn correction remains available, and unresolved transport faults receive technical outcomes.
+- External MCP tools named `submit_decision` remain reachable via dynamic collision-free control-tool naming reflected in the Controller prompt.
+- Stronger original-attempt receipt identity and crash-gap/near-2-MiB/cancellation/namespace regressions. Real-model native quality and tool autonomy remain UNVERIFIED.
+
+
+### C18 — ControllerIntent & deferred Controller admission (engineering verification pending; native UNVERIFIED)
+- Opt-in model-owned ControllerIntent with trusted technical Decision v1 binding and unchanged single admission/journal. The old Decision v1 provider path remains the default.
+- Negotiated ACP MCP `submit_decision` accepts proposal-only submissions, supports same-turn correction and explicit same-lineage last-wins after normal native completion. Text fallback works without a second invocation; native tools are not disabled.
+- Bounded independent control-tool capacity and technical failure classification; added core/bridge/Operation/ACP subprocess regressions. Real model/provider performance and native skill/subagent behavior are not yet verified.
 
 ### C17R — Recovery delivery & diagnostic verification
 - Reserve actual correlated recovery representation in the existing optional budget before default technical previews, preserve model-requested records/pages and original journal order.

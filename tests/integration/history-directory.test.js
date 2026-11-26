@@ -310,7 +310,8 @@ test('history directory: MCP context_list shares journal cursor across bridges',
     assert.equal([...first.items,...second.items,...third.items].length,71);
     assert.equal((await call({cursor:0})).items[0].ref,'new-34');
     assert.deepEqual(await call({cursor:32}),{kind:'unavailable',reason:'invalid_cursor'});
-    assert.deepEqual(await call({cursor:{revision:1,index:-1}}),{kind:'unavailable',reason:'invalid_input'});
+    assert.deepEqual(await call({cursor:{revision:1,index:-1}}),{kind:'unavailable',reason:'invalid_input',
+      diagnostic:{code:'INVALID_PROPOSAL',path:'$.cursor.index',expected:'a non-negative safe integer'}});
   } finally {stop.abort();bridge.close();}
 });
 
@@ -374,4 +375,60 @@ test('history directory: v1 Decision validates new and legacy cursor shapes with
   for(const cursor of [-1,1.5,null,'32',{revision:1,index:-1},{revision:1,index:2,extra:1}]) {
     assert.equal(decodeDecision({...base,nextController:{continue:true,contextRequest:{cursor}}}).kind,'rejected');
   }
+});
+
+test('C22-R historical reference and cursor alternatives on actual MCP; unchanged retrieval and no call on invalid input',async()=>{
+  const f=fixture('c22r-history');
+  f.batch('seed',[report('body','original payload')]);
+  const access=port(f.state);
+  let calls=0,id=0;
+  const stop=new AbortController();
+  const bridge=await startMcpBridge({signal:stop.signal,contextAccess:{
+    ...access, list(cursor){calls++;return access.list(cursor);},
+    fetch(...args){calls++;return access.fetch(...args);}
+  }});
+  const call=async(name,args)=>{
+    const response=await fetch(bridge.url,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:++id,method:'tools/call',params:{name,arguments:args}})});
+    assert.equal(response.status,200);
+    return JSON.parse((await response.json()).result.content[0].text);
+  };
+  const reference=/non-empty reference string or an object \{revision, index\}/;
+  const cursor=/omit the cursor where optional or use 0.*\{revision, index\}.*legacy Decisions.*not valid retrieval cursors/i;
+  const rejected=async(name,args,path,expected,hintPattern,allowedFields)=>{
+    const result=await call(name,args);
+    assert.equal(result.kind,'unavailable');
+    assert.equal(result.reason,'invalid_input');
+    const {hint,...primary}=result.diagnostic;
+    assert.deepEqual(primary,{code:'INVALID_PROPOSAL',path,expected,...(allowedFields&&{allowedFields})});
+    if(hintPattern)assert.match(hint,hintPattern);
+    else assert.equal(hint,undefined);
+  };
+  try{
+    for(const args of [{},{ref:false},{ref:null},{ref:[]},{ref:1}]){
+      await rejected('context_fetch',args,'$.ref','an object',reference);
+    }
+    await rejected('context_fetch',{ref:''},'$.ref','a non-empty string');
+    await rejected('context_fetch',{ref:{revision:-1,index:0}},'$.ref.revision','a non-negative safe integer');
+    await rejected('context_fetch',{ref:{revision:1,index:-1}},'$.ref.index','a non-negative safe integer');
+    await rejected('context_fetch',{ref:{revision:1,index:0,bad:true}},'$.ref.bad','a supported field',undefined,['revision','index']);
+    for(const invalid of [false,null,[], '0']){
+      await rejected('context_list',{cursor:invalid},'$.cursor','an object',cursor);
+    }
+    await rejected('context_list',{cursor:{revision:1,index:-1}},'$.cursor.index','a non-negative safe integer');
+    assert.equal(calls,0);
+    const position=operationHistory(f.state).find(item=>item.ref==='body').receivedSequence;
+    const wire=x=>JSON.parse(JSON.stringify(x));
+    for(const ref of ['body',position]){
+      const result=await call('context_fetch',{ref});
+      assert.equal(result.kind,'available');
+      assert.equal(result.item.value,'original payload');
+      assert.deepEqual(result,wire(await access.fetch(ref)));
+    }
+    for(const args of [{},{cursor:0},{cursor:{revision:f.state.revision,index:0}}]){
+      assert.deepEqual(await call('context_list',args),wire(access.list(args.cursor)));
+    }
+    assert.deepEqual(await call('context_list',{cursor:17}),{kind:'unavailable',reason:'invalid_cursor'});
+    assert.equal(calls,6);
+  }finally{stop.abort();bridge.close();}
 });

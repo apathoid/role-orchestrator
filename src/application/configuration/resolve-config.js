@@ -1,13 +1,13 @@
 import { defaultContextBudgets } from '../context-bundle.js';
-import { arrayOf, count, decode, id, invalid, oneOf, optional, record } from '../../core/decode.js';
+import { arrayOf, count, decode, id, invalid, nullable, oneOf, optional, record } from '../../core/decode.js';
 
 /** @import {Configuration, ResourceConfig} from './decode-config.js' */
 
 /** @type {Readonly<Required<ResourceConfig>>} */
 const defaults = Object.freeze({
-  maxConcurrentInvocations: 2,
-  maxInvocationsPerOperation: 40,
-  invocationTimeoutMs: 180_000,
+  maxConcurrentInvocations: 5,
+  maxInvocationsPerOperation: null,
+  invocationTimeoutMs: null,
 });
 
 /** @param {unknown} input @param {string} path */
@@ -24,8 +24,8 @@ function timeout(input, path) {
 
 const resources = record({
   maxConcurrentInvocations: optional(positive),
-  maxInvocationsPerOperation: optional(positive),
-  invocationTimeoutMs: optional(timeout),
+  maxInvocationsPerOperation: optional(nullable(positive)),
+  invocationTimeoutMs: optional(nullable(timeout)),
 });
 const preferences = {
   controllerProfile: optional(id),
@@ -37,7 +37,7 @@ const projectShape = record({ schemaVersion: oneOf(1), ...preferences });
 const launchShape = record(preferences);
 
 /** @typedef {{kind: 'rejected', source: 'project' | 'launch', path: string, constraint: string}} Rejected */
-/** @typedef {Configuration & {resources: Required<ResourceConfig>, context: typeof defaultContextBudgets, preferredRole?: string, preferredSkills: string[]}} EffectiveConfiguration */
+/** @typedef {Configuration & {resources: Required<ResourceConfig>, defaultedResourceCeilings: {maxConcurrentInvocations: boolean, maxInvocationsPerOperation: boolean}, context: typeof defaultContextBudgets, preferredRole?: string, preferredSkills: string[]}} EffectiveConfiguration */
 
 /** @param {Rejected['source']} source @param {string} path @param {string} constraint @returns {Rejected} */
 function reject(source, path, constraint) {
@@ -87,14 +87,26 @@ export function resolveConfiguration(user, projectText, launchOptions = {}, inst
   const effective = { ...defaults, ...user.resources };
   for (const key of /** @type {(keyof ResourceConfig)[]} */ (Object.keys(defaults))) {
     const reduced = project.value.resources?.[key];
-    if (reduced !== undefined && reduced > effective[key]) {
+    const ceiling = effective[key];
+    if (reduced !== undefined && ceiling !== null && (reduced === null || reduced > ceiling)) {
       return reject('project', '$.resources.' + key, 'no-increase');
     }
-    effective[key] = launch.value.resources?.[key] ?? reduced ?? effective[key];
   }
 
   return { kind: 'accepted', value: {
-    ...user, resources: effective, context: {
+    ...user,
+    // Project preferences cannot gain authority merely because trusted defaults
+    // changed. Keep this resolver-only provenance for the resume boundary.
+    defaultedResourceCeilings: {
+      maxConcurrentInvocations: user.resources?.maxConcurrentInvocations === undefined && launch.value.resources?.maxConcurrentInvocations === undefined,
+      maxInvocationsPerOperation: user.resources?.maxInvocationsPerOperation === undefined && launch.value.resources?.maxInvocationsPerOperation === undefined,
+    }, resources: {
+      maxConcurrentInvocations: launch.value.resources?.maxConcurrentInvocations ?? project.value.resources?.maxConcurrentInvocations ?? effective.maxConcurrentInvocations,
+      maxInvocationsPerOperation: launch.value.resources?.maxInvocationsPerOperation !== undefined ? launch.value.resources.maxInvocationsPerOperation :
+        project.value.resources?.maxInvocationsPerOperation !== undefined ? project.value.resources.maxInvocationsPerOperation : effective.maxInvocationsPerOperation,
+      invocationTimeoutMs: launch.value.resources?.invocationTimeoutMs !== undefined ? launch.value.resources.invocationTimeoutMs :
+        project.value.resources?.invocationTimeoutMs !== undefined ? project.value.resources.invocationTimeoutMs : effective.invocationTimeoutMs,
+    }, context: {
       ...defaultContextBudgets,
       ...(user.context?.handoffMaxBytes === undefined ? {} : { handoffMaxBytes: user.context.handoffMaxBytes }),
       ...(user.context?.fetchMaxBytes === undefined ? {} : { fetchMaxBytes: user.context.fetchMaxBytes }),

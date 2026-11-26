@@ -20,9 +20,9 @@ const linux = { skip: process.platform !== 'linux', timeout: 12_000 };
 const profile = { providerId: 'acp', profileId: 'primary', model: 'fixture' };
 const script = fileURLToPath(new URL('../fixtures/acp-contract-agent.js', import.meta.url));
 
-function provider(cwd, scenario, { nativeSettings, mcpBridge, ...options } = {}) {
+function provider(cwd, scenario, { nativeSettings, mcpBridge, controllerIntent, ...options } = {}) {
   return createAcpProvider({ providerId: 'acp', defaultCwd: cwd,
-    configuration: { adapter: 'acp', launch: { command: process.execPath, args: [script, scenario ?? 'basic'] }, nativeSettings, mcpBridge },
+    configuration: { adapter: 'acp', launch: { command: process.execPath, args: [script, scenario ?? 'basic'] }, nativeSettings, mcpBridge, controllerIntent },
     ...options });
 }
 
@@ -205,9 +205,12 @@ test('ACP bounds streamed text and rejects an unknown terminal', linux, () =>
       assert.equal(result.output, undefined);
       assert.ok(call.observations.some(item => item.kind === 'model' && item.completeness === 'truncated'));
       if(scenario==='oversize'){
-        const fact=call.observations.find(item=>item.value?.reason==='accumulated_output_limit');
+        const history=call.observations.find(item=>item.value?.reason==='accumulated_output_limit');
+        const fact=call.observations.find(item=>item.value?.reason==='current_result_limit');
+        assert.equal(history.kind,'host_transport');
         assert.equal(fact.kind,'host_transport');
         assert.equal(result.outcome.diagnostics[0].ref,fact.ref);
+        assert.equal(call.observations.find(o=>o.ref==='acp-stop').value.resultTruncated,true);
       }
     }
   }));
@@ -749,18 +752,20 @@ test('F1 actual ACP reasoning and process facts keep Host source across journal,
     }
   }));
 
-test('F2 ACP timeout retains its deadline classification and partial native evidence', linux, () =>
+test('F2/C20 ACP owner deadline retains classification and partial native evidence', linux, () =>
   withOwnedRun('C12R10R-F2-timeout', async cwd => {
-    await using call = await invoke(provider(cwd, 'ignore-cancel'), {objective:'hold', timeoutMs:3_000});
+    const stop=new AbortController();
+    await using call = await invoke(provider(cwd, 'ignore-cancel'), {objective:'hold', timeoutMs:null,signal:stop.signal});
     await ready(cwd, 'attempt-test.ready');
+    stop.abort('deadline');
     const result = await call.completion;
     assert.equal(result.outcome.diagnostics[0].code, 'DEADLINE_EXCEEDED');
     assert.equal(result.outcome.terminal, 'unknown');
     assert.equal(result.dispatchCertainty, 'unknown');
     assert.ok(call.observations.some(item => item.value === 'progress attempt-test'));
     const fact = call.observations.find(item => item.ref === 'acp-process').value;
-    assert.equal(fact.reason, 'timed_out');
-    assert.equal(fact.cancelRequested, false);
+    assert.equal(fact.reason, 'cancelled');
+    assert.equal(fact.cancelRequested, true);
     assert.equal(fact.signal, 'SIGKILL');
     assert.equal(fact.exitCode, null);
   }));
@@ -788,4 +793,302 @@ test('C13 ACP native activity is delivered before terminal without changing resu
     const baselineResult = await baseline.completion;
     assert.deepEqual(result, baselineResult);
     assert.deepEqual(live.observations, baseline.observations);
+  }));
+
+
+test('C18.3 ACP native text fallback works without HTTP MCP negotiation', linux, () =>
+  withOwnedRun('C18-acp-intent-text', async cwd => {
+    const endpoint=provider(cwd,'c18-text',{mcpBridge:true,controllerIntent:'prefer_mcp'});
+    const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+    try{
+      const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished');
+      assert.equal(state.assessment.answer,'C18 text fallback');
+      assert.equal(state.events.filter(x=>x.kind==='controller.responded').length,1);
+      assert.equal(state.events.filter(x=>x.kind==='controller.invalid_proposal').length,0);
+    }finally{await api.close();}
+  }));
+
+test('C18.4 ACP MCP tool finality, correction and continuing native tools in one real SDK turn', linux, () =>
+  withOwnedRun('C18-acp-intent-mcp', async cwd => {
+    const endpoint=provider(cwd,'c18-mcp',{mcpBridge:true,controllerIntent:'prefer_mcp'});
+    const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+    try{
+      const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished',JSON.stringify(state.events.slice(-4)));
+      assert.equal(state.assessment.answer,'new candidate');
+      const responded=state.events.filter(x=>x.kind==='controller.responded');
+      assert.equal(responded.length,1);
+      assert.equal(state.attempts.length,1,'pending proposals must not dispatch Workers');
+      assert.ok(!state.events.some(x=>x.kind==='action.admitted'));
+      assert.equal(state.events.filter(x=>x.kind==='controller.invalid_proposal').length,0);
+      const observations=state.events.flatMap(x=>x.observations??[]);
+      assert.ok(observations.some(x=>x.value==='Ordinary native final text is not a JSON Decision'));
+      assert.ok(observations.some(x=>x.value?.finalAssessment?.answer==='new candidate'));
+    }finally{await api.close();}
+  }));
+
+test('C18N.8 actual ACP SDK accepted native observation is discoverable in-turn and durable under same canonical ref',linux,()=>
+  withOwnedRun('C18N-acp-live',async cwd=>{
+    const endpoint=provider(cwd,'c18n-live',{mcpBridge:true,controllerIntent:'prefer_mcp'});
+    const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+    try{
+      const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished',JSON.stringify(state.events.slice(-4)));
+      const answer='# Нативный результат\n\nПроверено: 🌍 `code`';
+      assert.equal(state.assessment.answer,answer);
+      assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+      assert.equal(state.events.filter(e=>e.kind==='controller.invalid_proposal').length,0);
+      assert.equal(state.attempts.length,1);
+      const native=state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[])
+        .find(o=>o.provenance?.sourceId==='c18n-native-inspection'&&o.native?.status==='completed');
+      assert.ok(native);
+      assert.match(native.ref,/^evidence:[a-f0-9]{64}$/);
+      assert.equal(native.providerRef?.startsWith('acp-update-'),true);
+      assert.equal(native.provenance.kind,'provider_tool');
+      assert.equal(native.native.eventKind,'tool_call_update');
+      assert.equal(native.native.kind,'read');
+      assert.deepEqual(native.native.inheritedFields,['kind']);
+      assert.equal(state.assessment.requirements[0].observationRefs[0],native.ref);
+      assert.ok(state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[])
+        .some(o=>o.provenance?.sourceId==='after-warning'),
+        'native tools remain available after preflight warning');
+    }finally{await api.close();}
+  }));
+
+// C18R.0 RED: capture of ordinary ACP updates is not a proof of MCP
+// submission incompleteness. Preserve the independent truncation evidence.
+for(const [scenario,valid] of [
+  ['c18-overflow-valid',true],['c18-overflow-missing',false],
+  ['c18-overflow-refusal',false],['c18-overflow-cancelled',false],
+  ['c18-overflow-text',false],
+]){
+  test('C18R.1 ACP capture overflow and decision finality: '+scenario, {...linux,timeout:15000},()=> 
+    withOwnedRun('C18R-'+scenario, async cwd=>{
+      const endpoint=provider(cwd,scenario,{mcpBridge:true,controllerIntent:'prefer_mcp'});
+      const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+      try {
+        const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+        const receipts=state.events.filter(e=>e.kind==='controller.responded');
+        assert.equal(receipts.length,valid?1:0);
+        if(valid){
+          assert.equal(state.assessment.answer,'capture independent');
+          assert.equal(state.status,'finished');
+        }
+        const observed=state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[]);
+        assert.ok(observed.some(o=>o.providerRef==='acp-output-limit'));
+        assert.ok(observed.some(o=>o.value?.truncated===true&&o.value?.stopReason));
+        assert.equal(observed.some(o=>o.value==='ordinary native final message'&&o.completeness==='complete'),
+          ['c18-overflow-valid','c18-overflow-missing'].includes(scenario));
+      }finally{await api.close();}
+    }));
+}
+
+test('C18R.5 complete near-limit UTF-8 MCP Decision passes real ACP SDK and existing admission', {...linux,timeout:20000},() =>
+  withOwnedRun('C18R-acp-large',async cwd=>{
+    const endpoint=provider(cwd,'c18-large',{mcpBridge:true,controllerIntent:'prefer_mcp'});
+    const {api}=setup({provider:endpoint,profile,maxInvocations:1});
+    try{
+      const state=await (await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished');
+      assert.equal(state.assessment.answer,'界'.repeat(650_000));
+      assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+      const observations=state.events.flatMap(e=>e.kind==='attempt.outcome'?e.observations??[]:[]);
+      assert.ok(observations.some(o=>o.value?.finalAssessment?.answer===state.assessment.answer));
+    }finally{await api.close();}
+  }));
+
+for(const scenario of ['c20-silent-initialize','c20-silent-session-new']){
+  test('C20 ACP cancellation during '+scenario+' with no execution timer', {...linux,timeout:5000},()=>
+    withOwnedRun(scenario,async cwd=>{
+      const stop=new AbortController();
+      await using call=await invoke(provider(cwd,scenario),{timeoutMs:null,signal:stop.signal});
+      await ready(cwd,'c20-setup.ready');
+      stop.abort('user');
+      const result=await call.completion;
+      assert.equal(result.dispatchCertainty,'not_sent');
+      assert.equal(result.outcome.diagnostics[0].code,'CANCELLED');
+      assert.equal(result.outcome.effect,'none');
+      const fact=call.observations.find(item=>item.ref==='acp-process').value;
+      assert.equal(fact.cancelRequested,true);
+      assert.equal(fact.signal,'SIGKILL');
+    }));
+}
+
+for(const mode of ['intent-mcp','intent-text','legacy']){
+  test('C20 no deadline: ACP late final after accumulated capture, '+mode,{...linux,timeout:15000},()=>
+    withOwnedRun('C20-overflow-'+mode,async cwd=>{
+      const endpoint=provider(cwd,'c20-overflow-'+mode,{mcpBridge:true,
+        controllerIntent:mode==='legacy'?undefined:'prefer_mcp'});
+      const {api}=setup({provider:endpoint,profile,maxInvocations:1,invocationTimeoutMs:null});
+      try{
+        const state=await(await api.submit(request({workspaceContext:{cwd}}))).completion;
+        const observations=state.events.flatMap(e=>e.observations??[]);
+        assert.ok(observations.some(o=>o.providerRef==='acp-output-limit'));
+        assert.ok(observations.some(o=>o.value?.truncated===true&&o.value?.stopReason==='end_turn'));
+        assert.equal(state.status,'finished');
+        assert.equal(state.assessment.answer,'late final after capture');
+        assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+        const native=observations.find(o=>o.provenance?.sourceId==='native-last'&&o.completeness==='complete');
+        assert.ok(native);
+        assert.equal(native.source,'model_claim');
+        assert.match(native.ref,/^evidence:[a-f0-9]{64}$/);
+        assert.equal(mode==='intent-mcp'?native.value:JSON.parse(native.value).finalAssessment.answer,'late final after capture');
+      }finally{await api.close();}
+    }));
+}
+test('C20-R: ACP Worker late final survives history overflow',{...linux,timeout:15000},()=>
+  withOwnedRun('C20-overflow-worker',async cwd=>{
+    const endpoint=provider(cwd,'c20-overflow-worker');
+    await using call=await invoke(endpoint,{timeoutMs:null});
+    const result=await call.completion;
+    assert.equal(result.outcome.terminal,'completed');
+    assert.equal(result.output,'late final after capture');
+    assert.ok(call.observations.some(o=>o.ref==='acp-output-limit'));
+    const native=call.observations.find(o=>o.ref===result.outputObservationRef);
+    assert.equal(native?.value,result.output);
+    assert.equal(native?.completeness,'complete');
+    assert.equal(native?.sourceId,'native-last');
+  }));
+
+const c20rAnswer='# Result\nПроверка 🧪\n{"value":"a\\b"}';
+for(const mode of ['mid-message','new-id','anonymous','oversized','anonymous-too-large','anonymous-identity-limit']){
+  test('C20-R native result identity and completeness: '+mode,{...linux,timeout:15000},()=>
+    withOwnedRun('C20R-'+mode,async cwd=>{
+      const endpoint=provider(cwd,'c20r-'+mode,{controllerIntent:'text'});
+      const {api}=setup({provider:endpoint,profile,maxInvocations:1,invocationTimeoutMs:null});
+      try{
+        const state=await(await api.submit(request({workspaceContext:{cwd}}))).completion;
+        const obs=state.events.flatMap(e=>e.observations??[]);
+        const stop=obs.find(o=>o.providerRef==='acp-stop')?.value;
+        assert.equal(stop?.historyTruncated,true);
+        const valid=['mid-message','new-id','anonymous'].includes(mode);
+        assert.equal(stop?.resultTruncated,!valid);
+        assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,valid?1:0);
+        if(valid){
+          assert.equal(state.status,'finished');
+          assert.equal(state.assessment.answer,c20rAnswer);
+          const native=obs.find(o=>o.providerRef==='acp-current-result');
+          assert.equal(native.completeness,'complete');
+          assert.equal(native.source,'model_claim');
+          assert.equal(JSON.parse(native.value).finalAssessment.answer,c20rAnswer);
+          assert.equal(obs.filter(o=>o.providerRef==='acp-current-result').length,1);
+        }else{
+          assert.equal(state.attempts[0].outcome.diagnostics[0].code,'RESOURCE_LIMIT');
+          assert.ok(obs.some(o=>o.providerRef===(mode==='anonymous-identity-limit'?'acp-result-boundary-limit':'acp-result-limit')));
+          assert.ok(!obs.some(o=>o.providerRef==='acp-current-result'&&o.completeness==='complete'));
+        }
+      }finally{await api.close();}
+    }));
+}
+for(const [mode,expected] of [['worker-anonymous','first second 🧪'],['split-surrogate','x'.repeat(100)+'🧪']]){
+  test('C20-R Worker preserves native chunks: '+mode,linux,()=>withOwnedRun('C20R-'+mode,async cwd=>{
+    await using call=await invoke(provider(cwd,'c20r-'+mode),{timeoutMs:null});
+    const result=await call.completion;
+    assert.equal(result.outcome.terminal,'completed');
+    assert.equal(result.output,expected);
+    const native=call.observations.find(o=>o.ref===result.outputObservationRef);
+    assert.equal(native?.value,expected);
+    assert.equal(native?.completeness,'complete');
+    assert.equal(call.observations.find(o=>o.ref==='acp-stop').value.resultBytes,Buffer.byteLength(expected));
+  }));
+}
+for(const mode of ['cancel','deadline','disconnect','refusal']){
+  test('C20-R no admission after '+mode+' following history overflow',linux,()=>withOwnedRun('C20R-'+mode,async cwd=>{
+    const stop=new AbortController();
+    await using call=await invoke(provider(cwd,'c20r-'+mode,{controllerIntent:'text'}),{kind:'controller',timeoutMs:null,signal:stop.signal});
+    if(mode==='cancel'||mode==='deadline'){
+      await ready(cwd,'c20r-ready');
+      stop.abort(mode==='deadline'?'deadline':'client');
+    }
+    const result=await call.completion;
+    assert.notEqual(result.outcome.terminal,'completed');
+    assert.equal(result.controllerDeclaration,undefined);
+    assert.equal(result.outputObservationRef,undefined);
+    assert.ok(call.observations.some(o=>o.ref==='acp-output-limit'));
+    assert.ok(!call.observations.some(o=>o.ref==='acp-current-result'&&o.completeness==='complete'));
+    assert.equal(result.outcome.diagnostics[0].code,({cancel:'CANCELLED',deadline:'DEADLINE_EXCEEDED',disconnect:'PROVIDER_DISCONNECTED',refusal:'PROVIDER_REFUSED'})[mode]);
+  }));
+}
+
+test('C20-R rejected text after overflow references exact current native message and supports correction',linux,()=>
+  withOwnedRun('C20R-correction',async cwd=>{
+    const {api}=setup({provider:provider(cwd,'c20r-correction',{controllerIntent:'text'}),profile,maxInvocations:2,invocationTimeoutMs:null});
+    try{
+      const state=await(await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished');
+      assert.equal(state.assessment.answer,c20rAnswer);
+      const rejected=state.events.find(e=>e.kind==='controller.invalid_proposal');
+      assert.ok(rejected);
+      const receipt=state.events.find(e=>e.kind==='attempt.outcome'&&e.outcome.attemptId===rejected.attemptId);
+      const original=receipt.observations.find(o=>o.providerRef==='acp-current-result');
+      assert.equal(original.value,'not JSON after history overflow');
+      assert.equal(original.completeness,'complete');
+      assert.deepEqual(rejected.result,{ref:original.ref,representation:'reported_text'});
+      assert.equal(state.events.filter(e=>e.kind==='controller.responded').length,1);
+    }finally{await api.close();}
+  }));
+
+test('C20-R actual Worker result survives Controller retrieval and durable reopen',linux,()=>
+  withOwnedRun('C20R-worker-durable',async cwd=>{
+    const endpoint=provider(cwd,'c20-overflow-worker');
+    const controller={profileId:'primary',providerId:'synthetic-controller',model:'fixture'};
+    const catalog=createCatalog({schemaVersion:1,providers:{'synthetic-controller':{adapter:'fixture'},acp:{adapter:'acp'}},
+      profiles:{primary:{provider:'synthetic-controller',model:'fixture'},worker:{provider:'acp',model:'fixture'}},controllerProfile:'primary'});
+    const store=createLocalStateStore(join(cwd,'state'));
+    await mkdir(join(cwd,'state'));
+    await store.open();
+    let turns=0,selectedRef;
+    const fakeController={
+      async open(){return {sessionId:'controller'};},async close(){},
+      async invoke(_session,invocation){
+        const contextCursor=invocation.context[1].value.contextCursor;
+        if(++turns===1)return final(invocation,{contextCursor,finalAssessment:undefined,
+          additions:[{kind:'delegate',actionId:'worker',profileId:'worker',objective:'Produce evidence',
+            expectedResult:'Report',dependsOn:[],contextRefs:[]}],
+          waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'worker'}]}});
+        let cursor=0;
+        do{
+          const page=invocation.contextAccess.list(cursor);
+          assert.equal(page.kind,'available');
+          const entry=page.items.find(item=>item.providerRef==='acp-current-result');
+          if(entry){
+            const detail=await invocation.contextAccess.fetch(entry.ref);
+            assert.equal(detail.kind,'available');
+            assert.equal(detail.item.value,'late final after capture');
+            assert.equal(detail.item.source,'model_claim');
+            assert.equal(detail.item.completeness,'complete');
+            selectedRef=entry.ref;
+            break;
+          }
+          cursor=page.nextCursor;
+        }while(cursor!==undefined);
+        assert.ok(selectedRef);
+        return final(invocation,{contextCursor});
+      },
+    };
+    const {api}=setup({profile:controller,provider:fakeController,catalog,store,maxInvocations:4,
+      invocationTimeoutMs:null,authority:createAuthorityGrant({reference:'fixture-authority',origin:'user',profileIds:['primary','worker']}),
+      providerFor:selected=>selected.profileId==='worker'?endpoint:fakeController});
+    let state;
+    try{
+      state=await(await api.submit(request({workspaceContext:{cwd}}))).completion;
+      assert.equal(state.status,'finished');
+      assert.equal(turns,2);
+      const worker=state.attempts.find(a=>a.actionId==='worker');
+      assert.equal(worker.outcome.terminal,'completed');
+      const receipt=state.events.find(e=>e.kind==='attempt.outcome'&&e.outcome.attemptId===worker.attemptId);
+      const original=receipt.observations.find(o=>o.ref===selectedRef);
+      assert.equal(original.value,'late final after capture');
+      assert.equal(original.provenance.sourceId,'native-last');
+      assert.equal(receipt.observations.filter(o=>o.value===original.value).length,1);
+      assert.ok(receipt.outcome.outputRefs.some(r=>r.ref===selectedRef&&r.source==='model_claim'));
+    }finally{try{await api.close();}finally{await store.close();}}
+    const reopened=createLocalStateStore(join(cwd,'state'));
+    await reopened.open();
+    try{
+      const restored=await reopened.load(state.operationId);
+      const find=operation=>operation.events.flatMap(e=>e.observations??[]).find(o=>o.ref===selectedRef);
+      assert.deepEqual(JSON.parse(JSON.stringify(find(restored))),JSON.parse(JSON.stringify(find(state))));
+    }finally{await reopened.close();}
   }));

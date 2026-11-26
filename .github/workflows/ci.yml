@@ -57,6 +57,16 @@ jobs:
             exit "$status"
           fi
           tail -n 20 "$RUNNER_TEMP/orchestrator-integration.log"
+      - name: C18N bounded ordinary MCP request retention (synthetic, GC)
+        run: nix develop --no-update-lock-file --command node --expose-gc scripts/c18n-mcp-memory-probe.mjs
+      - name: C18N-R real ToolPort memory and preflight comparison (synthetic, GC)
+        run: nix develop --no-update-lock-file --command node --expose-gc scripts/c18nr-correction-probe.mjs
+      - name: C20 timer inventory and durable operation scale (synthetic, GC)
+        run: |
+          grep -RnE 'setTimeout|AbortSignal\.timeout|setInterval|requestTimeout|headersTimeout|schedule\(' src
+          nix develop --no-update-lock-file --command node --expose-gc scripts/c20-scale-probe.mjs
+      - name: C20-R independent ACP result capture scale (actual SDK, GC)
+        run: nix develop --no-update-lock-file --command node --expose-gc scripts/c20r-acp-capture-probe.mjs
       - name: Actual Linux PTY transport fixture (not native LLM)
         run: |
           command -v script
@@ -67,6 +77,8 @@ jobs:
         run: nix develop --no-update-lock-file --command npm test
       - name: C17 deterministic baseline Controller payload and parser comparison
         run: nix develop --no-update-lock-file --command node scripts/c17-prompt-comparison.mjs
+      - name: C21 deterministic A/B/C Controller and MCP comparison
+        run: nix develop --no-update-lock-file --command node scripts/c21-model-facing-comparison.mjs
       - name: C17R deterministic Controller preparation and diagnostic overhead comparison
         run: nix develop --no-update-lock-file --command node scripts/c17r-preparation-benchmark.mjs
       - name: C15 deterministic baseline presentation comparison

@@ -1,7 +1,8 @@
 import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
-import { decode, jsonValue } from '../core/decode.js';
+import { materializeControllerIntent } from './controller-intent.js';
+import { boundedFieldError, decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, validRejectedResult, workspaceContextFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
@@ -11,11 +12,13 @@ import { handoffContext, materializeSkillInstructions, prepareHandoff } from './
 import { workerRequestHash } from './worker-request-identity.js';
 import { findingHistory } from './finding-history.js';
 import { bindContextAccess, materializeControllerHistory } from './context-access.js';
+import { bindLiveEvidenceAccess } from './live-evidence.js';
 import { defaultContextBudgets, maximumContextBudgetBytes } from './context-bundle.js';
 import { lookupAttempt } from './recovery.js';
 import { resolveRequestedReasoning, unavailableCapabilities } from './configuration/catalog.js';
 import { runActionRound } from './action-round.js';
 import { createActivityStream } from './activity.js';
+import { bindControllerPreflight } from './controller-preflight.js';
 import { bindAssessmentEvidence, bindFindingEvidence, bindOutcomeEvidence, evidenceAliases, providerEvidenceRef,
   reservedEvidenceRef, scopedEvidenceAliases } from './evidence-identity.js';
 import { decodeSummaryReport, observation, receiveProviderObservation } from '../core/observation.js';
@@ -32,7 +35,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {AttemptInteractions, AttemptPermissions, AuthorityPort, Catalog, ContextShare, InteractionPort, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
- * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number}} Execution
+ * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
  * @typedef {(workspace: Operation['request']['workspaceContext']) => Promise<Execution>} ResolveExecution
  * @typedef {{
  *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
@@ -92,9 +95,9 @@ export function createOrchestrator(deps) {
     diagnostics = noopDiagnostics, schedule = scheduleDeadline, approveRetry, tools,
     providerFor = selected => !deps.resolveExecution && selected.providerId === deps.profile.providerId ? deps.provider : undefined,
   } = deps;
-  if (!deps.resolveExecution && (!Number.isSafeInteger(deps.invocationTimeoutMs) || deps.invocationTimeoutMs < 1 ||
+  if (!deps.resolveExecution && deps.invocationTimeoutMs !== null && (!Number.isSafeInteger(deps.invocationTimeoutMs) || deps.invocationTimeoutMs < 1 ||
       deps.invocationTimeoutMs > 2_147_483_647)) {
-    throw new RangeError('invocationTimeoutMs must be an integer from 1 to 2147483647');
+    throw new RangeError('invocationTimeoutMs must be null or an integer from 1 to 2147483647');
   }
   const activity = createActivityStream();
   const suppliedBudgets = deps.context ?? {};
@@ -128,8 +131,23 @@ export function createOrchestrator(deps) {
   const reservationQueue = [];
   /** @type {ResolveExecution} */
   const resolveExecution = deps.resolveExecution ?? (async () => /** @type {Execution} */ (deps));
-  /** @param {Execution} execution */
-  const trusted = execution => ({ authorityRef: authority.reference, configurationRef, limits: execution.limits });
+  /** @param {Execution} execution @param {Operation} state */
+  const trusted = (execution, state) => {
+    const {maxInvocations, maxConcurrentInvocations} = execution.limits;
+    const prior = state.limits.maxInvocations;
+    // A changed default (even narrowed by project preferences) cannot widen
+    // authority already recorded in an Operation. Direct port construction
+    // without configuration provenance conservatively retains finite limits
+    // when the cumulative ceiling is disabled. An explicit trusted user/launch
+    // reconfiguration has the original ResumeAuthority semantics.
+    const preserve = execution.defaultedLimits?.maxInvocations ?? maxInvocations === null;
+    return { authorityRef: authority.reference, configurationRef, limits: {
+      maxInvocations: preserve && prior !== null ?
+        (maxInvocations === null ? prior : Math.min(prior, maxInvocations)) : maxInvocations,
+      maxConcurrentInvocations: execution.defaultedLimits?.maxConcurrentInvocations ?
+        Math.min(state.limits.maxConcurrentInvocations, maxConcurrentInvocations) : maxConcurrentInvocations,
+    } };
+  };
 
   /** @param {string} attemptId */
   function releaseAttempt(attemptId) {
@@ -372,7 +390,7 @@ export function createOrchestrator(deps) {
             !(controllerFailureWaiting(state) && hasRecoverableWorkers(state)))) return activeSubmission(state);
         const execution = await resolveExecution(workspaceContextFor(state));
         requireRunning();
-        const next = await transition(state, { kind: 'operation.recovered', trusted: trusted(execution) });
+        const next = await transition(state, { kind: 'operation.recovered', trusted: trusted(execution, state) });
         notifyAccepted(accepted, operationId);
         return launch(next, execution, true);
       });
@@ -403,7 +421,7 @@ export function createOrchestrator(deps) {
       }
       const execution = await resolveExecution(follow.workspaceContext ?? workspaceContextFor(state));
       requireRunning();
-      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution) });
+      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution, state) });
       notifyAccepted(accepted, operationId);
       return launch(next, execution, true);
     });
@@ -482,7 +500,7 @@ export function createOrchestrator(deps) {
       if (recoverWorkers && !dispatched && !attempt.cancellation &&
           attempt.actionId !== attempt.attemptId && acceptedWorkerAllowed(current, attempt.actionId) &&
           recoverableWorkers(current).some(action => action.actionId === attempt.actionId) &&
-          resourceSnapshot(current).charged <= current.limits.maxInvocations) continue;
+          (current.limits.maxInvocations === null || resourceSnapshot(current).charged <= current.limits.maxInvocations)) continue;
       current = await transition(current, {
         kind: 'attempt.outcome', dispatchCertainty: dispatched ? 'unknown' : 'not_sent',
         outcome: failedOutcome(attempt.attemptId, attempt.cancellation ? 'CANCELLED' : 'PROVIDER_DISCONNECTED', dispatched),
@@ -492,7 +510,7 @@ export function createOrchestrator(deps) {
   }
 
   /** @param {string} operationId @param {AbortSignal} stop @param {Execution} execution */
-  async function recoverAttempts(operationId, stop, { invocationTimeoutMs, catalog }) {
+  async function recoverAttempts(operationId, stop, { catalog }) {
     const state = await serialize(async () => {
       const current = await inspect(operationId);
       return stop.aborted ? current : settleOrphans(current, true);
@@ -501,9 +519,7 @@ export function createOrchestrator(deps) {
     const lookups = new Map();
     const unknown = state.attempts.filter(attempt => attempt.outcome?.terminal === 'unknown');
     if (!unknown.length || stop.aborted) return lookups;
-    const local = new AbortController();
-    const signal = AbortSignal.any([local.signal, stop]);
-    const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
+    const signal = AbortSignal.any([stop, shuttingDown.signal]);
     /** @type {PromiseWithResolvers<Lookup>} */
     const interrupted = Promise.withResolvers();
     const abort = () => interrupted.resolve({ status: 'unavailable' });
@@ -538,7 +554,6 @@ export function createOrchestrator(deps) {
       }
     } finally {
       signal.removeEventListener('abort', abort);
-      clear();
     }
     return lookups;
   }
@@ -589,10 +604,10 @@ export function createOrchestrator(deps) {
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {Action} [action]
    */
   async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs }, correction, handoff, executor = provider, lookups, action) {
-    const deadline = interactions ? clock.monotonicNow() + invocationTimeoutMs : 0;
+    const deadline = invocationTimeoutMs === null ? null : clock.monotonicNow() + invocationTimeoutMs;
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal, shuttingDown.signal]);
-    const clear = schedule(invocationTimeoutMs, () => local.abort('deadline'));
+    const clear = invocationTimeoutMs === null ? () => {} : schedule(invocationTimeoutMs, () => local.abort('deadline'));
     /** @type {Promise<ProviderSession> | undefined} */
     let opening;
     /** @type {ProviderSession | undefined} */
@@ -627,7 +642,9 @@ export function createOrchestrator(deps) {
     /** @type {import('../core/operation.js').RejectedResultReference | undefined} */
     let declaredResult;
     /** @param {Observation} item */
-    const reportContent = ({ provenance, ...item }) => ({
+    // Optional directory metadata is a first-accepted snapshot; its later
+    // availability cannot turn a previously equivalent payload into a conflict.
+    const reportContent = ({ provenance, native: _native, ...item }) => ({
       ...item, provenance: provenance && { ...provenance, receivedAt: undefined },
     });
 
@@ -693,6 +710,7 @@ export function createOrchestrator(deps) {
       const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty,
         output: reply.output, findings: reply.findings,
         reasoningUnavailable: validReasoningIssue ? reply.reasoningUnavailable : undefined,
+        controllerDeclaration: !handoff && parsed.value.terminal === 'completed' ? reply.controllerDeclaration : undefined,
         decisionTextError: !handoff && parsed.value.terminal === 'completed' && reply.decisionTextError &&
           ['invalid_json', 'non_object', 'depth'].includes(reply.decisionTextError) ? reply.decisionTextError : undefined };
       if (acceptingObservations) {
@@ -738,6 +756,22 @@ export function createOrchestrator(deps) {
             } : {ref: canonicalRef, representation: 'declared_value'};
           }
         }
+        // The MCP submission is its own model-declared observation, never
+        // the text of the native final message. Require an exact current
+        // attempt pointer and complete source provenance for correction refs.
+        if (!handoff && result.controllerDeclaration) {
+          const declared = result.controllerDeclaration;
+          if (declared.kind !== 'intent') declaredResult = undefined;
+          else if (declared.observationRef) {
+            const receipt = observations.find(item =>
+              item.ref === declared.observationRef && item.source === 'model_claim' &&
+              item.provenance?.kind === 'model' && item.completeness === 'complete' &&
+              parsed.value.outputRefs.some(pointer => pointer.ref === item.ref &&
+                pointer.source === 'model_claim' && pointer.kind === 'output'));
+            declaredResult = receipt && sameRecord(receipt.value, declared.value)
+              ? {ref:receipt.ref,representation: /** @type {const} */ ('declared_value')} : undefined;
+          }
+        }
         if (signal.aborted) {
           lateReply = result;
           scheduleLateCommit();
@@ -756,6 +790,8 @@ export function createOrchestrator(deps) {
     let reportedFindings;
     /** @type {ProviderResult['decisionTextError']} */
     let decisionTextError;
+    /** @type {ProviderResult['controllerDeclaration']} */
+    let controllerDeclaration;
     /** @type {Outcome} */
     let outcome;
     /** @type {'sent' | 'not_sent' | 'unknown'} */
@@ -941,7 +977,7 @@ export function createOrchestrator(deps) {
         const isActive = () => contextOpen && !signal.aborted &&
           authority.authorize(dispatched.authorityRef, selectedProfile.profileId) === 'ALLOWED';
         boundInteractions = interactions?.bind({ operationId: state.operationId, attemptId, profileId: selectedProfile.profileId,
-          signal, isActive, deadline, clock, schedule, report: (event, reason) => trace(dispatched, event, reason, attemptId) });
+          signal, isActive, deadline, clock, report: (event, reason) => trace(dispatched, event, reason, attemptId) });
         const reportActivity = activity.bind({ operationId: state.operationId, attemptId,
           profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, actionId:context.actionId, invocationKind:context.kind }, () => acceptingActivity && isActive());
         const contextAccess = bindContextAccess({
@@ -949,6 +985,15 @@ export function createOrchestrator(deps) {
           selected, allowShare: allowContextShare, newId: () => ids.newId(), now: () => clock.now(), receive,
           isActive,
         });
+        // Both views borrow the existing accepted observation array. Neither
+        // discovers native capabilities or writes a second evidence journal.
+        const evidenceAccess = !handoff
+          ? bindLiveEvidenceAccess({observations, isActive}) : undefined;
+        const preflightIntent = !handoff
+          ? bindControllerPreflight({
+            requestId: dispatched.request.requestId, attachments: dispatched.request.attachments, events: dispatched.events,
+            observations, profileId: selectedProfile.profileId, isActive,
+          }) : undefined;
         const externalTools = tools?.bind({
           attemptId, operationId: dispatched.operationId, isActive, signal: AbortSignal.any([signal, toolStop.signal]),
           permissions: boundPermissions, newId: () => ids.newId(), maxBytes: toolOutputMaxBytes,
@@ -1002,7 +1047,7 @@ export function createOrchestrator(deps) {
           mayHaveSent = true;
           if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
           return executor.invoke(owned, {
-          ...context, reasoning, isActive, contextAccess, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, reasoning, isActive, contextAccess, evidenceAccess, preflightIntent, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
           interactions: boundInteractions ? { request: boundInteractions.request, supports: boundInteractions.supports } : undefined,
         }, item => {
@@ -1052,7 +1097,7 @@ export function createOrchestrator(deps) {
         outcome = failedOutcome(attemptId, 'PROTOCOL_ERROR', true);
         certainty = 'unknown';
       } else {
-        ({ dispatchCertainty: certainty, output, findings: reportedFindings, decisionTextError } = reply);
+        ({ dispatchCertainty: certainty, output, findings: reportedFindings, decisionTextError, controllerDeclaration } = reply);
         trace(state, 'provider.reply_observed', 'PROVIDER_REPLIED', attemptId, {
           details: { profileId:selectedProfile.profileId, dispatchCertainty: certainty, terminal: reply.outcome.terminal,
             outputRefs: reply.outcome.outputRefs.length,
@@ -1082,7 +1127,7 @@ export function createOrchestrator(deps) {
       }
     } catch (error) {
       if (error instanceof OrchestrationError && ['STORE_CONFLICT', 'STORE_UNAVAILABLE'].includes(error.code)) throw error;
-      const code = denied ?? (stop.aborted || shuttingDown.signal.aborted ? 'CANCELLED' : local.signal.aborted ? 'DEADLINE_EXCEEDED'
+      const code = denied ?? (signal.reason === 'deadline' ? 'DEADLINE_EXCEEDED' : signal.aborted ? 'CANCELLED'
         : mayHaveSent ? 'PROVIDER_DISCONNECTED' : 'PROVIDER_START_FAILED');
       certainty = mayHaveSent ? 'unknown' : 'not_sent';
       outcome = failedOutcome(attemptId, code, mayHaveSent);
@@ -1113,8 +1158,11 @@ export function createOrchestrator(deps) {
         }).catch(() => { cleanupFailed=true; trace(state, 'provider.cleanup', 'PROTOCOL_ERROR', attemptId); });
         /** @type {{promise: Promise<void>, resolve: () => void}} */
         const cleanupDeadline = Promise.withResolvers();
-        const clearCleanup = schedule(invocationTimeoutMs, () => {
-          trace(state, 'provider.cleanup', 'DEADLINE_EXCEEDED', attemptId);
+        // Technical post-stop detachment grace only; no independent execution
+        // deadline or renewed invocation budget. ACP close (300 ms) and owned
+        // process post-exit drain (1000 ms) fit within this local wait.
+        const clearCleanup = schedule(2_000, () => {
+          trace(state, 'provider.cleanup', 'CLEANUP_NOT_CONFIRMED', attemptId);
           cleanupDeadline.resolve();
         });
         await Promise.race([detached, cleanupDeadline.promise]);
@@ -1122,13 +1170,13 @@ export function createOrchestrator(deps) {
         if (!closed) {
           undetached.add(attemptId);
           observations.push(observation({ref:'host:cleanup-pending:'+attemptId,completeness:'complete',
-            value:{status:'not_confirmed',reason:cleanupFailed?'close_failed':'deadline',slotRetained:true}},
+            value:{status:'not_confirmed',reason:cleanupFailed?'close_failed':'cleanup_grace_elapsed',slotRetained:true}},
             {kind:'host_transport',sourceId:attemptId,receivedAt:clock.now()}));
         }
       }
     }
     return {
-      outcome, certainty, output, contextCursor, recordLate, reportedFindings, decisionTextError,
+      outcome, certainty, output, contextCursor, recordLate, reportedFindings, decisionTextError, controllerDeclaration,
       reasoningFailure,
       declaredResult: outcome.terminal === 'completed' ? declaredResult : undefined,
       observations: certainty === 'not_sent' ? observations.filter(item => !item.summary) : observations,
@@ -1147,7 +1195,7 @@ export function createOrchestrator(deps) {
     if (existing && (existing.status !== 'reserved' || liveAttempts.has(existing.attemptId))) return {kind:'known'};
     if (existing?.cancellation) return {kind:'denied'};
     const resources = resourceSnapshot(state);
-    if (existing ? resources.charged > state.limits.maxInvocations : resources.remaining <= 0) return {kind:'resource',resource:'invocation_budget'};
+    if (state.limits.maxInvocations !== null && (existing ? resources.charged > state.limits.maxInvocations : resources.remaining === 0)) return {kind:'resource',resource:'invocation_budget'};
     const active = new Set([...undetached, ...liveAttempts]);
     const detachedPending = state.attempts.filter(attempt =>
       attempt.status === 'terminal' && undetached.has(attempt.attemptId)).length;
@@ -1407,7 +1455,18 @@ export function createOrchestrator(deps) {
           code: 'INVALID_PROPOSAL', path: '$', expected: {
             invalid_json: 'valid JSON', non_object: 'a JSON object', depth: 'JSON nesting depth at most 16',
           }[response.decisionTextError],
-        }} : decodeDecision(response.output);
+        }} : response.controllerDeclaration?.kind === 'intent'
+          ? materializeControllerIntent(response.controllerDeclaration.value,
+            {operationId,attemptId,contextCursor:response.contextCursor,profileId:profile.profileId})
+          : response.controllerDeclaration?.kind === 'invalid'
+            ? {kind:'rejected',reason:response.controllerDeclaration.reason}
+            : response.controllerDeclaration?.kind === 'conflict'
+              ? {kind:'rejected',reason:{code:'INVALID_PROPOSAL',path:'$.replaces',
+                expected:'one unambiguous corrected ControllerIntent proposal'}}
+              : response.controllerDeclaration?.kind === 'missing'
+                ? {kind:'rejected',reason:{code:'INVALID_PROPOSAL',path:'$',
+                  expected:'a ControllerIntent submission before native end_turn'}}
+                : decodeDecision(response.output);
         // Category is taken from the actual parser/decoder/admission boundary.
         // It is not inferred from the natural-language Controller output.
         const rejectionCategory = response.decisionTextError ??
@@ -1444,7 +1503,19 @@ export function createOrchestrator(deps) {
           } else if (evidenceError) {
             correction = evidenceError;
           } else if (state.events.some(event => event.kind === 'controller.responded' && event.decision.decisionId === value.decisionId)) {
-            correction = { code: 'INVALID_PROPOSAL', path: '$.decisionId', expected: 'a fresh decision id' };
+            const prior = state.events.find(event => event.kind === 'controller.responded' &&
+              event.decision.decisionId === value.decisionId);
+            if (prior?.kind === 'controller.responded' && prior.attemptId === attemptId &&
+                sameRecord(prior.decision, value)) {
+              // Same trusted receipt was already admitted: no second planRound,
+              // reservation, cancellation or Worker dispatch.
+              return state;
+            }
+            // Identity reuse with different content or attempt provenance is
+            // a technical conflict, not a made-up model schema violation.
+            return technicalWait(state, { code:'IDENTITY_CONFLICT', operationId,
+              attemptId, actionId:attemptId, effect:response.outcome.effect,
+              dispatchCertainty:response.certainty });
           } else {
             const round = planRound(state, value);
             if (round.error) correction = round.error;
@@ -1476,7 +1547,7 @@ export function createOrchestrator(deps) {
         if (!correction) correction = {code:'INVALID_PROPOSAL',path:'$',expected:'a valid Decision'};
         // The decoder's path can contain an arbitrary unknown key. Keep the
         // technical correction bounded; never persist the rejected body here.
-        correction = {...correction, path: correction.path.slice(0,512), expected: correction.expected.slice(0,512)};
+        correction = boundedFieldError(correction);
         const rejectedState = await transition(state, {kind:'controller.invalid_proposal', attemptId,
           decisionId:parsed.kind === 'accepted' ? parsed.value.decisionId : undefined,
           category:rejectionCategory, reason:correction, result: response.declaredResult});

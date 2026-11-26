@@ -179,7 +179,7 @@ test('C12R.9 P2: MCP context_fetch accepts byte offsets and positional identity'
     }
     assert.equal(Buffer.concat(chunks).toString('utf8'),input);
     assert.deepEqual(await call(id++,{ref:'mcp-saved',offset:-1}),
-      {kind:'unavailable',reason:'invalid_input'});
+      {kind:'unavailable',reason:'invalid_input',diagnostic:{code:'INVALID_PROPOSAL',path:'$.offset',expected:'a non-negative safe integer'}});
   } finally {stop.abort();bridge.close();}
 });
 
@@ -510,3 +510,135 @@ test('C12R.9 review performance: verified artifact slices use bounded cache acro
         'the cache must not resurrect a missing artifact');
     }finally{await store.close();}
   }));
+
+test('C19-R.3 positional fetch preserves a canonical ref when only optional metadata exceeds the budget',async()=>{
+  const ref='evidence:'+ 'a'.repeat(64), body='原本🧪\\\n'.repeat(40);
+  const state=historyState(ref,body);
+  const position={revision:1,index:0};
+  const baseline=await portFor(state,64*1024).fetch(position);
+  assert.equal(baseline.kind,'available');
+  assert.equal(baseline.item.ref,ref);
+  const baseBytes=Buffer.byteLength(JSON.stringify(baseline.item));
+  const budget=baseBytes+100;
+  const native={eventKind:'tool_call_update',title:'界'.repeat(900),status:'completed'};
+  state.events[0].observations[0].native=native;
+  assert.ok(Buffer.byteLength(JSON.stringify({...baseline.item,native}))>budget);
+  const port=portFor(state,budget);
+  for(const key of [ref,position]){
+    const fetched=await port.fetch(key);
+    assert.equal(fetched.kind,'available');
+    assert.equal(fetched.item.ref,ref);
+    assert.equal(fetched.item.value,body);
+    assert.equal(fetched.item.completeness,'complete');
+    assert.deepEqual(fetched.item.provenance,baseline.item.provenance);
+    assert.ok(fetched.item.omittedMetadataFields.includes('native.title')||
+      fetched.item.omittedMetadataFields.includes('native'));
+    assert.ok(Buffer.byteLength(JSON.stringify(fetched.item))<=budget);
+  }
+  const full=await portFor(state,64*1024).fetch(position);
+  assert.equal(full.item.ref,ref);
+  assert.deepEqual(full.item.native,native);
+  const exact=await portFor(state,baseBytes).fetch(position);
+  assert.deepEqual(exact,baseline,'at exact boundary original content takes precedence even over omission marker');
+  const longRef='legacy-'+ 'x'.repeat(4000);
+  const long=historyState(longRef,'small body');
+  long.events[0].observations[0].native=native;
+  const fallback=await portFor(long,4096).fetch(position);
+  assert.equal(fallback.kind,'available');
+  assert.equal(fallback.item.ref,'host:history-position:1:0');
+  assert.equal(fallback.item.value,'small body');
+  const chunked=await readAll(port,position,budget);
+  assert.equal(chunked.bytes.toString('utf8'),body);
+});
+
+test('C19-R.2 historical byte chunks preserve previously deliverable payload at a saturated budget',async()=>{
+  const ref='native-raw', body='原本🧪\\\n'.repeat(1000), budget=512;
+  const state=historyState(ref,body);
+  const baseline=await portFor(state,budget).fetch(ref,undefined,{offset:0});
+  assert.equal(baseline.kind,'chunk');
+  assert.ok(baseline.nextOffset>0);
+  state.events[0].observations[0].native={eventKind:'tool_call_update',title:'界'.repeat(900),status:'completed'};
+  const port=portFor(state,budget);
+  const current=await port.fetch(ref,undefined,{offset:0});
+  assert.deepEqual(current,baseline,'optional fields must not reduce previously deliverable raw chunk bytes');
+  const last=await portFor(state,64*1024).fetch(ref,undefined,{offset:0});
+  assert.equal(last.kind,'chunk');
+  assert.equal(last.item.native.status,'completed');
+  assert.ok(last.item.omittedMetadataFields.includes('native.title'));
+  assert.equal(Buffer.from(last.base64,'base64').toString('utf8'),body);
+  assert.ok(Buffer.byteLength(JSON.stringify(last))<=64*1024);
+});
+
+test('C22-R2 context_fetch description and actual cross-operation scope, including short wire fallback',async()=>{
+  const state=historyState('local','local body');
+  const foreign=historyState('remote','remote body');
+  foreign.operationId='other-operation';
+  for(const event of foreign.events)event.operationId=foreign.operationId;
+  let sharing=true,checks=0,loads=0;
+  const access=bindContextAccess({state,store:{async load(id){loads++;return id===foreign.operationId?foreign:undefined;}},
+    maxBytes:65536,profileId:'primary',attemptId:'reader',isActive:()=>true,
+    allowShare:scope=>{checks++;assert.equal(scope.sourceOperationId,foreign.operationId);
+      assert.equal(scope.targetOperationId,state.operationId);assert.equal(scope.ref,'remote');return sharing;},
+    newId:()=> 'fixture',now:()=>1,receive(){}});
+  const stop=new AbortController();
+  const bridges=[];
+  const externalSchema={type:'object',additionalProperties:true};
+  let externalCalls=0;
+  const open=async description=>{
+    const bridge=await startMcpBridge({signal:stop.signal,contextAccess:access,
+      externalTools:{list:()=>[{id:'external',description,effect:'read',inputSchema:externalSchema}],
+        async call(){externalCalls++;return {status:'completed',effect:'none',output:'external'};}}});
+    bridges.push(bridge);return bridge;
+  };
+  let id=0;
+  const rpc=async(bridge,method,params={},requestId=++id)=>{
+    const response=await fetch(bridge.url,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:requestId,method,params})});
+    assert.equal(response.status,200);return response.json();
+  };
+  const fetchRef=async(bridge,args)=>JSON.parse((await rpc(bridge,'tools/call',{name:'context_fetch',arguments:args})).result.content[0].text);
+  const verifyDescription=description=>{
+    assert.match(description,/current-operation position/);
+    assert.match(description,/Another operation requires a string ref and trusted sharing permission/);
+  };
+  try{
+    const bridge=await open('');
+    const page=(await rpc(bridge,'tools/list',{},1)).result;
+    const tool=page.tools.find(t=>t.name==='context_fetch');
+    verifyDescription(tool.description);
+    assert.match(tool.description,/explicit current ID also accepts positional refs/);
+    assert.match(tool.description,/maxBytes limits a range response only when offset is supplied/);
+    const position={revision:1,index:0};
+    for(const args of [{ref:'local'},{ref:position},{ref:position,sourceOperationId:state.operationId}]){
+      assert.equal((await fetchRef(bridge,args)).item.value,'local body');
+    }
+    assert.equal(checks,0);assert.equal(loads,0);
+    assert.equal((await fetchRef(bridge,{ref:'remote',sourceOperationId:foreign.operationId})).item.value,'remote body');
+    assert.ok(checks>0);assert.equal(loads,1);
+    sharing=false;
+    assert.deepEqual(await fetchRef(bridge,{ref:'remote',sourceOperationId:foreign.operationId}),{kind:'unavailable',reason:'denied'});
+    assert.equal(loads,1);
+    sharing=true;
+    const priorChecks=checks;
+    assert.deepEqual(await fetchRef(bridge,{ref:position,sourceOperationId:foreign.operationId}),{kind:'unavailable',reason:'denied'});
+    assert.equal(checks,priorChecks);assert.equal(loads,1);
+    // Fill the exact response envelope deliverable under the previous
+    // short description, without changing external tool schema or contents.
+    const baselineShort="Retrieve a visible historical record by ref or directory position. Optional offset reads bounded base64 byte chunks of saved UTF-8/JSON or binary data; nextOffset locates further saved bytes. Source completeness and truncation remain as recorded; a complete chunk or exhausted offset does not restore missing source data.";
+    const previousPage={...page,tools:page.tools.map(t=>t.name==='context_fetch'?{...t,description:baselineShort}:t)};
+    const spare=256*1024-Buffer.byteLength(JSON.stringify({jsonrpc:'2.0',id:1,result:previousPage}));
+    assert.ok(spare>0);
+    const description='x'.repeat(spare);
+    const limited=await open(description);
+    const bounded=(await rpc(limited,'tools/list',{},1)).result;
+    const boundedFetch=bounded.tools.find(t=>t.name==='context_fetch');
+    verifyDescription(boundedFetch.description);
+    assert.ok(boundedFetch.description.length<=baselineShort.length);
+    assert.deepEqual(boundedFetch.inputSchema,tool.inputSchema);
+    assert.deepEqual(bounded.tools.map(t=>t.name),page.tools.map(t=>t.name));
+    assert.deepEqual(bounded.tools.find(t=>t.name==='external'),
+      {name:'external',description,inputSchema:externalSchema,annotations:{readOnlyHint:true}});
+    const external=JSON.parse((await rpc(limited,'tools/call',{name:'external',arguments:{}})).result.content[0].text);
+    assert.equal(external.output,'external');assert.equal(externalCalls,1);
+  }finally{stop.abort();for(const bridge of bridges)bridge.close();}
+});

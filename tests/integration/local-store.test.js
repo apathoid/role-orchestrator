@@ -721,3 +721,41 @@ test('cross-operation context reads require an exact share and cannot be enabled
   assert.equal((await resumed.completion).status, 'finished');
   assert.equal(target.invocations.length, 2);
 });
+
+test('C19/C21 accepted native metadata with inherited attribution survives local store commit and reopen alongside old observations',async t=>{
+  const {directory,store}=await setupStore(t);
+  let nativeRef,legacyRef;
+  const {api,respondErrors}=setup({store,respond(invocation,_count,observe){
+    nativeRef=observe({ref:'native-receipt',kind:'provider_tool',sourceId:'call',
+      completeness:'complete',value:'original',native:{eventKind:'tool_call_update',nativeToolCallId:'call',status:'completed',
+        title:'Earlier title',kind:'read',inheritedFields:['title','kind']}});
+    legacyRef=observe({ref:'legacy-receipt',source:'provider_reported',completeness:'complete',value:'legacy'});
+    return final(invocation);
+  }});
+  let operationId;
+  try{
+    const state=await(await api.submit(request())).completion;
+    assert.equal(state.status,'finished',respondErrors.map(String).join('\n'));
+    operationId=state.operationId;
+  }finally{
+    try { await api.close(); } finally { await store.close(); }
+  }
+  // The fixture owns the injected store; release its writer lock before reopen.
+  // Close the reopened instance before setupStore's directory-removal hook.
+  const reopened=createLocalStateStore(directory);
+  try {
+    await reopened.open();
+    const state=await reopened.load(operationId);
+    const records=state.events.flatMap(event=>event.observations??[]);
+    const native=records.find(item=>item.ref===nativeRef);
+    const legacy=records.find(item=>item.ref===legacyRef);
+    assert.deepEqual(native.native,
+      {eventKind:'tool_call_update',nativeToolCallId:'call',status:'completed',
+        title:'Earlier title',kind:'read',inheritedFields:['title','kind']});
+    assert.equal(native.value,'original');
+    assert.equal(native.provenance.kind,'provider_tool');
+    assert.equal(native.provenance.sourceId,'call');
+    assert.equal(legacy.native,undefined);
+    assert.equal(legacy.value,'legacy');
+  } finally { await reopened.close(); }
+});

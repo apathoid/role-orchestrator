@@ -1,4 +1,5 @@
 /** @import {ContextItem} from '../core/observation.js' */
+import { projectNativeMetadata } from './native-metadata.js';
 
 export const defaultContextBudgets = Object.freeze({
   controllerMaxBytes: 256 * 1024,
@@ -99,10 +100,15 @@ function boundHistoryPage(item, maxBytes) {
   return jsonBytes(marker) <= maxBytes ? marker : undefined;
 }
 
-/** @param {ContextItem} item @param {number} maxBytes @param {number} [excerptLimit] */
+/** @param {ContextItem} item @param {number} maxBytes @param {number} [excerptLimit] @returns {ContextItem | undefined} */
 export function boundContextItem(item, maxBytes, excerptLimit = maxExcerptBytes) {
   if (maxBytes <= 0) return undefined;
   if (!(typeof item.value === 'string' && item.value.length > maxBytes) && jsonBytes(item) <= maxBytes) return item;
+  if (item.native) {
+    const {native, ...base} = item;
+    const bounded = boundContextItem(base, maxBytes, excerptLimit);
+    return bounded && projectNativeMetadata(bounded, native, maxBytes);
+  }
   if (item.source === 'host_observed' && item.ref.startsWith('host:history-page:')) {
     return boundHistoryPage(item, maxBytes);
   }

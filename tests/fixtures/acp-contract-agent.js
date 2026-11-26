@@ -33,6 +33,10 @@ const modeScenario = ['mode', 'mode-reroutes', 'mode-model-unavailable'].include
 agent()
   .onRequest(a.initialize, async ({ params }) => {
     clientCapabilities = params.clientCapabilities;
+    if (scenario === 'c20-silent-initialize') {
+      await writeFile('c20-setup.ready','');
+      return new Promise(()=>{});
+    }
     if (scenario === 'init-stderr') {
       await new Promise(resolve => process.stderr.write('Missing ACP fixture configuration\n' + 'x'.repeat(70_000), resolve));
       process.exit(9);
@@ -40,11 +44,15 @@ agent()
     if (scenario === 'init-rpc-error') throw new RequestError(-32000, 'ACP fixture initialization rejected');
     if (scenario === 'init-exit') process.exit(1);
     return { protocolVersion: scenario === 'bad-version' ? 2 : 1,
-      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' } } };
+      agentCapabilities: { promptCapabilities: { image: scenario === 'image', embeddedContext: scenario === 'resource' }, sessionCapabilities: { close: {} }, mcpCapabilities: { http: scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario === 'c21r-compare-sparse' || scenario === 'c20-overflow-intent-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text' } } };
   })
-  .onRequest(a.session.new, ({ params }) => {
+  .onRequest(a.session.new, async ({ params }) => {
+    if (scenario === 'c20-silent-session-new') {
+      await writeFile('c20-setup.ready','');
+      return new Promise(()=>{});
+    }
     if (params.cwd !== process.cwd()) throw Error('cwd mismatch');
-    if (scenario === 'mcp') {
+    if (scenario === 'mcp' || scenario === 'c18-mcp' || scenario === 'c18-large' || scenario === 'c18n-live' || scenario === 'c21r-compare-sparse' || scenario === 'c20-overflow-intent-mcp' || scenario.startsWith('c18-overflow-') && scenario !== 'c18-overflow-text') {
       assert.equal(params.mcpServers[0]?.type, 'http');
       mcpUrl = params.mcpServers[0].url;
     }
@@ -337,13 +345,328 @@ agent()
       }));
       return { stopReason: 'end_turn' };
     }
+    // Same raw events and real MCP calls for historical A/B/C and current D.
+    // No version-specific output is manufactured in this SDK fixture.
+    if (scenario === 'c21r-compare-sparse') {
+      assert.equal(kind,'controller');
+      const events=[
+        {sessionUpdate:'tool_call',toolCallId:'call-123',title:'git show HEAD',kind:'execute',status:'in_progress'},
+        {sessionUpdate:'tool_call_update',toolCallId:'call-123',status:'completed',
+          content:[{type:'content',content:{type:'text',text:'Synthetic receipt 🧪'}}]},
+      ];
+      for(const update of events) await client.notify(c.session.update,{sessionId,update});
+      const rpc=async(id,name,args)=>{
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})});
+        assert.equal(response.status,200);
+        const wire=await response.text();
+        const packet=JSON.parse(wire);
+        assert.ok(packet.result,wire);
+        return {value:JSON.parse(packet.result.content[0].text),wireBytes:Buffer.byteLength(wire)};
+      };
+      const directory=await rpc(1,'evidence_list',{});
+      assert.equal(directory.value.kind,'available');
+      const records=directory.value.items.filter(item=>item.provenance?.sourceId==='call-123');
+      assert.equal(records.length,2);
+      const fetched=await rpc(2,'evidence_fetch',{ref:records[1].ref});
+      assert.equal(fetched.value.kind,'chunk');
+      assert.deepEqual(fetched.value.item.native,records[1].native);
+      assert.equal(fetched.value.item.ref,records[1].ref);
+      const original=JSON.parse(Buffer.from(fetched.value.base64,'base64').toString('utf8'));
+      assert.deepEqual(JSON.parse(original.json),events[1]);
+      await writeFile('c21r-sparse-comparison.json',JSON.stringify({events,directory,fetched}));
+      const proposal=await rpc(3,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'  # Result 🌍\n  ',observationRefs:[records[1].ref],
+      }}});
+      assert.equal(proposal.value.kind,'proposal_pending');
+      return {stopReason:'end_turn'};
+    }
+    if (scenario === 'c18n-live') {
+      assert.equal(kind,'controller');
+      assert.match(prompt,/ControllerIntent reference/);
+      assert.match(prompt,/evidence_list/);
+      const call=async(id,name,args)=>{
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})});
+        assert.equal(response.status,200);
+        const payload=await response.json();
+        return JSON.parse(payload.result.content[0].text);
+      };
+      const nativeName='c18n-native-inspection';
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call',toolCallId:nativeName,title:'Native inspection',kind:'read',status:'in_progress',
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,title:'Native inspection',status:'completed',
+        content:[{type:'content',content:{type:'text',text:'native source receipt'}}],
+      }});
+      const statusless={
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,
+        content:[{type:'content',content:{type:'text',text:'status-less update'}}],
+      };
+      await client.notify(c.session.update,{sessionId,update:statusless});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call',toolCallId:'parallel-native',title:'Parallel',kind:'execute',
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,title:'Changed title',
+      }});
+      // A repeated source event must not be re-enriched or mutate its old record.
+      await client.notify(c.session.update,{sessionId,update:statusless});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,status:'in_progress',
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:'unknown-native',status:'completed',
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,title:null,kind:null,
+      }});
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:nativeName,status:'failed',
+      }});
+      const directory=await call(1,'evidence_list',{});
+      assert.equal(directory.kind,'available');
+      const records=directory.items.filter(item=>item.provenance?.sourceId===nativeName);
+      assert.equal(records.length,7);
+      assert.deepEqual(records[0].native,{eventKind:'tool_call',nativeToolCallId:nativeName,
+        title:'Native inspection',kind:'read',status:'in_progress'});
+      assert.deepEqual(records[1].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
+        title:'Native inspection',kind:'read',status:'completed',inheritedFields:['kind']});
+      assert.deepEqual(records[2].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
+        title:'Native inspection',kind:'read',inheritedFields:['title','kind']});
+      assert.deepEqual(records[3].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
+        title:'Changed title',kind:'read',inheritedFields:['kind']});
+      assert.deepEqual(records[4].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,
+        title:'Changed title',kind:'read',status:'in_progress',inheritedFields:['title','kind']});
+      assert.deepEqual(directory.items.find(item=>item.native?.nativeToolCallId==='unknown-native').native,
+        {eventKind:'tool_call_update',nativeToolCallId:'unknown-native',status:'completed'});
+      assert.deepEqual(records[5].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName});
+      assert.deepEqual(records[6].native,{eventKind:'tool_call_update',nativeToolCallId:nativeName,status:'failed'});
+      const sparse=await call(21,'evidence_fetch',{ref:records[2].ref});
+      assert.deepEqual(sparse.item.native,records[2].native);
+      const originalSparse=JSON.parse(JSON.parse(Buffer.from(sparse.base64,'base64').toString('utf8')).json);
+      assert.deepEqual(originalSparse,statusless);
+      const native=records.find(item=>item.native?.status==='completed');
+      assert.ok(native,JSON.stringify(directory));
+      assert.match(native.ref,/^evidence:[a-f0-9]{64}$/);
+      assert.equal(native.source,'provider_reported');
+      assert.equal(native.provenance.kind,'provider_tool');
+      const bytes=await call(2,'evidence_fetch',{ref:native.ref});
+      assert.equal(bytes.kind,'chunk');
+      assert.equal(bytes.item.ref,native.ref);
+      assert.deepEqual(bytes.item.native,native.native);
+      assert.match(Buffer.from(bytes.base64,'base64').toString('utf8'),/Native inspection/);
+      const original=await call(3,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'before',requirements:[{
+          requirementId:'native',status:'fulfilled',observationRefs:['evidence:does-not-exist'],
+        }],
+      }}});
+      assert.equal(original.kind,'proposal_pending');
+      assert.equal(original.preflight.kind,'checked');
+      assert.match(original.preflight.issues[0].path,/requirements\[0\]\.observationRefs\[0\]/);
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call',toolCallId:'after-warning',title:'Native tool after warning',
+        kind:'read',status:'completed',
+      }});
+      const answer='# Нативный результат\n\nПроверено: 🌍 `code`';
+      const corrected=await call(4,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer,requirements:[{
+          requirementId:'native',status:'fulfilled',observationRefs:[native.ref],
+        }],
+      }},replaces:original.proposalRef});
+      assert.equal(corrected.kind,'proposal_pending');
+      assert.deepEqual(corrected.preflight.issues,[]);
+      await message('post-submission','Native final text is not ControllerIntent');
+      return {stopReason:'end_turn'};
+    }
+    if (scenario === 'c18-large') {
+      assert.match(prompt,/ControllerIntent reference/);
+      const answer='界'.repeat(650_000);
+      const body=JSON.stringify({jsonrpc:'2.0',id:42,method:'tools/call',
+        params:{name:'submit_decision',arguments:{intent:{finalAssessment:{overall:'complete',answer}}}}});
+      assert.ok(Buffer.byteLength(body,'utf8')>1_900_000&&Buffer.byteLength(body,'utf8')<2*1024*1024);
+      const result=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},body});
+      assert.equal(result.status,200);
+      const packet=await result.json();
+      assert.equal(JSON.parse(packet.result.content[0].text).kind,'proposal_pending');
+      await message('native-last','Native final text is not the decision');
+      return {stopReason:'end_turn'};
+    }
+    if (scenario.startsWith('c20r-')) {
+      const mode=scenario.slice('c20r-'.length);
+      const answer='# Result\nПроверка 🧪\n{"value":"a\\b"}';
+      const json=JSON.stringify({finalAssessment:{overall:'complete',answer}});
+      const update=(toolCallId,title='tool',sessionUpdate='tool_call_update')=>client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate,toolCallId,title,status:'in_progress',
+      }});
+      const flood=async(count=170)=>{for(let i=0;i<count;i++)await update('flood','native '+i+' '+'.'.repeat(8000));};
+      const big=async(id)=>{for(let i=0;i<6;i++)await message(id,'界'.repeat(65000));};
+      if(mode==='mid-message'){
+        // A previously published exact prefix must not be mistaken for the final result.
+        await message('final',json.slice(0,24));
+        await flood();
+        await message('final',json.slice(24));
+      }else if(mode==='oversized'||mode==='new-id'||mode==='anonymous-too-large'){
+        const id=mode==='anonymous-too-large'?undefined:'previous';
+        await big(id);
+        if(mode==='new-id')await message('final',json);
+        else await message(id,json);
+      }else if(mode==='anonymous'||mode==='anonymous-identity-limit'){
+        await message(undefined,'old progress');
+        await flood();
+        if(mode==='anonymous-identity-limit'){
+          // Bounded identity registry cannot prove novelty for all omitted IDs.
+          for(let i=0;i<140;i++)await update('id-'+i+'x'.repeat(8000));
+        }
+        await update('new-call','new tool','tool_call');
+        await message(undefined,json.slice(0,30));
+        await update('new-call','new tool','tool_call');
+        await update('new-call','status only');
+        await message(undefined,json.slice(30));
+      }else if(mode==='correction'){
+        await flood();
+        const correction=context.find(item=>item.ref==='host:decision-error');
+        await message('final',correction?json:'not JSON after history overflow');
+      }else if(mode==='worker-anonymous'){
+        await message(undefined,'first ');
+        await flood();
+        await update('fresh','new tool','tool_call');
+        await message(undefined,'second 🧪');
+      }else if(mode==='split-surrogate'){
+        await flood();
+        await message('final','x'.repeat(100)+'\ud83e');
+        await update('flood','tool completion');
+        await message('final','\uddea');
+      }else if(mode==='cancel'||mode==='deadline'||mode==='disconnect'||mode==='refusal'){
+        await flood();
+        await message('final',json);
+        if(mode==='refusal')return {stopReason:'refusal'};
+        if(mode==='disconnect')process.exit(1);
+        await writeFile('c20r-ready','');
+        await stop.promise;
+        return {stopReason:'cancelled'};
+      }else if(mode==='many-chunks'){
+        await flood();
+        for(let i=0;i<50000;i++)await message('final','abcdefghij');
+      }else if(mode.startsWith('scale-')){
+        const mib=Number(mode.slice(6));
+        await flood(Math.ceil(mib*1024*1024/8000));
+        await message('final',answer);
+      }else throw Error('unknown C20-R fixture '+mode);
+      return {stopReason:'end_turn'};
+    }
+    if (scenario.startsWith('c20-overflow-')) {
+      // Complete the long ordinary event stream *before* sending the valid
+      // final result. All individual frames are below the transport bound.
+      for(let i=0;i<170;i++) await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:'large-native',
+        title:'native '+i+' '+'.'.repeat(8000),status:'in_progress',
+      }});
+      const answer='late final after capture';
+      if(scenario==='c20-overflow-intent-mcp'){
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id:77,method:'tools/call',params:{
+            name:'submit_decision',arguments:{intent:{finalAssessment:{overall:'complete',answer}}}}})});
+        assert.equal(JSON.parse((await response.json()).result.content[0].text).kind,'proposal_pending');
+        await message('native-last',answer);
+      }else if(scenario==='c20-overflow-intent-text'){
+        await message('native-last',JSON.stringify({finalAssessment:{overall:'complete',answer}}));
+      }else if(scenario==='c20-overflow-legacy'){
+        await message('native-last',JSON.stringify({schemaVersion:1,decisionId:'decision-'+attemptId,operationId,
+          contextCursor:0,additions:[],cancellations:[],finalAssessment:{author:profileId,overall:'complete',
+            requirements:[],observationRefs:[],findingRefs:[],unresolvedQuestions:[],answer}}));
+      }else{
+        assert.equal(kind,'delegate');
+        await message('native-last',answer);
+      }
+      return {stopReason:'end_turn'};
+    }
+    if (scenario.startsWith('c18-overflow-')) {
+      assert.equal(kind,'controller');
+      if (scenario !== 'c18-overflow-text' && scenario !== 'c18-overflow-missing') {
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id:77,method:'tools/call',params:{
+            name:'submit_decision',arguments:{intent:{finalAssessment:{overall:'complete',answer:'capture independent'}}}}})});
+        const packet=await response.json();
+        assert.equal(JSON.parse(packet.result.content[0].text).kind,'proposal_pending');
+      }
+      if (scenario === 'c18-overflow-text') {
+        await message('partial-final','{"finalAssessment":{"overall":"complete",');
+      }
+      // Many ordinary tool updates, each under the ACP per-frame limit.
+      // Their aggregate exceeds the adapter's 1MiB observation capture budget.
+      for (let i=0;i<170;i++) await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call_update',toolCallId:'large-native',
+        title:'native '+i+' '+'.'.repeat(8000),status:'in_progress',
+      }});
+      if (scenario === 'c18-overflow-refusal') return {stopReason:'refusal'};
+      if (scenario === 'c18-overflow-cancelled') return {stopReason:'cancelled'};
+      if (scenario !== 'c18-overflow-text') await message('after-large-native','ordinary native final message');
+      return {stopReason:'end_turn'};
+    }
+    if (scenario === 'c18-text' || scenario === 'c18-mcp') {
+      assert.match(prompt, /ControllerIntent reference/);
+      if (scenario === 'c18-text') {
+        await message('intent-final',JSON.stringify({finalAssessment:{overall:'complete',
+          answer:'C18 text fallback'}}));
+        return {stopReason:'end_turn'};
+      }
+      /** @param {number} id @param {string} name @param {unknown} args */
+      const call = async (id,name,args) => {
+        const response=await fetch(mcpUrl,{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})});
+        assert.equal(response.status,200);
+        const envelope=await response.json();
+        return {envelope,value:JSON.parse(envelope.result.content[0].text)};
+      };
+      const first=await call(1,'submit_decision',{intent:{finalAssessment:{
+        overall:'unrecognized',answer:'invalid first'}}});
+      assert.equal(first.envelope.result.isError,true);
+      assert.equal(first.value.kind,'rejected');
+      // Native tool and model activity remains available after invalid submission.
+      const nativeTool=await call(2,'context_list',{});
+      assert.equal(nativeTool.value.kind,'available');
+      await client.notify(c.session.update,{sessionId,update:{
+        sessionUpdate:'tool_call',toolCallId:'after-invalid',title:'Native activity after invalid',
+        kind:'read',status:'completed',
+      }});
+      // An intermediate valid Action must NOT be admitted, reserved or
+      // dispatched while the agent continues its native tool loop.
+      const initial=await call(3,'submit_decision',{intent:{
+        additions:[{actionId:'must-not-run',kind:'delegate',profileId,objective:'Should not dispatch',
+          expectedResult:'Not applicable'}],
+        waitPolicy:{kind:'all_requested',targets:[{kind:'action',id:'must-not-run'}]},
+      }});
+      assert.equal(initial.value.kind,'proposal_pending');
+      assert.equal((await call(4,'context_list',{})).value.kind,'available');
+      // Unrelated proposals conflict, but the native session is still live.
+      const conflicting=await call(5,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'unrelated'}}});
+      assert.equal(conflicting.value.kind,'rejected');
+      assert.equal((await call(6,'context_list',{})).value.kind,'available');
+      const replacement=await call(7,'submit_decision',{intent:{finalAssessment:{
+        overall:'complete',answer:'new candidate'}},replaces:initial.value.proposalRef});
+      assert.equal(replacement.value.kind,'proposal_pending');
+      assert.equal((await call(8,'context_list',{})).value.kind,'available');
+      await message('not-decision','Ordinary native final text is not a JSON Decision');
+      return {stopReason:'end_turn'};
+    }
     if (scenario === 'mcp') {
       assert.match(prompt, /Optional MCP context_list and context_fetch/);
       const decision = await retrieveContext(mcpUrl, { attemptId, profileId, operationId, context });
       await message('result', JSON.stringify(decision));
       return { stopReason: 'end_turn' };
     }
-    if (scenario === 'mcp-unsupported') assert.match(prompt, /Context retrieval is unavailable/);
+    if (scenario === 'mcp-unsupported') {
+      if (kind === 'delegate') {
+        assert.match(prompt, /Historical context retrieval via MCP is unavailable/);
+        assert.doesNotMatch(prompt, /nextController\.contextRequest/);
+      } else {
+        assert.match(prompt, /Context retrieval is unavailable in this transport via MCP/);
+        assert.match(prompt, /nextController\.contextRequest/);
+      }
+    }
     if (reasoningScenario) {
       await writeFile('prompt-effort', effort);
       await client.notify(c.session.update, {sessionId,update: {

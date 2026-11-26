@@ -535,3 +535,130 @@ Extend existing A05/A06/A21/A24/A123–A125, A95 and compact CLI lifecycle/PTY c
 ### C17R corrective coverage
 
 Reuses A05/A06/A21/A24/A123–A125 and existing CLI/ACP interaction/presentation entries. `c17-decision-recovery.test.js`: actual parser/decoder/admission, mismatch/unattested and wrong pointers, large/omitted recovery, requested refs/page, chronology/cross-attempt/late cancellation. `c16-controller-reliability.test.js`: existing production StateStore restart/crash-gap/independent Worker fixtures now validate persisted result reference, scoped fetch, turn reset and chronology. `c17-prompt-diagnostics.test.js`, configuration/redaction/diagnostic-sink, host CLI/ACP: UTF-8/serialized capture bounds, real production sink modes and delivery separation. `c17-cli-summary.test.js` + existing real Linux PTY tests: compact gap/late/cancel/wait/partial/unresolved and original machine output. `scripts/c17r-preparation-benchmark.mjs`: exact baseline/C17/C17R preparation, deterministic provider boundary, counted StateStore writes/model calls and available time/byte metrics. Exact CI result in STATUS. Real model `changed` and smoke A/B/C/D comparisons remain UNVERIFIED.
+
+## C18 — Controller Intent & Deferred Decision Admission (synthetic regression; native UNVERIFIED)
+
+| Scenario | Engineering coverage | Status |
+| --- | --- | --- |
+| Full model-owned Decision v1 fields, trust binding, null/unknown fields, Unicode and large result | `tests/core/controller-intent.test.js` through production `decodeDecision` | Implemented; exact-SHA CI required |
+| Same-turn corrections, explicit concurrent replacement last-wins, unrelated conflict, invalid replacement, finality and cancellation | `tests/integration/c18-controller-proposals.test.js` against production proposal registry / HTTP MCP bridge | Implemented; exact-SHA CI required |
+| Correct completed intent admission, missing result and final invalid correction | `tests/integration/c18-orchestrator.test.js` with real Operation lifecycle | Implemented; exact-SHA CI required |
+| Actual ACP SDK subprocess: text fallback, HTTP MCP submission/correction and continuing native activity | `tests/contracts/acp-provider.test.js`, `tests/fixtures/acp-contract-agent.js` | Implemented; exact-SHA CI required |
+| Cross-process crash-gap, unknown effect, release-package checks, Node 24/Nix and real model autonomy/quality | Historical C16/C17R regressions, required C18.8 native operator comparison | Additional review / native UNVERIFIED |
+
+No fixture-generated MCP call is evidence that a real model chose the right work, discovered a native skill, or preserved quality/latency. Only exact commit + full CI after the final edits may be marked ENGINEERING PASS.
+
+## C18R — Corrective capture/finality, observed replacements, tool namespace and durable recovery
+
+| Review scenario | Executable evidence | Engineering status |
+| --- | --- | --- |
+| R1.1–R1.6 valid MCP proposal then >1 MiB ACP tool updates; missing/refusal/cancel/text failure with truthful truncation | `tests/contracts/acp-provider.test.js`, actual SDK fixture `acp-contract-agent.js` | RED #45016896522; GREEN exact-SHA CI required |
+| R2.1–R2.8 duplicate request ID, known explicit replacement, correction, unknown/foreign ref, malformed message and continuation | `tests/integration/c18-controller-proposals.test.js` with live HTTP MCP; registry unit tests | Exact-SHA CI required |
+| R3.1–R3.5 alias resolves `submit_decision` collision while preserving the original external ToolPort | `tests/integration/c18-controller-proposals.test.js` | Exact-SHA CI required |
+| R4.1–R4.8 stable Controller receipt id/content/attempt identity; durable outcome and responded ACK gaps; accepted Worker crash-gap and historical C16 unknown effect | `tests/integration/c18-orchestrator.test.js`, Core reducer/snapshot, existing C16R persisted tests | Exact-SHA CI required |
+| R5.1–R5.18 registration barrier, independent control/ordinary budgets, near 2 MiB UTF-8, oversize 413, abort/late/cross-invocation, no Worker control capability | C18R HTTP registry tests, `tests/contracts/acp-provider.test.js`, ACP SDK/Operation path | Exact-SHA CI required |
+| Real LLM native tool/skill/subagent autonomy and comparative quality | `docs/roadmap/NATIVE_ACCEPTANCE.md` operator protocol | **NATIVE UNVERIFIED** |
+
+Final engineering PASS is contingent on full mandatory CI on the **last** committed SHA, not previous green commits. Native ACP fixture and PTY are not real-model acceptance.
+
+
+**C18R engineering verification:** [CI #45017738925](https://github.com/apathoid/role-orchestrator/actions/runs/45017738925) SUCCESS on `fab92fd037a0169e9e12ac6706801c3c6d4d1666` (29 foundation, 77 core, 526 applicable integration, 15 Linux PTY, complete required Nix/release; no failed required step). Newer SHA requires separate exact-SHA CI. Real native/provider correctness remains **UNVERIFIED**.
+
+## C18N — Live evidence, advisory correction and minimal MCP (ENGINEERING CI PASS on 42293b6; native UNVERIFIED)
+
+| Checkpoint | Test / observable acceptance evidence | Engineering evidence / residual |
+| --- | --- | --- |
+| C18N.0 | Baseline branch `45cc5219`; historical 64-call cap and retained all-call Map statically confirmed in `mcp-bridge.js`; earlier operator OpenCode failure documented in C18N plan | Static baseline SUPPORTED; no separate executable RED baseline CI claimed |
+| C18N.1 | `tests/integration/c18n-live-evidence.test.js`: canonical provider-ref hash identity, source/provider provenance and later journal evidence; ACP SDK scenario `c18n-live` | CI PASS 42293b6 |
+| C18N.2 | Bounded append-only cursor, current-attempt fetch/offset, empty/capture-gap/closed/foreign ref, collision-safe namespace; independent historical cursor | CI PASS 42293b6 |
+| C18N.3 | General Controller evidence contract with optional discovery/retrieval; no action/file-specific source heuristics; legacy adapters remain | Source inspection; synthetic CI PASS 42293b6 |
+| C18N.4 | Registered proposal with `preflight` warning; fresh reference-index copies; unchecked fallback; no preflight-as-admission | HTTP/ACP SDK automated verification required |
+| C18N.5 | Same-turn correction, unrelated conflict, explicit known-lineage last-wins, cross-invocation `replaces` unchanged | C18/C18R and new SDK regressions: CI PASS 42293b6 |
+| C18N.6 | `mcp-bridge-limits.test.js`: 300+ ordinary calls, in-flight duplicate/conflict, post-completion replay permissible, 4-slot concurrency, continued cancellation/late effect receipts | CI PASS 42293b6 |
+| C18N.7 | Actual ACP SDK native tool provenance and exact Unicode+Markdown `Assessment.answer` through MCP/Intent/Decision/journal | CI PASS 42293b6; real LLM UNVERIFIED |
+| C18N.8 | Full integration/ACP SDK/PTY/restart/security/cancellation suites and `scripts/c18n-mcp-memory-probe.mjs` GC heap snapshots after 250/500/750/1000 calls | CI PASS 42293b6 |
+| C18N.9 | Model-led direct/legacy/C18N real workspace trials, independent provider, permissions/skills/subagents, latency/quality and source correctness | **UNVERIFIED** (no authenticated real model or native client) |
+| C18N.10 | Node 24, checkJs, npm suites, Nix flake/install/systemPackages, release artifact, precise workflow SHA and final docs | CI PASS 42293b6 |
+
+**Interpretation:** Automated tests confirm transport/reference and lifecycle contracts only; they do not establish model-selected evidence relevance, native skill discovery or run quality. Ordinary completed request IDs are intentionally not transport exactly-once; this does not weaken `submit_decision` and durable RO guarantees. Earlier failed C18N intermediate runs are not PASS.
+
+
+**C18N exact-SHA engineering result:** [CI #45260312459](https://github.com/apathoid/role-orchestrator/actions/runs/45260312459) SUCCESS at `42293b6dc6ff7168888a83f07d31cef433f3178d`: 29 foundation, 78 core, 534 integration, 15 PTY, whole root test suite, ACP SDK/contract, Nix flake/install/evaluation, release/package; the 1000-call synthetic heap-growth probe passed (+4,143,856 bytes after GC). **Real-model native acceptance remains UNVERIFIED**. No claim of exactly-once ordinary replay.
+
+
+## C18N-R — Corrective review production path, performance and native distinction
+
+| Finding | RED evidence at 1a53134d | GREEN regression | Engineering |
+| --- | --- | --- | --- |
+| R1 actual External ToolPort stops at call 33 | [RED CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178) call 33 `budget` | `c18nr-corrective.test.js` real compiled registered tool, 120 calls, permissions, receipt effects; old cancellation/late/large-result cases remain | [CI #45268444761](https://github.com/apathoid/role-orchestrator/actions/runs/45268444761) PASS at 0687a40; documentation SHA rerun pending |
+| R2 unbounded repeated preflight scan | Same RED run: 15k items scanned per correction; ~246 ms / 12 corrections on runner | indexed-record Proxy count, historical findings/output refs, alias conflicts, late additions; `scripts/c18nr-correction-probe.mjs` baseline vs indexed: 20k refs 3.003 vs 0.008 ms/correction, first indexing 4.084 ms | [CI #45268444761](https://github.com/apathoid/role-orchestrator/actions/runs/45268444761) SUCCESS at `0687a40`, including final extra cases |
+| R3 real registration bans `context_list` | Same RED run, compiler returns undefined | five actual `compileExternalTool` registrations, distinct built-in aliases, real ToolPort dispatch and prompt names | CI #45268444761 PASS at 0687a40 |
+| R4 exhausted live cursor absent | Same RED run, undefined resume cursor | empty, late append, full/exhausted page, same-cursor and closed scope | CI #45268444761 PASS at 0687a40 |
+| R5 one oversized metadata item blocks traversal | Same RED run, `unavailable:budget` page | large Unicode sourceId, consecutive oversized records, explicit positional gap, later normal records, raw byte fetch and envelope limit | CI #45268444761 PASS at 0687a40 |
+
+**Unchanged regression contracts:** C18/C18R strong `submit_decision` request identity/last-wins/native finality, authoritative durable admission/restart, ordinary active request-ID dedup versus intentionally weak late replay, continued direct answer and optional discovery, native skills/terminal/subagents/permissions. Actual native LLM/provider comparison: **UNVERIFIED**.
+
+**C18N-R final code verification:** [CI #45268444761](https://github.com/apathoid/role-orchestrator/actions/runs/45268444761) SUCCESS on `0687a40a8cf2d2886ab1f722aa8e91663e9e43eb` (36/36 steps; 29 foundation, 78 core, 543 integration, 15 PTY; full root npm/ACP SDK, Nix package/release); exact current documentation-only HEAD still requires its own successful CI. Native OpenCode/Ornith/Zed tests UNVERIFIED.
+
+
+## C19 — Model-facing evidence and answer clarity (ENGINEERING PASS; native UNVERIFIED)
+
+| Checkpoint | Regression | Engineering |
+| --- | --- | --- |
+| C19.3 (partial), C19.4 | `tests/integration/controller-contract.test.js`: shared answer guidance exactly once in Decision, text Intent and MCP Intent; capture completeness distinct from tool success; unchanged Unicode/Markdown answer parsing | [CI #45471947421](https://github.com/apathoid/role-orchestrator/actions/runs/45471947421) at 7ba7bffc: integration and root npm PASS; full workflow FAIL at historical C17 static contract equality. Historical failure, superseded by verified C19-R checkpoint below. |
+
+| C19.1–C19.2 | `c18n-live-evidence.test.js` optional current-event native metadata, invalid/oversized fields, canonical ref and first snapshot, historical list/fetch and live pagination; `acp-provider.test.js` actual SDK start/completion/status-less event and final admission | PASS on C19-R exact checkpoint below; includes local-store reopen, Codex command metadata, 120-record directory byte/cost comparison. |
+
+
+### C19-R — Corrective review
+
+| Check | Evidence |
+| --- | --- |
+| R1 Local State Store reopen | [CI #45473023553](https://github.com/apathoid/role-orchestrator/actions/runs/45473023553) FAIL at 9fc48206: `STATE_STORE_IN_USE`; explicit fixture-owned close before reopen, full durable metadata/body/provenance assertions retained. |
+| R2 optional metadata boundary | `c18n-live-evidence.test.js`: complete snapshot vs temporary omission overhead, absent/full/whole/partial/marker-only/exact bounds, prior markers, escaped/Unicode, pagination and raw fetch. `context-chunks.test.js`: raw chunk capacity unchanged at saturated budget. |
+| R3 positional identity | `context-chunks.test.js`: both canonical and positional fetch with large optional native metadata, exact/large budget, genuine long-ref fallback, original bytes. |
+| Full engineering | [CI #45481524744](https://github.com/apathoid/role-orchestrator/actions/runs/45481524744) SUCCESS at `876a33c7e57c4fb2e0970905396149b28827eb0c`, 36/36 steps, 553/553 integration; RED #45481171483 reproduced all three defects. Native UNVERIFIED. |
+
+
+### C20 (ENGINEERING PASS; native UNVERIFIED)
+
+`c20-resource-lifetime.test.js`: default/null/finite authority precedence, 45 actual Controller invocations, snapshot roundtrip, no execution timer and cancellation; finite budget counterpart. `interactions.test.js`: inherited deadline only, indefinite user response and cancellation. `resume.test.js`: no recovery deadline, independent allowed work and cancellation. `acp-provider.test.js`: real SDK silent initialize/session.new with no deadline, owner cancellation and deadline attribution. [CI #45484371885](https://github.com/apathoid/role-orchestrator/actions/runs/45484371885) SUCCESS at `e092712f5400bee20ea5ab4bb6ef0fac619a9c1d`, 37/37 steps, 561 integration/84 contracts/15 PTY; 45/90/120-invocation scale probe PASS. Native UNVERIFIED.
+
+### C20-R (ENGINEERING PASS; native UNVERIFIED)
+
+RED [#45487892013](https://github.com/apathoid/role-orchestrator/actions/runs/45487892013) (79/84 contracts): exact result/provenance missing in five new expectations. Actual SDK tests in `acp-provider.test.js`: all four paths after overflow, message ID transition/same ID, anonymous first-call/duplicate/status/Worker, oversized result/identity exhaustion, Unicode, refusal/cancel/deadline/disconnect. `c20r-acp-capture-probe.mjs`: actual SDK 1/4/16 MiB tool events; exact result and independent bounds. Exact GREEN below; native acceptance UNVERIFIED.
+
+C20-R intermediate CI #45488246167: 94/96 contracts; all four delivery paths and 12 new identity/failure tests pass. Update old oversize diagnostic reference and missing MCP declaration evidence expectation without changing failure/admission assertions. Added Controller retrieval and real StateStore reopen for an actual ACP Worker and exact rejected native result correlation/correction.
+
+**Final engineering PASS:** [`c86d3e5e47bffc7bb7eb4ff42763865b360faae5`](https://github.com/apathoid/role-orchestrator/commit/c86d3e5e47bffc7bb7eb4ff42763865b360faae5) / [CI #45488863848](https://github.com/apathoid/role-orchestrator/actions/runs/45488863848), 38/38 steps; 98/98 contracts, 561/561 integration, 15/15 PTY, root npm, checkJs, benchmarks and Nix/release. All four delivery paths and actual Worker retrieval/reopen, rejected-result correlation/correction, native identity/finality, capture/Unicode and cancellation regressions PASS; 1/4/16 MiB actual SDK traffic and exact 500000 bytes/50000 chunks probe PASS. Native N1–N8 UNVERIFIED; see [procedure](../docs/roadmap/NATIVE_ACCEPTANCE.md#c19c20-r--native-acceptance-procedure-n1n8) and [STATUS](../docs/roadmap/STATUS.md).
+
+### C21 — Model-facing Information Clarity (engineering CI PASS at 2ed30f83; real native UNVERIFIED)
+
+Checkpoint C `2ed30f83fddaf6d34ab562c4774bc4704277cd92` / [CI #45661813661](https://github.com/apathoid/role-orchestrator/actions/runs/45661813661) SUCCESS: all 39 steps, root 699/699, Integration 564/564, Provider contracts 98/98, Linux PTY 15/15 and deterministic A/B/C comparison passed. The following engineering scenarios were covered by passing fixtures and suites; actual native acceptance and standalone exhaustive C21-specific empty/reused ID and late inherited-metadata permutations are not established. Existing invocation-scope/late/C20-R regressions passed.
+C21.6–.8: existing Controller contract and retrieval guidance regressions preserve role/authority/transport and optional retrieval while removing default history strategy; `scripts/c21-model-facing-comparison.mjs` runs actual historical A/B and current renderers and MCP endpoints with identical deterministic fixture, asserting context, schema, pagination and answer fidelity; CI measurements recorded in [STATUS](../docs/roadmap/STATUS.md), not native acceptance.
+
+C21.2 candidate extends existing C19/A05/A06/A21/A24 and C18N SDK fixtures: same-call inherited title/kind attribution, distinct current status, changed/parallel/unknown call identity and duplicate original event; immutable optional metadata validation and round-trip, paired omission across byte boundaries, canonical ref/raw payload preservation. `tests/fixtures/acp-contract-agent.js`, `tests/contracts/acp-provider.test.js`, `tests/integration/c18n-live-evidence.test.js`. Engineering execution verified; real native and additional permutations remain UNVERIFIED; exact results in [STATUS](../docs/roadmap/STATUS.md). No new mandatory retrieval or native strategy.
+
+C21.3–.5 candidate: live MCP tool schemas unchanged; captured-value indicator (when budget permits), captured/absent body and resume, explicit ACP clear, canonical scope vs truth, and MCP-only end-of-turn guidance tested in existing suites. Existing actual ACP post-proposal/replacement/failure/cancel and text/legacy paths remain mandatory. Full engineering verification on C passed.
+
+C21 corrected candidate extends local-store commit/reopen and historical duplicate/conflict fixture with inheritedFields; actual CLI renderer uses negotiated aliases and no-MCP Worker has no Controller-only continuation; production child Worker and scoped bridge tests cover these. Exact corrected-C CI passed.
+
+### C21-R — Model-facing Clarity & Comparison Refinement (engineering PASS at dbcc6d88; real native UNVERIFIED)
+
+R1: existing retrieval/Controller/actual MCP tests verify optional discovery, self-contained cursor/chunk and attribution descriptions, negotiated aliases, role-specific availability, proposal/replacement and exact answer. Worker MCP retains material missing-evidence guidance because Controller instructions are not delivered to Workers. R2: existing `scripts/c21-model-facing-comparison.mjs` retains 17-record prompt and pagination fixture, adds pinned A/B/C/current D actual ACP SDK subprocess, Orchestrator and MCP directory/fetch comparison with a single common native event sequence. Assert source attribution, current status, inheritedFields, same canonical ref and original payload, committed observation and exact answer; existing C21 paired-omission regressions remain mandatory. R3/R4: baseline and historical status corrected; [CI #45667902352](https://github.com/apathoid/role-orchestrator/actions/runs/45667902352) SUCCESS on `dbcc6d881074ceee8a8cd123f69962b0f92e4d45`, root 699/699, Provider contracts 98/98, Integration 564/564, PTY 15/15; actual sparse-event comparison and existing paired-omission regression passed. Exact checkpoint metrics in [STATUS](../docs/roadmap/STATUS.md). No runtime changes, actual model utility UNVERIFIED.
+
+### C22 — Model-facing Technical Information Accessibility (engineering PASS at 8ad7f541; real native UNVERIFIED)
+
+Existing C18/C18N/C20/C20-R/C21 rows and tests remain mandatory; no new admission/runtime requirements. F1: `tests/core/controller-intent.test.js` actual field sets, Intent/Decision difference, unknown/nested/enum/defaulted fields; F2/F4: `tests/integration/c18n-live-evidence.test.js` actual paginated MCP tools/list, unchanged inputSchema, all four invalid-input paths and no retrieval, bounded Unicode; `context-chunks.test.js` preserves unavailable cause plus existing decoder diagnostic. F3: `c18-controller-proposals.test.js` actual registered/unregistered refs and subsequent correction, bounded wire fallback with large RPC ID and preserved lineage, and large external tool page with unchanged external definition/availability; existing C18 barrier/replacement/conflict/correlation/cancel tests. F5/bounds: `c18-orchestrator.test.js` actual rendered correction across delivery variants, missing/conflict/invalid distinction, snapshot roundtrip and same repeated-error threshold under changing/oversize optional details. Existing recovery, provider and native SDK tests remain required. `scripts/c21-model-facing-comparison.mjs` adds pinned C22A/current comparison of primary invalid-input/receipt causes, selected proposal, decoder/materialization, correction/lifecycle/outcome/exact answer and presentation byte counts, retaining previous C21 comparisons. Engineering PASS on `8ad7f5415de3be64286a41aa90d2a30634c78d4d`, [CI #45706899430](https://github.com/apathoid/role-orchestrator/actions/runs/45706899430) SUCCESS (39/39 steps; foundation/package 4/4, core 30/30, provider contracts 98/98, integration 570/570, acceptance 4/4, root 706/706, actual Linux PTY 15/15; all resource probes, historical comparisons, Nix and release checks). Documentation closure changes no runtime/test files; exact closure HEAD CI must be checked separately. See [STATUS](../docs/roadmap/STATUS.md) for exact run evidence and comparison measurements. Fixture coverage is not real-client compatibility or model utility.
+
+### C22-R — Retrieval Argument Diagnostic Refinement (engineering PASS at 8061e88e; native UNVERIFIED)
+
+P2.1 only. `core/controller-intent.test.js`: same accepted/normalized Intent and legacy Decision reference, range and cursor forms (including legacy nonzero numbers), exact nested error causes/allowedFields, root alternative hints. `integration/history-directory.test.js`: actual historical MCP list/fetch alternative diagnostics, no port call on invalid input, unchanged valid string/positional retrieval, omitted/0/positional cursor and legacy invalid_cursor. `c18n-live-evidence.test.js`: existing actual F2/F4 wire and schema tests retain exact primary cause. `c18-controller-proposals.test.js`: bounded control wire hint omission and same registered lineage/replacement. `c18-orchestrator.test.js`: mixed legacy and enriched error identity, threshold, correction delivery, bounded omission and snapshot roundtrip. Existing C21/C22 comparator retains normalized values and primary errors for additional context shapes. Engineering PASS on `8061e88e0b6f40f05e41f43924e735f0d9b78908` / [CI #45747522796](https://github.com/apathoid/role-orchestrator/actions/runs/45747522796) SUCCESS (39/39 steps; foundation/package 4/4, core 31/31, provider contracts 98/98, integration 573/573, acceptance 4/4, root 710/710, actual Linux PTY 15/15; all historical comparisons, resource probes, Nix and release checks). Real native and model utility UNVERIFIED; P3.1/P3.2 unchanged. See STATUS for verification provenance.
+
+### C22-R2 — Technical Interface Reliability & Diagnostic Accuracy (engineering PASS at 6bbdbcb6; native UNVERIFIED)
+
+C22-R2 review baseline c5d4d333, CI #45747991614 SUCCESS. F1 actual Node24 HTTP RED #45750281616 (573/574; previous proposal resurrected); `c18-controller-proposals.test.js` verifies parsed replacement loss, separate serialization_failed transport outcome, unaffected unrelated/ordinary/malformed inputs, same-ID equivalence/correction, cancellation and ordered registry finality, optional selectedProposalRef and wire bound. `c18nr-corrective.test.js`: accurate shared validation issues, duplicates, attachment evidence remains invalid, old alias/late checks retained. `c18-orchestrator.test.js`: actual MCP advisory receipt -> corrected selection -> Worker handoff with attachment/observation/finding and existing alias/collision behavior; duplicate requirement warning is advisory and final admission still rejects. `context-chunks.test.js`: actual current/shared fetch authorization/positional scope and full/short tool descriptions, unchanged external definition at old envelope boundary. Engineering PASS on `6bbdbcb61cf283b65d6637ea9bd56096ee1e475e` / [CI #45750885864](https://github.com/apathoid/role-orchestrator/actions/runs/45750885864) SUCCESS (39/39 steps; foundation/package 4/4, core 31/31, provider contracts 98/98, integration 581/581, acceptance 4/4, root 718/718, actual Linux PTY 15/15; historical comparisons, resource probes, Nix, installation and release checks). Real native compatibility/model utility UNVERIFIED; see STATUS for exact RED/GREEN provenance and bounds.
+
+### C22-R2 review follow-up — mixed conflict and transport failure (engineering PASS at acb93c62)
+
+`c18-controller-proposals.test.js`: actual MCP HTTP RED on v24.21.0 for A selected / B registered conflict / observed replacement A failing fingerprint or same-ID correlation (581/583, #45752207531). Four focused cases cover both causes, queued finality, unrelated/unknown/no replacement, valid corrections of known lineages after invalidation, genuine subsequent conflict, cancellation and fatal budget precedence. No new lifecycle or provider mapping. Engineering PASS on `acb93c62e4e792459576ec3f491e979106af907f` / [CI #45752408795](https://github.com/apathoid/role-orchestrator/actions/runs/45752408795) SUCCESS (39/39 steps; root 722/722, integration 585/585, Linux PTY 15/15; all four new regressions, historical comparisons, resource probes, Nix and release checks). Native compatibility/model utility UNVERIFIED.

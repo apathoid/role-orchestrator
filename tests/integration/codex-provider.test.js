@@ -44,6 +44,8 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
     assert.ok(!Object.hasOwn(invocation, 'authorityRef'));
     assert.deepEqual(invocation.userConstraints, ['Keep the original task']);
     if (invocation.kind === 'delegate') {
+      assert.ok(prompt.includes('Historical context retrieval via MCP is unavailable'));
+      assert.ok(!prompt.includes('nextController.contextRequest'));
       assert.equal(invocation.expectedResult, 'Report command outcome');
       assert.deepEqual(invocation.skillInstructions, [{id:'checks',version:'v1',status:'complete',instructions:'Selected CLI skill'}]);
       assert.ok(!invocation.instructions.includes('Selected CLI skill'));
@@ -85,7 +87,9 @@ test('Codex Controller delegates to a real child Worker and uses separate model,
     [item.source, item.provenance.exit.kind, item.provenance.exit.code]), [
     ['provider_reported', 'tool_exit', 9], ['host_observed', 'agent_exit', 0],
   ]);
-  assert.deepEqual(state.assessment.observationRefs, [worker.observations.find(item => item.provenance?.exit?.kind === 'tool_exit').ref]);
+  const reportedTool=worker.observations.find(item=>item.provenance?.exit?.kind==='tool_exit');
+  assert.deepEqual(reportedTool.native,{eventKind:'item.completed',nativeToolCallId:'command-1',kind:'command_execution',status:'failed'});
+  assert.deepEqual(state.assessment.observationRefs, [reportedTool.ref]);
   assert.equal(worker.observations.filter(item => item.value === 'Build failed').length, 1);
   assert.equal(worker.observations.filter(item => item.ref.startsWith('attempt-output:')).length, 0);
 });
@@ -511,7 +515,7 @@ test('C13R.4 actual subprocess long reasoning/tool updates do not exhaust result
   const invoke=async activity=>{
     const signal=new AbortController().signal,session=await provider.open(profile,signal),observations=[];
     try{
-      const result=await provider.invoke(session,{attemptId:'attempt',operationId:'op',actionId:'worker',kind:'delegate',objective:'test',profile,instructions:[],context:[],userConstraints:[],authorityRef:'grant',timeoutMs:5000,signal},x=>{observations.push(x);return x.ref;},activity);
+      const result=await provider.invoke(session,{attemptId:'attempt',operationId:'op',actionId:'worker',kind:'delegate',objective:'test',profile,instructions:[],context:[],userConstraints:[],authorityRef:'grant',timeoutMs:null,signal},x=>{observations.push(x);return x.ref;},activity);
       assert.equal(result.outcome.terminal,'completed');assert.equal(result.output,'final result');assert.deepEqual(result.outcome.usage,{inputTokens:12,outputTokens:0,cost:null});
       const process=observations.find(x=>x.ref==='codex-process');
       assert.equal(process.value.stdoutCapture.truncated,true);assert.ok(process.value.stdoutCapture.receivedBytes>1024*1024);

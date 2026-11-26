@@ -97,8 +97,10 @@ export function createCodexProvider({ providerId, configuration, environment = p
         const preparationStarted=performance.now();
         /** @type {Record<string,number>} */
         let componentSizes={};
-        const prompt = renderCodexPrompt(request, interactiveApprovalDetail, Boolean(mcp && request.contextAccess),
-          promptReporter?sizes=>{componentSizes=sizes;}:undefined);
+        const controllerDelivery = request.kind === 'controller' && configuration.controllerIntent ? 'intent_text' : undefined;
+        const promptedRequest = {...request, controllerDelivery: /** @type {'intent_text' | undefined} */ (controllerDelivery)};
+        const prompt = renderCodexPrompt(promptedRequest, interactiveApprovalDetail, Boolean(mcp?.contextListToolName),
+          promptReporter?sizes=>{componentSizes=sizes;}:undefined, mcp);
         reportPrompt(promptReporter,request,'prepared',{transport:'codex-cli',preparationMs:performance.now()-preparationStarted,...componentSizes},prompt);
         const launch = prepareCodexLaunch(configuration, {
           model: state.profile.model, cwd: request.workspaceContext?.cwd, prompt, mcpUrl: mcp?.url,
@@ -106,7 +108,7 @@ export function createCodexProvider({ providerId, configuration, environment = p
         }, environment);
         const sendStarted=performance.now();
         reportPrompt(promptReporter,request,'launch_attempted',{transport:'codex-cli'});
-        const process = startCodexProcess(launch, { timeoutMs: request.timeoutMs, signal: request.signal,
+        const process = startCodexProcess(launch, { timeoutMs: null, signal: request.signal,
           onFrame: activity ? event => {
             if (request.signal.aborted || !['item.started', 'item.updated', 'item.completed'].includes(event.type)) return;
             const item = event.item;
@@ -126,7 +128,11 @@ export function createCodexProvider({ providerId, configuration, environment = p
           providerTurnObserved:finished.execution.sent,stopReason:finished.execution.terminal??null,
           nativeSessionId:finished.execution.threadId??null,observedToolCompletions:finished.execution.toolCompletions,
           reportedInputCount:finished.execution.usage.inputTokens,reportedOutputCount:finished.execution.usage.outputTokens});
-        return receiveCodexResult(finished, request, observe);
+        const result = receiveCodexResult(finished, request, observe);
+        if (controllerDelivery && result.outcome.terminal === 'completed' && result.decisionTextError === undefined) {
+          result.controllerDeclaration = {kind:'intent',value:result.output};
+        }
+        return result;
       } catch (error) {
         if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
         if (state.process) throw error;

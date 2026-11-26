@@ -1,6 +1,6 @@
 import { admitFindings, eventFindings, evidenceRefs, findingRef, findings, recordObservationRefs } from './finding.js';
 import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
-import { arrayOf, count, decode, id, invalid, measurement, oneOf, optional, record, text } from './decode.js';
+import { arrayOf, boundedAllowedFields, boundedFieldHint, count, decode, id, invalid, measurement, nullable, oneOf, optional, record, text } from './decode.js';
 import { contextItem } from './observation.js';
 import { classifyOutcomeReport, resolveOutcome, sameRecord, validRejectedResult } from './operation.js';
 
@@ -45,7 +45,7 @@ const waiting = tagged('kind', {
 });
 /** @type {Decoder<number>} */
 const limit = (input, path) => count(input, path) || invalid(path, 'a positive safe integer');
-const limits = record({ maxInvocations: limit, maxConcurrentInvocations: limit });
+const limits = record({ maxInvocations: nullable(limit), maxConcurrentInvocations: limit });
 const trusted = record({ authorityRef: id, configurationRef: id, limits });
 const reasoning = tagged('mode', {
   native: record({mode: oneOf('native')}),
@@ -91,7 +91,11 @@ const event = tagged('kind', {
   'controller.invalid_proposal': record({
     ...eventFields, kind: oneOf('controller.invalid_proposal'), attemptId: id, decisionId: optional(id),
     category: optional(oneOf('invalid_json','non_object','depth','schema_invalid','admission_invalid')),
-    reason: record({code: oneOf('INVALID_PROPOSAL'), path: id, expected: id}),
+    reason: (input,path) => {
+      const {allowedFields,hint,...primary} = record({code: oneOf('INVALID_PROPOSAL'), path: id, expected: id,
+        allowedFields: boundedAllowedFields, hint: boundedFieldHint})(input,path);
+      return {...primary,...(allowedFields && {allowedFields}), ...(hint && {hint})};
+    },
     result: optional(record({ref: id, representation: oneOf('reported_text', 'declared_value')})),
   }),
   'action.rejected': record({

@@ -1,5 +1,155 @@
 # Активный план реализации и приёмки
 
+C22-R2 review follow-up (P2.1/P3.1 only): actual HTTP RED for both transport causes, local conflict-invalidation correction, comment clarification, existing finality/lineage semantics and focused regression tests. See [STATUS](STATUS.md) for exact evidence. Engineering PASS on `acb93c62e4e792459576ec3f491e979106af907f` / [CI #45752408795](https://github.com/apathoid/role-orchestrator/actions/runs/45752408795) SUCCESS (39/39 steps; root 722/722, integration 585/585, Linux PTY 15/15; all four new regressions, historical comparisons, resource probes, Nix and release checks). No further engineering cycle; native utility and compatibility remain UNVERIFIED.
+
+## C22-R2 — Technical Interface Reliability & Diagnostic Accuracy (engineering PASS at 6bbdbcb6; native UNVERIFIED)
+
+Review baseline `c5d4d333214be9bcca37908985efbd72bc59f823` / [CI #45747991614](https://github.com/apathoid/role-orchestrator/actions/runs/45747991614) SUCCESS. F1 baseline Node24 HTTP regression confirmed; reuse ordered transport observation. F2/F3 attachment-aware Action context advisory, accurate optional availability; F4 string-only cross-operation description including bounded fallback; H1 existing selected ref in conflict receipt only. No additional validator, admission, limits or persisted state. C22-R2.0–.7 implemented and engineering verified. Engineering PASS on `6bbdbcb61cf283b65d6637ea9bd56096ee1e475e` / [CI #45750885864](https://github.com/apathoid/role-orchestrator/actions/runs/45750885864) SUCCESS (39/39 steps; foundation/package 4/4, core 31/31, provider contracts 98/98, integration 581/581, acceptance 4/4, root 718/718, actual Linux PTY 15/15; historical comparisons, resource probes, Nix, installation and release checks). See [STATUS](STATUS.md); documentation closure CI checked separately. Native compatibility/model utility and prompt/example practical assessment remain UNVERIFIED. No master merge or further cycle authorized.
+
+## C22-R — Retrieval Argument Diagnostic Refinement (engineering PASS at 8061e88e; native UNVERIFIED)
+
+Only review P2.1: clarify historical reference/cursor/selection alternatives in the existing bounded error, preserve primary identity, exact nested errors, decoder/normalization, retrieval scope and legacy numeric cursor behavior. C22-R.0–.4 implemented and engineering verified. Engineering PASS on `8061e88e0b6f40f05e41f43924e735f0d9b78908` / [CI #45747522796](https://github.com/apathoid/role-orchestrator/actions/runs/45747522796) SUCCESS (39/39 steps; foundation/package 4/4, core 31/31, provider contracts 98/98, integration 573/573, acceptance 4/4, root 710/710, actual Linux PTY 15/15; all historical comparisons, resource probes, Nix and release checks). See [STATUS](STATUS.md); documentation closure CI checked separately. Review baseline `e724030cfb6faabecbe0c77e0f4fbe862365c0b7` / [CI #45707658158](https://github.com/apathoid/role-orchestrator/actions/runs/45707658158) SUCCESS. P3.1/P3.2 unchanged pending real runs; no next engineering cycle authorized.
+
+## C22 — Model-facing Technical Information Accessibility (ENGINEERING VERIFIED at 8ad7f541; native UNVERIFIED)
+
+[Detailed executable plan](C22_MODEL_FACING_TECHNICAL_INFORMATION_ACCESSIBILITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Authorized on `feature/controller-intent-deferred-admission` from `7906710019d46debb4ec4cd9c226a2b13491d156` / [exact CI #45668749511](https://github.com/apathoid/role-orchestrator/actions/runs/45668749511) SUCCESS. The introducing commit is planning HEAD. Goal: improve accessibility of technical information already owned by RO, not expand the contract machinery. F1–F5 mandatory; conditional opportunities may end without edits. Joint design of .1/.3 before implementation, without mandatory shared framework.
+
+| Checkpoint | Deliverable |
+| --- | --- |
+| C22.0 | Verify baseline, ownership and joint design; scoped C21 native evidence |
+| C22.1 | Accurate bounded technical error information and retained retrieval diagnostics |
+| C22.2 | Unambiguous proposal registration receipts, unchanged replacement/finality |
+| C22.3 | Accessible input format at tool-use boundary, prioritize information over schema strictness |
+| C22.4 | Truthful correction context and current delivery; optional existing reference only |
+| C22.5 | Limited owned availability/scope/retrieval audit, changes only if proven |
+| C22.6 | Actual model-facing consistency, not a prompt size optimization project |
+| C22.7 | Same-input invariants, focused regressions and exact-HEAD full CI |
+| C22.8 | Separate real-client contract compatibility and experimental model utility, UNVERIFIED if unavailable |
+
+Preserve existing runtime semantics and model autonomy; no extra gates/quotas, schema or diagnostic service, semantic history selection, automatic corrections or external provider work. F1–F5 implemented at the existing owners; H4 clarified in descriptions, H1–H3/H5 require no additional mechanisms. Engineering PASS on `8ad7f5415de3be64286a41aa90d2a30634c78d4d`, [CI #45706899430](https://github.com/apathoid/role-orchestrator/actions/runs/45706899430) SUCCESS (39/39 steps; foundation/package 4/4, core 30/30, provider contracts 98/98, integration 570/570, acceptance 4/4, root 706/706, actual Linux PTY 15/15; all resource probes, historical comparisons, Nix and release checks). Documentation closure changes no runtime/test files; exact closure HEAD CI must be checked separately. See [STATUS](STATUS.md) for detailed checkpoint measurements and test evidence. Native compatibility and model utility remain separately UNVERIFIED. No master merge or next cycle authorized.
+
+## C21-R — Model-facing Clarity & Comparison Refinement (ENGINEERING VERIFIED at dbcc6d88; real native UNVERIFIED)
+
+Review baseline `71d6b2d64de96c43076021878e82387adc79a049`, CI #45663007700 SUCCESS. R0 baseline; R1 editorial guidance deduplication; R2 exact A/B/C/D comparison including actual ACP sparse events; R3 historical STATUS correction and hasCapturedValue unchanged; R4 focused regressions and full CI SUCCESS on D `dbcc6d881074ceee8a8cd123f69962b0f92e4d45`, [CI #45667902352](https://github.com/apathoid/role-orchestrator/actions/runs/45667902352). See [STATUS](STATUS.md) for measured A/B/C/D and native limitations. No expanded evidence API, runtime policy, metadata capture or provider investigation. Native quality remains UNVERIFIED.
+
+## C21 — Model-facing Information Clarity (ENGINEERING VERIFIED at 2ed30f83; real native UNVERIFIED)
+
+[Detailed executable plan](C21_MODEL_FACING_INFORMATION_CLARITY.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Implemented approved engineering scope on `feature/controller-intent-deferred-admission`; source baseline `5b6e55ccdd9ce2fba4a5dfdcb3d53dcd4b87ff55` / [CI #45563489787](https://github.com/apathoid/role-orchestrator/actions/runs/45563489787) SUCCESS. Planning HEAD `16525506fd3dd4d4543b85377212234468f53037`; engineering checkpoint C `2ed30f83fddaf6d34ab562c4774bc4704277cd92`, [CI #45661813661](https://github.com/apathoid/role-orchestrator/actions/runs/45661813661) SUCCESS. See STATUS for measured A/B/C and limitations.
+
+| Checkpoint | Deliverable |
+| --- | --- |
+| C21.0 | Actual source/contract/fixture baseline and existing tests |
+| C21.1 | RO-owned native integration check only; defect fix, supported finding or UNVERIFIED |
+| C21.2 | Existing adapter-owned identity metadata, inherited attribution/paired omission, immutable refs and duplicate semantics, C20-R |
+| C21.3 | Evidence presentation first; preserve ordinary pagination/default 12; optional minimal API additions only if justified |
+| C21.4 | Clarify evidence identity, provenance, completeness and model-owned Assessment; no semantic admission |
+| C21.5 | Clarify MCP native turn completion; continued tools/replacement preserved; checkpoint B |
+| C21.6 | Comprehensive prompt audit last, retain technical and role contracts, remove unjustified prescriptions/dedup losslessly; checkpoint C |
+| C21.7 | Focused regressions using existing infrastructure and full exact-SHA CI |
+| C21.8 | A/B/C native comparison where available, separate native compatibility and model quality; UNVERIFIED where unavailable |
+
+No mandatory filters/order/limit, new store/registry, provider internals/diagnostics investigation, external-effect contract changes, forced retrieval/workflow, hidden capability selection, tool-count/latency or prompt-size target. Preserve existing user authority, real workspace, provider independence, C18–C20-R and prior native obligations. No master merge. Engineering CI verified on checkpoint C; real native results remain UNVERIFIED.
+
+
+## C19 — Model-facing Evidence & Answer Clarity (ENGINEERING VERIFIED at 876a33c7; native UNVERIFIED)
+
+[Detailed executable plan](C19_MODEL_FACING_EVIDENCE_AND_ANSWER.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; source baseline `2650d327b01eddd5ed2939263ef73b803381be11`. Implement before C20, with separate exact-SHA acceptance.
+
+| Checkpoint | Deliverable |
+| --- | --- |
+| C19.0 | Baseline actual native metadata sources, observation identity and prompt paths; RED fixtures |
+| C19.1 | Optional immutable provider-reported metadata, native values preserved, no universal ontology or invented provenance |
+| C19.2 | Bounded live/historical projection, canonical ref and essential provenance priority, explicit omissions, unchanged pagination |
+| C19.3 | Concise general observation guidance, capture completeness distinct from tool status |
+| C19.4 | Actual user-facing answer clarified across MCP/text/legacy; no Host semantic validation or text substitution |
+| C19.5 | Production-path ACP SDK, identity/duplicate/reopen/budget/answer/optional retrieval regressions |
+| C19.6 | Native model evaluation or UNVERIFIED, exact-SHA mandatory CI and documentation |
+
+## C20 — Optional Invocation Deadline & Resource Defaults (ENGINEERING VERIFIED at e092712f and c86d3e5e; native UNVERIFIED)
+
+[Detailed executable plan](C20_OPTIONAL_INVOCATION_DEADLINE_AND_RESOURCE_DEFAULTS.md). Begin from verified C19 implementation head. Approved defaults: `maxConcurrentInvocations=5`, `maxInvocationsPerOperation=null`, `invocationTimeoutMs=null`. All remain configurable. No additional execution timeouts, idle/tool/startup/interaction/recovery deadlines, watchdog or liveness tracking. Preserve post-stop technical teardown and actual provider policies; never infer detachment or replay unknown work.
+
+| Checkpoint | Deliverable |
+| --- | --- |
+| C20.0 | Source/timer ownership inventory, RED fixtures incl. ACP startup cancellation; capture/output/resource audit |
+| C20.1 | Nullable configuration, explicit finite/absent/null semantics and trusted precedence |
+| C20.2 | Unlimited cumulative invocations and default concurrency 5 through Operation limits, reserve, state, resume, context and presentation |
+| C20.3 | One optional hard invocation deadline, no scheduled execution timer by default |
+| C20.4 | No hidden adapter/owned-process execution timeout; transport and post-stop mechanics distinguished |
+| C20.5 | Indefinite interactions and recovery, reliable explicit cancellation across all boundaries, truthful pending cleanup/late detachment and occupied slots |
+| C20.6 | Deterministic lifetime/resource/finality regressions, >40 invocations, scale/capture measurements and residual limits |
+| C20.7 | Native acceptance or UNVERIFIED, full exact-SHA CI, normative docs/config/acceptance matrix and handoff |
+
+No new scheduler, semantic gates, execution phase/watchdog subsystem or replacement cumulative quota. C19 and baseline C20 have exact-SHA engineering checkpoints; C20-R closes the remaining ACP result-capture defect. Native acceptance remains UNVERIFIED.
+
+## C20-R — Independent ACP Result Capture (ENGINEERING VERIFIED at c86d3e5e; native UNVERIFIED)
+
+Separate bounded current result from retained history in the existing ACP adapter; preserve message identity, complete-result refs and C18R finality. Actual SDK RED/GREEN, identity/Unicode/overflow/cancellation tests, capture scale probe and exact-SHA [CI #45488863848](https://github.com/apathoid/role-orchestrator/actions/runs/45488863848) PASS (38/38; 98 contracts, 561 integration, 15 PTY). No change to C20 defaults or lifecycle. Engineering work closed; use [native N1–N8](NATIVE_ACCEPTANCE.md#c19c20-r--native-acceptance-procedure-n1n8). No further implementation without concrete native evidence and separate authorization.
+
+## C18N-R — Review corrections (ENGINEERING VERIFIED at 0687a40; native UNVERIFIED)
+
+Review baseline `0dbae3434b626fcd4132059f6d349b3f4dcab3c6`; [STATUS](STATUS.md) and [C18N specification](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md). The five RED regressions are recorded at `1a53134d` / [CI #45266076178](https://github.com/apathoid/role-orchestrator/actions/runs/45266076178). R1–R5 production fixes passed [CI #45266687474](https://github.com/apathoid/role-orchestrator/actions/runs/45266687474) on `295499174be7f4475dc14b59bfa6c7b5bbe3e427`. Expanded code/probes passed [CI #45267563474](https://github.com/apathoid/role-orchestrator/actions/runs/45267563474) at `f9ede6d`. Final code `0687a40a8cf2d2886ab1f722aa8e91663e9e43eb` passed [CI #45268444761](https://github.com/apathoid/role-orchestrator/actions/runs/45268444761): 36/36 steps including 543 integration, 15 PTY, Nix/release. The documentation-only head still requires its own exact-SHA workflow; real provider/model comparisons remain UNVERIFIED.
+
+| Corrective checkpoint | Deliverable |
+| --- | --- |
+| R.0 | Five specific RED tests for registered ToolPort call 33, repeated preflight scan, real tool registration, exhausted live cursor and oversized metadata |
+| R.1 | Genuine External ToolPort no cumulative 32-call limit; unchanged permission/cancel/late receipts and input/output bounds |
+| R.2 | Historical index once, incremental live alias/identity lookup, Intent-size temporary `EvidenceRefs` |
+| R.3 | Valid external names including context/evidence/submit_decision; built-ins aliased dynamically |
+| R.4 | Live `resumeCursor` after every page without historical cursor changes |
+| R.5 | Explicit omission/gap markers, bounded directory metadata and navigable later entries |
+| R.6 | Real-port, large-history/finding/alias, multi-page/Unicode, ACP SDK, cancellation/finality/restart regressions |
+| R.7 | Comparative GC/preflight measurements, complete Node24/npm/PTY/Nix/release CI at exact SHA, real native UNVERIFIED |
+
+No additional scheduler, semantic gate, call quota or compulsory workspace validation.
+
+
+
+## C18N — Live Evidence Discovery, Reliable Controller Correction & Minimal MCP Bridge (ENGINEERING VERIFIED at `42293b6`; native UNVERIFIED)
+
+**Approved executable scope:** [C18N.0–C18N.10 plan](C18N_LIVE_EVIDENCE_DISCOVERY_AND_RELIABLE_CORRECTION.md), [STATUS](STATUS.md), [native procedure](NATIVE_ACCEPTANCE.md). Branch `feature/controller-intent-deferred-admission`; planning baseline `12b88248c8b59408b06d2ec1919498050bee19a9`. The feature branch contains implementation and automated regression fixtures for C18N.1–C18N.8. Synthetic ACP SDK testing does not establish native LLM acceptance, which remains **UNVERIFIED**. Required Node24/checkJs, core/contracts/integration/PTY, Nix packaging and release CI passed on [`42293b6`](https://github.com/apathoid/role-orchestrator/actions/runs/45260312459) (35/35 job steps, 534 integration tests). Earlier intermediate failures and the accepted ordinary request-ID post-completion replay compromise are recorded in STATUS. Later commits require independent exact-SHA verification; native-model autonomy/performance remains UNVERIFIED.
+
+| Checkpoint | Required deliverable and exit |
+| --- | --- |
+| C18N.0 | Baseline current ACP/Orchestrator/MCP resource behavior; sanitize operator trace; RED for missing live discovery, late evidence rejection, cross-invocation replacement and cumulative ordinary-call limit |
+| C18N.1 | Existing canonical observation refs exposed from accepted current-invocation data; stable identity, truthful provenance and explicit lack of durability before journal commit |
+| C18N.2 | Optional read-only live list/fetch with append-safe cursor independent of historical `context_list` snapshot; bounded scopes, body, metadata and collision-free tool names |
+| C18N.3 | One general Controller instruction about scoped observations, optional retrieval and model-owned evidence interpretation; no task/tool/path-specific heuristics |
+| C18N.4 | Advisory bounded technical preflight; structural registration precedes optional checks, no second admission or StateStore wait, copy-on-check temporary reference indices |
+| C18N.5 | Same-turn correction, C18R finalization/last-wins/identity and cross-invocation historical-result recovery preserved |
+| C18N.6 | Ordinary MCP calls retain active correlation only, release completed responses, remove cumulative 64-call ceiling; explicitly accept reduced late same-ID dedup, preserve strong RO control/durable invariants |
+| C18N.7 | Provider-native tool/skill provenance and exact `finalAssessment.answer` transport; no Host editing/semantic verification |
+| C18N.8 | Full contract, ACP SDK, concurrency, fault, cancellation, restart, memory and native autonomy regression matrix |
+| C18N.9 | Controlled real-native direct/legacy/C18N comparisons on actual permitted model/workspace, or explicit UNVERIFIED |
+| C18N.10 | Exact-SHA Node 24/checkJs/npm/Nix/PTY/release CI, normative docs updated for actual implementation, reviewer/executor handoff |
+
+**Mandatory constraints:** no additional scheduler/store/Host semantic policy, no per-tool effect classification, no requirement to discover evidence before submitting, no alteration of historical ContextPort cursor, no blind Host replay of unknown effects, no weakening of RO-owned Decision/Action finality. Do not silently remove the 128-control-call bound if its removal would weaken proposal identity: measure, document and either safely replace with retained-resource accounting or report as explicit residual technical limit.
+
+## C18R — corrective review and exact-SHA verification (IMPLEMENTED; NATIVE UNVERIFIED)
+
+C18R fixes on `feature/controller-intent-deferred-admission` derive from the engineering review of `f9d06f19`. The corrected implementation and added tests passed [CI #45017738925](https://github.com/apathoid/role-orchestrator/actions/runs/45017738925) on `fab92fd037a0169e9e12ac6706801c3c6d4d1666`; any later documentation-only SHA requires a fresh exact-SHA CI. P1: ACP capture overflow no longer invalidates separately proven MCP completion; clearly observed invalid explicit replacements of the current proposal cannot silently admit its predecessor. P2: dynamic collision-free builtin MCP tool naming, trusted attempt-bound duplicate/identity treatment and crash-gap, finality/capacity/cancellation/provenance regressions. Production fixes are confined to ACP/MCP adapter and existing identity/admission owners; no extra scheduler, semantic Host gate, CAS for proposals or native-tool restriction.
+
+Node 24/Nix and all applicable regressions passed at `fab92fd037a0169e9e12ac6706801c3c6d4d1666`; see [STATUS](STATUS.md). Any subsequent commit requires a new exact-SHA PASS. Real native provider comparisons remain UNVERIFIED and are not inferred from SDK/PTY fixtures.
+
+
+## C18 — Controller Intent & Deferred Decision Admission (IMPLEMENTATION; NATIVE UNVERIFIED)
+
+**Current implementation record:** [C18 executable plan](C18_CONTROLLER_INTENT_AND_DEFERRED_ADMISSION.md), branch `feature/controller-intent-deferred-admission` from C17R `836c3795`, planning HEAD `f8722bc8`. Read [C18 status](STATUS.md) for exact code/CI/native evidence. C18 production code and synthetic tests exist on the feature branch; engineering verification requires full exact-SHA CI, while real-model native acceptance is UNVERIFIED. No master merge.
+
+| Checkpoint | Required deliverable and exit |
+| --- | --- |
+| C18.0 | Baseline, exact provenance/call-graph analysis, RED failure fixtures; record real limits |
+| C18.1 | Full transport-neutral model-owned ControllerIntent decoder and per-field empty defaults |
+| C18.2 | Trusted deterministic Intent→Decision v1 materialization and text/structured reference path |
+| C18.3 | Generic ProviderPort transport/result discrimination, capability negotiation and legacy fallback |
+| C18.4 | MCP proposal-only tool, in-turn correction, explicit same-lineage last-wins, recoverable conflicts, pre-`end_turn` in-flight barrier |
+| C18.5 | Invocation-scoped generic provenance, cross-session tests, bounded large-intent/control-tool capacity |
+| C18.6 | Existing single admission/journal, C16 5/10 recovery, C17R source identity, crash-safe receipt dedup and no replay |
+| C18.7 | Complete contract/integration/cancel/late/restart/PTY regressions and native autonomy invariants |
+| C18.8 | Real OpenCode+independent provider comparisons, code quality and native tool behavior, final exact-SHA Node 24/Nix/CI and documentation |
+
+**Nonnegotiable:** native tools/skills/subagents and ordinary research must continue after any pending/invalid/conflicted submission. Host does not evaluate semantic correctness, enforce Git/workspace integrity, invent model defaults, or block independent Workers. The full C18 document governs details; this table is a navigation summary, not a second specification.
+
 ## C17R — Recovery Delivery & Diagnostic Verification
 
 Corrective scope approved after C17 review; baseline `e7e8bf84` (full CI PASS), branch `feature/controller-reliability`. C17R.0–.2 baseline/recovery packing/chronology; .3 bounded configurable capture; .4 source correlation; .5 existing durable/concurrency paths; .6 diagnostic isolation and exact-build synthetic overhead; .7 two main native comparisons; .8 full exact-SHA verification. Existing [C17R scope and criteria](C17_CONTROLLER_CONTEXT_AND_DECISION_RELIABILITY.md#c17r--recovery-delivery--diagnostic-verification), [STATUS](STATUS.md) and [native procedure](NATIVE_ACCEPTANCE.md). No new model workflow, Decision transport or default context budget. Engineering evidence is exact-SHA only; native UNVERIFIED.

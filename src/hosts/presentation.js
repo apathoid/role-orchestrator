@@ -209,7 +209,7 @@ export function formatOperation(state, mode) {
   const count=controllers+' Controller attempt'+(controllers===1?'':'s')+' · '+workers.length+' Worker attempt'+(workers.length===1?'':'s')+
     (workers.length?' ('+unique+' distinct Action'+(unique===1?'':'s')+')':'')+' · '+findings+' recorded finding'+(findings===1?'':'s');
   const details=mode==='compact'?'':'\n  Operation '+state.operationId+
-    ' · dispatch records '+dispatched+'/'+state.attempts.length+' · budget charged '+charged+'/'+state.limits.maxInvocations+
+    ' · dispatch records '+dispatched+'/'+state.attempts.length+' · budget charged '+charged+'/'+(state.limits.maxInvocations ?? 'unlimited')+
     '\n'+state.attempts.map(attempt=>'  '+(attempt.actionId===attempt.attemptId?'Controller':attempt.actionId)+
       ' '+attempt.attemptId+' · '+(attempt.route?.profileId??'route unknown')+
       ' · '+(attempt.outcome?.terminal??attempt.status)+' · dispatch='+attempt.dispatchCertainty+

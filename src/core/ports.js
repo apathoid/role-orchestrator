@@ -18,8 +18,9 @@
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
- *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number,
- *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>}} Invocation
+ *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number | null,
+ *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, evidenceAccess?: LiveEvidencePort, preflightIntent?: ControllerPreflight, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>,
+ *   controllerDelivery?: 'intent_text' | 'intent_mcp', controllerDecisionToolName?: string}} Invocation
  * @typedef {{kind: 'reasoning' | 'user_message' | 'tool' | 'plan' | 'finding', payload: unknown,
  *   nativeId?: string, nativeKind?: string}} ProviderActivity
  * @typedef {(item: ProviderActivity) => void} ActivityCallback
@@ -36,7 +37,9 @@
  * This is optional technical provenance, not a capability or an admission field.
  * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, outputObservationParsed?: true, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
  *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected',
- *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth'}} ProviderResult
+ *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth',
+ *   controllerDeclaration?: {kind:'intent',value:unknown,observationRef?:string} |
+ *     {kind:'missing'|'conflict'} | {kind:'invalid',reason:import('./decode.js').FieldError}}} ProviderResult
  * @typedef {{
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,
@@ -102,6 +105,18 @@
  * @typedef {{bind: (scope: {attemptId: string, operationId: string, signal: AbortSignal, isActive: () => boolean,
  *   permissions?: Pick<AttemptPermissions, 'request'>, newId: () => string, maxBytes: number,
  *   receive: (toolId: string, receipt: ToolReceipt) => string}) => AttemptTools}} ToolPort
+ * @typedef {'closed' | 'invalid_cursor' | 'invalid_ref' | 'invalid_offset' | 'missing' | 'payload' | 'budget'} LiveEvidenceUnavailableReason
+ * @typedef {Pick<import('./observation.js').Observation, 'ref' | 'source' | 'completeness' | 'providerRef' | 'provenance' | 'reportedContext' | 'artifact' | 'summary' | 'native'> & {omittedMetadataFields?: string[], hasCapturedValue?: boolean}} LiveEvidenceItem
+ * @typedef {LiveEvidenceItem | {kind:'unavailable',reason:'budget',index:number}} LiveEvidenceListItem
+ * @typedef {{kind:'available',cursor:number,items:LiveEvidenceListItem[],resumeCursor:number,nextCursor?:number} |
+ *   {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceList
+ * @typedef {{kind:'chunk',item:LiveEvidenceItem,format:'utf8'|'json',offset:number,totalBytes:number,
+ *   base64:string,nextOffset?:number} | {kind:'unavailable',reason:LiveEvidenceUnavailableReason}} LiveEvidenceFetch
+ * @typedef {{list:(cursor?:number)=>LiveEvidenceList,
+ *   fetch:(ref:string,range?:{offset:number,maxBytes?:number})=>LiveEvidenceFetch}} LiveEvidencePort
+ * @typedef {{kind:'checked',issues:{path:string,expected:string,availability?:'not_in_snapshot'|'ambiguous'}[],
+ *   omittedCount:number,advisory:true} | {kind:'unchecked',reason:'budget'|'closed'|'unavailable',advisory:true}} PreflightResult
+ * @typedef {(intent:unknown)=>PreflightResult} ControllerPreflight
  * @typedef {{
  *   list: (cursor?: HistoryCursor) => ContextList,
  *   fetch: (ref: string | ContextPosition, sourceOperationId?: string, range?: {offset: number, maxBytes?: number}) => Promise<ContextFetch>,
@@ -113,7 +128,7 @@
  *   {kind: 'unavailable', reason: 'denied' | 'missing' | 'payload' | 'ambiguous' | 'retention' | 'budget' | 'integrity_error' | 'closed' | 'invalid_offset'}} ContextFetch
  * @typedef {NonNullable<ContextItem['receivedSequence']>} ContextPosition
  * @typedef {Pick<ContextItem, 'source' | 'completeness' | 'attemptId' | 'receivedSequence' |
- *   'providerRef' | 'kind' | 'outputKind' | 'unavailableReason'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem
+ *   'providerRef' | 'kind' | 'outputKind' | 'unavailableReason' | 'native' | 'omittedMetadataFields'> & {ref: string | ContextPosition, reportedLocation?: string}} ContextDirectoryItem
  * @typedef {number | {revision: number, index: number}} HistoryCursor
  * @typedef {{kind: 'available', cursor: {revision: number, index: number}, items: ContextDirectoryItem[], nextCursor?: {revision: number, index: number}} |
  *   {kind: 'unavailable', reason: 'closed' | 'invalid_cursor' | 'budget'}} ContextList
@@ -122,15 +137,14 @@
  * @typedef {{reference: string, authorize: (reference: string, profileId: string) =>
  *   'ALLOWED' | 'PERMISSION_DENIED' | 'REVOKED'}} AuthorityPort
  * @typedef {{kind: 'input', nativeKind: string, providerRequestId: string, payload: unknown}} InteractionRequest
- * @typedef {InteractionRequest & {requestId: string, operationId: string, attemptId: string, profileId: string, deadlineAt: number}} PendingInteraction
+ * @typedef {InteractionRequest & {requestId: string, operationId: string, attemptId: string, profileId: string, deadlineAt: number | null}} PendingInteraction
  * @typedef {{kind: 'answered', payload: unknown} | {kind: 'unavailable' | 'cancelled' | 'timed_out' | 'invalid'} |
  *   {kind: 'error', code: number, message: string, data?: unknown}} InteractionResult
  * @typedef {{requestId: string, operationId: string, attemptId: string, providerRequestId: string, payload: unknown}} InteractionReply
  * @typedef {{supports: (kind: InteractionRequest['kind']) => boolean,
  *   request: (input: InteractionRequest, requestSignal?: AbortSignal) => Promise<InteractionResult>, close: () => void}} AttemptInteractions
  * @typedef {{bind: (scope: {operationId: string, attemptId: string, profileId: string, signal: AbortSignal,
- *   isActive: () => boolean, deadline: number, clock: import('./diagnostics.js').Clock,
- *   schedule: (timeoutMs: number, expire: () => void) => () => void,
+ *   isActive: () => boolean, deadline: number | null, clock: import('./diagnostics.js').Clock,
  *   report?: (event: string, reason: string) => void}) => AttemptInteractions}} InteractionPort
  * @typedef {{id: string, kind: 'allow' | 'deny', label?: string, scope?: 'once' | 'always'}} PermissionOption
  * @typedef {{source: 'provider_reported', title?: string, kind?: string, nativeToolCallId?: string,

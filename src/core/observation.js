@@ -34,9 +34,88 @@ const summaryReport = record({ kind: oneOf('model_summary'), text: id, ...summar
 const reportedContext = optional(record({
   location: optional(id), version: optional(id), reportedAt: optional(measurement),
 }));
+// A small optional provider-event snapshot, not an ontology or a second source
+// of evidence. Identification fields from an earlier same-call report must
+// retain explicit attribution. The original captured value is unchanged.
+const nativeFields = /** @type {const} */ (['eventKind', 'nativeToolCallId', 'title', 'kind', 'status']);
+/** @typedef {typeof nativeFields[number]} NativeField */
+/** @typedef {'title' | 'kind'} InheritedNativeField */
+/** @typedef {NativeField | 'inheritedFields' | 'metadata'} NativeOmission */
+/** @typedef {Partial<Record<NativeField, string>> & {inheritedFields?: InheritedNativeField[], omittedFields?: NativeOmission[]}} NativeMetadata */
+
+/** @param {unknown} input @param {boolean} stored @returns {NativeMetadata | undefined} */
+function readNativeMetadata(input, stored) {
+  if (input === undefined) return undefined;
+  if (!input || typeof input !== 'object' || Array.isArray(input) ||
+      (Object.getPrototypeOf(input) !== Object.prototype && Object.getPrototypeOf(input) !== null)) {
+    return {omittedFields: ['metadata']};
+  }
+  /** @type {NativeMetadata} */
+  const native = {};
+  /** @type {Set<NativeOmission>} */
+  const omitted = new Set();
+  for (const field of nativeFields) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, field);
+    if (!descriptor || ('value' in descriptor && descriptor.value === undefined)) continue;
+    if ('value' in descriptor && typeof descriptor.value === 'string' && descriptor.value.length <= 1024) {
+      native[field] = descriptor.value;
+    } else omitted.add(field);
+  }
+  // Attribution is source metadata, not a receiver omission diagnostic.
+  // Validate it independently; malformed attribution must never expose an
+  // identification value as if it were newly reported.
+  const inherited = Object.getOwnPropertyDescriptor(input, 'inheritedFields');
+  if (inherited && (!('value' in inherited) || inherited.value !== undefined)) {
+    const values = 'value' in inherited ? inherited.value : undefined;
+    /** @type {Set<InheritedNativeField>} */
+    const fields = new Set();
+    let valid = Array.isArray(values) && values.length <= 2;
+    if (valid) for (let i = 0; i < values.length; i++) {
+      const descriptor = Object.getOwnPropertyDescriptor(values, String(i));
+      const field = descriptor && 'value' in descriptor ? descriptor.value : undefined;
+      if ((field !== 'title' && field !== 'kind') || fields.has(field)) {
+        valid = false;
+        break;
+      }
+      fields.add(field);
+    }
+    if (valid) {
+      const accepted = [...fields].filter(field => native[field] !== undefined);
+      if (accepted.length) native.inheritedFields = accepted;
+    } else {
+      omitted.add('inheritedFields');
+      for (const field of /** @type {const} */ (['title', 'kind'])) {
+        if (native[field] !== undefined) {
+          delete native[field];
+          omitted.add(field);
+        }
+      }
+    }
+  }
+  // Only the persisted accepted record may carry the receiver's omission
+  // markers. An adapter supplies source fields, not Host capture diagnostics.
+  if (stored) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, 'omittedFields');
+    if (descriptor && 'value' in descriptor && Array.isArray(descriptor.value)) {
+      const values = descriptor.value;
+      if (values.length > nativeFields.length + 2) omitted.add('metadata');
+      else for (const field of values) {
+        if (field === 'metadata' || field === 'inheritedFields' || nativeFields.some(name => name === field)) omitted.add(field);
+        else omitted.add('metadata');
+      }
+    } else if (descriptor && (!('value' in descriptor) || descriptor.value !== undefined)) omitted.add('metadata');
+  }
+  if (omitted.size) native.omittedFields = [...omitted];
+  return Object.keys(native).length ? native : undefined;
+}
+/** @type {import('./decode.js').Decoder<NativeMetadata | undefined>} */
+const adapterNative = input => readNativeMetadata(input, false);
+/** @type {import('./decode.js').Decoder<NativeMetadata | undefined>} */
+const storedNative = input => readNativeMetadata(input, true);
+
 const itemFields = record({
   ref: id, source, completeness, value: optional(jsonValue), provenance: optional(provenance), providerRef: optional(id),
-  artifact: optional(artifact), summary: optional(summary), reportedContext,
+  artifact: optional(artifact), summary: optional(summary), reportedContext, native: storedNative,
 });
 
 /** @typedef {{ref: string, size: number, originalSize: number, truncated: boolean}} ArtifactReference
@@ -44,16 +123,16 @@ const itemFields = record({
  *   sourceId: string, receivedAt?: number, exit?: {kind: 'agent_exit' | 'tool_exit', code: number}}} Provenance
  * @typedef {{ref: string, source: ReturnType<typeof source>, completeness: ReturnType<typeof completeness>,
  *   value?: unknown, provenance?: Provenance, providerRef?: string, artifact?: ArtifactReference, summary?: ReturnType<typeof summary>,
- *   reportedContext?: ReturnType<typeof reportedContext>}} Observation
+ *   reportedContext?: ReturnType<typeof reportedContext>, native?: NativeMetadata}} Observation
  * @typedef {Observation & {receivedSequence?: {revision: number, index: number}, attemptId?: string,
  *   kind?: 'finding', excerpt?: string, unavailableReason?: 'missing' | 'budget' | 'payload' | 'ambiguous' | 'duplicate_inline' | 'retention' | 'integrity_error' | 'denied' | 'closed' | 'invalid_offset', duplicateOf?: string,
- *   outputKind?: Outcome['outputRefs'][number]['kind']}} ContextItem
- * @typedef {{ref: string, sourceId: string, completeness: Observation['completeness'], value?: unknown, reportedContext?: Observation['reportedContext']} & (
+ *   outputKind?: Outcome['outputRefs'][number]['kind'], omittedMetadataFields?: string[]}} ContextItem
+ * @typedef {{ref: string, sourceId: string, completeness: Observation['completeness'], value?: unknown, reportedContext?: Observation['reportedContext'], native?: Omit<NativeMetadata, 'omittedFields'>} & (
  *   {kind: 'agent_exit', exitCode: number} |
  *   {kind: 'provider_tool', exitCode?: number} |
  *   {kind: 'model' | 'provider_report' | 'host_transport'}
  * )} AdapterObservation
- * @typedef {AdapterObservation | Omit<Observation, 'provenance' | 'providerRef' | 'artifact' | 'summary'> | ReturnType<typeof summaryReport>} ProviderObservation
+ * @typedef {AdapterObservation | Omit<Observation, 'provenance' | 'providerRef' | 'artifact' | 'summary' | 'native'> | ReturnType<typeof summaryReport>} ProviderObservation
  */
 
 /** @type {import('./decode.js').Decoder<Observation>} */
@@ -73,7 +152,9 @@ export const contextItem = (input, path) => {
       !validCoverage(value.summary.coveredObservationRefs))) {
     invalid(path + '.summary', 'an attributed model summary with unique observation references');
   }
-  return value;
+  const { native, ...fields } = value;
+  return native && (origin?.kind === 'provider_tool' || origin?.kind === 'provider_report')
+    ? { ...fields, native } : fields;
 };
 
 /** @param {readonly string[]} refs */
@@ -92,7 +173,7 @@ export function observation(item, origin) {
   return { ...item, source: sources[origin.kind], provenance: origin };
 }
 
-const adapterFields = { ref: id, sourceId: id, completeness, value: optional(jsonValue), reportedContext };
+const adapterFields = { ref: id, sourceId: id, completeness, value: optional(jsonValue), reportedContext, native: adapterNative };
 const adapterObservation = record({
   ...adapterFields, kind: oneOf('agent_exit', 'provider_tool', 'model', 'provider_report', 'host_transport'), exitCode: optional(exitCode),
 });
@@ -103,8 +184,9 @@ export function receiveProviderObservation(input, receivedAt) {
   if (input && Object.hasOwn(input, 'kind')) {
     const parsed = decode(adapterObservation, input);
     if (parsed.kind === 'rejected') return undefined;
-    const { kind, sourceId, exitCode, reportedContext, ...fields } = parsed.value;
-    const item = reportedContext ? { ...fields, reportedContext } : fields;
+    const { kind, sourceId, exitCode, reportedContext, native, ...fields } = parsed.value;
+    const item = { ...fields, ...(reportedContext && { reportedContext }),
+      ...(native && (kind === 'provider_tool' || kind === 'provider_report') && { native }) };
     if (kind === 'agent_exit') {
       return exitCode === undefined ? undefined : observation(item, {
         kind: 'host_transport', sourceId, receivedAt, exit: { kind: 'agent_exit', code: exitCode },

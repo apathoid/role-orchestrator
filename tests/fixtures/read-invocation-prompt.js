@@ -24,7 +24,8 @@ export function readInvocationPrompt(prompt) {
   }
   const task = read('Original objective and user constraints');
   const before = read('Role instructions before Decision reference');
-  const reference = read('Decision v1 reference', false);
+  const reference = read(prompt.includes('\n\n## ControllerIntent reference\n')
+    ? 'ControllerIntent reference' : 'Decision v1 reference', false);
   const {instructions: after, ...skills} = read('Remaining role instructions and materialized skills');
   const context = read('Orchestration context and history (RO-managed Catalog is not native capability inventory)');
   if (sections.length) context.push(read('Active technical correction'));

@@ -135,3 +135,50 @@ test('C11 review P2-2: runtime trace uses trusted launch env secrets for direct 
       else process.env.C11_REVIEW_TRACE = old;
     }
   }));
+
+test('C20 runtime resume preserves persisted authority under new defaults/project preferences and honors explicit trusted override',()=>withOwnedRun('C20-runtime-defaults',async directory=>{
+  const {request}=await import('../fixtures/core.js');
+  const configuration={
+    schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},
+    providers:{test:{adapter:'host-fixture'}},
+    plugins:[{id:'host-fixture',module:fileURLToPath(new URL('../fixtures/host-plugin.js',import.meta.url))}],
+  };
+  const stateDirectory=join(directory,'state');
+  const first=await openRuntime({configuration:JSON.stringify({...configuration,resources:{
+    maxConcurrentInvocations:2,maxInvocationsPerOperation:7,invocationTimeoutMs:10000}}),stateDirectory});
+  const previous=[];
+  try{
+    for(let i=0;i<3;i++){
+      const state=await(await first.api.submit(request({requestId:'old-'+i,text:'clarify',configurationRef:first.configurationRef}))).completion;
+      assert.equal(state.waiting.kind,'question');
+      assert.deepEqual(state.limits,{maxInvocations:7,maxConcurrentInvocations:2});
+      previous.push(state);
+    }
+  }finally{await first.close();}
+  const second=await openRuntime({configuration:JSON.stringify(configuration),stateDirectory});
+  try{
+    const resumed=await(await second.api.resume(previous[0].operationId,{requestId:'answer-0',questionId:previous[0].waiting.questionId,text:'answer'})).completion;
+    assert.equal(resumed.status,'finished');
+    assert.deepEqual(resumed.limits,{maxInvocations:7,maxConcurrentInvocations:2});
+    const fresh=await(await second.api.submit(request({requestId:'new-defaults',configurationRef:second.configurationRef,text:'settings'}))).completion;
+    assert.deepEqual(fresh.limits,{maxInvocations:null,maxConcurrentInvocations:5});
+    assert.deepEqual(JSON.parse(fresh.assessment.answer),['primary',null]);
+  }finally{await second.close();}
+  const project=join(directory,'.role-orchestrator.json');
+  await writeFile(project,JSON.stringify({schemaVersion:1,resources:{maxConcurrentInvocations:4,maxInvocationsPerOperation:10}}));
+  const third=await openRuntime({configuration:JSON.stringify(configuration),stateDirectory,project:{path:project}});
+  try{
+    const resumed=await(await third.api.resume(previous[1].operationId,{requestId:'answer-1',questionId:previous[1].waiting.questionId,text:'answer'})).completion;
+    assert.equal(resumed.status,'finished');
+    assert.deepEqual(resumed.limits,{maxInvocations:7,maxConcurrentInvocations:2});
+    const fresh=await(await third.api.submit(request({requestId:'new-project',configurationRef:third.configurationRef}))).completion;
+    assert.deepEqual(fresh.limits,{maxInvocations:10,maxConcurrentInvocations:4});
+  }finally{await third.close();}
+  const fourth=await openRuntime({configuration:JSON.stringify(configuration),stateDirectory,
+    launch:{resources:{maxConcurrentInvocations:5,maxInvocationsPerOperation:null}}});
+  try{
+    const resumed=await(await fourth.api.resume(previous[2].operationId,{requestId:'answer-2',questionId:previous[2].waiting.questionId,text:'answer'})).completion;
+    assert.equal(resumed.status,'finished');
+    assert.deepEqual(resumed.limits,{maxInvocations:null,maxConcurrentInvocations:5});
+  }finally{await fourth.close();}
+}));
