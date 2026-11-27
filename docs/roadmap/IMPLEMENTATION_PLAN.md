@@ -1,5 +1,13 @@
 # Активный план реализации и приёмки
 
+## C23 — Configuration-scoped State & Concurrent Runtime Support (PLANNED; UNVERIFIED)
+
+Рабочая ветка `feature/configuration-scoped-state`, implementation baseline `e96b036b57495d3171ce68d98bbada3c97e4feb8` (master), [CI #45881827539](https://github.com/apathoid/role-orchestrator/actions/runs/45881827539) SUCCESS. Research baseline 8061e88e не является implementation HEAD. Согласованное задание: [C23_CONFIGURATION_SCOPED_STATE.md](C23_CONFIGURATION_SCOPED_STATE.md), acceptance A126–A131. Planning HEAD — коммит добавления плана; проверять точный SHA перед реализацией.
+
+Цель: deterministic configuration-path State Store (explicit --state-dir > storage.directory > automatic; standard default unchanged; API unchanged), независимые runtime, сохранение single writer, явный доступ к старой истории без миграции/discovery. Управляющие cancel/inspect/trace/export не требуют совпадения configurationRef и при explicit Store не требуют валидного config; minimal offline path без execution initialization/maintenance, базовый redaction всегда + optional current known secret masking с честной metadata. Run/resume сохраняют execution compatibility, включая относительный configurationDirectory context, без изменения historical configurationRef или recovery authority. ACP restart uses current config, same Store when selection unchanged. No workspace locks/global budgets/daemon/registry/new timeouts/provider-specific fixes/model-facing changes. Реализация, regression и native acceptance ещё UNVERIFIED.
+
+Последовательность: .0 baseline/RED; .1–.2 resolution/override; .3 live administrative routing and execution compatibility; .4 minimal offline management/redaction; .5 ownership/ACP/API; .6 multi-process regression; .7 documentation/review. Это инженерный план, не runtime workflow. Не расширять scope C22; historical native gaps остаются отдельно.
+
 C22-R2 review follow-up (P2.1/P3.1 only): actual HTTP RED for both transport causes, local conflict-invalidation correction, comment clarification, existing finality/lineage semantics and focused regression tests. See [STATUS](STATUS.md) for exact evidence. Engineering PASS on `acb93c62e4e792459576ec3f491e979106af907f` / [CI #45752408795](https://github.com/apathoid/role-orchestrator/actions/runs/45752408795) SUCCESS (39/39 steps; root 722/722, integration 585/585, Linux PTY 15/15; all four new regressions, historical comparisons, resource probes, Nix and release checks). No further engineering cycle; native utility and compatibility remain UNVERIFIED.
 
 ## C22-R2 — Technical Interface Reliability & Diagnostic Accuracy (engineering PASS at 6bbdbcb6; native UNVERIFIED)
