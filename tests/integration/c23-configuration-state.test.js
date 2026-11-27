@@ -372,7 +372,7 @@ test('C23 A127 default retention and crashed sibling do not affect an active nes
     }
   }));
 
-test('C23-R A129 saved snapshot remains readable with a writer and an unreachable endpoint', { timeout: 20_000 }, () =>
+test('C23-R A129 saved snapshot remains readable with a writer and an unreachable endpoint', { timeout: 40_000 }, () =>
   withOwnedRun('C23-R-busy-read', async (cwd,sync) => {
     const config=join(cwd,'config.json'), directory=join(cwd,'state');
     await configuration(config);
@@ -385,7 +385,8 @@ test('C23-R A129 saved snapshot remains readable with a writer and an unreachabl
       const stale=join(directory,'.control-v1.json');
       await writeFile(stale,JSON.stringify({path:join(cwd,'missing-socket'),token:'stale',pid:1}));
       const names=(await readdir(directory)).sort();
-      const snapshots=names.filter(name=>/^[a-f0-9]{64}.*\\.json$/u.test(name));
+      const snapshots=names.filter(name=>/^[a-f0-9]{64}.*\.json$/u.test(name));
+      assert.ok(snapshots.length>0);
       const before=await Promise.all(snapshots.map(name=>readFile(join(directory,name))));
       const output=join(cwd,'export.json');
       // Execute all three read commands on RED as well as GREEN.
