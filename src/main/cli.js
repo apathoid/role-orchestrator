@@ -13,7 +13,7 @@ import { runCli } from '../hosts/cli.js';
 import { dispatchCommand, hostError, HostError, isAdministrativeAction, operationTrace } from '../hosts/commands.js';
 import { cliConfiguration, cliStoreSelection, configurationPath, executionControlRef } from './cli-config.js';
 import { knownConfigurationSecrets } from './configuration-secrets.js';
-import { probeLocalStore, readLocalOperation } from '../adapters/state/local-store.js';
+import { LocalStoreError, probeLocalStore, readLocalOperation } from '../adapters/state/local-store.js';
 import { controlStreams } from '../hosts/control-streams.js';
 
 const cwd = process.cwd();
@@ -166,9 +166,22 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             if (!operationId) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
             let operation;
             try {
-              const ownership = await probeLocalStore(stateDirectory);
-              if (ownership !== 'absent') operation = await readLocalOperation(stateDirectory, operationId);
-              else if (action !== 'cancel') throw new HostError('STORE_UNAVAILABLE', 'State Store does not exist');
+              if (action === 'cancel') {
+                // Preserve snapshot diagnostics, then observe ownership as late
+                // as possible. A busy writer still takes the existing discovery
+                // path even when the saved snapshot cannot be read.
+                try {
+                  await readLocalOperation(stateDirectory, operationId);
+                } catch (error) {
+                  if (!(error instanceof LocalStoreError && error.reason === 'absent')) throw error;
+                } finally {
+                  await probeLocalStore(stateDirectory);
+                }
+              } else {
+                // Atomic snapshots can be observed without acquiring writer
+                // ownership. The live endpoint remains preferred above.
+                operation = await readLocalOperation(stateDirectory, operationId);
+              }
             } catch (error) {
               const issue = hostError(error);
               if (issue.code === 'STATE_STORE_IN_USE') throw error;

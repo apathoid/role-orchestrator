@@ -31,7 +31,7 @@ function key(id) {
 }
 
 export class LocalStoreError extends Error {
-  /** @param {SnapshotUnavailableReason | 'closed' | 'in_use'} reason @param {unknown} [cause] */
+  /** @param {SnapshotUnavailableReason | 'closed' | 'in_use' | 'absent'} reason @param {unknown} [cause] */
   constructor(reason, cause) {
     super('Local state store: ' + reason, { cause });
     this.code = reason === 'in_use' ? 'STATE_STORE_IN_USE' : 'STORE_UNAVAILABLE';
@@ -100,8 +100,17 @@ function localSnapshots(root, io) {
 
 /** Read the authoritative atomic snapshot without opening a writer or doing maintenance.
  * @param {string} directory @param {string} operationId */
-export function readLocalOperation(directory, operationId) {
-  return localSnapshots(resolve(directory), fs).load(operationId);
+export async function readLocalOperation(directory, operationId) {
+  try {
+    return await localSnapshots(resolve(directory), fs).load(operationId);
+  } catch (error) {
+    // Only the directory listing can surface a missing path here; a
+    // disappeared snapshot is already handled by the shared reader.
+    if (error instanceof LocalStoreError && error.reason === 'io' && isMissing(error.cause)) {
+      throw new LocalStoreError('absent', error.cause);
+    }
+    throw error;
+  }
 }
 
 /** @param {string} root */
