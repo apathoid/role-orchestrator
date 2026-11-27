@@ -50,7 +50,7 @@ role-orchestrator trace OPERATION_ID --state-dir /path/to/old/state
 role-orchestrator export-diagnostics OPERATION_ID --state-dir /path/to/old/state --output trace.json
 ```
 
-Независимые Stores допускают параллельные CLI/ACP экземпляры, один физический Store — одного writer. RO не блокирует workspace или внешние инструменты. Trace/export сохраняют базовую redaction, дополняют её доступными текущими известными значениями секретов и сообщают coverage; перед передачей проверяйте данные.
+Независимые Stores допускают параллельные CLI/ACP экземпляры, один физический Store — одного writer. При отсутствии доступного endpoint inspect/trace/export читают сохранённый snapshot без writer lock, не обязательно последнюю revision; offline cancel отдельно проверяет ownership. После обновления RO штатно перезапустите ранее запущенные ACP runtime: mixed-version execution и административный control могут быть несовместимы. RO не блокирует workspace или внешние инструменты. Trace/export сохраняют базовую redaction, дополняют её доступными текущими известными значениями секретов и сообщают coverage; перед передачей проверяйте данные.
 
 Для управляемого reasoning effort в `profiles.<id>` задаются `reasoningEffort` (массив `{level,effort}`) и `defaultReasoningLevel`; отсутствие поля или `"native"` сохраняет нативные настройки. Controller может передать `nextController: {continue: true, reasoningLevel: "high"}`, а delegate — `reasoningLevel`. Это необязательные поля прежней config/schema v1. [Пример и ограничения](docs/PROVIDERS_AND_CONFIGURATION.md#reasoning-effort-в-profiles).
 
