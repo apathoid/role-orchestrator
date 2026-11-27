@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
@@ -490,8 +490,9 @@ test('C23-R A129 explicit Store never discovers Operations in the default Store'
     const a=invoke(cwd,sync,['diagnose']).stateDirectory, b=join(cwd,'other-state');
     const operation=invoke(cwd,sync,['run','default history']), id=operation.operationId;
     await mkdir(b);
-    const names=(await readdir(a)).sort();
-    const before=await Promise.all(names.map(name=>readFile(join(a,name))));
+    const names=(await readdir(a,{recursive:true})).sort();
+    const files=(await Promise.all(names.map(async name=>(await stat(join(a,name))).isFile()?name:undefined))).filter(Boolean);
+    const before=await Promise.all(files.map(name=>readFile(join(a,name))));
     for (const action of ['inspect','trace','export-diagnostics']) {
       const output=join(cwd,'wrong-export.json');
       const args=[action,id,'--state-dir',b,...(action==='export-diagnostics'?['--output',output]:[])];
@@ -501,8 +502,8 @@ test('C23-R A129 explicit Store never discovers Operations in the default Store'
     }
     assert.deepEqual(invoke(cwd,sync,['cancel',id,'--state-dir',b]),{operationId:id,status:'no_live_execution'});
     assert.deepEqual(await readdir(b),[]);
-    assert.deepEqual((await readdir(a)).sort(),names);
-    assert.deepEqual(await Promise.all(names.map(name=>readFile(join(a,name)))),before);
+    assert.deepEqual((await readdir(a,{recursive:true})).sort(),names);
+    assert.deepEqual(await Promise.all(files.map(name=>readFile(join(a,name)))),before);
   }));
 
 test('C23-R A130 simultaneous first CLI launch preserves one writer and one Request dispatch',
