@@ -44,6 +44,117 @@ function isMissing(error) {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
+/** @param {string} root @param {Pick<typeof fs, 'readFile' | 'readdir'>} io */
+function localSnapshots(root, io) {
+  /** @param {string} name @returns {Promise<Operation | undefined>} */
+  async function read(name) {
+    let content;
+    try {
+      content = await io.readFile(join(root, name));
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      throw new LocalStoreError('io', error);
+    }
+    let serialized;
+    try {
+      serialized = utf8.decode(content);
+    } catch (error) {
+      throw new LocalStoreError('corrupt_snapshot', error);
+    }
+    const parsed = decodeSnapshot(serialized);
+    if (parsed.kind !== 'accepted') {
+      throw new LocalStoreError(parsed.kind === 'corrupt' ? 'corrupt_snapshot' : parsed.kind);
+    }
+    const [, slot, requestKey] = snapshotName.exec(name) ?? [];
+    if (slot !== key(parsed.value.operationId) || (requestKey && requestKey !== key(parsed.value.request.requestId))) {
+      throw new LocalStoreError('corrupt_snapshot');
+    }
+    return parsed.value;
+  }
+
+
+  async function snapshotNames() {
+    try {
+      return (await io.readdir(root)).filter(name => snapshotName.test(name));
+    } catch (error) {
+      throw new LocalStoreError('io', error);
+    }
+  }
+
+  /** @param {string} slot */
+  async function locate(slot) {
+    const matching = (await snapshotNames()).filter(name => name.startsWith(slot));
+    if (matching.length > 1) throw new LocalStoreError('corrupt_snapshot');
+    return matching[0];
+  }
+
+  /** @param {string} operationId */
+  async function load(operationId) {
+    const name = await locate(key(operationId));
+    const operation = name ? await read(name) : undefined;
+    if (operation && operation.operationId !== operationId) throw new LocalStoreError('corrupt_snapshot');
+    return operation;
+  }
+  return { read, snapshotNames, locate, load };
+}
+
+/** Read the authoritative atomic snapshot without opening a writer or doing maintenance.
+ * @param {string} directory @param {string} operationId */
+export function readLocalOperation(directory, operationId) {
+  return localSnapshots(resolve(directory), fs).load(operationId);
+}
+
+/** @param {string} root */
+function acquireWriter(root) {
+  const lock = new DatabaseSync(join(root, '.writer.sqlite'), { timeout: 0 });
+  try {
+    lock.exec('BEGIN IMMEDIATE');
+    return lock;
+  } catch (error) {
+    lock.close();
+    throw error;
+  }
+}
+
+/** @param {unknown} error */
+function writerError(error) {
+  const busy = error instanceof Error && 'errcode' in error && typeof error.errcode === 'number' &&
+    (error.errcode & 0xff) === 5; // SQLITE_BUSY, including extended codes
+  return new LocalStoreError(busy ? 'in_use' : 'io', error);
+}
+
+/**
+ * Observe RO writer ownership at this instant using the same SQLite lock.
+ * Never create a missing directory/lock, do maintenance or touch snapshots.
+ * @param {string} directory
+ * @returns {Promise<'absent' | 'idle'>}
+ */
+export async function probeLocalStore(directory) {
+  const root = resolve(directory);
+  /** @type {import('node:fs/promises').FileHandle | undefined} */
+  let handle;
+  /** @type {DatabaseSync | undefined} */
+  let lock;
+  try {
+    try {
+      try { handle = await fs.open(root, constants.O_RDONLY | constants.O_DIRECTORY); }
+      catch (error) { if (isMissing(error)) return 'absent'; throw error; }
+      const path = join(root, '.writer.sqlite');
+      let marker;
+      try { marker = await fs.lstat(path); }
+      catch (error) { if (isMissing(error)) return 'idle'; throw error; }
+      if (marker.isSymbolicLink()) marker = await fs.stat(path);
+      if (!marker.isFile()) throw new Error('Invalid writer lock file');
+      lock = acquireWriter(root);
+      return 'idle';
+    } finally {
+      try { lock?.close(); } finally { await handle?.close(); }
+    }
+  } catch (error) {
+    throw writerError(error);
+  }
+}
+
 /**
  * The caller provisions a directory on a filesystem with atomic replacement
  * and directory sync. The adapter acquires writer ownership on open.
@@ -77,32 +188,7 @@ export function createLocalStateStore(directory, io = fs) {
     return directoryHandle;
   }
 
-  /** @param {string} name @returns {Promise<Operation | undefined>} */
-  async function read(name) {
-    let content;
-    try {
-      content = await io.readFile(join(root, name));
-    } catch (error) {
-      if (isMissing(error)) return undefined;
-      throw new LocalStoreError('io', error);
-    }
-    let serialized;
-    try {
-      serialized = utf8.decode(content);
-    } catch (error) {
-      throw new LocalStoreError('corrupt_snapshot', error);
-    }
-    const parsed = decodeSnapshot(serialized);
-    if (parsed.kind !== 'accepted') {
-      throw new LocalStoreError(parsed.kind === 'corrupt' ? 'corrupt_snapshot' : parsed.kind);
-    }
-    const [, slot, requestKey] = snapshotName.exec(name) ?? [];
-    if (slot !== key(parsed.value.operationId) || (requestKey && requestKey !== key(parsed.value.request.requestId))) {
-      throw new LocalStoreError('corrupt_snapshot');
-    }
-    return parsed.value;
-  }
-
+  const { read, snapshotNames, locate, load } = localSnapshots(root, io);
 
   /**
    * Read/verify the full content-addressed bytes once for each unchanged file
@@ -149,21 +235,6 @@ export function createLocalStateStore(directory, io = fs) {
       return isMissing(error) && await hasRetentionMarker(match[1])
         ? {kind:'unavailable',reason:'retention'} : {kind:'unavailable'};
     }
-  }
-
-  async function snapshotNames() {
-    try {
-      return (await io.readdir(root)).filter(name => snapshotName.test(name));
-    } catch (error) {
-      throw new LocalStoreError('io', error);
-    }
-  }
-
-  /** @param {string} slot */
-  async function locate(slot) {
-    const matching = (await snapshotNames()).filter(name => name.startsWith(slot));
-    if (matching.length > 1) throw new LocalStoreError('corrupt_snapshot');
-    return matching[0];
   }
 
   /**
@@ -245,8 +316,7 @@ export function createLocalStateStore(directory, io = fs) {
           handle = await io.open(root, constants.O_RDONLY | constants.O_DIRECTORY);
           // SQLite owns the interprocess lock. This connection never writes
           // an operation or removes the shared lock file.
-          lock = new DatabaseSync(join(root, '.writer.sqlite'), { timeout: 0 });
-          lock.exec('BEGIN IMMEDIATE');
+          lock = acquireWriter(root);
           const names = await io.readdir(root);
           for (const name of names) {
             if (temporaryName.test(name)) await io.unlink(join(root, name)).catch(() => {});
@@ -255,9 +325,7 @@ export function createLocalStateStore(directory, io = fs) {
         } catch (error) {
           lock?.close();
           await handle?.close().catch(() => {});
-          const busy = error instanceof Error && 'errcode' in error && typeof error.errcode === 'number' &&
-            (error.errcode & 0xff) === 5; // SQLITE_BUSY, including extended codes
-          throw new LocalStoreError(busy ? 'in_use' : 'io', error);
+          throw writerError(error);
         }
         owner = lock;
         directoryHandle = handle;
@@ -266,8 +334,7 @@ export function createLocalStateStore(directory, io = fs) {
 
     async load(operationId) {
       requireOpen();
-      const name = await locate(key(operationId));
-      return name ? read(name) : undefined;
+      return load(operationId);
     },
 
     async list(requestId) {

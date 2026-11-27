@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { access, stat } from 'node:fs/promises';
 import { constants, fstatSync } from 'node:fs';
@@ -10,10 +10,11 @@ import { cliOwner } from '../hosts/cli-owner.js';
 import { cliPresentation } from '../hosts/cli-presentation.js';
 import { callControl, openControl, readDescriptor } from '../hosts/local-control.js';
 import { runCli } from '../hosts/cli.js';
-import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
-import { cliConfiguration } from './cli-config.js';
+import { dispatchCommand, hostError, HostError, isAdministrativeAction, operationTrace } from '../hosts/commands.js';
+import { cliConfiguration, cliStoreSelection, configurationPath, executionControlRef } from './cli-config.js';
+import { knownConfigurationSecrets } from './configuration-secrets.js';
+import { probeLocalStore, readLocalOperation } from '../adapters/state/local-store.js';
 import { controlStreams } from '../hosts/control-streams.js';
-import { openRuntime } from './runtime.js';
 
 const cwd = process.cwd();
 /** @type {(()=>void)|undefined} */
@@ -60,10 +61,19 @@ async function diagnoseState(directory) {
 process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).runAcpStdio(process.argv.slice(3))
   : await runCli(process.argv.slice(2), { cwd, stdin: process.stdin, stdout: process.stdout, stderr: process.stderr },
   async invocation => {
-    const { path, configuration, configurationDirectory, stateDirectory, providers: configuredProviders } =
-      await cliConfiguration(invocation.config);
+    const administrative = isAdministrativeAction(invocation.command.action);
+    const configured = administrative && invocation.stateDirectory !== undefined
+      ? undefined : await cliConfiguration(invocation.config, invocation.stateDirectory).catch(error => {
+        if (administrative && error instanceof HostError) {
+          throw new HostError(error.code, error.message + '; specify --state-dir to select an existing State Store');
+        }
+        throw error;
+      });
+    const { stateDirectory, stateDirectorySource } = configured ??
+      cliStoreSelection(configurationPath(invocation.config), invocation.stateDirectory);
     if (invocation.command.action === 'diagnose') {
-      const providers = await Promise.all(Object.entries(configuredProviders).map(async ([providerId, provider]) => ({
+      if (!configured) throw new HostError('INVALID_CONFIGURATION', 'Configuration is required');
+      const providers = await Promise.all(Object.entries(configured.providers).map(async ([providerId, provider]) => ({
         providerId, adapter: provider.adapter, launch: provider.launch
           ? await executable(provider.launch.command) : 'adapter_default',
       })));
@@ -71,7 +81,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
       // diagnose is a static inspection: neither provider sessions nor probes
       // are started, and missing state directories remain untouched.
       return {
-        configuration: path, stateDirectory, state,
+        configuration: configured.path, stateDirectory, stateDirectorySource, state,
         runtime: { node: process.version, platform: process.platform, architecture: process.arch },
         capabilities: { status: 'unknown', reason: 'not_negotiated_without_provider_session' },
         providers, sideEffects: 'none',
@@ -92,7 +102,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
     /** @param {unknown} result */
     const finishPresentation=result=>{deferredSummary=renderer.finish(result,deferSummary);};
     try {
-      const configurationRef = 'config:' + createHash('sha256').update(configuration).digest('hex');
+      const configurationRef = configured && executionControlRef(configured.configuration, configured.configurationDirectory);
       /** @param {(id: string) => Promise<unknown>} cancel */
       const onAccepted = cancel => /** @param {string} id */ id => {
         const cancelForeground = () => { void cancel(id).catch(() => {}); };
@@ -102,7 +112,10 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
       const startsWork = invocation.command.action === 'run' || invocation.command.action === 'resume';
       const discoveryDeadline = performance.now() + 5_000;
       for (;;) {
-        const descriptor = await readDescriptor(stateDirectory);
+        const descriptor = await readDescriptor(stateDirectory).catch(error => {
+          if (administrative) throw new HostError('STORE_UNAVAILABLE', 'Cannot read control descriptor in State Store ' + stateDirectory);
+          throw error;
+        });
         if (descriptor) {
           const cancel = onAccepted(id => callControl(descriptor, configurationRef, {
             action: 'cancel', operationId: id, requestId: randomUUID(), cancellationSource: 'client',
@@ -142,12 +155,36 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
 
         /** @type {Awaited<ReturnType<typeof openControl>> | undefined} */
         let owner;
-        /** @type {Awaited<ReturnType<typeof openRuntime>> | undefined} */
+        /** @type {Awaited<ReturnType<typeof import('./runtime.js').openRuntime>> | undefined} */
         let runtime;
-        /** @type {PromiseWithResolvers<Awaited<ReturnType<typeof openRuntime>>>} */
+        /** @type {PromiseWithResolvers<Awaited<ReturnType<typeof import('./runtime.js').openRuntime>>>} */
         const readiness = Promise.withResolvers();
         void readiness.promise.catch(() => {});
         try {
+          if (administrative) {
+            const { action, operationId } = invocation.command;
+            if (!operationId) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
+            let operation;
+            try {
+              const ownership = await probeLocalStore(stateDirectory);
+              if (ownership !== 'absent') operation = await readLocalOperation(stateDirectory, operationId);
+              else if (action !== 'cancel') throw new HostError('STORE_UNAVAILABLE', 'State Store does not exist');
+            } catch (error) {
+              const issue = hostError(error);
+              if (issue.code === 'STATE_STORE_IN_USE') throw error;
+              throw new HostError(issue.code, issue.message + ' (State Store: ' + stateDirectory + ')');
+            }
+            if (action === 'cancel') return { operationId, status: 'no_live_execution' };
+            if (!operation) throw new HostError('INVALID_PROPOSAL', 'Unknown operation in State Store ' + stateDirectory);
+            if (action === 'inspect') return operation;
+            // Optional enrichment is offline-only; a live owner uses its own
+            // values. A broken or removed config cannot block the export.
+            const masking = configured ?? await cliConfiguration(invocation.config, invocation.stateDirectory).catch(() => undefined);
+            return operationTrace(operation, knownConfigurationSecrets(masking?.providers ?? {}));
+          }
+          if (!configured || !configurationRef) throw new HostError('INVALID_CONFIGURATION', 'Configuration is required');
+          const { configuration, configurationDirectory } = configured;
+          const { openRuntime } = await import('./runtime.js');
           runtime = await openRuntime({ configuration, configurationDirectory, stateDirectory,
             permissions: { handleRequest:clients.handlePermission }, interactions: { available:clients.available,handleRequest:clients.handleInteraction }, launch: invocation.launch,
           }, startsWork ? async () => {
@@ -171,9 +208,6 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
             });
           } : undefined);
           readiness.resolve(runtime);
-          if (invocation.command.action === 'cancel') {
-            return { operationId: invocation.command.operationId, status: 'no_live_execution' };
-          }
           const api = runtime.api;
           const cancel = onAccepted(id => api.cancel(id, 'client'));
           let detach = () => {};
@@ -199,7 +233,7 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
           if (runtime || hostError(error).code !== 'STATE_STORE_IN_USE') throw error;
           if (stop.signal.aborted) throw new HostError('CANCELLED', 'Interrupted while waiting for the local owner');
           if (performance.now() >= discoveryDeadline) {
-            throw new HostError('STATE_STORE_IN_USE', 'State store has a writer without a reachable CLI control endpoint');
+            throw new HostError('STATE_STORE_IN_USE', 'State Store ' + stateDirectory + ' has a writer without a reachable CLI control endpoint');
           }
         } finally {
           try { await owner?.close(); } finally { await runtime?.close(); }

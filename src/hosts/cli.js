@@ -22,13 +22,13 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
   trace ID                Show redacted operation journal
   export-diagnostics ID   Write a redacted journal to --output PATH
 
-Common: --config FILE, --format text|json, --help
+Common: --config FILE, --state-dir DIR, --format text|json, --help
 Run: --cwd DIR, --profile ID, --skill ID (repeatable), --stdin, --request-id ID, --presentation compact|detailed|debug
 Resume: --question ID, --stdin, --request-id ID, --presentation compact|detailed|debug
 `;
 
 const common = {
-  config: { type: 'string' }, format: { type: 'string' }, help: { type: 'boolean', short: 'h' },
+  config: { type: 'string' }, 'state-dir': { type: 'string' }, format: { type: 'string' }, help: { type: 'boolean', short: 'h' },
 };
 const continuation = { presentation: { type: 'string' }, stdin: { type: 'boolean' }, 'request-id': { type: 'string' } };
 const flags = {
@@ -62,7 +62,7 @@ export function parseCli(argv, cwd) {
   if (positionals.length && (!acceptsText || values.stdin)) throw new HostError('INVALID_ARGUMENT', 'Unexpected positional arguments');
   const output = typeof values.output === 'string' && values.output ? resolve(cwd, values.output) : undefined;
   if (commandName === 'export-diagnostics' && !output) throw new HostError('INVALID_ARGUMENT', '--output is required');
-  if (values['request-id'] === '' || values.question === '' || values.cwd === '') {
+  if (values['request-id'] === '' || values.question === '' || values.cwd === '' || values['state-dir'] === '') {
     throw new HostError('INVALID_ARGUMENT', 'Empty option value');
   }
   /** @type {Command} */
@@ -76,6 +76,7 @@ export function parseCli(argv, cwd) {
     kind: /** @type {const} */ ('command'), command, format, output, presentation: /** @type {import('./presentation.js').PresentationMode | undefined} */ (presentation),
     stdin: values.stdin === true || (commandName === 'run' && command.text === undefined),
     config: typeof values.config === 'string' ? resolve(cwd, values.config) : undefined,
+    stateDirectory: typeof values['state-dir'] === 'string' ? resolve(cwd, values['state-dir']) : undefined,
     launch: {
       ...(typeof values.profile === 'string' && { controllerProfile: values.profile }),
       ...(Array.isArray(values.skill) && { preferredSkills: /** @type {string[]} */ (values.skill) }),

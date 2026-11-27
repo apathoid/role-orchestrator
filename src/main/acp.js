@@ -1,5 +1,4 @@
 import { Console } from 'node:console';
-import { resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { parseArgs } from 'node:util';
 import { ndJsonStream } from '@agentclientprotocol/sdk';
@@ -7,16 +6,16 @@ import { createAcpRelay } from '../hosts/acp-relay.js';
 import { serveAcp } from '../hosts/acp.js';
 import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
 import { openControl } from '../hosts/local-control.js';
-import { cliConfiguration } from './cli-config.js';
+import { cliConfiguration, executionControlRef } from './cli-config.js';
 import { controlStreams } from '../hosts/control-streams.js';
 import { openRuntime } from './runtime.js';
 
 /** @param {string[]} args */
 export async function runAcpStdio(args) {
   try {
-    const { values } = parseArgs({ args, options: { config: { type: 'string' }, help: { type: 'boolean' }, presentation: { type: 'string' }, 'progress-display': { type: 'string' }, 'relay-client-tools': { type: 'boolean' }, 'relay-client-extension': { type: 'string', multiple: true } } });
+    const { values } = parseArgs({ args, options: { config: { type: 'string' }, 'state-dir': { type: 'string' }, help: { type: 'boolean' }, presentation: { type: 'string' }, 'progress-display': { type: 'string' }, 'relay-client-tools': { type: 'boolean' }, 'relay-client-extension': { type: 'string', multiple: true } } });
     if (values.help) {
-      process.stdout.write('Usage: role-orchestrator acp [--config FILE] [--relay-client-tools] [--relay-client-extension METHOD] [--presentation compact|detailed|debug] [--progress-display inline|notices]\n');
+      process.stdout.write('Usage: role-orchestrator acp [--config FILE] [--state-dir DIR] [--relay-client-tools] [--relay-client-extension METHOD] [--presentation compact|detailed|debug] [--progress-display inline|notices]\n');
       return 0;
     }
     const mode = values.presentation ?? 'compact';
@@ -25,7 +24,7 @@ export async function runAcpStdio(args) {
     if(progressDisplay!=='inline'&&progressDisplay!=='notices')throw new HostError('INVALID_ARGUMENT','Expected --progress-display inline or notices');
     // In this executable mode stdout is reserved for protocol frames.
     globalThis.console = new Console({ stdout: process.stderr, stderr: process.stderr });
-    const options = await cliConfiguration(values.config && resolve(values.config));
+    const options = await cliConfiguration(values.config, values['state-dir']);
     /** @type {ReturnType<typeof serveAcp> | undefined} */
     let host;
     const relay = createAcpRelay(id => host?.route(id), values['relay-client-extension']);
@@ -47,7 +46,7 @@ export async function runAcpStdio(args) {
       })();
     }
     try {
-      owner = await openControl(runtime.directory, runtime.configurationRef, command => {
+      owner = await openControl(runtime.directory, executionControlRef(options.configuration, options.configurationDirectory), command => {
         if (command.action === 'run' || command.action === 'resume') {
           throw new HostError('CONTROL_ACP_SESSION_REQUIRED', 'Use the owning ACP session to submit or continue work');
         }

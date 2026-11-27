@@ -10,6 +10,11 @@ import { redactDiagnostic } from '../application/redact-diagnostic.js';
  *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client'
  * }} Command */
 
+/** @param {string} action */
+export function isAdministrativeAction(action) {
+  return action === 'inspect' || action === 'cancel' || action === 'trace' || action === 'export-diagnostics';
+}
+
 export class HostError extends Error {
   /** @param {string} code @param {string} message */
   constructor(code, message) {
@@ -51,7 +56,7 @@ export async function dispatchCommand(api, command, accepted) {
   return api.inspect(operationId);
 }
 
-/** @param {Operation} operation @param {{secrets?: readonly string[]}} [redaction] */
+/** @param {Operation} operation @param {{secrets?: readonly string[], knownValueMasking?: 'available_current_values' | 'partial_current_values' | 'unavailable'}} [redaction] */
 export function operationTrace(operation, redaction = {}) {
   const limit = 256;
   const { events, operationId, revision } = operation;
@@ -146,7 +151,11 @@ export function operationTrace(operation, redaction = {}) {
   };
   // Every exported string (including model-chosen identifiers) passes through
   // the same known-secret projection as live events. Bodies stay excluded.
-  return /** @type {typeof projection} */ (redactDiagnostic(projection, { secrets: redaction.secrets }));
+  const redacted = /** @type {typeof projection} */ (redactDiagnostic(projection, { secrets: redaction.secrets }));
+  // Fixed coverage metadata is not user/model content, and must survive redaction.
+  const knownValueMasking = redaction.knownValueMasking ?? (redaction.secrets?.some(value => value.length >= 4)
+    ? 'available_current_values' : 'unavailable');
+  return { ...redacted, manifest: { ...redacted.manifest, knownValueMasking } };
 }
 
 /** @param {Operation} operation */
