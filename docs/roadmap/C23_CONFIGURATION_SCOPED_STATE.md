@@ -1,12 +1,14 @@
 # C23 — Configuration-scoped State & Concurrent Runtime Support
 
-**Статус: PLANNED; реализация и приёмка UNVERIFIED.**
+**Статус: Implementation candidate for architectural review; initial engineering GREEN, expanded exact-HEAD regression pending; native UNVERIFIED.**
+
+Baseline `e96b036b57495d3171ce68d98bbada3c97e4feb8` / [CI #45881827539](https://github.com/apathoid/role-orchestrator/actions/runs/45881827539) SUCCESS. Planning HEAD `a0a3c5821d59f50974f8caeecff6e70e36c2cf6a` / [CI #46019452297](https://github.com/apathoid/role-orchestrator/actions/runs/46019452297) failed the stale A01–A125 specification assertion. RED `254d371b09c243b6f242b59e8642da9b81d294de` / [CI #46019958951](https://github.com/apathoid/role-orchestrator/actions/runs/46019958951): four expected C23 integration failures. Production GREEN `b9f8fa5414cce5c90f3fbfb057ce310964ee1699` / [CI #46020346402](https://github.com/apathoid/role-orchestrator/actions/runs/46020346402) SUCCESS: root 726/726, integration 589/589, Linux PTY 15/15, checkJs/import boundaries, all historical comparators, locked Nix build/package/install and release checks. All four initial RED tests pass. Expanded multi-process/SDK/API, masking, ownership and restart tests require exact final-head CI; native real providers/client/workspace/NixOS acceptance UNVERIFIED. Local checkout inaccessible (GitHub DNS; local Node22, no Nix); edits via expected-HEAD fast-forward commits, no master merge.
 
 - Repository: `apathoid/role-orchestrator`
 - Рабочая ветка: `feature/configuration-scoped-state`
 - Implementation baseline: `e96b036b57495d3171ce68d98bbada3c97e4feb8` (master), [CI #45881827539](https://github.com/apathoid/role-orchestrator/actions/runs/45881827539) SUCCESS.
 - Research baseline первоначального предложения: `8061e88e0b6f40f05e41f43924e735f0d9b78908`; он не является текущим implementation baseline.
-- Planning HEAD — коммит, вводящий этот документ и ссылки на него; определить точный SHA по ветке. Перед работой проверить фактический HEAD, ancestry, рабочее дерево и CI точного SHA. Не перезаписывать чужие изменения.
+- Planning HEAD: `a0a3c5821d59f50974f8caeecff6e70e36c2cf6a`. Перед работой проверить фактический HEAD, ancestry, рабочее дерево и CI точного SHA. Не перезаписывать чужие изменения.
 - Единственная матрица приёмки: [A126–A131](../../tests/ACCEPTANCE_MATRIX.md). Сценарии ниже — детализация этих строк, не параллельная постоянная матрица.
 
 ## 1. Цель и согласованные решения

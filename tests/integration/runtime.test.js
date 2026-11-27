@@ -215,7 +215,7 @@ test('C23 A127 API owners overlap in one process; closing/failing one does not c
       await first.close();
       assert.equal((await a.completion).cancellation,'shutdown');
       await assert.rejects(openRuntime({configuration,stateDirectory:join(directory,'failed'),launch:{controllerProfile:'missing'}}),{code:'INVALID_CONFIGURATION'});
-      assert.equal((await active(second,b.operation.operationId)).status,'running');
+      assert.equal((await active(second,b.operation.operationId)).status,'active');
       await second.cancel(b.operation.operationId);
       assert.equal((await b.completion).status,'cancelled');
       const final=await(await second.submit({...input,requestId:'next',text:'still active'})).completion;

@@ -1,5 +1,11 @@
 # Changelog
 
+### C23 — Configuration-scoped State & Concurrent Runtime Support
+
+- Select deterministic configuration-path Stores for CLI/ACP while preserving the standard default and explicit storage paths; add `--state-dir` and static diagnose selection metadata.
+- Route administrative commands by Store/Operation, preserve execution compatibility including relative configuration context, and use minimal validated offline snapshot access with the existing writer lock. No migration, discovery, hot reload, workspace coordination or model-facing changes.
+- Preserve base trace/export redaction with optional current known-value masking and explicit coverage; independent runtime ownership and existing cancellation/recovery semantics remain unchanged.
+
 - C22-R2 follow-up: retain the actual transport failure at native finality when a reliably observed replacement invalidates a previously conflicted selected proposal; preserve later genuine conflicts and existing correction rules.
 
 ### C22-R2 — Technical Interface Reliability & Diagnostic Accuracy (engineering PASS at 6bbdbcb6; native UNVERIFIED)
