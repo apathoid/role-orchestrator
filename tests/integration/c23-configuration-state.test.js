@@ -371,3 +371,37 @@ test('C23 A127 default retention and crashed sibling do not affect an active nes
       await Promise.all([defaultOwner.closed,sibling.closed]);
     }
   }));
+
+test('C23-R A129 saved snapshot remains readable with a writer and an unreachable endpoint', { timeout: 20_000 }, () =>
+  withOwnedRun('C23-R-busy-read', async (cwd,sync) => {
+    const config=join(cwd,'config.json'), directory=join(cwd,'state');
+    await configuration(config);
+    const operation=invoke(cwd,sync,['run','private fixture body','--config',config,'--state-dir',directory]);
+    const id=operation.operationId, args=['--state-dir',directory];
+    await rm(config);
+    const store=createLocalStateStore(directory);
+    await store.open();
+    try {
+      const stale=join(directory,'.control-v1.json');
+      await writeFile(stale,JSON.stringify({path:join(cwd,'missing-socket'),token:'stale',pid:1}));
+      const names=(await readdir(directory)).sort();
+      const snapshots=names.filter(name=>/^[a-f0-9]{64}.*\\.json$/u.test(name));
+      const before=await Promise.all(snapshots.map(name=>readFile(join(directory,name))));
+      const output=join(cwd,'export.json');
+      // Execute all three read commands on RED as well as GREEN.
+      const results=[['inspect',id,...args],['trace',id,...args],['export-diagnostics',id,...args,'--output',output]]
+        .map(command=>sync(process.execPath,[entry,...command,'--format','json'],{cwd,env:environment(cwd)}));
+      failed(cwd,sync,['cancel',id,...args],'STATE_STORE_IN_USE');
+      await assert.rejects(probeLocalStore(directory),{code:'STATE_STORE_IN_USE'});
+      assert.deepEqual((await readdir(directory)).sort(),names);
+      assert.deepEqual(await Promise.all(snapshots.map(name=>readFile(join(directory,name)))),before);
+      assert.equal(await readFile(stale,'utf8'),JSON.stringify({path:join(cwd,'missing-socket'),token:'stale',pid:1}));
+      assert.deepEqual(results.map(result=>result.status),[0,0,0],results.map(result=>result.stderr).join('\n'));
+      assert.equal(JSON.parse(results[0].stdout).operationId,id);
+      const trace=JSON.parse(results[1].stdout);
+      assert.equal(trace.redacted,true);
+      assert.equal(trace.manifest.knownValueMasking,'unavailable');
+      assert.ok(!JSON.stringify(trace).includes('private fixture body'));
+      assert.deepEqual(JSON.parse(await readFile(output,'utf8')),trace);
+    } finally { await store.close(); }
+  }));
