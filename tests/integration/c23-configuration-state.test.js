@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -406,3 +407,140 @@ test('C23-R A129 saved snapshot remains readable with a writer and an unreachabl
       assert.deepEqual(JSON.parse(await readFile(output,'utf8')),trace);
     } finally { await store.close(); }
   }));
+
+test('C23-R A128 changed config retains automatic Store and can cancel the original owner',
+  { timeout: 20_000, skip: process.env.C10_SOCKET_UNAVAILABLE === '1' }, () =>
+    withOwnedRun('C23-R-changed-config', async (cwd,sync) => {
+      const config=join(cwd,'local.json');
+      await configuration(config);
+      const args=['--config',config];
+      const directory=invoke(cwd,sync,['diagnose',...args]).stateDirectory;
+      const held=start(cwd,['run','hold',...args,'--request-id','original']);
+      try {
+        const operation=await dispatched(directory,'original'), id=operation.operationId;
+        assert.equal((await readDescriptor(directory)).pid,held.child.pid);
+        await configuration(config,{...base(),profiles:{primary:{provider:'test',model:'changed'}}});
+        assert.equal(invoke(cwd,sync,['diagnose',...args]).stateDirectory,directory);
+        assert.equal(invoke(cwd,sync,['inspect',id,...args]).operationId,id);
+        assert.equal(invoke(cwd,sync,['trace',id,...args]).redacted,true);
+        failed(cwd,sync,['run','incompatible',...args],'CONTROL_CONFIGURATION_MISMATCH');
+        failed(cwd,sync,['resume',id,...args],'CONTROL_CONFIGURATION_MISMATCH');
+        assert.equal(invoke(cwd,sync,['cancel',id,...args]).status,'cancelled');
+        const result=await held.closed;
+        assert.equal(result.code,0,result.stderr);
+        const cancelled=JSON.parse(result.stdout);
+        assert.equal(cancelled.operationId,id);
+        assert.equal(cancelled.status,'cancelled');
+        assert.equal(cancelled.cancellation,'user');
+      } finally { held.child.kill('SIGKILL'); await held.closed; }
+    }));
+
+test('C23-R A129 snapshot errors remain distinct and reads ignore the writer file',
+  () => withOwnedRun('C23-R-snapshot-errors', async (cwd,sync) => {
+    const config=join(cwd,'config.json'), directory=join(cwd,'state');
+    await configuration(config);
+    const operation=invoke(cwd,sync,['run','snapshot','--config',config,'--state-dir',directory]);
+    const id=operation.operationId, args=['--state-dir',directory];
+    const slot=createHash('sha256').update(id,'utf16le').digest('hex');
+    const names=await readdir(directory);
+    const name=names.find(name=>name.startsWith(slot));
+    assert.ok(name);
+    const path=join(directory,name), original=await readFile(path,'utf8');
+    const lock=join(directory,'.writer.sqlite');
+    await rm(lock);
+    assert.equal(invoke(cwd,sync,['inspect',id,...args]).operationId,id);
+    await assert.rejects(readFile(lock),{code:'ENOENT'});
+    await writeFile(lock,'not a sqlite database');
+    assert.equal(invoke(cwd,sync,['inspect',id,...args]).operationId,id);
+    assert.equal(invoke(cwd,sync,['trace',id,...args]).redacted,true);
+    assert.equal(await readFile(lock,'utf8'),'not a sqlite database');
+    failed(cwd,sync,['cancel',id,...args],'STORE_UNAVAILABLE');
+    await rm(lock);
+    for (const [content,reason] of [['{broken','corrupt_snapshot'],
+      [JSON.stringify({...JSON.parse(original),schemaVersion:999}),'unsupported_version']]) {
+      await writeFile(path,content);
+      for (const action of ['inspect','trace','cancel']) {
+        const result=failed(cwd,sync,[action,id,...args],'STORE_UNAVAILABLE');
+        assert.ok(result.stderr.includes(reason),result.stderr);
+        assert.ok(result.stderr.includes(directory),result.stderr);
+      }
+      const output=join(cwd,'failed-export.json');
+      failed(cwd,sync,['export-diagnostics',id,...args,'--output',output],reason);
+      await assert.rejects(readFile(output),{code:'ENOENT'});
+      assert.equal(await readFile(path,'utf8'),content);
+    }
+    await writeFile(path,original);
+    const other='wrong-operation-id', otherSlot=createHash('sha256').update(other,'utf16le').digest('hex');
+    await writeFile(join(directory,otherSlot+name.slice(64)),original);
+    failed(cwd,sync,['inspect',other,...args],'corrupt_snapshot');
+    failed(cwd,sync,['cancel',other,...args],'corrupt_snapshot');
+    failed(cwd,sync,['inspect','missing-operation',...args],'INVALID_PROPOSAL');
+    const absent=join(cwd,'absent');
+    const missing=failed(cwd,sync,['inspect',id,'--state-dir',absent],'STORE_UNAVAILABLE');
+    assert.ok(missing.stderr.includes('absent'));
+    await assert.rejects(readdir(absent),{code:'ENOENT'});
+    await assert.rejects(readFile(lock),{code:'ENOENT'});
+  }));
+
+test('C23-R A129 explicit Store never discovers Operations in the default Store',
+  () => withOwnedRun('C23-R-no-discovery', async (cwd,sync) => {
+    const env=environment(cwd), config=join(env.XDG_CONFIG_HOME,'role-orchestrator','config.json');
+    await mkdir(join(env.XDG_CONFIG_HOME,'role-orchestrator'),{recursive:true});
+    await configuration(config);
+    const a=invoke(cwd,sync,['diagnose']).stateDirectory, b=join(cwd,'other-state');
+    const operation=invoke(cwd,sync,['run','default history']), id=operation.operationId;
+    await mkdir(b);
+    const names=(await readdir(a)).sort();
+    const before=await Promise.all(names.map(name=>readFile(join(a,name))));
+    for (const action of ['inspect','trace','export-diagnostics']) {
+      const output=join(cwd,'wrong-export.json');
+      const args=[action,id,'--state-dir',b,...(action==='export-diagnostics'?['--output',output]:[])];
+      const result=failed(cwd,sync,args,'INVALID_PROPOSAL');
+      assert.ok(result.stderr.includes(b));
+      await assert.rejects(readFile(output),{code:'ENOENT'});
+    }
+    assert.deepEqual(invoke(cwd,sync,['cancel',id,'--state-dir',b]),{operationId:id,status:'no_live_execution'});
+    assert.deepEqual(await readdir(b),[]);
+    assert.deepEqual((await readdir(a)).sort(),names);
+    assert.deepEqual(await Promise.all(names.map(name=>readFile(join(a,name)))),before);
+  }));
+
+test('C23-R A130 simultaneous first CLI launch preserves one writer and one Request dispatch',
+  { timeout: 25_000, skip: process.env.C10_SOCKET_UNAVAILABLE === '1' }, () =>
+    withOwnedRun('C23-R-first-launch', async (cwd,sync) => {
+      const config=join(cwd,'config.json');
+      await configuration(config);
+      const directory=invoke(cwd,sync,['diagnose','--config',config]).stateDirectory;
+      await assert.rejects(readdir(directory),{code:'ENOENT'});
+      const args=['run','hold','--config',config,'--request-id','same-request'];
+      const children=[start(cwd,args),start(cwd,args)];
+      try {
+        const operation=await dispatched(directory,'same-request');
+        const descriptor=await readDescriptor(directory);
+        assert.ok(children.some(({child})=>child.pid===descriptor.pid));
+        const store=createLocalStateStore(directory);
+        await assert.rejects(store.open(),{code:'STATE_STORE_IN_USE'});
+        assert.equal((await readDescriptor(directory)).token,descriptor.token);
+        assert.equal(invoke(cwd,sync,['cancel',operation.operationId,'--config',config]).status,'cancelled');
+        const results=await Promise.all(children.map(item=>item.closed));
+        assert.ok(results.some(result=>result.code===0));
+        for (const result of results) {
+          if (result.code===0) {
+            const value=JSON.parse(result.stdout);
+            assert.equal(value.operationId,operation.operationId);
+            assert.equal(value.status,'cancelled');
+          } else {
+            assert.match(result.stderr,/STATE_STORE_IN_USE|CONTROL_RESPONSE_LOST/u);
+          }
+        }
+        const files=(await readdir(directory)).filter(name=>/^[a-f0-9]{64}.*\.json$/u.test(name));
+        assert.equal(files.length,1);
+        const saved=JSON.parse(await readFile(join(directory,files[0]),'utf8'));
+        assert.equal(saved.operationId,operation.operationId);
+        assert.equal(saved.events.filter(event=>event.kind==='attempt.dispatched').length,1);
+        assert.equal(invoke(cwd,sync,['inspect',operation.operationId,'--config',config]).status,'cancelled');
+      } finally {
+        for (const {child} of children) child.kill('SIGKILL');
+        await Promise.all(children.map(item=>item.closed));
+      }
+    }));
