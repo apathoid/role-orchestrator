@@ -1,6 +1,6 @@
 # Changelog
 
-### C23 — Configuration-scoped State & Concurrent Runtime Support (engineering PASS at d45fcfa2; native UNVERIFIED)
+### C23 — Configuration-scoped State & Concurrent Runtime Support (C23-R engineering PASS at 0c519ebf; native UNVERIFIED)
 
 - Select deterministic configuration-path Stores for CLI/ACP while preserving the standard default and explicit storage paths; add `--state-dir` and static diagnose selection metadata.
 - Route administrative commands by Store/Operation, preserve execution compatibility including relative configuration context, and use minimal validated offline snapshot access without a writer reservation; offline cancel checks saved state then observes ownership using the existing SQLite lock. No migration, discovery, hot reload, workspace coordination or model-facing changes.
