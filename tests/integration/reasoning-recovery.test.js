@@ -67,8 +67,9 @@ test('C11R.9 file-store crash barriers preserve pending/consumed selection, rout
 test('C11R.9 changed mapping denies old idempotency key; unrelated worker runs',async()=>{
   let nativeValue='native-old';
   const config=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
+    features:{reasoningEffort:{reasoning1:{default:'fast',options:[{id:'fast',nativeValue:'native-old'}]}}},
     profiles:{primary:{provider:'fixture',model:'same',
-      reasoningEffort:[{level:'fast',effort:'native-old'}]}},controllerProfile:'primary'});
+      features:{reasoningEffort:'reasoning1'}}},controllerProfile:'primary'});
   const catalog={...config,selectReasoning(id,level){
     const result=config.selectReasoning(id,level);
     return result.kind==='selected'&&result.selection.mode==='selectable'
@@ -145,9 +146,8 @@ test('C11R review P1: crash after Decision, reopen and resume preserves one-shot
   assert.equal(pendingControllerReasoning(restored)?.reasoningLevel,'high');
   const profile={profileId:'primary',providerId:'fixture',model:'same'};
   const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
-    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[
-      {level:'low',effort:'native-low'}, {level:'high',effort:'native-high'}],
-      defaultReasoningLevel:'low'}},controllerProfile:'primary'});
+    features:{reasoningEffort:{reasoning2:{default:'low',options:[{id:'low',nativeValue:'native-low'},{id:'high',nativeValue:'native-high'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning2'}}},controllerProfile:'primary'});
   const {api,invocations}=setup({store:reopened,profile,catalog,maxInvocations:5,
     respond:invocation=>final(invocation,{decisionId:'final-after-recovery'})});
   const result=await(await api.resume(id)).completion;

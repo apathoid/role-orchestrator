@@ -7,9 +7,8 @@ import {decision, outcome, request} from '../fixtures/core.js';
 test('C11R.5 single Controller can choose high, then medium, then high without workers or external events', async () => {
   const profile={profileId:'primary',providerId:'fixture',model:'same'};
   const config={schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
-    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[
-      {level:'medium',effort:'normal'}, {level:'high',effort:'deep'},
-    ],defaultReasoningLevel:'medium'}},controllerProfile:'primary'};
+    features:{reasoningEffort:{reasoning1:{default:'medium',options:[{id:'medium',nativeValue:'normal'},{id:'high',nativeValue:'deep'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning1'}}},controllerProfile:'primary'};
   const catalog=createCatalog(config);
   const levels=['high','medium','high'];
   const {api,invocations}=setup({profile,catalog,maxInvocations:8,
@@ -33,8 +32,8 @@ test('C11R.5 single Controller can choose high, then medium, then high without w
 test('C11R.5 continue with no explicit level uses default, no sticky selection', async () => {
   const profile={profileId:'primary',providerId:'fixture',model:'same'};
   const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
-    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[
-      {level:'high',effort:'high'}, {level:'low',effort:'low'}],defaultReasoningLevel:'low'}},controllerProfile:'primary'});
+    features:{reasoningEffort:{reasoning2:{default:'low',options:[{id:'high',nativeValue:'high'},{id:'low',nativeValue:'low'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning2'}}},controllerProfile:'primary'});
   const {api,invocations}=setup({profile,catalog,maxInvocations:4,respond(i,n){
     if(n===1)return {dispatchCertainty:'sent',outcome:outcome(i.attemptId),output:decision({
       operationId:i.operationId,decisionId:'one',finalAssessment:undefined,

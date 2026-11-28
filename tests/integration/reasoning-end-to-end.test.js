@@ -8,10 +8,9 @@ import {decision,outcome,request} from '../fixtures/core.js';
 test('C11R.11 direct native Controller replans from worker failure and changes worker efforts',async()=>{
   const profile={profileId:'primary',providerId:'fixture',model:'default-native'};
   const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
+    features:{reasoningEffort:{reasoning1:{default:'low',options:[{id:'low',nativeValue:'small'},{id:'high',nativeValue:'large'}]}}},
     profiles:{primary:{provider:'fixture',model:'default-native'},
-      worker:{provider:'fixture',model:'reviewer',reasoningEffort:[
-        {level:'low',effort:'small'}, {level:'high',effort:'large'},
-      ],defaultReasoningLevel:'low'}},controllerProfile:'primary'});
+      worker:{provider:'fixture',model:'reviewer',features:{reasoningEffort:'reasoning1'}}},controllerProfile:'primary'});
   const worker=(id,level)=>({actionId:id,kind:'delegate',profileId:'worker',reasoningLevel:level,
     objective:'Investigate '+id,expectedResult:'Evidence',contextRefs:[],dependsOn:[]});
   const propose=(i,actions)=>({dispatchCertainty:'sent',outcome:outcome(i.attemptId),output:decision({
@@ -54,8 +53,8 @@ test('C11R.11 provider without selectable contract rejects before open; native s
     async cancel(){},async close(){},
   };
   const selectable=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
-    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[
-      {level:'low',effort:'native-low'}]}},controllerProfile:'primary'});
+    features:{reasoningEffort:{reasoning2:{default:'low',options:[{id:'low',nativeValue:'native-low'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning2'}}},controllerProfile:'primary'});
   const blocked=setup({profile,catalog:selectable,provider:endpoint,maxInvocations:2});
   const failed=await(await blocked.api.submit(request({requestId:'blocked'}))).completion;
   assert.equal(failed.status,'waiting');

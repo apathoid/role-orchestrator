@@ -10,9 +10,8 @@ import {decision, outcome, request} from '../fixtures/core.js';
 test('C11R.6 unsupported own effort surfaces durable failure, no fallback, explicit resume', async () => {
   const profile={profileId:'primary',providerId:'fixture',model:'same'};
   const trusted=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
-    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[
-      {level:'low',effort:'low-native'}, {level:'high',effort:'high-native'}],defaultReasoningLevel:'low'}},
-    controllerProfile:'primary'});
+    features:{reasoningEffort:{reasoning1:{default:'low',options:[{id:'low',nativeValue:'low-native'},{id:'high',nativeValue:'high-native'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning1'}}},controllerProfile:'primary'});
   let repaired=false;
   const catalog={...trusted,selectReasoning(id,level){
     return repaired ? trusted.selectReasoning(id) : trusted.selectReasoning(id,level);
@@ -60,9 +59,8 @@ test('C11R.6 unsupported configured Controller default fails before opening prov
 test('C11R review P1: ACP session effort refusal becomes visible Host failure and nonzero CLI exit',async()=>{
   const profile={profileId:'primary',providerId:'fixture',model:'same'};
   const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
-    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[
-      {level:'low',effort:'native-low'}, {level:'high',effort:'native-high'},
-    ],defaultReasoningLevel:'low'}},controllerProfile:'primary'});
+    features:{reasoningEffort:{reasoning2:{default:'low',options:[{id:'low',nativeValue:'native-low'},{id:'high',nativeValue:'native-high'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning2'}}},controllerProfile:'primary'});
   let calls=0;
   const {api,invocations}=setup({profile,catalog,maxInvocations:4,respond(i,n){
     calls++;
@@ -103,8 +101,8 @@ test('C11R review P1: ACP session effort refusal becomes visible Host failure an
 test('C12R.1 a local unsupported Controller choice preserves all previously accepted independent work', async () => {
   const profile={profileId:'primary',providerId:'fixture',model:'same'};
   const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
-    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[{level:'low',effort:'native-low'}]}},
-    controllerProfile:'primary'});
+    features:{reasoningEffort:{reasoning3:{default:'low',options:[{id:'low',nativeValue:'native-low'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning3'}}},controllerProfile:'primary'});
   const worker=id=>({kind:'delegate',actionId:id,profileId:'primary',objective:id,
     expectedResult:'Result',contextRefs:[],dependsOn:[]});
   const {api,invocations}=setup({profile,catalog,maxInvocations:8,maxConcurrentInvocations:1,

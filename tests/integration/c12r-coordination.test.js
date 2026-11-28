@@ -10,9 +10,9 @@ test('C12R.6 model selects scoped skills and effort, revises delegation from opp
   const profile = {profileId:'primary',providerId:'fixture',model:'same'};
   let loads = 0;
   const catalog = createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
+    features:{reasoningEffort:{reasoning1:{default:'low',options:[{id:'low',nativeValue:'lite'},{id:'high',nativeValue:'deep'}]}}},
     profiles:{primary:{provider:'fixture',model:'same',
-      reasoningEffort:[{level:'low',effort:'lite'},{level:'high',effort:'deep'}],
-      defaultReasoningLevel:'low'}},controllerProfile:'primary'}, [],
+      features:{reasoningEffort:'reasoning1'}}},controllerProfile:'primary'}, [],
     {records:[{id:'checks',version:'v1',description:'Review checks',instructions:instruction}],
       async loadSkill(){loads++;throw new Error('Inline source must not be reloaded');}});
   const worker = (actionId, reasoningLevel, contextRefs=[], skills=['checks']) => ({

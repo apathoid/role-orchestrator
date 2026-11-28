@@ -7,9 +7,9 @@ import {decision, request, outcome} from '../fixtures/core.js';
 test('C11R.4 parallel workers on one model retain distinct selections and invalid peers do not block', async () => {
   const profile={profileId:'primary',providerId:'fixture',model:'base'};
   const config={schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
+    features:{reasoningEffort:{reasoning1:{default:'low',options:[{id:'low',nativeValue:'lite'},{id:'high',nativeValue:'deep'}]}}},
     profiles:{primary:{provider:'fixture',model:'base'},worker:{provider:'fixture',model:'same',
-      reasoningEffort:[{level:'low',effort:'lite'},{level:'high',effort:'deep'}],defaultReasoningLevel:'low'}},
-    controllerProfile:'primary'};
+      features:{reasoningEffort:'reasoning1'}}},controllerProfile:'primary'};
   const catalog=createCatalog(config);
   const actions=['low','high','invalid'].map((level,i)=>({
     actionId:'a'+i,kind:'delegate',profileId:'worker',reasoningLevel:level,

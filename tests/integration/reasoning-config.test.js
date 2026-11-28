@@ -6,27 +6,31 @@ import { resolveConfiguration } from '../../src/application/configuration/resolv
 
 const base = {schemaVersion: 1, providers: {p: {adapter: 'cli'}}, controllerProfile: 'single',
   profiles: {single: {provider: 'p', model: 'model'}}};
-const decode = profiles => decodeConfiguration(JSON.stringify({...base,profiles}));
+const decode = config => decodeConfiguration(JSON.stringify(config));
+const withTemplate = (options, defaultLevel) => ({...base, features:{reasoningEffort:{shared:{default:defaultLevel,options}}},
+  profiles:{single:{...base.profiles.single,features:{reasoningEffort:'shared'}}}});
 
-test('C11R.2 legacy omissions and explicit native have identical effective choice', async () => {
-  const legacy = (await decode(base.profiles)).value;
-  const native = (await decode({single: {...base.profiles.single, reasoningEffort: 'native'}})).value;
-  assert.deepEqual(createCatalog(legacy).selectReasoning('single'), createCatalog(native).selectReasoning('single'));
+test('C11R.2 omission and explicitly declared native both avoid native override', async () => {
+  const legacy = (await decode(base)).value;
+  const native = (await decode(withTemplate([{id:'native'}], 'native'))).value;
+  assert.deepEqual(createCatalog(legacy).selectReasoning('single').selection, {mode:'native'});
+  assert.deepEqual(createCatalog(native).selectReasoning('single').selection, {mode:'native',level:'native',selectionSource:'default'});
   assert.deepEqual((await createCatalog(legacy).resolve('profile', 'single')).value.reasoning, {mode:'native'});
   assert.equal(createCatalog(native).selectReasoning('single', 'high').kind, 'rejected');
 });
 
 test('C11R.2 trusted mapping is opaque, per-model and not exposed by catalog', async () => {
-  const profiles = {
-    single: {provider:'p', model:'a', reasoningEffort: [
-      {level:'xhigh',effort:'ultra'}, {level:'medium',effort:'med'},
-    ], defaultReasoningLevel:'medium'},
-    other: {provider:'p',model:'b',reasoningEffort:[{level:'xhigh',effort:'high'}]},
-  };
-  const config = (await decode(profiles)).value;
+  const input = {...base, features:{reasoningEffort:{
+    one:{default:'medium',options:[{id:'xhigh',nativeValue:'ultra'},{id:'medium',nativeValue:'med'}]},
+    two:{default:'xhigh',options:[{id:'xhigh',nativeValue:'high'}]},
+  }}, profiles:{
+    single:{provider:'p',model:'a',features:{reasoningEffort:'one'}},
+    other:{provider:'p',model:'b',features:{reasoningEffort:'two'}},
+  }};
+  const config = (await decode(input)).value;
   const catalog = createCatalog(config);
   const original = catalog.selectReasoning('single','xhigh');
-  profiles.single.reasoningEffort[0].effort = 'mutated';
+  config.features.reasoningEffort.one.options[0].nativeValue = 'mutated';
   assert.equal(original.selection.nativeValue,'ultra');
   assert.equal(catalog.selectReasoning('single','xhigh').selection.nativeValue,'ultra');
   assert.equal(catalog.selectReasoning('other','xhigh').selection.nativeValue,'high');
@@ -37,27 +41,25 @@ test('C11R.2 trusted mapping is opaque, per-model and not exposed by catalog', a
     capability: {support:'unknown',source:'configured'}});
   assert.ok(!JSON.stringify(await catalog.list()).includes('ultra'));
   assert.deepEqual(catalog.selectReasoning('single','unknown').availableLevels,['medium','xhigh']);
-  assert.equal(resolveConfiguration(config, JSON.stringify({schemaVersion:1,profiles})).kind,'rejected');
+  assert.equal(resolveConfiguration(config, JSON.stringify({schemaVersion:1,profiles:input.profiles})).kind,'rejected');
+  assert.equal(resolveConfiguration(config, JSON.stringify({schemaVersion:1,features:input.features})).kind,'rejected');
 });
 
 test('C11R.2 schema and reference validation return paths without leaking effort values', async () => {
-  const good = {provider:'p',model:'a'};
+  const prefix = '/features/reasoningEffort/shared';
   const issues = [
-    [{...good,reasoningEffort:null}, '/profiles/single/reasoningEffort'],
-    [{...good,reasoningEffort:[]}, '/profiles/single/reasoningEffort'],
-    [{...good,reasoningEffort:'high'}, '/profiles/single/reasoningEffort'],
-    [{...good,reasoningEffort:'native',defaultReasoningLevel:'high'}, '/profiles/single/defaultReasoningLevel'],
-    [{...good,reasoningEffort:[{level:'high',effort:'hi'},{level:'high',effort:'h2'}],defaultReasoningLevel:'high'},
-      '/profiles/single/reasoningEffort/1/level'],
-    [{...good,reasoningEffort:[{level:'high',effort:'hi'},{level:'low',effort:'lo'}]},
-      '/profiles/single/defaultReasoningLevel'],
-    [{...good,reasoningEffort:[{level:'high',effort:'hi'}],defaultReasoningLevel:'low'},
-      '/profiles/single/defaultReasoningLevel'],
-    [{...good,reasoningEffort:[{level:'',effort:'hi'}]},'/profiles/single/reasoningEffort/0/level'],
-    [{...good,reasoningEffort:[{level:'high',effort:''}]},'/profiles/single/reasoningEffort/0/effort'],
+    [withTemplate(null,'high'),prefix+'/options'],
+    [withTemplate([],'high'),prefix+'/options'],
+    [withTemplate([{id:'native',nativeValue:'high'}],'native'),prefix+'/options/0/nativeValue'],
+    [withTemplate([{id:'high',nativeValue:'hi'},{id:'high',nativeValue:'h2'}],'high'),prefix+'/options/1/id'],
+    [withTemplate([{id:'high',nativeValue:'hi'},{id:'low',nativeValue:'lo'}],undefined),prefix+'/default'],
+    [withTemplate([{id:'high',nativeValue:'hi'}],'low'),prefix+'/default'],
+    [withTemplate([{id:'',nativeValue:'hi'}],'high'),prefix+'/options/0/id'],
+    [withTemplate([{id:'high',nativeValue:''}],'high'),prefix+'/options/0/nativeValue'],
+    [withTemplate([{id:'high',nativeValue:true}],'high'),prefix+'/options/0/nativeValue'],
   ];
-  for (const [profile,path] of issues) {
-    const result = await decode({single:profile});
+  for (const [input,path] of issues) {
+    const result = await decode(input);
     assert.equal(result.kind,'rejected',JSON.stringify(result));
     assert.equal(result.reason.path,path,JSON.stringify(result));
   }

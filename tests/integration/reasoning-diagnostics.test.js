@@ -11,9 +11,8 @@ import {decodeSnapshot,encodeSnapshot} from '../../src/core/snapshot.js';
 test('C11R.10 redact native mapping from Controller context, preserve bounded per-attempt trace facts',async()=>{
   const profile={profileId:'primary',providerId:'fixture',model:'same'};
   const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
-    profiles:{primary:{provider:'fixture',model:'same',reasoningEffort:[
-      {level:'low',effort:'internal-low-token'}, {level:'high',effort:'internal-high-token'},
-    ],defaultReasoningLevel:'low'}},controllerProfile:'primary'});
+    features:{reasoningEffort:{reasoning1:{default:'low',options:[{id:'low',nativeValue:'internal-low-token'},{id:'high',nativeValue:'internal-high-token'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning1'}}},controllerProfile:'primary'});
   const {api,invocations}=setup({profile,catalog,maxInvocations:4,emit(){throw Error('disconnected sink');},
     respond(invocation,n){
       if(n===1)return{dispatchCertainty:'sent',outcome:outcome(invocation.attemptId),output:decision({
