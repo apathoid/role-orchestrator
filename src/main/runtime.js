@@ -142,7 +142,9 @@ export async function openRuntime(options, onStoreOpen) {
         invocationTimeoutMs: selectedConfig.resources.invocationTimeoutMs,
       };
     }
-    if (options.project) await resolveExecution(undefined);
+    // Validate explicit project preferences at startup, but do not require
+    // their default provider to be executable just to inspect/select settings.
+    if (options.project) await workspaceConfiguration(undefined);
     const permissions = createPermissionBroker({
       standing: config.value.permissions?.standing, ...options.permissions, authority, ids,
     });

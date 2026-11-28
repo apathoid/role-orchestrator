@@ -398,3 +398,33 @@ test('C24-R3 T27 accepted payload redelivery after reducing input limit is read-
     assert.equal(await wire(),before);
   }finally{await second.close();}
 }));
+
+test('C24 final T33/T34 explicit project startup validates structure without demanding an executable default',()=>withOwnedRun('C24-final-runtime-project',async directory=>{
+  const {request}=await import('../fixtures/core.js');
+  const {createAuthorityGrant}=await import('../../src/application/configuration/authority.js');
+  const configuration=JSON.stringify({schemaVersion:1,controllerProfile:'primary',
+    profiles:{primary:{provider:'test',model:'fixture'},missing:{provider:'missing',model:'fixture'}},
+    providers:{test:{adapter:'host-fixture'},missing:{adapter:'not-installed'}},
+    plugins:[{id:'host-fixture',module:fileURLToPath(new URL('../fixtures/host-plugin.js',import.meta.url))}]});
+  const project=join(directory,'.role-orchestrator.json');
+  await writeFile(project,JSON.stringify({schemaVersion:1,controllerProfile:'missing'}));
+  const options={configuration,project:{path:project},stateDirectory:join(directory,'state')};
+  const runtime=await openRuntime(options);
+  try{
+    const view=await runtime.api.settings({cwd:directory});
+    assert.equal(view.controllerProfile.unavailable,'missing');
+    assert.deepEqual(view.controllerProfile.options.map(item=>item.id),['primary']);
+    const input=request({configurationRef:runtime.api.configurationRef,workspaceContext:{cwd:directory}});
+    await assert.rejects(runtime.api.submit(input),{code:'CAPABILITY_UNAVAILABLE'});
+    const done=await(await runtime.api.submit({...input,controllerProfile:'primary'})).completion;
+    assert.equal(done.status,'finished');
+    assert.equal(done.acceptedSettings.profileId,'primary');
+  }finally{await runtime.close();}
+  const restricted=await openRuntime({...options,authority:createAuthorityGrant({reference:'restricted',origin:'user',profileIds:['missing']})});
+  try{
+    assert.deepEqual((await restricted.api.settings({cwd:directory})).controllerProfile.options,[]);
+    await assert.rejects(restricted.api.submit(request({requestId:'denied',configurationRef:restricted.api.configurationRef,controllerProfile:'primary',workspaceContext:{cwd:directory}})),{code:'PERMISSION_DENIED'});
+  }finally{await restricted.close();}
+  await writeFile(project,JSON.stringify({schemaVersion:1,controllerProfile:'unknown-profile'}));
+  await assert.rejects(openRuntime(options),{code:'INVALID_CONFIGURATION'});
+}));

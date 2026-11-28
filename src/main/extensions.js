@@ -146,7 +146,6 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       else report('tool.load_failed', id, duplicate ? 'DUPLICATE_EXTENSION_ID' : 'INVALID_TOOL', 'tool');
     }
     const installed = {
-      profiles: new Set(Object.entries(configuration.profiles).flatMap(([id, profile]) => providers.has(profile.provider) ? [id] : [])),
       skills: new Set(skills.records.flatMap(skill => skill.version ? [skill.id] : [])),
     };
     /** @param {string} [text] */

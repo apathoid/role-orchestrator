@@ -651,6 +651,7 @@ for(const [name,fetchMaxBytes,selection,expected] of [
   ['T31 excerpt',1024,'literal-followup','excerpt'],
   ['T31 unavailable budget',1,'literal-followup','budget'],
   ['T30 complete record',64*1024,'literal-followup','complete'],
+  ['T30 invalid range',4096,{ref:'literal-followup',offset:1000000},'invalid_offset'],
 ]){
   test('C24 final '+name+' never replaces the complete literal follow-up',async()=>{
     const body='Keep this instruction verbatim. '+('Ǎ🧪-'.repeat(90)+'\n').repeat(45);
@@ -670,6 +671,12 @@ for(const [name,fetchMaxBytes,selection,expected] of [
         assert.equal(records.length,1,'one canonical literal user record');
         assert.equal(records[0].completeness,'complete');
         assert.equal(records[0].value,body);
+        if(expected==='invalid_offset'){
+          const marker=invocation.context.find(item=>item.ref==='host:history-chunk:0');
+          assert.equal(marker.completeness,'unavailable');
+          assert.equal(marker.unavailableReason,'invalid_offset');
+          assert.deepEqual(marker.value,{requestedRef:'literal-followup',offset:1000000});
+        }
         if(expected==='chunk'){
           const chunk=invocation.context.find(item=>item.ref==='host:history-chunk:0');
           assert.ok(chunk);

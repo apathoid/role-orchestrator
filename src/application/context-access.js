@@ -282,13 +282,23 @@ export async function materializeControllerHistory(port, request, maxBytes) {
       {offset, maxBytes: Math.max(0, maxBytes - bytes)});
     const positionRef = typeof selection === 'string' ? selection :
       'host:history-position:' + selection.revision + ':' + selection.index;
+    // A failed range is still a range request, not the source record.
+    // Preserve its independent identity so it cannot collide with literal
+    // user text (or masquerade as an unavailable original source).
+    const chunkRef = 'host:history-chunk:' + represented;
+    /** @param {NonNullable<ContextItem['unavailableReason']>} reason @returns {ContextItem} */
+    const unavailableItem = reason => ({
+      ref: offset===undefined ? positionRef : chunkRef,
+      source: 'host_observed', completeness: 'unavailable', unavailableReason: reason,
+      ...(offset!==undefined && {value:{requestedRef:positionRef,offset}}),
+    });
     /** @type {ContextItem} */
     let item;
     if (result.kind === 'chunk') {
       // Fresh model-selected output: the evidence itself remains in the same
       // journal, and chunk metadata preserves original source/provenance.
       item = {
-        ref: 'host:history-chunk:' + represented, source: result.item.source,
+        ref: chunkRef, source: result.item.source,
         completeness: result.offset === 0 && result.nextOffset === undefined
           ? result.item.completeness : 'truncated',
         provenance: result.item.provenance, attemptId: result.item.attemptId,
@@ -311,16 +321,13 @@ export async function materializeControllerHistory(port, request, maxBytes) {
       item = typeof selection !== 'string' && Buffer.byteLength(source.ref) > 128
         ? { ...source, ref: positionRef } : source;
     } else {
-      item = { ref: positionRef, source: 'host_observed', completeness: 'unavailable',
-        unavailableReason: result.reason };
+      item = unavailableItem(result.reason);
     }
     // The ContextPort bounds its own reply; the Controller adds another
     // attributed envelope and may have a still smaller optional budget.
     // Reduce just the range payload and expose an exact nextOffset.
     if (bytes + Buffer.byteLength(JSON.stringify(item)) > maxBytes) {
-      item = boundContextItem(item, Math.max(0, maxBytes - bytes)) ??
-        { ref: positionRef, source: 'host_observed', completeness: 'unavailable',
-          unavailableReason: 'budget' };
+      item = boundContextItem(item, Math.max(0, maxBytes - bytes)) ?? unavailableItem('budget');
     }
     const sizeAfter = Buffer.byteLength(JSON.stringify(item));
     if (bytes + sizeAfter > maxBytes) break;

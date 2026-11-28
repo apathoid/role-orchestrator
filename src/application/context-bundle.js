@@ -121,7 +121,7 @@ export function boundContextItem(item, maxBytes, excerptLimit = maxExcerptBytes)
 /** @param {ContextItem} item */
 // Literal user text is mandatory; derived attachment/skill directory rows
 // are addressable technical history, not literal user messages.
-const isUserMessage = item => item.provenance?.kind === 'user' && !item.attemptId &&
+export const isLiteralUserMessage = item => item.provenance?.kind === 'user' && !item.attemptId &&
   item.completeness==='complete'&&typeof item.value==='string'&&
   (item.receivedSequence===undefined||item.receivedSequence.index===0);
 
@@ -144,7 +144,7 @@ export function compactContext(items, maxBytes, keepRefs) {
   let omitted = 0, excerpted = 0, unrepresented = 0;
   for (const item of items) {
     // Literal user instructions are not optional, even under a tiny budget.
-    if (isUserMessage(item)) {
+    if (isLiteralUserMessage(item)) {
       context.push(item);
       continue;
     }

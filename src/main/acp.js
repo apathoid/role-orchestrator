@@ -8,7 +8,7 @@ import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
 import { openControl } from '../hosts/local-control.js';
 import { cliConfiguration, executionControlRef } from './cli-config.js';
 import { controlStreams } from '../hosts/control-streams.js';
-import { userContentFrameBytes } from '../application/user-content.js';
+import { userContentFrameBytes, maximumUserContentMaxBytes } from '../application/user-content.js';
 import { renderOrderedTurn } from '../adapters/acp/input.js';
 import { openRuntime } from './runtime.js';
 
@@ -57,8 +57,12 @@ export async function runAcpStdio(args) {
         if (!['EPERM', 'EAFNOSUPPORT', 'ENOSYS'].includes(error?.code)) throw error;
         return undefined;
       });
+      // A frame must reach request identity/admission before the current
+      // decoded input limit can apply. Retain the former highest supported
+      // receive ceiling independently of the configured admission budget.
+      // This is a finite wire limit, not a universal JSON expansion bound.
       host = serveAcp(runtime.api, runtime.directory,
-        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: userContentFrameBytes(options.userContentMaxBytes) }), mode, progressDisplay,
+        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: userContentFrameBytes(maximumUserContentMaxBytes) }), mode, progressDisplay,
         (operationId,turn,signal,onOmitted)=>renderOrderedTurn(turn,ref=>runtime.api.readUserPayload(operationId,ref),undefined,signal,onOmitted),await runtime.api.inputCapabilities());
       const { connection } = host;
       const interrupt = () => {

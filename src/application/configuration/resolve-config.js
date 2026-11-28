@@ -50,7 +50,7 @@ function reject(source, path, constraint) {
  * @param {Configuration} user
  * @param {string | undefined} projectText
  * @param {unknown} [launchOptions]
- * @param {{profiles: ReadonlySet<string>, skills: ReadonlySet<string>}} [installed]
+ * @param {{profiles?: ReadonlySet<string>, skills: ReadonlySet<string>}} [installed]
  * @returns {{kind: 'accepted', value: EffectiveConfiguration} | Rejected}
  */
 export function resolveConfiguration(user, projectText, launchOptions = {}, installed) {
@@ -69,9 +69,9 @@ export function resolveConfiguration(user, projectText, launchOptions = {}, inst
     if (values.controllerProfile !== undefined && !Object.hasOwn(user.profiles, values.controllerProfile)) {
       return reject(source, '$.controllerProfile', 'known-profile');
     }
-    if (source === 'project' && values.controllerProfile !== undefined && installed && !installed.profiles.has(values.controllerProfile)) {
-      return reject(source, '$.controllerProfile', 'available-profile');
-    }
+    // A known profile preference need not currently be executable. Keep
+    // it visible in settings; availability and authority are enforced at
+    // actual selection/admission, not while resolving workspace preferences.
     if (values.preferredRole !== undefined && !Object.hasOwn(user.roles ?? {}, values.preferredRole)) {
       return reject(source, '$.preferredRole', 'known-role');
     }

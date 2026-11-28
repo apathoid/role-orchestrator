@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import { createOperation, acceptedSettingsFor } from '../../src/core/operation.js';
 import { controllerContext, operationHistory, pendingControllerHistoryRequest } from '../../src/application/controller-context.js';
 import { prepareUserContent } from '../../src/application/user-content.js';
+import { bindContextAccess } from '../../src/application/context-access.js';
 import { attachmentBlocks, renderContentAttachment, renderOrderedTurn } from '../../src/adapters/acp/input.js';
 import { runCli } from '../../src/hosts/cli.js';
 import { request, assessment, outcome } from '../fixtures/core.js';
@@ -139,7 +140,7 @@ test('C24-R3 T24 typed URI takes precedence and legacy ACP metadata URI survives
   assert.equal((await renderContentAttachment({...audio,uri:'file:///typed.wav'},read,undefined,signal)).uri,'file:///typed.wav');
 });
 
-test('C24 final T36 model-facing ordered text ranges explicitly identify canonical UTF-16 basis',()=>{
+test('C24 final T36 model-facing ordered text ranges explicitly identify canonical UTF-16 basis',async()=>{
   const {text,...base}=request();
   const prepared=prepareUserContent({...base,content:[{kind:'text',text:'🧪A'},{kind:'text',text:'éB'}]});
   assert.equal(prepared.kind,'accepted');
@@ -153,4 +154,11 @@ test('C24 final T36 model-facing ordered text ranges explicitly identify canonic
   assert.deepEqual(host.userContentTurns[0].segments,[{kind:'text',start:0,end:3},{kind:'text',start:3,end:5}]);
   assert.equal(canonical.value.slice(3,5),'éB');
   assert.equal(items[0].value.slice(3,5),'\né');
+  const port=bindContextAccess({state,store:{},maxBytes:4096,captureMaxBytes:4096,
+    profileId:'primary',attemptId:'read',isActive:()=>true,newId:()=> 'artifact',now:()=>1,receive(){}});
+  assert.equal((await port.fetch(canonical.ref)).item.value,canonical.value);
+  const chunk=await port.fetch(canonical.ref,undefined,{offset:5});
+  assert.equal(chunk.kind,'chunk');assert.equal(chunk.format,'utf8');
+  assert.equal(chunk.totalBytes,Buffer.byteLength(canonical.value));
+  assert.equal(Buffer.from(chunk.base64,'base64').toString('utf8'),'éB');
 });

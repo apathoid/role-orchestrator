@@ -1,7 +1,7 @@
 import { orderedTurns, userAttachments, userTextProjection } from './user-content.js';
 import { decisionContract } from './decision-instructions.js';
 import { decisionRecovery } from './decision-recovery.js';
-import { compactContext, defaultContextMaxBytes } from './context-bundle.js';
+import { compactContext, defaultContextMaxBytes, isLiteralUserMessage } from './context-bundle.js';
 /** @import {Catalog, CatalogEntry} from '../core/ports.js' */
 /** @import {ContextItem} from '../core/observation.js' */
 import { eventFindings, findingRef } from '../core/finding.js';
@@ -328,10 +328,12 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   const explicitWorkPage = workCursor !== undefined;
   workCursor ??= 0;
   const [request, ...history] = operationHistory(state,state.events.length,projectText);
-  if(projectText){
-    const projected=new Map([request,...history].filter(item=>item.provenance?.kind==='user'&&item.receivedSequence?.index===0).map(item=>[item.ref,item]));
-    requested=requested.map(item=>item.completeness==='complete'&&projected.has(item.ref)&&item.provenance?.kind==='user'&&item.receivedSequence?.index===0?projected.get(item.ref)??item:item);
-  }
+  // Keep the complete literal record in its original chronological slot.
+  // A whole-record request under the same ref is satisfied by that record,
+  // even when optional retrieval returned an excerpt or a budget marker.
+  // Byte-range results have their own refs and remain separately optional.
+  const literalRefs = new Set([request,...history].filter(isLiteralUserMessage).map(item=>item.ref));
+  const requestedCandidates = requested.filter(item=>!literalRefs.has(item.ref));
   // References point to the original user ContextItems. Chronology is a
   // transport fact, not a Host decision about the current task or priority.
   const latestUser = history.findLast(item => item.provenance?.kind === 'user' && item.receivedSequence?.index === 0) ?? request;
@@ -458,6 +460,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       limits: state.limits, resources: resourceSnapshot(state),
       attachments: /** @type {{ref:string,mediaType:string,kind?:string}[]} */ ([...state.request.attachments]),
       ...(orderedTurns(state).length&&{userContentTurns:/** @type {{requestId:string,segments:unknown[]}[]} */([]),
+        userContentTextRanges:'UTF-16 offsets in canonical concatenated text, not projected text; ContextPort ranges use bytes',
         userContentCoverage:{total:userAttachments(state).length,represented:state.request.attachments.length,selection:'nextController.contextRequest.refs (user-content refs request native delivery)'}}),
       ...(state.request.agentSkill||state.events.some(event=>event.kind==='operation.continued'&&event.input.agentSkill)?{userSelectedSkills:/** @type {{requestId:string,name:string,path:string,source:string}[]} */(currentSkill?[currentSkill]:[])}:{}),
       controllerReasoning: {
@@ -510,19 +513,20 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   // rows. Reserve only the bytes its actual bounded materialization would
   // consume, not a fixed percentage or a per-role allocation.
   const baseBytes = byteLength(correctionItem ? [host, correctionItem] : [host]);
-  const requestedRefs = new Set(requested.map(item => item.ref));
-  const requestedPositions = new Set(requested.flatMap(item => item.receivedSequence
+  const requestedRefs = new Set(requestedCandidates.map(item => item.ref));
+  const requestedPositions = new Set(requestedCandidates.flatMap(item => item.receivedSequence
     ? [JSON.stringify(item.receivedSequence)] : []));
-  const ordinary = history.filter(item => !requestedRefs.has(item.ref) &&
-    (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence))));
+  const ordinary = history.filter(item => isLiteralUserMessage(item) ||
+    (!requestedRefs.has(item.ref) &&
+      (!item.receivedSequence || !requestedPositions.has(JSON.stringify(item.receivedSequence)))));
   const prefer = source && ordinary.includes(source);
-  const candidates = deduplicateInlineResults([...requested, ...(prefer ? [source] : []),
+  const candidates = deduplicateInlineResults([...requestedCandidates, ...(prefer ? [source] : []),
     ...ordinary.slice().reverse().filter(item => !prefer || item !== source)]);
   // Reserve the actual bounded representation using the same packer/order
   // as final delivery. Explicit work pages precede recovery; default map
   // rows and legacy previews do not. No separate budget or percentage.
   const digits = String(maxBytes).length;
-  const requestedCount = requested.length;
+  const requestedCount = requestedCandidates.length;
   const priority = candidates.slice(0, requestedCount + (prefer ? 1 : 0));
   const requestedBudget = compactContext(priority.slice(0, requestedCount),
     Math.max(0, maxBytes - baseBytes + 1 - digits), false);
@@ -672,7 +676,9 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   if (host.value.historyRequestCoverage) {
     const presented = new Set(bounded.context.map(item =>
       JSON.stringify([item.ref, item.receivedSequence])));
-    const count = requestRecords.filter(item =>
+    // A whole-record request satisfied by the mandatory literal is
+    // represented even if the bounded retrieval itself returned no body.
+    const count = requestRecords.filter(item => literalRefs.has(item.ref) ||
       presented.has(JSON.stringify([item.ref, item.receivedSequence]))).length;
     host.value.historyRequestCoverage.presentedRecords = count;
     host.value.historyRequestCoverage.omittedDuringPresentation = requestRecords.length - count;
