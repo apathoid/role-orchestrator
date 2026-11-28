@@ -27,8 +27,8 @@ export function operationReply(operation){
     const reason=operation.waiting.reason;
     return {stopReason:reason.code==='RESOURCE_LIMIT'?'max_turn_requests':'refusal',text:reason.profileId?
       'Error: '+reason.code+' operation='+operation.operationId+' profile='+reason.profileId+
-        ' reasoningLevel='+(reason.reasoningLevel??'(default)')+' available='+(reason.availableLevels??[]).join(',')+
-        (reason.reasoningCause?' cause='+reason.reasoningCause:''):
+        (reason.feature?' feature='+reason.feature+' option='+reason.featureOption+' cause='+reason.featureCause:
+          ' reasoningLevel='+(reason.reasoningLevel??'(default)')+' available='+(reason.availableLevels??[]).join(',')+(reason.reasoningCause?' cause='+reason.reasoningCause:'')):
       'Waiting: '+reason.code};
   }
   return {stopReason:'end_turn'};

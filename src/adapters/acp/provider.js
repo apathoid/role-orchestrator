@@ -155,11 +155,22 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       {kind:'approvalMode',value:invocation.approvalMode?.nativeValue,binding:bindings.approvalMode},
       {kind:'reasoningEffort',value:invocation.reasoning?.mode==='selectable'?invocation.reasoning.nativeValue:undefined,binding:bindings.reasoningEffort}].filter(item=>item.value!==undefined);
     const explicit=selected.filter(item=>item.binding!==undefined||item.kind!=='reasoningEffort');
-    if(explicit.some(item=>!supportsBinding(item.binding)))return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+    /** @param {string} kind @param {string} cause @returns {import('../../core/ports.js').ProviderResult} */
+    function settingFailure(kind,cause){
+      const option=kind==='collaborationMode'?invocation.collaborationMode?.id:kind==='approvalMode'?invocation.approvalMode?.id:invocation.reasoning?.level;
+      const failure=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+      failure.outcome.diagnostics[0].ref=observe({ref:'acp-setting-failure',sourceId:invocation.attemptId,kind:'host_transport',completeness:'complete',
+        value:{profileId:invocation.profile.profileId,feature:kind,option,cause}});
+      if((kind==='collaborationMode'||kind==='approvalMode')&&option)failure.settingUnavailable={feature:kind,option,cause};
+      if(kind==='reasoningEffort')failure.reasoningUnavailable=cause==='native_request_rejected'?'session_option_rejected':'session_option_unavailable';
+      return failure;
+    }
+    const unsupported=explicit.find(item=>!supportsBinding(item.binding));
+    if(unsupported)return settingFailure(unsupported.kind,'unsupported_binding');
     const targets=explicit.map(item=>item.binding?.kind==='sessionMode'?'mode':'config:'+item.binding?.id);
-    if(new Set(targets).size!==targets.length)return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+    if(new Set(targets).size!==targets.length)return settingFailure(explicit.find((item,index)=>targets.indexOf(targets[index])!==index)?.kind??explicit[0].kind,'conflicting_active_bindings');
     const legacy=explicit.find(item=>item.binding?.kind==='sessionMode');
-    if(legacy){if(typeof legacy.value!=='string')return resultFor(invocation,'CAPABILITY_UNAVAILABLE');mode=legacy.value;}
+    if(legacy){if(typeof legacy.value!=='string')return settingFailure(legacy.kind,'native_value_type');mode=legacy.value;}
     if (!launch || !launch.command.trim() || Object.keys(nativeSettings).some(key => key !== 'mode') ||
         (mode !== undefined && (typeof mode !== 'string' || !mode.trim()))) return resultFor(invocation, 'PROVIDER_START_FAILED');
     const cwd = resolve(defaultCwd, invocation.workspaceContext?.cwd ?? '.');
@@ -192,6 +203,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     let sessionId;
     /** @type {NewSessionResponse | undefined} */
     let session;
+    /** @type {string|undefined} */ let observedMode;
     /** @type {Awaited<ReturnType<typeof startMcpBridge>> | undefined} */
     let mcp;
     let sent = false;
@@ -451,6 +463,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
           if (params.sessionId !== sessionId) return;
           if (session && params.update.sessionUpdate === 'config_option_update') {
             session.configOptions = params.update.configOptions;
+          } else if (session && !active && params.update.sessionUpdate === 'current_mode_update') {
+            observedMode=params.update.currentModeId;
           } else if (active) receive(params.update);
         })
         .onRequest(m.session.requestPermission, async ({ params, requestId, signal: requestSignal }) => {
@@ -574,19 +588,27 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       sessionId = session.sessionId;
       try {
         const model = invocation.profile.model;
+        const initialMode=session.modes?.currentModeId;
+        if(legacy&&mode!==initialMode&&!session.modes?.availableModes.some(item=>item.id===mode))return settingFailure(legacy.kind,'native_mode_unavailable');
         const configured = await configureSession(agent, a.session, session, model, typeof mode === 'string' ? mode : undefined, signal);
         if (!configured || modelOption(session.configOptions)?.currentValue !== model) {
           return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
         }
         for(const item of explicit) {
           if(item.kind==='reasoningEffort'||item.binding?.kind==='sessionMode')continue;
-          if(!item.binding||item.value===undefined)return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
-          if(!bindings.reasoningEffort&&invocation.reasoning?.mode==='selectable'&&item.binding.id===thoughtOption(session.configOptions)?.id)return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+          if(!item.binding||item.value===undefined)return settingFailure(item.kind,'unsupported_binding');
+          if(!bindings.reasoningEffort&&invocation.reasoning?.mode==='selectable'&&item.binding.id===thoughtOption(session.configOptions)?.id)return settingFailure(item.kind,'conflicting_active_bindings');
+          const advertised=session.configOptions?.find(option=>option.id===item.binding?.id);
+          if(!advertised)return settingFailure(item.kind,'native_selector_missing');
+          const bound=boundOption(session,item.binding);
+          if(!bound)return settingFailure(item.kind,'native_selector_type');
+          if(bound.type==='select'&&(typeof item.value!=='string'||!bound.options.flatMap(option=>'options' in option?option.options:[option]).some(option=>option.value===item.value)))return settingFailure(item.kind,'native_option_unavailable');
+          if(bound.type==='boolean'&&typeof item.value!=='boolean')return settingFailure(item.kind,'native_value_type');
           try {
-            if(!await configureBoundOption(agent,a.session,session,item.binding,item.value,signal))return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+            if(!await configureBoundOption(agent,a.session,session,item.binding,item.value,signal))return settingFailure(item.kind,'native_value_not_confirmed');
           } catch(error) {
             if(signal.aborted||!(error instanceof RequestError)||connection.signal.aborted)throw error;
-            return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+            return settingFailure(item.kind,'native_request_rejected');
           }
         }
         // Selection is session-local; the native agent must explicitly advertise
@@ -618,8 +640,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
           return failure;
         }
         for(const item of explicit) {
-          if(item.binding?.kind==='configOption'&&boundOption(session,item.binding)?.currentValue!==item.value)return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
-          if(item.kind!=='reasoningEffort')publish({ref:'acp-setting-'+item.kind,kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',value:{kind:item.kind,status:item.binding?.kind==='sessionMode'?'mode_submitted':'config_option_confirmed'}});
+          if(item.binding?.kind==='configOption'&&boundOption(session,item.binding)?.currentValue!==item.value)return settingFailure(item.kind,'native_value_changed');
+          if(item.binding?.kind==='sessionMode'&&observedMode!==undefined&&observedMode!==item.value)return settingFailure(item.kind,'native_mode_changed');
+          if(item.kind!=='reasoningEffort')publish({ref:'acp-setting-'+item.kind,kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',value:{kind:item.kind,
+            option:item.kind==='collaborationMode'?invocation.collaborationMode?.id:invocation.approvalMode?.id,
+            status:item.binding?.kind==='sessionMode'?(observedMode===item.value||initialMode===item.value?'mode_confirmed':'mode_submitted'):'config_option_confirmed'}});
         }
         if (invocation.reasoning?.mode === 'selectable') {
           publish({ref:'acp-reasoning-ack',kind:'host_transport',sourceId:invocation.attemptId,

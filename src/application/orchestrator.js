@@ -36,7 +36,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {AttemptInteractions, AttemptPermissions, AuthorityPort, Catalog, ContextShare, InteractionPort, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
- * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, settings?: import('../core/ports.js').AcceptedSettings, workerApproval?: (profile: Profile) => import('../core/ports.js').NativeSetting | undefined, reasoningBindingFor?:(profile:Profile)=>unknown, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
+ * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, settings?: import('../core/ports.js').AcceptedSettings, workerApproval?: (profile: Profile) => import('../core/ports.js').NativeSetting | undefined, approvalApplicability?:(profile:Profile)=>string, reasoningBindingFor?:(profile:Profile)=>unknown, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
  * @typedef {(workspace: Operation['request']['workspaceContext'], controllerProfile?: string, input?: import('../core/ports.js').SettingsInput) => Promise<Execution>} ResolveExecution
  * @typedef {{
  *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
@@ -615,7 +615,7 @@ export function createOrchestrator(deps) {
    * @param {Execution} execution @param {FieldError | undefined} correction @param {Handoff} [handoff] @param {ProviderPort} [executor]
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {Action} [action]
    */
-  async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs, settings, workerApproval, reasoningBindingFor }, correction, handoff, executor = provider, lookups, action) {
+  async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs, settings, workerApproval, approvalApplicability, reasoningBindingFor }, correction, handoff, executor = provider, lookups, action) {
     const deadline = invocationTimeoutMs === null ? null : clock.monotonicNow() + invocationTimeoutMs;
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal, shuttingDown.signal]);
@@ -722,6 +722,7 @@ export function createOrchestrator(deps) {
       const result = { outcome: parsed.value, dispatchCertainty: reply.dispatchCertainty,
         output: reply.output, findings: reply.findings,
         reasoningUnavailable: validReasoningIssue ? reply.reasoningUnavailable : undefined,
+        settingUnavailable: reply.settingUnavailable&&['collaborationMode','approvalMode'].includes(reply.settingUnavailable.feature)&&typeof reply.settingUnavailable.option==='string'&&typeof reply.settingUnavailable.cause==='string'&&reply.settingUnavailable.cause.length<=128&&parsed.value.diagnostics[0]?.code==='CAPABILITY_UNAVAILABLE'&&parsed.value.terminal==='failed'&&reply.dispatchCertainty==='not_sent'?reply.settingUnavailable:undefined,
         controllerDeclaration: !handoff && parsed.value.terminal === 'completed' ? reply.controllerDeclaration : undefined,
         decisionTextError: !handoff && parsed.value.terminal === 'completed' && reply.decisionTextError &&
           ['invalid_json', 'non_object', 'depth'].includes(reply.decisionTextError) ? reply.decisionTextError : undefined };
@@ -810,6 +811,7 @@ export function createOrchestrator(deps) {
     let certainty = 'not_sent';
     /** @type {{profileId: string, reasoningLevel?: string, availableLevels: string[], reasoningCause: string} | undefined} */
     let reasoningFailure;
+    /** @type {Pick<Reason,'profileId'|'feature'|'featureOption'|'featureCause'>|undefined} */ let featureFailure;
     const abort = () => {
       interrupted.reject(signal.reason);
       const owned = session;
@@ -869,15 +871,19 @@ export function createOrchestrator(deps) {
       const reasoningBinding=reasoning.mode==='selectable'?reasoningBindingFor?.(selectedProfile)??(!handoff?settings?.reasoningEffort?.binding:undefined):undefined;
       const collaborationMode = handoff ? undefined : settings?.collaborationMode;
       const approvalMode = handoff ? workerApproval?.(selectedProfile) : settings?.approvalMode;
+      if(handoff&&settings?.approvalMode&&approvalApplicability){
+        observations.push(observation({ref:'host:approval-applicability:'+attemptId,completeness:'complete',value:{profileId:selectedProfile.profileId,option:settings.approvalMode.id,applicability:approvalApplicability(selectedProfile)}},{kind:'host_transport',sourceId:selectedProfile.providerId,receivedAt:clock.now()}));
+      }
       const missingFeature = collaborationMode?.nativeValue !== undefined && executor.supportsCollaborationMode !== true
         ? 'collaborationMode' : approvalMode?.nativeValue !== undefined && executor.supportsApprovalMode !== true ? 'approvalMode' : undefined;
       if (missingFeature) {
         const ref = 'host:setting:' + attemptId;
-        observations.push(observation({ref,completeness:'complete',value:{profileId:selectedProfile.profileId,feature:missingFeature,reason:'adapter_without_setting_support'}},
+        observations.push(observation({ref,completeness:'complete',value:{profileId:selectedProfile.profileId,feature:missingFeature,option:missingFeature==='collaborationMode'?collaborationMode?.id:approvalMode?.id,reason:'adapter_without_setting_support'}},
           {kind:'host_transport',sourceId:selectedProfile.providerId,receivedAt:clock.now()}));
         const failure=failedOutcome(attemptId,'CAPABILITY_UNAVAILABLE',false);
         failure.diagnostics[0].ref=ref;
-        return {outcome:failure,certainty:/** @type {const} */ ('not_sent'),output,observations,contextCursor,recordLate,decisionTextError};
+        return {outcome:failure,certainty:/** @type {const} */ ('not_sent'),output,observations,contextCursor,recordLate,decisionTextError,
+          featureFailure:{profileId:selectedProfile.profileId,feature:missingFeature,featureOption:missingFeature==='collaborationMode'?collaborationMode?.id:approvalMode?.id,featureCause:'adapter_without_setting_support'}};
       }
       function requireAuthority() {
         const decision = authority.authorize(state.authorityRef, selectedProfile.profileId);
@@ -1181,6 +1187,10 @@ export function createOrchestrator(deps) {
           const fallback = {ref: 'controller-output:' + attemptId, representation: /** @type {const} */ ('declared_value')};
           declaredResult = validRejectedResult({outcome, observations, dispatchCertainty: certainty}, fallback) ? fallback : undefined;
         }
+        if(!handoff&&reply.settingUnavailable){
+          const issue=reply.settingUnavailable;
+          if(issue.option===(issue.feature==='collaborationMode'?collaborationMode?.id:approvalMode?.id))featureFailure={profileId:selectedProfile.profileId,feature:issue.feature,featureOption:issue.option,featureCause:issue.cause};
+        }
         if (!handoff && reply.reasoningUnavailable && reasoning.mode === 'selectable') {
           const catalogProfile = entries.find(item => item.kind === 'profile' &&
             item.value.profileId === selectedProfile.profileId);
@@ -1244,7 +1254,7 @@ export function createOrchestrator(deps) {
     }
     return {
       outcome, certainty, output, contextCursor, recordLate, reportedFindings, decisionTextError, controllerDeclaration,
-      reasoningFailure,
+      reasoningFailure,featureFailure,
       declaredResult: outcome.terminal === 'completed' ? declaredResult : undefined,
       observations: certainty === 'not_sent' ? observations.filter(item => !item.summary) : observations,
     };
@@ -1510,7 +1520,7 @@ export function createOrchestrator(deps) {
           state = await technicalWait(state, {
             code: response.outcome.diagnostics[0]?.code ?? 'PROTOCOL_ERROR',
             operationId, attemptId, actionId: attemptId, effect: response.outcome.effect, dispatchCertainty: response.certainty,
-            ...response.reasoningFailure,
+            ...response.reasoningFailure,...response.featureFailure,
           });
         }
         state = await response.recordLate(state);

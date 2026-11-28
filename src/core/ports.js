@@ -43,6 +43,7 @@
  * This is optional technical provenance, not a capability or an admission field.
  * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, outputObservationParsed?: true, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
  *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected',
+ *   settingUnavailable?: {feature:'collaborationMode'|'approvalMode',option:string,cause:string},
  *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth',
  *   controllerDeclaration?: {kind:'intent',value:unknown,observationRef?:string} |
  *     {kind:'missing'|'conflict'} | {kind:'invalid',reason:import('./decode.js').FieldError}}} ProviderResult

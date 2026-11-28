@@ -99,3 +99,10 @@ export async function describeUserSettings(config,catalog,authority,providerFor,
 export function workerApproval(config,profileId,approval) {
   return approval?featureSelection(config,profileId,'approvalMode',approval.id,approval.source):undefined;
 }
+
+/** @param {Configuration} config @param {string} profileId @param {NativeSetting|undefined} approval */
+export function workerApprovalApplicability(config,profileId,approval){
+  if(!approval||approval.nativeValue===undefined)return 'native';
+  if(!featureTemplate(config,profileId,'approvalMode'))return 'no_feature';
+  return workerApproval(config,profileId,approval)?'mapped':'no_mapping';
+}

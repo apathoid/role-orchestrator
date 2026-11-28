@@ -8,7 +8,7 @@ import { decodeConfiguration } from '../application/configuration/decode-config.
 import { createInteractionBroker } from '../application/interactions.js';
 import { createPermissionBroker } from '../application/configuration/permissions.js';
 import { createOrchestrator } from '../application/orchestrator.js';
-import { describeUserSettings, resolveFeatureChoices, workerApproval } from '../application/configuration/user-settings.js';
+import { describeUserSettings, resolveFeatureChoices, workerApproval, workerApprovalApplicability } from '../application/configuration/user-settings.js';
 import { defaultUserContentMaxBytes, userAttachments } from '../application/user-content.js';
 import { sameRecord } from '../core/operation.js';
 import { createEventStream } from '../application/events.js';
@@ -129,7 +129,8 @@ export async function openRuntime(options, onStoreOpen) {
       return {
         catalog: registry.projectCatalog(selectedConfig), profile: selected.profile, provider: selected.provider,
         settings:accepted, reasoningBindingFor:(/** @type {import('../core/ports.js').Profile} */ profile)=>selectedConfig.providers[profile.providerId]?.featureBindings?.reasoningEffort,
-        ...(accepted?.approvalMode&&{workerApproval:(/** @type {import('../core/ports.js').Profile} */ profile)=>workerApproval(selectedConfig,profile.profileId,accepted?.approvalMode)}),
+        ...(accepted?.approvalMode&&{workerApproval:(/** @type {import('../core/ports.js').Profile} */ profile)=>workerApproval(selectedConfig,profile.profileId,accepted?.approvalMode),
+          approvalApplicability:(/** @type {import('../core/ports.js').Profile} */ profile)=>workerApprovalApplicability(selectedConfig,profile.profileId,accepted?.approvalMode)}),
         limits: {
           maxInvocations: selectedConfig.resources.maxInvocationsPerOperation,
           maxConcurrentInvocations: selectedConfig.resources.maxConcurrentInvocations,

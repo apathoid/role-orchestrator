@@ -122,7 +122,8 @@ export function operationTrace(operation, redaction = {}) {
       effect: operation.waiting.reason.effect,
       profileId: operation.waiting.reason.profileId, reasoningLevel: operation.waiting.reason.reasoningLevel,
       availableLevels: operation.waiting.reason.availableLevels,
-      reasoningCause: operation.waiting.reason.reasoningCause, resource: operation.waiting.reason.resource }
+      reasoningCause: operation.waiting.reason.reasoningCause, resource: operation.waiting.reason.resource,
+      feature:operation.waiting.reason.feature,featureOption:operation.waiting.reason.featureOption,featureCause:operation.waiting.reason.featureCause }
     : operation.waiting?.kind === 'question'
       ? { kind: 'question', questionId: operation.waiting.questionId } : undefined;
   const projection = {
@@ -138,7 +139,10 @@ export function operationTrace(operation, redaction = {}) {
     attempts: visibleAttempts.map(attempt => ({
       attemptId: attempt.attemptId, actionId: attempt.actionId, status: attempt.status,
       profileId: attempt.route?.profileId, providerId: attempt.route?.providerId,
-      reasoning: reasoningInfo(attempt), dispatchCertainty: attempt.dispatchCertainty,
+      reasoning: reasoningInfo(attempt),
+      ...((attempt.route?.collaborationMode||attempt.route?.approvalMode)&&{nativeSettings:{collaborationMode:attempt.route?.collaborationMode,approvalMode:attempt.route?.approvalMode}}),
+      settingFacts:(receipts.get(attempt.attemptId)??[]).filter(item=>item.provenance?.kind==='host_transport'&&(item.providerRef?.startsWith('acp-setting-')||item.ref.startsWith('host:approval-applicability:')||item.ref.startsWith('host:setting:'))).map(item=>item.value),
+      dispatchCertainty: attempt.dispatchCertainty,
       effect: attempt.outcome?.effect ?? (attempt.status === 'dispatched' ? 'unknown' : undefined),
       terminal: attempt.outcome?.terminal,
       reasonCode: attempt.outcome?.diagnostics[0]?.code,
