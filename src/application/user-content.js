@@ -43,8 +43,9 @@ export function prepareUserContent(input){
         if(typeof block.data!=='string'||(block.encoding!=='utf8'&&block.encoding!=='binary'))return reject(path,'Expected embedded data and encoding');
         encoding=block.encoding;
         if(kind!=='resource'&&encoding!=='binary')return reject(path,'Image/audio require binary encoding');
-        if(encoding==='binary'&&(!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(block.data)||block.data.length>Math.ceil(maxUserContentBytes/3)*4))return reject(path+'.data','Invalid or oversized base64');
+        if(encoding==='binary'&&block.data.length>Math.ceil(maxUserContentBytes/3)*4)return reject(path+'.data','Oversized base64');
         const bytes=Buffer.from(block.data,encoding==='binary'?'base64':'utf8');
+        if(encoding==='binary'&&bytes.toString('base64')!==block.data)return reject(path+'.data','Invalid base64');
         total+=bytes.length;
         payload={ref:'sha256:'+createHash('sha256').update(bytes).digest('hex'),size:bytes.length,originalSize:bytes.length,truncated:false};
         payloads.push({bytes,reference:payload});

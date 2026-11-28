@@ -43,7 +43,7 @@ function launch(cwd, config, setup = app => app, flags = [], env = process.env) 
     messages.push(params);
     if (params.update.sessionUpdate === 'agent_thought_chunk') progress.resolve(params);
   }));
-  const connection = app.connect(ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout)));
+  const connection = app.connect(ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout),{maxMessageBytes:24*1024*1024}));
   return {
     agent: connection.agent, messages, progress: progress.promise, child,
     async close() {
@@ -71,9 +71,11 @@ test('external ACP v1 serves separate non-Git sessions, progress, cancellation a
       ({ sessionId } = await first.agent.request(a.session.new, { cwd, mcpServers: [] }));
       const second = await first.agent.request(a.session.new, { cwd, mcpServers: [] });
       assert.notEqual(sessionId, second.sessionId);
-      await assert.rejects(first.agent.request(a.session.prompt, {
-        sessionId, prompt: [{ type: 'image', data: 'AA==', mimeType: 'image/png' }],
-      }), /text prompt blocks/);
+      const unsupported=await first.agent.request(a.session.new,{cwd,mcpServers:[]});
+      assert.equal((await first.agent.request(a.session.prompt,{
+        sessionId:unsupported.sessionId,prompt:[{type:'image',data:'AA==',mimeType:'image/png'}],
+      })).stopReason,'refusal');
+      assert.ok(first.messages.some(message=>message.sessionId===unsupported.sessionId&&message.update.content?.text?.includes('CAPABILITY_UNAVAILABLE')));
       assert.equal((await prompt(first.agent, sessionId, 'Привет')).stopReason, 'end_turn');
       assert.ok(first.messages.some(message => message.sessionId === sessionId && message.update.content?.text === 'Ответ: Привет'));
       assert.ok(!first.messages.some(message=>message.sessionId===sessionId&&message.update.sessionUpdate==='agent_thought_chunk'));
@@ -1036,4 +1038,67 @@ test('C24 ACP exposes and persists Controller profile selection before prompting
       const other = await reopened.agent.request(a.session.new, { cwd, mcpServers: [] });
       assert.equal(profileOption(other).currentValue, 'primary');
     } finally { await reopened.close(); }
+  }));
+
+test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker and session reload', {timeout:30_000}, ()=>
+  withOwnedRun('C24-ordered-content',async cwd=>{
+    const agentPath=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+    const config=await fixture(cwd,{
+      providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[agentPath,'controller']}},
+        worker:{adapter:'acp',launch:{command:process.execPath,args:[agentPath,'worker']}}},
+      profiles:{primary:{provider:'test',model:'fixture'},worker:{provider:'worker',model:'fixture'}},plugins:[],
+      storage:{directory:'state',artifactRetention:{maxAgeMs:0,maxBytes:0}},
+    });
+    const image={type:'image',mimeType:'image/png',data:Buffer.alloc(900*1024,7).toString('base64')};
+    const secondImage={type:'image',mimeType:'image/png',data:'AQIDBA=='};
+    const firstBlocks=[{type:'text',text:'before'},image,{type:'text',text:'after'},
+      {type:'resource_link',uri:'file:///not-read-by-host.txt',name:'literal-link',mimeType:'text/plain'}];
+    const secondBlocks=[secondImage,{type:'audio',data:'AQID',mimeType:'audio/wav'},
+      {type:'resource',resource:{uri:'file:///embedded.txt',mimeType:'text/plain',text:'embedded text'}},{type:'text',text:'compare'}];
+    const first=launch(cwd,config);
+    let sessionId;
+    const wire=async()=> (await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    const send=(host,blocks,requestId)=>host.agent.request(a.session.prompt,{sessionId,prompt:blocks,_meta:{roleOrchestrator:{requestId}}});
+    try{
+      const init=await initialize(first.agent);
+      assert.equal(init.agentCapabilities.promptCapabilities.image,true);
+      assert.equal(init.agentCapabilities.promptCapabilities.audio,true);
+      assert.equal(init.agentCapabilities.promptCapabilities.embeddedContext,true);
+      ({sessionId}=await first.agent.request(a.session.new,{cwd,mcpServers:[]}));
+      assert.equal((await send(first,firstBlocks,'ordered-a')).stopReason,'end_turn');
+      const initial=(await wire()).at(-1);
+      assert.deepEqual(initial.blocks.map(b=>b.type),['text','image','text','resource_link']);
+      assert.deepEqual(initial.blocks.filter(b=>b.type==='text').map(b=>b.text),['before','after']);
+      assert.equal(initial.blocks[1].size,900*1024);
+      assert.equal(initial.blocks[3].uri,'file:///not-read-by-host.txt');
+      assert.equal((await send(first,secondBlocks,'ordered-b')).stopReason,'end_turn');
+      const comparison=(await wire()).at(-1);
+      assert.deepEqual(comparison.blocks.map(b=>b.type),[...initial.blocks.map(b=>b.type),'image','audio','resource','text']);
+      assert.equal(comparison.blocks[6].text,'embedded text');
+      const count=(await wire()).length;
+      assert.equal((await send(first,secondBlocks,'ordered-b')).stopReason,'end_turn');
+      assert.equal((await wire()).length,count,'redelivery does not dispatch again');
+      await assert.rejects(send(first,[{type:'text',text:'changed'}],'ordered-b'));
+      assert.equal((await send(first,[{type:'text',text:'delegate selected image'}],'ordered-c')).stopReason,'end_turn');
+      const worker=(await wire()).find(item=>item.kind==='delegate');
+      assert.ok(worker);
+      assert.deepEqual(worker.blocks.map(b=>b.type),['image']);
+      assert.equal(worker.blocks[0].size,4);
+      const files=await readdir(join(cwd,'state'));
+      const journals=await Promise.all(files.filter(name=>name.endsWith('.json')).map(name=>readFile(join(cwd,'state',name),'utf8')));
+      assert.ok(journals.every(body=>!body.includes(image.data)&&!body.includes(secondImage.data)));
+      assert.ok(files.filter(name=>name.startsWith('artifact-')&&name.endsWith('.blob')).length>=3);
+      const imageOnly=await first.agent.request(a.session.new,{cwd,mcpServers:[]});
+      assert.equal((await first.agent.request(a.session.prompt,{sessionId:imageOnly.sessionId,prompt:[secondImage]})).stopReason,'end_turn');
+    }finally{await first.close();}
+    const reopened=launch(cwd,config);
+    try{
+      await initialize(reopened.agent);
+      await reopened.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+      const replay=reopened.messages.filter(item=>item.update.sessionUpdate==='user_message_chunk').map(item=>item.update.content);
+      assert.deepEqual(replay.map(b=>b.type),[...firstBlocks.map(b=>b.type),...secondBlocks.map(b=>b.type),'text']);
+      assert.equal(replay[1].data,image.data);
+      assert.equal(replay[4].data,secondImage.data);
+      assert.equal(replay[6].resource.text,'embedded text');
+    }finally{await reopened.close();}
   }));
