@@ -96,7 +96,7 @@ export function operationTrace(operation, redaction = {}) {
       !Array.isArray(observation.value) &&
       'status' in observation.value && observation.value.status === 'config_option_confirmed');
     return {
-      requestedLevel, source: selection?.mode === 'selectable' ? selection.selectionSource : undefined,
+      requestedLevel, source: selection?.selectionSource,
       effective: selection ?? 'not_recorded', configurationRef: route?.configurationRef,
       nativeConfigAcknowledgment: acknowledged ? 'adapter_confirmed' : 'not_recorded',
       submission: attempt.dispatchCertainty,

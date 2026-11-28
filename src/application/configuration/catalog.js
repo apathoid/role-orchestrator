@@ -13,7 +13,7 @@
  */
 export function createCatalog(configuration, descriptions = [], skills, tools = [], { unavailable, preferences } = {}) {
   const providers = new Map(descriptions.map(item => [item.providerId, item]));
-  /** @type {Map<string, {mode: 'native'} | {mode: 'selectable', defaultLevel: string, values: ReadonlyMap<string, string>}>} */
+  /** @type {Map<string, {mode: 'native'} | {mode: 'selectable', defaultLevel: string, values: ReadonlyMap<string, string | undefined>}>} */
   const reasoning = new Map();
   /** @type {Map<CatalogEntry['kind'], Map<string, CatalogEntry>>} */
   const byKind = new Map([['profile', new Map()], ['role', new Map()], ['skill', new Map()], ['tool', new Map()]]);
@@ -22,12 +22,13 @@ export function createCatalog(configuration, descriptions = [], skills, tools = 
     const capabilities = Object.freeze(Object.fromEntries(Object.entries(description?.capabilities ?? {})
       .map(([key, value]) => [key, Object.freeze({ ...value })])));
     const reason = unavailable?.get(profile.provider);
-    const declared = profile.reasoningEffort;
-    const selection = !declared || declared === 'native'
+    const template = profile.features?.reasoningEffort;
+    const declared = template === undefined ? undefined : configuration.features?.reasoningEffort?.[template];
+    const selection = !declared
       ? /** @type {const} */ ({mode: 'native'})
       : {mode: /** @type {const} */ ('selectable'),
-        defaultLevel: profile.defaultReasoningLevel ?? declared[0].level,
-        values: new Map(declared.map(item => [item.level, item.effort]))};
+        defaultLevel: declared.default,
+        values: new Map(declared.options.map(item => [item.id, typeof item.nativeValue === 'string' ? item.nativeValue : undefined]))};
     reasoning.set(profileId, selection);
     const modelView = selection.mode === 'native'
       ? Object.freeze({mode: /** @type {const} */ ('native')})
@@ -69,6 +70,10 @@ export function createCatalog(configuration, descriptions = [], skills, tools = 
       }
       if (entry.mode === 'native') return {kind: 'selected', selection: Object.freeze({mode: 'native'})};
       const chosen = level ?? entry.defaultLevel;
+      if (chosen === 'native') return {kind: 'selected', selection: Object.freeze({
+        mode: /** @type {const} */ ('native'), level: /** @type {const} */ ('native'),
+        selectionSource: level === undefined ? 'default' : 'model',
+      })};
       return {kind: 'selected', selection: Object.freeze({
         mode: 'selectable', level: chosen, nativeValue: /** @type {string} */ (entry.values.get(chosen)),
         selectionSource: level === undefined ? 'default' : 'model',

@@ -8,7 +8,7 @@
  * @typedef {{providerId: string, maxConcurrency: number | null, capabilities: Readonly<Record<string, Capability>>}} ProviderDescription
  * @typedef {{mode: 'native'} | {mode: 'selectable', levels: readonly string[], defaultLevel: string,
  *   capability?: Capability}} ReasoningCatalog
- * @typedef {{mode: 'native'} | {mode: 'selectable', level: string, nativeValue: string,
+ * @typedef {{mode: 'native', level?: 'native', selectionSource?: 'model' | 'default'} | {mode: 'selectable', level: string, nativeValue: string,
  *   selectionSource: 'model' | 'default'}} ReasoningSelection
  * @typedef {{kind: 'selected', selection: ReasoningSelection} |
  *   {kind: 'rejected', profileId: string, requestedLevel?: string, availableLevels: readonly string[]}} ReasoningResolution

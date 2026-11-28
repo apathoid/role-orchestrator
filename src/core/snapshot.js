@@ -48,7 +48,7 @@ const limit = (input, path) => count(input, path) || invalid(path, 'a positive s
 const limits = record({ maxInvocations: nullable(limit), maxConcurrentInvocations: limit });
 const trusted = record({ authorityRef: id, configurationRef: id, limits });
 const reasoning = tagged('mode', {
-  native: record({mode: oneOf('native')}),
+  native: record({mode: oneOf('native'), level: optional(oneOf('native')), selectionSource: optional(oneOf('model','default'))}),
   selectable: record({mode: oneOf('selectable'), level: id, nativeValue: id,
     selectionSource: oneOf('model','default')}),
 });
@@ -282,27 +282,30 @@ function validateSnapshot(value,path,onOutcome) {
           invalid(at + '.route.reasoning', 'recorded reasoning for an explicitly selected Controller level');
         }
         if (routeReasoning) {
+          if (routeReasoning.mode === 'native' && (routeReasoning.level === undefined) !== (routeReasoning.selectionSource === undefined)) {
+            invalid(at + '.route.reasoning', 'native level and source together, or neither');
+          }
           if (prior.actionId === attemptId) {
             const selected = prior.reasoningDecisionId ? decisions.get(prior.reasoningDecisionId)?.nextController : undefined;
-            if (routeReasoning.mode === 'selectable' &&
+            if ((routeReasoning.mode === 'selectable' || routeReasoning.level !== undefined) &&
                 (routeReasoning.selectionSource === 'model') !== Boolean(selected?.reasoningLevel)) {
               invalid(at + '.route.reasoning.selectionSource', 'the recorded Controller preference or default');
             }
             if (selected?.reasoningLevel &&
-                (routeReasoning.mode !== 'selectable' || selected.reasoningLevel !== routeReasoning.level)) {
+                selected.reasoningLevel !== routeReasoning.level) {
               invalid(at + '.route.reasoning.level', 'the Controller decision requested level');
             }
           } else {
             const requested = acceptedActions.get(prior.actionId);
             if (!requested) invalid(at + '.route.reasoning', 'a previously admitted worker action');
             if (requested.reasoningLevel) {
-              if (routeReasoning.mode !== 'selectable' || routeReasoning.level !== requested.reasoningLevel) {
+              if (routeReasoning.level !== requested.reasoningLevel) {
                 invalid(at + '.route.reasoning.level', 'the admitted worker action level');
               }
               if (routeReasoning.selectionSource !== 'model') {
                 invalid(at + '.route.reasoning.selectionSource', 'model selection for the explicit worker level');
               }
-            } else if (routeReasoning.mode === 'selectable' && routeReasoning.selectionSource !== 'default') {
+            } else if ((routeReasoning.mode === 'selectable' || routeReasoning.level !== undefined) && routeReasoning.selectionSource !== 'default') {
               invalid(at + '.route.reasoning.selectionSource', 'the worker profile default');
             }
           }

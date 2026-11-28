@@ -47,12 +47,18 @@
           "$ref": "#/definitions/limit"
         },
         "maxInvocationsPerOperation": {
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 1,
           "maximum": 9007199254740991
         },
         "invocationTimeoutMs": {
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 1,
           "maximum": 2147483647
         }
@@ -205,6 +211,30 @@
       "items": {
         "$ref": "#/definitions/tool"
       }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reasoningEffort": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/featureTemplate"
+          }
+        },
+        "collaborationMode": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/featureTemplate"
+          }
+        },
+        "approvalMode": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/featureTemplate"
+          }
+        }
+      }
     }
   },
   "definitions": {
@@ -279,7 +309,25 @@
           "type": "boolean"
         },
         "controllerIntent": {
-          "enum": ["text", "prefer_mcp"]
+          "enum": [
+            "text",
+            "prefer_mcp"
+          ]
+        },
+        "featureBindings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reasoningEffort": {
+              "$ref": "#/definitions/featureBinding"
+            },
+            "collaborationMode": {
+              "$ref": "#/definitions/featureBinding"
+            },
+            "approvalMode": {
+              "$ref": "#/definitions/featureBinding"
+            }
+          }
         }
       }
     },
@@ -297,18 +345,20 @@
         "model": {
           "$ref": "#/definitions/id"
         },
-        "reasoningEffort": {
-          "anyOf": [
-            {
-              "const": "native"
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reasoningEffort": {
+              "$ref": "#/definitions/id"
             },
-            {
-              "$ref": "#/definitions/reasoningMapping"
+            "collaborationMode": {
+              "$ref": "#/definitions/id"
+            },
+            "approvalMode": {
+              "$ref": "#/definitions/id"
             }
-          ]
-        },
-        "defaultReasoningLevel": {
-          "$ref": "#/definitions/id"
+          }
         }
       }
     },
@@ -381,23 +431,71 @@
         }
       }
     },
-    "reasoningMapping": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "level",
-          "effort"
-        ],
-        "properties": {
-          "level": {
-            "$ref": "#/definitions/id"
-          },
-          "effort": {
-            "$ref": "#/definitions/id"
+    "featureOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "nativeValue": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/id"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "name": {
+          "$ref": "#/definitions/id"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "featureTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default",
+        "options"
+      ],
+      "properties": {
+        "default": {
+          "$ref": "#/definitions/id"
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/featureOption"
           }
+        }
+      }
+    },
+    "featureBinding": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/id"
+        },
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "optionType": {
+          "enum": [
+            "select",
+            "boolean"
+          ]
         }
       }
     }

@@ -1,14 +1,18 @@
 /** @import {ErrorObject, ValidateFunction} from 'ajv' */
 
 /**
- * @typedef {{adapter: string, launch?: {command: string, args?: string[], env?: Record<string, {fromEnv: string}>},
+ * @typedef {'reasoningEffort'|'collaborationMode'|'approvalMode'} FeatureKind
+ * @typedef {{id:string,nativeValue?:string|boolean,name?:string,description?:string}} FeatureOption
+ * @typedef {{default:string,options:FeatureOption[]}} FeatureTemplate
+ * @typedef {{kind:string,id?:string,optionType?:'select'|'boolean'} & Record<string,unknown>} FeatureBinding
+ * @typedef {{adapter: string, featureBindings?: Partial<Record<FeatureKind,FeatureBinding>>, launch?: {command: string, args?: string[], env?: Record<string, {fromEnv: string}>},
  *   nativeSettings?: Record<string, unknown>, mcpBridge?: boolean, controllerIntent?: 'text' | 'prefer_mcp'}} ProviderConfig
  * @typedef {{maxConcurrentInvocations?: number, maxInvocationsPerOperation?: number | null, invocationTimeoutMs?: number | null}} ResourceConfig
  * @typedef {{
  *   schemaVersion: 1,
  *   providers: Record<string, ProviderConfig>,
- *   profiles: Record<string, {provider: string, model: string,
- *     reasoningEffort?: 'native' | {level: string, effort: string}[], defaultReasoningLevel?: string}>,
+ *   features?: Partial<Record<FeatureKind,Record<string,FeatureTemplate>>>,
+ *   profiles: Record<string, {provider: string, model: string, features?: Partial<Record<FeatureKind,string>>}>,
  *   controllerProfile: string,
  *   roles?: Record<string, {purpose?: string, instructions: string, preferredProfiles?: string[]}>,
  *   resources?: ResourceConfig,
@@ -69,7 +73,7 @@ export async function decodeConfiguration(input) {
     // For union fields, prefer the specific array element failure to the
     // generic "not native" branch. Keep values (including secrets) out of errors.
     const failures = validate.errors ?? [];
-    const specific = failures.filter(error => error.instancePath.includes('/reasoningEffort/'))
+    const specific = failures.filter(error => error.instancePath.includes('/features/') && !['anyOf','if','not','allOf','type'].includes(error.keyword))
       .sort((left, right) => right.instancePath.length - left.instancePath.length)[0];
     return specific ? report(specific) : failures[0] ? report(failures[0]) : reject('', 'schema');
   }
@@ -80,26 +84,48 @@ export async function decodeConfiguration(input) {
   if (!Object.hasOwn(config.profiles, config.controllerProfile)) {
     return reject('/controllerProfile', 'known-profile');
   }
+  /** @type {readonly FeatureKind[]} */
+  const featureKinds = ['reasoningEffort','collaborationMode','approvalMode'];
+  for (const kind of featureKinds) {
+    for (const [name, template] of Object.entries(config.features?.[kind] ?? {})) {
+      const path = '/features/' + kind + '/' + escapePointer(name);
+      if (!name.trim()) return reject(path, 'nonempty-template-name');
+      const ids = new Set();
+      for (const [index, option] of template.options.entries()) {
+        const at = path + '/options/' + index;
+        if (ids.has(option.id)) return reject(at + '/id', 'unique-option-id');
+        ids.add(option.id);
+        if (option.id === 'native' && option.nativeValue !== undefined) return reject(at + '/nativeValue', 'native-has-no-override');
+        if (option.id !== 'native' && option.nativeValue === undefined) return reject(at + '/nativeValue', 'required');
+        if (kind === 'reasoningEffort' && option.nativeValue !== undefined && typeof option.nativeValue !== 'string') {
+          return reject(at + '/nativeValue', 'reasoning-string-value');
+        }
+      }
+      if (!ids.has(template.default)) return reject(path + '/default', 'known-option');
+    }
+  }
+  for (const [id, provider] of Object.entries(config.providers)) {
+    for (const kind of featureKinds) {
+      const binding = provider.featureBindings?.[kind];
+      if (!binding) continue;
+      const path = '/providers/' + escapePointer(id) + '/featureBindings/' + kind;
+      if (binding.kind === 'configOption' || binding.kind === 'sessionMode') {
+        const allowed = binding.kind === 'configOption' ? ['kind','id','optionType'] : ['kind'];
+        const extra = Object.keys(binding).find(key => !allowed.includes(key));
+        if (extra !== undefined) return reject(path + '/' + escapePointer(extra), 'unknown-binding-field');
+        if (binding.kind === 'configOption' && binding.id === undefined) return reject(path + '/id', 'required');
+      }
+    }
+  }
   for (const [id, profile] of Object.entries(config.profiles)) {
     if (!Object.hasOwn(config.providers, profile.provider)) {
       return reject('/profiles/' + escapePointer(id) + '/provider', 'known-provider');
     }
-    const path = '/profiles/' + escapePointer(id);
-    const declared = profile.reasoningEffort;
-    if (declared === undefined || declared === 'native') {
-      if (profile.defaultReasoningLevel !== undefined) return reject(path + '/defaultReasoningLevel', 'selectable-only');
-      continue;
-    }
-    const levels = new Set();
-    for (const [index, entry] of declared.entries()) {
-      if (levels.has(entry.level)) return reject(path + '/reasoningEffort/' + index + '/level', 'unique-level');
-      levels.add(entry.level);
-    }
-    if (declared.length > 1 && profile.defaultReasoningLevel === undefined) {
-      return reject(path + '/defaultReasoningLevel', 'required-for-multiple-levels');
-    }
-    if (profile.defaultReasoningLevel !== undefined && !levels.has(profile.defaultReasoningLevel)) {
-      return reject(path + '/defaultReasoningLevel', 'known-level');
+    for (const kind of featureKinds) {
+      const name = profile.features?.[kind];
+      if (name !== undefined && !Object.hasOwn(config.features?.[kind] ?? {}, name)) {
+        return reject('/profiles/' + escapePointer(id) + '/features/' + kind, 'known-template');
+      }
     }
   }
   for (const [id, role] of Object.entries(config.roles ?? {})) {

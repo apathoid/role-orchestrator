@@ -441,7 +441,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       controllerReasoning: {
         current: (() => {
           const current = state.attempts.findLast(attempt => attempt.attemptId === attempt.actionId)?.route?.reasoning;
-          return !current ? 'not_recorded' : current.mode === 'native' ? {mode: 'native'} : {
+          return !current ? 'not_recorded' : current.mode === 'native' ? {mode: 'native', ...(current.level && {level: current.level, selectionSource: current.selectionSource})} : {
             mode: 'selectable', level: current.level, selectionSource: current.selectionSource,
           };
         })(),
