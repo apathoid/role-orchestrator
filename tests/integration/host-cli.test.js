@@ -172,8 +172,11 @@ test('C24 CLI lists shared settings and skills without a Store, applies explicit
   assert.equal(first.userSelectedSkills[0].path,skill);
   const {pathToFileURL}=await import('node:url');
   assert.equal(first.blocks.find(x=>x.type==='resource_link').uri,pathToFileURL(path).href);
-  const resume=call(['resume',result.operationId,'follow-up','--approval-mode','open']);
+  const other=join(cwd,'other');await mkdir(join(other,'.agents','skills','c24-cli'),{recursive:true});
+  await writeFile(join(other,'.agents','skills','c24-cli','SKILL.md'),'---\nname: c24-cli\ndescription: Other workspace skill\n---\nOther');
+  const resume=spawn(process.execPath,[entry,'resume',result.operationId,'follow-up','--approval-mode','open','--agent-skill','c24-cli','--config',config,'--format','json'],{cwd:other});
   assert.equal(resume.status,0,resume.stderr);
   assert.equal((await read()).at(-1).settings['opaque-approval'],'native-open');
+  assert.ok((await read()).at(-1).userSelectedSkills.every(item=>item.path===skill));
   assert.equal(call(['resume',result.operationId,'--reasoning-effort','low']).status,2);
 }));

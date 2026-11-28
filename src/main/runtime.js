@@ -171,6 +171,17 @@ export async function openRuntime(options, onStoreOpen) {
     /** @param {string} operationId */
     const trace = async operationId => operationTrace(await inspect(operationId), redaction);
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel, settings,
+      async inputCapabilities(){
+        const entries=await catalog.list();
+        const candidates=entries.flatMap(entry=>entry.kind==='profile'&&!entry.value.unavailable&&
+          authority.authorize(authority.reference,entry.value.profileId)==='ALLOWED'&&
+          registry.providerFor(entry.value)?.supportsOrderedContent===true?[entry.value.capabilities??{}]:[]);
+        // Connection-level ability to accept and route a block, not a claim
+        // that every available profile or native model can interpret it.
+        return {image:candidates.some(c=>c['input.image']?.support==='supported'||c['input.image']?.support==='unknown'),
+          audio:candidates.some(c=>c['input.audio']?.support==='supported'||c['input.audio']?.support==='unknown'),
+          embeddedContext:candidates.some(c=>c['input.attachments']?.support==='supported'||c['input.attachments']?.support==='unknown')};
+      },
       async readUserPayload(/** @type {string} */ operationId, /** @type {string} */ ref){
         const operation=await inspect(operationId);
         const item=userAttachments(operation).find(item=>item.ref===ref);

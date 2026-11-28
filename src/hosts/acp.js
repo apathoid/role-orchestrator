@@ -30,8 +30,8 @@ const turnOptions = record({
 /** @param {string} message @param {unknown} [data] */
 const invalid = (message, data) => new RequestError(-32602, message, data);
 
-/** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] @param {ProgressDisplay} [progressDisplay] @param {import('./acp-history.js').ReplayContent} [replayContent] */
-export function serveAcp(api, directory, stream, mode = 'compact', progressDisplay = 'inline', replayContent) {
+/** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] @param {ProgressDisplay} [progressDisplay] @param {import('./acp-history.js').ReplayContent} [replayContent] @param {{image:boolean,audio:boolean,embeddedContext:boolean}} [inputCapabilities] */
+export function serveAcp(api, directory, stream, mode = 'compact', progressDisplay = 'inline', replayContent,inputCapabilities) {
   /** @type {Map<string, Session>} */
   const sessions = new Map();
   /** @type {Map<string, Turn>} */
@@ -184,7 +184,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
       declarations.clear();
       return {
         protocolVersion: PROTOCOL_VERSION, agentInfo: { name: 'role-orchestrator', version: '0.1.0-dev.0' },
-        agentCapabilities: { loadSession: true, promptCapabilities: { image: !!replayContent, audio: !!replayContent, embeddedContext: !!replayContent } },
+        agentCapabilities: { loadSession: true, promptCapabilities: replayContent&&inputCapabilities?inputCapabilities:{image:false,audio:false,embeddedContext:false} },
       };
     })
     .onRequest(a.session.new, async ({ params,client }) => {

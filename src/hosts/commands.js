@@ -1,12 +1,12 @@
 import { pathToFileURL } from 'node:url';
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { journalReasonCode, pendingControllerReasoning, resourceSnapshot } from '../core/operation.js';
+import { journalReasonCode, pendingControllerReasoning, resourceSnapshot, workspaceContextFor } from '../core/operation.js';
 import { redactDiagnostic } from '../application/redact-diagnostic.js';
 
 /** @import {Operation} from '../core/operation.js' */
 /** @typedef {ReturnType<typeof import('../application/orchestrator.js').createOrchestrator>} Coordinator */
-/** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string, trace?: (operationId: string) => Promise<ReturnType<typeof operationTrace>>}} HostApi */
+/** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string, selectSkill?:(cwd:string,selection:string)=>Promise<import('../adapters/configuration/agent-skills.js').AgentSkill|undefined>, trace?: (operationId: string) => Promise<ReturnType<typeof operationTrace>>}} HostApi */
 /** @typedef {{
  *   action: 'run' | 'resume' | 'inspect' | 'cancel' | 'trace' | 'export-diagnostics' | 'diagnose' | 'settings' | 'skills',
  *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client', controllerProfile?: string, userSettings?:import('../core/contracts.js').UserSettings,agentSkillSelection?:string,agentSkill?:ReturnType<typeof import('../core/contracts.js').agentSkill>,attachmentPaths?:string[]
@@ -27,7 +27,15 @@ export class HostError extends Error {
 
 /** @param {HostApi} api @param {Command} command @param {(id: string) => void} [accepted] */
 export async function dispatchCommand(api, command, accepted) {
-  const { action, operationId, requestId, text, cwd, questionId, cancellationSource, controllerProfile, userSettings, agentSkill, attachmentPaths } = command;
+  const { action, operationId, requestId, text, cwd, questionId, cancellationSource, controllerProfile, userSettings, agentSkillSelection, attachmentPaths } = command;
+  let agentSkill=command.agentSkill;
+  if(agentSkillSelection!==undefined){
+    if(agentSkill||!api.selectSkill||!['run','resume'].includes(action))throw new HostError('INVALID_ARGUMENT','Agent Skill selection unavailable');
+    const workspace=action==='resume'&&operationId?workspaceContextFor(await api.inspect(operationId))?.cwd:cwd;
+    const selected=await api.selectSkill(workspace??process.cwd(),agentSkillSelection);
+    if(!selected)throw new HostError('INVALID_ARGUMENT','Unknown or ambiguous Agent Skill shortcut');
+    agentSkill={name:selected.name,path:selected.path,source:selected.source};
+  }
   // New dispatch notifies before launch; existing or synthetic submissions may
   // return without invoking the callback. Preserve one acceptance in both cases.
   let notified = false;

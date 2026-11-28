@@ -67,7 +67,9 @@ test('external ACP v1 serves separate non-Git sessions, progress, cancellation a
     let sessionId;
     try {
       await assert.rejects(first.agent.request(a.initialize, { protocolVersion: 99 }), /Unsupported ACP/);
-      assert.equal((await initialize(first.agent)).agentCapabilities.loadSession, true);
+      const initialized=await initialize(first.agent);
+      assert.equal(initialized.agentCapabilities.loadSession, true);
+      assert.deepEqual(initialized.agentCapabilities.promptCapabilities,{image:false,audio:false,embeddedContext:false});
       ({ sessionId } = await first.agent.request(a.session.new, { cwd, mcpServers: [] }));
       const second = await first.agent.request(a.session.new, { cwd, mcpServers: [] });
       assert.notEqual(sessionId, second.sessionId);
