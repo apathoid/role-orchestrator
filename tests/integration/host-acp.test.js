@@ -1164,3 +1164,22 @@ test('C24 native settings selectors apply exact opaque IDs and scope Controller 
       assert.equal(delegated.blocks.length,1);
     }finally{await host.close();}
   }));
+
+test('C24 ordinary continuation remains usable after an earlier image on a different profile', {timeout:20_000},()=>
+  withOwnedRun('C24-history-capability',async cwd=>{
+    const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+    const config=await fixture(cwd,{
+      providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']}},plain:{adapter:'host-fixture'}},
+      profiles:{primary:{provider:'test',model:'fixture'},plain:{provider:'plain',model:'fixture'}}
+    });
+    const host=launch(cwd,config);
+    try{
+      await initialize(host.agent);
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      assert.equal((await host.agent.request(a.session.prompt,{sessionId,prompt:[{type:'image',mimeType:'image/png',data:'AQID'}]})).stopReason,'end_turn');
+      await host.agent.request(a.session.setConfigOption,{sessionId,configId:'controllerProfile',value:'plain'});
+      assert.equal((await prompt(host.agent,sessionId,'settings')).stopReason,'end_turn');
+      const answer=host.messages.filter(item=>item.sessionId===sessionId&&item.update.sessionUpdate==='agent_message_chunk').at(-1).update.content.text;
+      assert.equal(JSON.parse(answer)[0],'plain');
+    }finally{await host.close();}
+  }));

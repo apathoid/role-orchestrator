@@ -179,6 +179,7 @@ export function createLocalStateStore(directory, io = fs) {
   /** @type {DatabaseSync | undefined} */
   let owner;
   let queue = Promise.resolve();
+  const pendingUserHashes=new Set();
   // One verified immutable artifact image per StateStore instance. The cache
   // is an ephemeral optimization, never a second persistent source of truth.
   // Recheck the backing inode/version (including ctime) on every access.
@@ -338,6 +339,7 @@ export function createLocalStateStore(directory, io = fs) {
           await handle.sync();
         }
         await io.unlink(join(root,marker));
+        pendingUserHashes.delete(hash);
         await handle.sync();
       }catch{/* An interrupted cleanup is retried at the next writer open. */}
     }
@@ -359,6 +361,8 @@ export function createLocalStateStore(directory, io = fs) {
           // an operation or removes the shared lock file.
           lock = acquireWriter(root);
           const names = await io.readdir(root);
+          pendingUserHashes.clear();
+          for(const name of names){const hash=pendingUserName.exec(name)?.[1];if(hash)pendingUserHashes.add(hash);}
           for (const name of names) {
             if (temporaryName.test(name)) await io.unlink(join(root, name)).catch(() => {});
           }
@@ -436,7 +440,7 @@ export function createLocalStateStore(directory, io = fs) {
             }
             for(const {bytes,reference} of payloads){
               const hash=reference.ref.slice(7),blob='artifact-'+hash+'.blob';
-              if(!names.has(blob))await publish(handle,'artifact-'+hash+'.user-pending','');
+              if(!names.has(blob)){pendingUserHashes.add(hash);await publish(handle,'artifact-'+hash+'.user-pending','');}
               verifiedCache=undefined;
               await publish(handle,blob,bytes);
               names.add(blob);
@@ -444,7 +448,7 @@ export function createLocalStateStore(directory, io = fs) {
             }
           }
           await publish(handle, name, serialized);
-          for(const {reference} of payloads)await io.unlink(join(root,'artifact-'+reference.ref.slice(7)+'.user-pending')).then(()=>handle.sync()).catch(()=>{});
+          for(const {reference} of payloads){const hash=reference.ref.slice(7);if(pendingUserHashes.has(hash))await io.unlink(join(root,'artifact-'+hash+'.user-pending')).then(()=>{pendingUserHashes.delete(hash);return handle.sync();}).catch(()=>{});}
           return { kind: 'committed' };
         } catch {
           if(payloads.length&&directoryHandle)await cleanPendingUserPayloads(directoryHandle,await io.readdir(root).catch(()=>[])).catch(()=>{});
@@ -463,7 +467,7 @@ export function createLocalStateStore(directory, io = fs) {
         try {
           verifiedCache = undefined;
           await publish(handle, 'artifact-' + hash + '.blob', data);
-          await io.unlink(join(root,'artifact-'+hash+'.user-pending')).then(()=>handle.sync()).catch(()=>{});
+          if(pendingUserHashes.has(hash))await io.unlink(join(root,'artifact-'+hash+'.user-pending')).then(()=>{pendingUserHashes.delete(hash);return handle.sync();}).catch(()=>{});
           if (await hasRetentionMarker(hash)) {
             await io.unlink(join(root, 'artifact-' + hash + '.retention')).then(() => handle.sync()).catch(() => {});
           }

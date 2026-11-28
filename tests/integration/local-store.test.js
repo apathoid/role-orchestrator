@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { prepareUserContent } from '../../src/application/user-content.js';
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
 import * as fs from 'node:fs/promises';
@@ -758,4 +759,37 @@ test('C19/C21 accepted native metadata with inherited attribution survives local
     assert.equal(legacy.native,undefined);
     assert.equal(legacy.value,'legacy');
   } finally { await reopened.close(); }
+});
+
+test('C24 staged user payload is cleaned after failed acceptance and survives committed reopen',async t=>{
+  let fail=false;
+  const {directory,store}=await setupStore(t,{
+    async rename(from,to){
+      if(fail&&String(to).endsWith('.json'))throw Object.assign(new Error('snapshot fault'),{code:'EIO'});
+      return fs.rename(from,to);
+    }
+  });
+  const raw=request({requestId:'c24-payload'});
+  delete raw.text;delete raw.attachments;
+  const prepared=prepareUserContent({...raw,content:[{kind:'image',mediaType:'image/png',encoding:'binary',data:'AQIDBA=='}]});
+  assert.equal(prepared.kind,'accepted');
+  const state=createOperation('payload-operation',prepared.input,'grant-ref',{maxInvocations:5,maxConcurrentInvocations:2});
+  const payload=prepared.payloads[0];
+  fail=true;
+  assert.deepEqual(await store.commit(state.operationId,null,state,prepared.payloads),{kind:'unavailable'});
+  assert.equal(await store.load(state.operationId),undefined);
+  assert.ok(!(await fs.readdir(directory)).some(name=>name.includes(payload.reference.ref.slice(7))));
+  fail=false;
+  assert.deepEqual(await store.commit(state.operationId,null,state,prepared.payloads),{kind:'committed'});
+  assert.ok(!(await fs.readdir(directory)).some(name=>name.endsWith('.user-pending')));
+  await store.close();
+  const reopened=createLocalStateStore(directory);
+  try{
+    await reopened.open({maxBytes:0,maxAgeMs:0});
+    const restored=await reopened.load(state.operationId);
+    assert.equal(restored.request.content[0].payload.ref,payload.reference.ref);
+    const read=await reopened.readArtifact(payload.reference,4);
+    assert.equal(read.kind,'available');
+    assert.deepEqual(read.bytes,Buffer.from([1,2,3,4]));
+  }finally{await reopened.close();}
 });
