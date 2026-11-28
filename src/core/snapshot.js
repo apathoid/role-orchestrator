@@ -50,7 +50,7 @@ const limits = record({ maxInvocations: nullable(limit), maxConcurrentInvocation
 const nativeValue = (value, path) => typeof value === 'boolean' ? value : id(value,path);
 const nativeSetting = record({id,source:oneOf('user','default'),nativeValue:optional(nativeValue),binding:optional(jsonValue)});
 const acceptedSettings = record({profileId:id,providerId:id,model:id,configurationRef:id,
-  overrides:optional(userSettings),reasoningEffort:optional(nativeSetting),collaborationMode:optional(nativeSetting),approvalMode:optional(nativeSetting)});
+  overrides:optional(userSettings),approvalMappingsRef:optional(id),reasoningEffort:optional(nativeSetting),collaborationMode:optional(nativeSetting),approvalMode:optional(nativeSetting)});
 const trusted = record({ authorityRef: id, configurationRef: id, limits, settings:optional(acceptedSettings) });
 const reasoning = tagged('mode', {
   native: record({mode: oneOf('native'), level: optional(oneOf('native')), selectionSource: optional(oneOf('model','default','user'))}),

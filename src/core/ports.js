@@ -12,7 +12,7 @@
  *   selectionSource: 'model' | 'default' | 'user'}} ReasoningSelection
  * @typedef {{id:string, source:'user'|'default', nativeValue?:string|boolean, binding?:unknown}} NativeSetting
  * @typedef {{profileId:string,providerId:string,model:string,configurationRef:string,
- *   overrides?:import('./contracts.js').UserSettings,reasoningEffort?:NativeSetting,collaborationMode?:NativeSetting,approvalMode?:NativeSetting}} AcceptedSettings
+ *   overrides?:import('./contracts.js').UserSettings,approvalMappingsRef?:string,reasoningEffort?:NativeSetting,collaborationMode?:NativeSetting,approvalMode?:NativeSetting}} AcceptedSettings
  * @typedef {{explicit?:import('./contracts.js').UserSettings,inherited?:import('./contracts.js').UserSettings,recovery?:AcceptedSettings}} SettingsInput
  * @typedef {{kind: 'selected', selection: ReasoningSelection} |
  *   {kind: 'rejected', profileId: string, requestedLevel?: string, availableLevels: readonly string[]}} ReasoningResolution

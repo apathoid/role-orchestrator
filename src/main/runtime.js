@@ -8,6 +8,8 @@ import { decodeConfiguration } from '../application/configuration/decode-config.
 import { createInteractionBroker } from '../application/interactions.js';
 import { createPermissionBroker } from '../application/configuration/permissions.js';
 import { createOrchestrator } from '../application/orchestrator.js';
+import { describeUserSettings, resolveFeatureChoices, workerApproval, approvalMappingsRef } from '../application/configuration/user-settings.js';
+import { sameRecord } from '../core/operation.js';
 import { createEventStream } from '../application/events.js';
 import { operationTrace } from '../hosts/commands.js';
 import { loadExtensions } from './extensions.js';
@@ -87,34 +89,44 @@ export async function openRuntime(options, onStoreOpen) {
       if (project.kind === 'unavailable') throw new RuntimeError('INVALID_CONFIGURATION', 'Cannot read project preferences', project.path);
       return project.kind === 'available' ? requireConfiguration(registry.resolveProject(project.text)) : base;
     }
-    /** Logical user settings; no native process is opened to describe them.
-     * @param {import('../core/contracts.js').Request['workspaceContext']} workspace
-     * @param {string} [controllerProfile]
+    /** @param {import('../core/contracts.js').Request['workspaceContext']} workspace
+     * @param {string} [controllerProfile] @param {import('../core/contracts.js').UserSettings} [overrides]
      */
-    async function settings(workspace, controllerProfile) {
-      const selectedConfig = await workspaceConfiguration(workspace);
-      const entries = await catalog.list();
-      const profiles = entries.flatMap(entry => entry.kind === 'profile' && !entry.value.unavailable &&
-        registry.providerFor(entry.value) &&
-        authority.authorize(authority.reference, entry.value.profileId) === 'ALLOWED'
-        ? [{ id: entry.value.profileId, name: entry.value.profileId }] : []);
-      const requested = controllerProfile ?? selectedConfig.controllerProfile;
-      const current = profiles.some(item => item.id === requested) ? requested : undefined;
-      return { controllerProfile: { current, options: profiles, ...(current === undefined && { unavailable: requested }) } };
+    async function settings(workspace, controllerProfile, overrides) {
+      return describeUserSettings(await workspaceConfiguration(workspace),catalog,authority,registry.providerFor,controllerProfile,overrides);
     }
-    /** @param {import('../core/contracts.js').Request['workspaceContext']} workspace @param {string} [controllerProfile] */
-    async function resolveExecution(workspace, controllerProfile) {
+    /** @param {import('../core/contracts.js').Request['workspaceContext']} workspace @param {string} [controllerProfile]
+     * @param {import('../core/ports.js').SettingsInput} [input]
+     */
+    async function resolveExecution(workspace, controllerProfile, input={}) {
       const selectedConfig = await workspaceConfiguration(workspace);
-      if (controllerProfile !== undefined) {
-        const decision = authority.authorize(authority.reference, controllerProfile);
+      const requested=input.recovery?.profileId??controllerProfile;
+      if (requested !== undefined) {
+        const decision = authority.authorize(authority.reference, requested);
         if (decision !== 'ALLOWED') throw new RuntimeError(decision, 'Controller profile is outside the active grant', '/controllerProfile');
       }
-      const selected = await registry.selectController(controllerProfile ?? selectedConfig.controllerProfile);
+      const selected = await registry.selectController(requested ?? selectedConfig.controllerProfile);
       if (selected.kind === 'unavailable') {
         throw new RuntimeError('CAPABILITY_UNAVAILABLE', selected.reason, '/controllerProfile');
       }
+      const resolved=resolveFeatureChoices(selectedConfig,selected.profile.profileId,input.recovery?.overrides??input.explicit,input.inherited);
+      if(resolved.kind==='rejected')throw new RuntimeError('CAPABILITY_UNAVAILABLE','Unknown logical user setting',resolved.path);
+      const {choices,overrides}=resolved;
+      /** @type {import('../core/ports.js').AcceptedSettings|undefined} */
+      let accepted=requested!==undefined||Object.keys(choices).length?{
+        profileId:selected.profile.profileId,providerId:selected.profile.providerId,model:selected.profile.model,configurationRef,
+        ...(Object.keys(overrides).length&&{overrides}),...choices,
+        ...(approvalMappingsRef(selectedConfig,choices.approvalMode)&&{approvalMappingsRef:approvalMappingsRef(selectedConfig,choices.approvalMode)}),
+      }:undefined;
+      if(input.recovery) {
+        const {configurationRef:_current,...effective}=accepted??{};
+        const {configurationRef:_historical,...historical}=input.recovery;
+        if(!sameRecord(effective,historical))throw new RuntimeError('CAPABILITY_UNAVAILABLE','Accepted Controller settings are no longer compatible','/userSettings');
+        accepted=input.recovery;
+      }
       return {
         catalog: registry.projectCatalog(selectedConfig), profile: selected.profile, provider: selected.provider,
+        settings:accepted, ...(accepted?.approvalMode&&{workerApproval:(/** @type {import('../core/ports.js').Profile} */ profile)=>workerApproval(selectedConfig,profile.profileId,accepted?.approvalMode)}),
         limits: {
           maxInvocations: selectedConfig.resources.maxInvocationsPerOperation,
           maxConcurrentInvocations: selectedConfig.resources.maxConcurrentInvocations,
