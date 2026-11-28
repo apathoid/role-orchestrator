@@ -1224,3 +1224,34 @@ test('C24 decoded input limit rejects oversized embedded data before native disp
     assert.equal((await prompt(host.agent,sessionId,'ordinary')).stopReason,'end_turn');
   }finally{await host.close();}
 }));
+
+test('C24-R unavailable default leaves available profile selectable without silent fallback', {timeout:12000},()=>withOwnedRun('C24R-profile',async cwd=>{
+  const config=await fixture(cwd,{controllerProfile:'missing',providers:{test:{adapter:'host-fixture'},missing:{adapter:'not-installed'}},
+    profiles:{primary:{provider:'test',model:'fixture'},missing:{provider:'missing',model:'fixture'}}});
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const created=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    const selector=created.configOptions.find(item=>item.id==='controllerProfile');
+    assert.ok(selector);
+    assert.equal(selector.currentValue,'missing');
+    assert.ok(selector.options.some(item=>item.value==='primary'));
+    await assert.rejects(prompt(host.agent,created.sessionId,'settings'));
+    await host.agent.request(a.session.setConfigOption,{sessionId:created.sessionId,configId:'controllerProfile',value:'primary'});
+    assert.equal((await prompt(host.agent,created.sessionId,'settings')).stopReason,'end_turn');
+  }finally{await host.close();}
+}));
+
+test('C24-R unsupported feature still permits explicit native no-override', {timeout:12000},()=>withOwnedRun('C24R-native',async cwd=>{
+  const config=await fixture(cwd,{profiles:{primary:{provider:'test',model:'fixture',features:{approvalMode:'review'}}},
+    features:{approvalMode:{review:{default:'review',options:[{id:'native'},{id:'review',nativeValue:'ask'}]}}}});
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const created=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    assert.equal(created.configOptions.find(item=>item.id==='approvalMode').currentValue,'review');
+    const result=await host.agent.request(a.session.setConfigOption,{sessionId:created.sessionId,configId:'approvalMode',value:'native'});
+    assert.equal(result.configOptions.find(item=>item.id==='approvalMode').currentValue,'native');
+    assert.equal((await prompt(host.agent,created.sessionId,'settings')).stopReason,'end_turn');
+  }finally{await host.close();}
+}));

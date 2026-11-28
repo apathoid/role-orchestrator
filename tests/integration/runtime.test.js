@@ -222,3 +222,15 @@ test('C23 A127 API owners overlap in one process; closing/failing one does not c
       assert.equal(final.assessment.answer,'Ответ: still active');
     }finally{await Promise.all([first.close(),second.close()]);}
   }));
+
+test('C24-R accepted generation records effective default Controller even without features',()=>withOwnedRun('C24R-settings',async directory=>{
+  const {request}=await import('../fixtures/core.js');
+  const configuration=JSON.stringify({schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},
+    providers:{test:{adapter:'host-fixture'}},plugins:[{id:'host-fixture',module:fileURLToPath(new URL('../fixtures/host-plugin.js',import.meta.url))}]});
+  const runtime=await openRuntime({configuration,stateDirectory:directory});
+  try{
+    const result=await runtime.api.submit(request({configurationRef:runtime.api.configurationRef}));
+    assert.equal(result.operation.acceptedSettings?.profileId,'primary');
+    assert.equal((await result.completion).acceptedSettings?.profileId,'primary');
+  }finally{await runtime.close();}
+}));
