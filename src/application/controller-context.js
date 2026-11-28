@@ -8,7 +8,7 @@ import { eventFindings, findingRef } from '../core/finding.js';
 import { observation } from '../core/observation.js';
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {LookupStatus} from './recovery.js' */
-import { pendingControllerReasoning, acceptedSettingsFor, resourceSnapshot } from '../core/operation.js';
+import { pendingControllerDecision, pendingControllerReasoning, acceptedSettingsFor, resourceSnapshot } from '../core/operation.js';
 /** @import {Operation} from '../core/operation.js' */
 
 export const controllerInstructions = [
@@ -311,23 +311,8 @@ export function pendingControllerHistoryRequest(state, attemptId) {
   const at = state.events.findIndex(event => event.kind === 'attempt.reserved' &&
     event.attemptId === attemptId && event.actionId === attemptId);
   if (at < 0) return undefined;
-  const before = state.events.slice(0, at);
-  const index = before.findLastIndex(event => event.kind === 'controller.responded');
-  if (index < 0) return undefined;
-  const subsequent=before.slice(index+1);
-  if(subsequent.some(event=>event.kind==='operation.continued'))return undefined;
-  for(const [position,event] of subsequent.entries()){
-    if(event.kind!=='attempt.reserved'||event.actionId!==event.attemptId)continue;
-    const later=subsequent.slice(position+1);
-    // Only the known pre-dispatch crash gap is reusable. A durable dispatch
-    // marker remains a consumption boundary even if lookup later says not_sent.
-    const recovery=later.findIndex(item=>item.kind==='operation.recovered');
-    if(recovery<0||later.slice(0,recovery).some(item=>item.kind==='attempt.outcome'&&item.outcome.attemptId===event.attemptId)||
-      later.some(item=>item.kind==='attempt.dispatched'&&item.attemptId===event.attemptId))return undefined;
-  }
-  const choice = before[index];
-  return choice.kind === 'controller.responded' && choice.decision.nextController?.continue
-    ? choice.decision.nextController.contextRequest : undefined;
+  const choice=pendingControllerDecision(state.events,at)?.nextController;
+  return choice?.continue?choice.contextRequest:undefined;
 }
 
 /**

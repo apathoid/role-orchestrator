@@ -2,7 +2,7 @@ import { admitFindings, eventFindings, evidenceRefs, findingRef, findings, recor
 import { action, assessment, decision, followup, outcome, reasonCode, request, userSettings } from './contracts.js';
 import { jsonValue, arrayOf, boundedAllowedFields, boundedFieldHint, count, decode, id, invalid, measurement, nullable, oneOf, optional, record, text } from './decode.js';
 import { contextItem } from './observation.js';
-import { classifyOutcomeReport, resolveOutcome, sameRecord, validRejectedResult } from './operation.js';
+import { classifyOutcomeReport, resolveOutcome, sameRecord, validRejectedResult, pendingControllerDecision } from './operation.js';
 
 /** @import {Decoder, FieldError} from './decode.js' */
 /** @import {Attempt, Event, Operation} from './operation.js' */
@@ -176,10 +176,14 @@ function validateSnapshot(value,path,onOutcome) {
   let cancelled=false;
   /** @type {{decisionId: string, reasoningLevel?: string} | undefined} */
   let pendingController;
+  let restoredController=false;
   const decisions = new Map(value.events.flatMap(item => item.kind === 'controller.responded'
     ? [[item.decision.decisionId, item.decision]] : []));
   // Only admitted Actions are the historical authority for a worker route.
   // Never infer its logical request from the current catalog's native mapping.
+  /** @type {Map<string, Extract<Admission,{kind:'accepted'}>>} */
+  const priorAdmissions=new Map();
+  let currentSettings=value.acceptedSettings;
   const acceptedActions = new Map(value.events.flatMap(item => item.kind === 'controller.responded'
     ? (item.admissions ?? []).flatMap(admission => admission.kind === 'accepted'
       ? [[admission.action.actionId, admission.action]] : []) : []));
@@ -219,9 +223,30 @@ function validateSnapshot(value,path,onOutcome) {
     if (item.kind === 'operation.continued' || item.kind === 'operation.recovered') {
       generation++;
       // A crash/reopen is not a user decision to supersede an unconsumed choice.
-      if (item.kind === 'operation.continued') pendingController = undefined;
+      if (item.kind === 'operation.continued'){
+        pendingController=undefined;restoredController=false;
+        currentSettings=item.trusted?.settings;
+      }else{
+        currentSettings=item.trusted.settings??currentSettings;
+        if(!pendingController){
+          const selected=pendingControllerDecision(value.events,index+1);
+          if(selected){pendingController={decisionId:selected.decisionId,reasoningLevel:selected.nextController?.reasoningLevel};restoredController=true;}
+        }
+      }
     }
     if (item.kind === 'controller.responded') {
+      restoredController=false;
+      for(const [position,admission] of (item.admissions??[]).entries()){
+        if(admission.kind!=='accepted')continue;
+        if(admission.approval){
+          const field=at+'.admissions['+position+'].approval';
+          if(!item.decision.additions.some(action=>sameRecord(action,admission.action)))invalid(field,'the Action in the accepted Decision');
+          const {choice,setting}=admission.approval;
+          if(currentSettings&&!sameRecord(choice,currentSettings.approvalMode))invalid(field+'.choice','the accepted generation approval choice');
+          if(setting&&(!choice||setting.id!==choice.id||setting.source!==choice.source))invalid(field+'.setting','the admitted logical choice mapped to the Worker');
+        }
+        priorAdmissions.set(admission.action.actionId,admission);
+      }
       pendingController = item.decision.nextController
         ? {decisionId: item.decision.decisionId, reasoningLevel: item.decision.nextController.reasoningLevel}
         : undefined;
@@ -254,10 +279,13 @@ function validateSnapshot(value,path,onOutcome) {
     if (item.kind === 'attempt.reserved') {
       if (prior) invalid(at + '.attemptId', 'a single reservation per attempt');
       if (item.actionId === item.attemptId) {
-        if (item.reasoningDecisionId !== pendingController?.decisionId) {
+        // Older snapshots consumed at reservation even in a pre-dispatch
+        // recovery gap. Keep them readable; new reservations bind the choice.
+        if (item.reasoningDecisionId !== pendingController?.decisionId &&
+            !(restoredController&&item.reasoningDecisionId===undefined)) {
           invalid(at + '.reasoningDecisionId', 'the pending Controller selection, if any');
         }
-        pendingController = undefined;
+        pendingController = undefined;restoredController=false;
       } else if (item.reasoningDecisionId !== undefined) {
         invalid(at + '.reasoningDecisionId', 'a Controller reservation only');
       }
@@ -278,6 +306,10 @@ function validateSnapshot(value,path,onOutcome) {
       }
       if (item.kind === 'attempt.dispatched') {
         if (prior.status !== 'reserved') invalid(at + '.kind', 'a dispatch of a reserved attempt');
+        const admitted=priorAdmissions.get(prior.actionId);
+        if(prior.actionId!==attemptId&&admitted?.approval&&
+          (!item.route||item.route.profileId!==admitted.action.profileId||!sameRecord(item.route.approvalMode,admitted.approval.setting)))
+          invalid(at+'.route.approvalMode','the recorded Worker admission mapping and profile');
         const routeReasoning = item.route?.reasoning;
         if (!routeReasoning && prior.actionId !== attemptId &&
             acceptedActions.get(prior.actionId)?.reasoningLevel) {

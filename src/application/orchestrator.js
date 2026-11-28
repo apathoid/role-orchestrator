@@ -344,28 +344,49 @@ export function createOrchestrator(deps) {
     return { operation: state, completion };
   }
 
+  /** A duplicate only returns existing work, never reauthorizes or executes it.
+   * @param {Operation} state
+   */
+  function authorizeRedelivery(state){
+    if(state.authorityRef!==authority.reference)throw new OrchestrationError('PERMISSION_DENIED','Request belongs to another authority');
+    const profileId=acceptedSettingsFor(state)?.profileId??controllerProfileFor(state)??state.attempts.findLast(a=>a.actionId===a.attemptId)?.route?.profileId;
+    if(profileId){
+      const allowed=authority.authorize(state.authorityRef,profileId);
+      if(allowed!=='ALLOWED')throw new OrchestrationError(allowed,'Request is outside the active grant');
+    }
+  }
+
   /** @param {unknown} input @param {(id: string) => void} [accepted] @returns {Promise<Submission>} */
   async function submit(input, accepted) {
-    const prepared = prepareUserContent(input,userContentMaxBytes);
-    if(prepared.kind==='rejected')throw new OrchestrationError('INVALID_PROPOSAL',prepared.reason,prepared.path);
-    const parsed = decodeRequest(prepared.input);
-    if (parsed.kind === 'rejected') {
-      throw new OrchestrationError(parsed.reason.code, parsed.reason.expected, parsed.reason.path);
-    }
-    const request = parsed.value;
-    if (request.configurationRef !== configurationRef) {
-      throw new OrchestrationError('PERMISSION_DENIED', 'Unknown trusted configuration', '$.configurationRef');
-    }
+    const initial=prepareUserContent(input,userContentMaxBytes);
+    if(initial.kind==='rejected'&&!initial.limitExceeded)throw new OrchestrationError('INVALID_PROPOSAL',initial.reason,initial.path);
+    const decoded=initial.kind==='accepted'?decodeRequest(initial.input):undefined;
+    if(decoded?.kind==='rejected')throw new OrchestrationError(decoded.reason.code,decoded.reason.expected,decoded.reason.path);
+    const raw=input&&typeof input==='object'&&'requestId' in input&&typeof input.requestId==='string'?input.requestId:undefined;
+    const requestId=decoded?.kind==='accepted'?decoded.value.requestId:raw;
+    if(!requestId)throw new OrchestrationError('INVALID_PROPOSAL','Expected request id','$.requestId');
+    // The current trusted configuration is required even for a redelivery.
+    const ref=decoded?.kind==='accepted'?decoded.value.configurationRef:
+      input&&typeof input==='object'&&'configurationRef' in input?input.configurationRef:undefined;
+    if(ref!==configurationRef)throw new OrchestrationError('PERMISSION_DENIED','Unknown trusted configuration','$.configurationRef');
     return serialize(async () => {
       requireRunning();
-      const entries = await store.list(request.requestId);
+      const entries = await store.list(requestId);
       if (entries.some(item => 'kind' in item && item.requestMatch === true)) {
         throw new OrchestrationError('STORE_UNAVAILABLE', 'Stored request is unavailable');
       }
       const all = entries.filter(isAvailable);
-      const previous = all.find(item => item.request.requestId === request.requestId);
+      const previous = all.find(item => item.request.requestId === requestId);
+      if(previous)authorizeRedelivery(previous);
+      // A formerly accepted payload may exceed today's admission limit. Only
+      // an existing identity can use the hard supported maximum to compare it.
+      const prepared=initial.kind==='rejected'&&previous?prepareUserContent(input,maximumUserContentMaxBytes):initial;
+      if(prepared.kind==='rejected')throw new OrchestrationError('INVALID_PROPOSAL',prepared.reason,prepared.path);
+      const parsed=decoded??decodeRequest(prepared.input);
+      if(parsed.kind==='rejected')throw new OrchestrationError(parsed.reason.code,parsed.reason.expected,parsed.reason.path);
+      const request=parsed.value;
       if (previous) {
-        if (!sameRecord(previous.request, request)) throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
+        if (!sameRecord({...previous.request,configurationRef}, request)) throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
         return activeSubmission(previous);
       }
       if (reservedEvidenceRef(request.requestId)) {
@@ -403,22 +424,29 @@ export function createOrchestrator(deps) {
         return launch(next, execution, true);
       });
     }
-    const prepared = prepareUserContent(input,userContentMaxBytes);
-    if(prepared.kind==='rejected')throw new OrchestrationError('INVALID_PROPOSAL',prepared.reason,prepared.path);
-    const parsed = decode(followup, prepared.input);
-    if (parsed.kind === 'rejected') {
-      throw new OrchestrationError(parsed.reason.code, parsed.reason.expected, parsed.reason.path);
-    }
-    const follow = parsed.value;
+    const initial=prepareUserContent(input,userContentMaxBytes);
+    if(initial.kind==='rejected'&&!initial.limitExceeded)throw new OrchestrationError('INVALID_PROPOSAL',initial.reason,initial.path);
+    const decoded=initial.kind==='accepted'?decode(followup,initial.input):undefined;
+    if(decoded?.kind==='rejected')throw new OrchestrationError(decoded.reason.code,decoded.reason.expected,decoded.reason.path);
     return serialize(async () => {
       requireRunning();
       const all = (await store.list()).filter(isAvailable);
       const state = await inspect(operationId);
+      const raw=input&&typeof input==='object'&&'requestId' in input&&typeof input.requestId==='string'?input.requestId:undefined;
+      const previous=state.events.find(event=>event.kind==='operation.continued'&&event.input.requestId===raw);
+      if(previous)authorizeRedelivery(state);
+      const prepared=initial.kind==='rejected'&&previous?prepareUserContent(input,maximumUserContentMaxBytes):initial;
+      if(prepared.kind==='rejected')throw new OrchestrationError('INVALID_PROPOSAL',prepared.reason,prepared.path);
+      const parsed=decoded??decode(followup,prepared.input);
+      if(parsed.kind==='rejected')throw new OrchestrationError(parsed.reason.code,parsed.reason.expected,parsed.reason.path);
+      const follow=parsed.value;
       for (const operation of all) {
         if (operation.request.requestId === follow.requestId) throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
         const event = operation.events.find(item => item.kind === 'operation.continued' && item.input.requestId === follow.requestId);
         if (event?.kind === 'operation.continued') {
-          if (operation.operationId === operationId && sameRecord(event.input, follow)) return activeSubmission(state);
+          if (operation.operationId === operationId && sameRecord(event.input, follow)){
+            authorizeRedelivery(state);return activeSubmission(state);
+          }
           throw new OrchestrationError('IDENTITY_CONFLICT', 'Request id reused');
         }
       }

@@ -98,24 +98,33 @@ export function resourceSnapshot(state) {
   };
 }
 
-/**
- * A decision's one-shot Controller preference is pending only until the next
- * Controller reservation. Technical recovery may advance the generation, but
- * only explicit user continuation supersedes the model's pending choice.
- * @param {Operation} operation
- * @returns {{decisionId: string, reasoningLevel?: string} | undefined}
+/** The same durable Decision owns reasoning and history selections. A
+ * reservation consumes it unless a later technical recovery proves the
+ * reservation did not reach dispatch or a terminal receipt before recovery.
+ * @param {readonly Event[]} events @param {number} [through]
+ * @returns {Decision|undefined}
  */
-export function pendingControllerReasoning(operation) {
-  const events = operation.events;
-  const boundary = events.findLastIndex(event => event.kind === 'operation.continued');
-  const current = events.slice(boundary + 1);
-  const index = current.findLastIndex(event => event.kind === 'controller.responded');
-  if (index < 0) return undefined;
-  const candidate = current[index];
-  if (candidate.kind !== 'controller.responded' || !candidate.decision.nextController) return undefined;
-  if (current.slice(index + 1).some(event =>
-    event.kind === 'attempt.reserved' && event.actionId === event.attemptId)) return undefined;
-  return {decisionId: candidate.decision.decisionId, reasoningLevel: candidate.decision.nextController.reasoningLevel};
+export function pendingControllerDecision(events,through=events.length){
+  // Scan backwards once. Only outcomes occurring before the first recovery
+  // after a reservation disqualify that crash gap.
+  let recovered=false;
+  const dispatched=new Set(),outcomes=new Set();
+  for(let i=through-1;i>=0;i--){
+    const event=events[i];
+    if(event.kind==='operation.continued')return undefined;
+    if(event.kind==='controller.responded')return event.decision.nextController?event.decision:undefined;
+    if(event.kind==='operation.recovered'){recovered=true;outcomes.clear();}
+    if(event.kind==='attempt.dispatched')dispatched.add(event.attemptId);
+    if(event.kind==='attempt.outcome')outcomes.add(event.outcome.attemptId);
+    if(event.kind==='attempt.reserved'&&event.actionId===event.attemptId&&
+      (!recovered||dispatched.has(event.attemptId)||outcomes.has(event.attemptId)))return undefined;
+  }
+}
+
+/** @param {Operation} operation @returns {{decisionId:string,reasoningLevel?:string}|undefined} */
+export function pendingControllerReasoning(operation){
+  const decision=pendingControllerDecision(operation.events);
+  return decision?{decisionId:decision.decisionId,reasoningLevel:decision.nextController?.reasoningLevel}:undefined;
 }
 
 /**

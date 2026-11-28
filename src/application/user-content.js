@@ -8,14 +8,14 @@ export const maximumUserContentMaxBytes=64*1024*1024;
 /** @param {number} bytes */
 export const userContentFrameBytes=bytes=>Math.ceil(bytes/3)*4+2*1024*1024;
 /** @typedef {{ref:string,size:number,originalSize:number,truncated:false}} PayloadRef */
-/** @typedef {{kind:'accepted',input:unknown,payloads:{bytes:Uint8Array,reference:PayloadRef}[]}|{kind:'rejected',path:string,reason:string}} Prepared */
+/** @typedef {{kind:'accepted',input:unknown,payloads:{bytes:Uint8Array,reference:PayloadRef}[]}|{kind:'rejected',path:string,reason:string,limitExceeded?:true}} Prepared */
 /** @param {unknown} v @returns {v is Record<string,unknown>} */
 const object=v=>!!v&&typeof v==='object'&&!Array.isArray(v)&&[Object.prototype,null].includes(Object.getPrototypeOf(v));
 /** @param {unknown} input @param {number} [maxBytes] @returns {Prepared} */
 export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
   if(!object(input)||input.content===undefined)return {kind:'accepted',input,payloads:[]};
-  /** @param {string} path @param {string} reason @returns {Prepared} */
-  const reject=(path,reason)=>({kind:'rejected',path,reason});
+  /** @param {string} path @param {string} reason @param {boolean} [limitExceeded] @returns {Prepared} */
+  const reject=(path,reason,limitExceeded=false)=>({kind:'rejected',path,reason,...(limitExceeded&&{limitExceeded:/** @type {const} */(true)})});
   if(typeof input.requestId!=='string'||!Array.isArray(input.content)||!input.content.length)return reject('$.content','Expected ordered content and request id');
   if(input.text!==undefined||Array.isArray(input.attachments)&&input.attachments.length)return reject('$.content','Use either ordered content or legacy text/attachments');
   /** @type {ContentSegment[]} */ const content=[];
@@ -50,7 +50,7 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
         if(typeof block.data!=='string'||(block.encoding!=='utf8'&&block.encoding!=='binary'))return reject(path,'Expected embedded data and encoding');
         encoding=block.encoding;
         if(kind!=='resource'&&encoding!=='binary')return reject(path,'Image/audio require binary encoding');
-        if(encoding==='binary'&&block.data.length>Math.ceil(maxBytes/3)*4)return reject(path+'.data','Oversized base64');
+        if(encoding==='binary'&&block.data.length>Math.ceil(maxBytes/3)*4)return reject(path+'.data','Oversized base64',true);
         const bytes=Buffer.from(block.data,encoding==='binary'?'base64':'utf8');
         if(encoding==='binary'&&bytes.toString('base64')!==block.data)return reject(path+'.data','Invalid base64');
         total+=bytes.length;
@@ -60,7 +60,7 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
       const ref='user-content:'+createHash('sha256').update(JSON.stringify([input.requestId,index])).digest('hex');
       content.push({kind,ref,mediaType,uri,payload,encoding,metadata,mimeTypeOmitted:block.mediaType===undefined&&(kind==='link'||kind==='resource')?/** @type {const} */(true):undefined});
     }
-    if(total>maxBytes)return reject(path,'User content exceeds '+maxBytes+' decoded bytes');
+    if(total>maxBytes)return reject(path,'User content exceeds '+maxBytes+' decoded bytes',true);
   }
   return {kind:'accepted',input:{...input,...('schemaVersion' in input&&{attachments:[]}),text,content},payloads};
 }

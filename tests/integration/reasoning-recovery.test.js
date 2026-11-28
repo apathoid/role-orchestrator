@@ -124,7 +124,7 @@ test('C11R.9 changed mapping denies old idempotency key; unrelated worker runs',
 });
 
 
-test('C11R review P1: crash after Decision, reopen and resume preserves one-shot Controller effort',async t=>{
+test('C24-R3 T25 crash after reservation, reopen and resume preserves one Decision selections',async t=>{
   const directory=await fs.mkdtemp(join(tmpdir(),'role-orchestrator-effort-resume-'));
   t.after(()=>fs.rm(directory,{recursive:true,force:true}));
   const initial=createLocalStateStore(directory);
@@ -134,16 +134,18 @@ test('C11R review P1: crash after Decision, reopen and resume preserves one-shot
     {maxInvocations:5,maxConcurrentInvocations:2});
   assert.deepEqual(await initial.commit(id,null,state),{kind:'committed'});
   const selected=decision({operationId:id,decisionId:'pending-high',
-    finalAssessment:undefined,nextController:{continue:true,reasoningLevel:'high'}});
+    finalAssessment:undefined,nextController:{continue:true,reasoningLevel:'high',contextRequest:{refs:['recovery-effort']}}});
   state=apply(state,'controller.responded',1,{decision:selected});
   assert.deepEqual(await initial.commit(id,0,state),{kind:'committed'});
+  state=apply(state,'attempt.reserved',2,{attemptId:'abandoned',actionId:'abandoned',reasoningDecisionId:'pending-high'});
+  assert.deepEqual(await initial.commit(id,1,state),{kind:'committed'});
   await initial.close();
 
   const reopened=createLocalStateStore(directory);
   t.after(()=>reopened.close());
   await reopened.open();
   const restored=await reopened.load(id);
-  assert.equal(pendingControllerReasoning(restored)?.reasoningLevel,'high');
+  assert.equal(pendingControllerReasoning(restored),undefined);
   const profile={profileId:'primary',providerId:'fixture',model:'same'};
   const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
     features:{reasoningEffort:{reasoning2:{default:'low',options:[{id:'low',nativeValue:'native-low'},{id:'high',nativeValue:'native-high'}]}}},
@@ -156,7 +158,9 @@ test('C11R review P1: crash after Decision, reopen and resume preserves one-shot
   assert.equal(invocations[0].reasoning.level,'high');
   assert.equal(invocations[0].reasoning.nativeValue,'native-high');
   assert.equal(result.events.filter(event=>event.kind==='operation.recovered').length,1);
-  const attempt=result.attempts[0];
+  assert.equal(result.attempts[0].dispatchCertainty,'not_sent');
+  const attempt=result.attempts.at(-1);
+  assert.equal(invocations[0].context.find(item=>item.ref==='host:invocation-context').value.historyRequestCoverage.requestedRefs,1);
   assert.equal(attempt.reasoningDecisionId,'pending-high');
   assert.equal(attempt.route.reasoning.selectionSource,'model');
   assert.equal(attempt.route.reasoning.level,'high');
