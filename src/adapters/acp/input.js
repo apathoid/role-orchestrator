@@ -73,14 +73,16 @@ export async function configureReasoning(agent, methods, session, reasoning, sig
 /**
  * @param {Invocation} invocation @param {InitializeResponse['agentCapabilities']} capabilities
  * @param {ResolveAttachment | undefined} resolve @param {AbortSignal} signal @param {(requestId:string,ref:string)=>void} [onOmitted]
+ * @param {(turn:import('../../core/ports.js').OrderedTurn,start:number,count:number)=>void} [onDelivered]
  */
-export async function attachmentBlocks(invocation, capabilities, resolve, signal,onOmitted) {
+export async function attachmentBlocks(invocation, capabilities, resolve, signal,onOmitted,onDelivered) {
   /** @type {ContentBlock[]} */
   const blocks = [];
   const orderedRefs=new Set((invocation.orderedTurns??[]).flatMap(turn=>turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref])));
   for(const turn of invocation.orderedTurns??[]){
     const ordered=await renderOrderedTurn(turn,invocation.readUserPayload,capabilities,signal,turn.required===false?ref=>onOmitted?.(turn.requestId,ref):undefined);
     if(!ordered)return undefined;
+    onDelivered?.(turn,blocks.length+1,ordered.length);
     blocks.push(...ordered);
   }
   for (const attachment of invocation.attachments ?? []) {
@@ -155,13 +157,13 @@ export async function renderContentAttachment(item,read,capabilities,signal){
   const caps=capabilities?.promptCapabilities;
   if(capabilities&&(item.kind==='image'&&!caps?.image||item.kind==='audio'&&!caps?.audio||item.kind==='resource'&&!caps?.embeddedContext))return;
   const meta=metadataObject(item.metadata);
-  if(item.kind==='link')return /** @type {ContentBlock} */ ({...meta,type:'resource_link',uri:item.uri,mimeType:item.mediaType,name:typeof meta.name==='string'?meta.name:item.uri});
+  if(item.kind==='link')return /** @type {ContentBlock} */ ({...meta,type:'resource_link',uri:item.uri,...(!item.mimeTypeOmitted&&{mimeType:item.mediaType}),name:typeof meta.name==='string'?meta.name:item.uri});
   const bytes=await read?.(item.ref);
   signal.throwIfAborted();
   if(!bytes)return;
   if(item.kind==='image'||item.kind==='audio')return /** @type {ContentBlock} */ ({...meta,type:item.kind,mimeType:item.mediaType,data:Buffer.from(bytes).toString('base64'),...(item.uri&&{uri:item.uri})});
   const outer=metadataObject(meta.outer),resource=metadataObject(meta.resource);
-  return /** @type {ContentBlock} */ ({...outer,type:'resource',resource:{...resource,uri:item.uri,mimeType:item.mediaType,
+  return /** @type {ContentBlock} */ ({...outer,type:'resource',resource:{...resource,uri:item.uri,...(!item.mimeTypeOmitted&&{mimeType:item.mediaType}),
     ...(item.encoding==='utf8'?{text:Buffer.from(bytes).toString('utf8')}:{blob:Buffer.from(bytes).toString('base64')})}});
 }
 /** @param {import('../../core/ports.js').OrderedTurn} turn @param {Invocation['readUserPayload']} read

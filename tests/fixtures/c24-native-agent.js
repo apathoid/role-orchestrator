@@ -39,12 +39,14 @@ agent()
     const {kind,operationId,attemptId,profileId,context}=readInvocationPrompt(params.prompt[0].text);
     const blocks=params.prompt.slice(1).map(summarize);
     const userSelectedSkills=context.find(item=>item.ref==='host:invocation-context')?.value?.userSelectedSkills;
-    const userText=context.findLast(item=>item.provenance?.kind==='user')?.value;
+    const host=context.find(item=>item.ref==='host:invocation-context')?.value;
+    const latestRecord=context.find(item=>item.ref===host?.userTurns?.latest?.ref);
+    const latestNative=context.find(item=>item.ref==='host:ordered-input')?.value?.find(item=>item.requestId===host?.userTurns?.latest?.ref&&item.literalText);
+    const userText=latestNative?params.prompt.slice(latestNative.startBlock,latestNative.startBlock+latestNative.count).filter(item=>item.type==='text').map(item=>item.text).join(''):latestRecord?.value;
     await appendFile('c24-wire.jsonl',JSON.stringify({kind,variant,profileId,blocks,mode,userSelectedSkills,userText,promptBytes:Buffer.byteLength(JSON.stringify(params.prompt)),settings:Object.fromEntries(options.map(item=>[item.id,item.currentValue]))})+'\n');
     const send=text=>client.notify(c.session.update,{sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}});
     if(kind==='delegate'){await send('C24 worker result');return {stopReason:'end_turn'};}
-    const host=context.find(item=>item.ref==='host:invocation-context').value;
-    const latest=context.findLast(item=>item.provenance?.kind==='user')?.value;
+    const latest=userText;
     const delegate=latest==='delegate selected image'&&!context.some(item=>item.value==='C24 worker result');
     const decision={schemaVersion:1,operationId,decisionId:attemptId+'-decision',contextCursor:host.contextCursor,additions:[],cancellations:[]};
     if(variant==='history-request'&&latest==='retrieve first image'&&!blocks.some(item=>item.type==='image'&&item.hash===createHash('sha256').update(Buffer.alloc(700*1024,7)).digest('hex'))){

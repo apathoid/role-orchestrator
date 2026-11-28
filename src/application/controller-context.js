@@ -71,6 +71,7 @@ export function operationHistory(state, throughRevision = state.events.length) {
       { kind: 'user', sourceId: state.request.requestId, receivedAt: state.acceptedAt }),
     receivedSequence: { revision: 0, index: 0 } },
   ];
+  appendUserContent(state.request,0,state.acceptedAt);
   const observedOwners = new Map(events.flatMap(event => event.kind === 'attempt.outcome'
     ? (event.observations ?? []).map(item => [item.ref, event.outcome.attemptId])
     : []));
@@ -94,6 +95,7 @@ export function operationHistory(state, throughRevision = state.events.length) {
       append('assessment:' + event.eventId, event.assessment, 'model', event.assessment.author);
     } else if (event.kind === 'operation.continued') {
       append(event.input.requestId, event.input.text, 'user', event.input.requestId);
+      appendUserContent(event.input,revision,event.receivedAt);
     }
 
     const findings = eventFindings(event);
@@ -130,6 +132,21 @@ export function operationHistory(state, throughRevision = state.events.length) {
         receivedSequence: { revision, index: 0 },
       });
     }
+  }
+  /** User-content identity is an addressable historical record, not evidence
+   * or an artifact fetch that encodes a picture as ordinary text.
+   * @param {Pick<import('../core/contracts.js').Request,'requestId'|'content'|'agentSkill'>} turn
+   * @param {number} revision @param {number} [receivedAt]
+   */
+  function appendUserContent(turn,revision,receivedAt){
+    for(const [index,item] of (turn.content??[]).entries()){
+      if(item.kind==='text')continue;
+      items.push({...observation({ref:item.ref,completeness:'complete',value:{kind:item.kind,requestId:turn.requestId,
+        mediaType:item.mediaType,uri:item.uri,size:item.payload?.size,nativeContent:true}},
+        {kind:'user',sourceId:turn.requestId,receivedAt}),receivedSequence:{revision,index:index+1}});
+    }
+    if(turn.agentSkill)items.push({...observation({ref:'host:user-skill:'+turn.requestId,completeness:'complete',value:turn.agentSkill},
+      {kind:'user',sourceId:turn.requestId,receivedAt}),receivedSequence:{revision,index:(turn.content?.length??0)+1}});
   }
   // Stores other than the local snapshot adapter must not expose either
   // record when handed an ambiguous legacy history.
@@ -319,7 +336,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   const [request, ...history] = operationHistory(state);
   // References point to the original user ContextItems. Chronology is a
   // transport fact, not a Host decision about the current task or priority.
-  const latestUser = history.findLast(item => item.provenance?.kind === 'user') ?? request;
+  const latestUser = history.findLast(item => item.provenance?.kind === 'user' && state.transcriptRefs.includes(item.ref)) ?? request;
   const userTurns = {
     initial: { ref: request.ref, receivedSequence: request.receivedSequence },
     latest: { ref: latestUser.ref, receivedSequence: latestUser.receivedSequence },
@@ -438,12 +455,10 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       }),
       ...(preferences && { preferences }),
       limits: state.limits, resources: resourceSnapshot(state),
-      attachments: userAttachments(state),
-      ...(orderedTurns(state).length&&{userContentTurns:orderedTurns(state).map(turn=>({requestId:turn.requestId,segments:turn.content.map(item=>item.kind==='text'?{kind:'text',start:item.start,end:item.end}:{kind:item.kind,ref:item.ref})}))}),
-      ...(state.request.agentSkill||state.events.some(event=>event.kind==='operation.continued'&&event.input.agentSkill)?{userSelectedSkills:[
-        ...(state.request.agentSkill?[{requestId:state.request.requestId,...state.request.agentSkill}]:[]),
-        ...state.events.flatMap(event=>event.kind==='operation.continued'&&event.input.agentSkill?[{requestId:event.input.requestId,...event.input.agentSkill}]:[]),
-      ]}:{}),
+      attachments: /** @type {{ref:string,mediaType:string,kind?:string}[]} */ ([...state.request.attachments]),
+      ...(orderedTurns(state).length&&{userContentTurns:/** @type {{requestId:string,segments:unknown[]}[]} */([]),
+        userContentCoverage:{total:userAttachments(state).length,represented:state.request.attachments.length}}),
+      ...(state.request.agentSkill||state.events.some(event=>event.kind==='operation.continued'&&event.input.agentSkill)?{userSelectedSkills:/** @type {{requestId:string,name:string,path:string,source:string}[]} */([])}:{}),
       controllerReasoning: {
         ...(acceptedSettingsFor(state)?.reasoningEffort && {default: {level:acceptedSettingsFor(state)?.reasoningEffort?.id,source:acceptedSettingsFor(state)?.reasoningEffort?.source}}),
         current: (() => {
@@ -546,6 +561,27 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     target.push(value);
     used += size;
     return true;
+  }
+  // All omitted user references remain addressable through ordinary history.
+  // Keep only bounded technical previews, never the native metadata/payload.
+  if(host.value.userContentCoverage){
+    const all=userAttachments(state).filter(item=>'kind' in item);
+    for(const item of all.slice().reverse()){
+      if(!tryAdd(host.value.attachments,{ref:item.ref,mediaType:item.mediaType,...('kind' in item&&{kind:item.kind})}))break;
+      host.value.userContentCoverage.represented++;
+    }
+    host.value.attachments.reverse();
+    for(const turn of orderedTurns(state).reverse()){
+      if(!host.value.userContentTurns||!tryAdd(host.value.userContentTurns,{requestId:turn.requestId,
+        segments:turn.content.map(item=>item.kind==='text'?{kind:'text',start:item.start,end:item.end}:{kind:item.kind,ref:item.ref})}))break;
+    }
+    host.value.userContentTurns?.reverse();
+  }
+  if(host.value.userSelectedSkills){
+    const all=[...(state.request.agentSkill?[{requestId:state.request.requestId,...state.request.agentSkill}]:[]),
+      ...state.events.flatMap(event=>event.kind==='operation.continued'&&event.input.agentSkill?[{requestId:event.input.requestId,...event.input.agentSkill}]:[])];
+    for(const item of all.reverse())if(!tryAdd(host.value.userSelectedSkills,item))break;
+    host.value.userSelectedSkills.reverse();
   }
   // The work-map is the addressable technical index over existing Operation,
   // and a model-selected workCursor must be able to page even if the legacy

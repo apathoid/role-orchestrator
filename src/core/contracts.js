@@ -20,7 +20,7 @@ export const agentSkill = record({name:id,path:id,source:oneOf('project','global
 // scoped non-text references. Embedded bytes are never in the accepted journal.
 const payloadRef=record({ref:(value,path)=>/^sha256:[a-f0-9]{64}$/u.test(id(value,path))?id(value,path):invalid(path,'a SHA-256 reference'),size:count,originalSize:count,truncated:(value,path)=>value===false?false:invalid(path,'false')});
 const textRange=record({kind:oneOf('text'),start:count,end:count,metadata:optional(jsonValue)});
-const contentAttachment=record({kind:oneOf('image','audio','resource','link'),ref:id,mediaType:id,uri:optional(id),
+const contentAttachment=record({kind:oneOf('image','audio','resource','link'),ref:id,mediaType:id,uri:optional(id),mimeTypeOmitted:optional((value,path)=>value===true?/** @type {const} */(true):invalid(path,'true')),
   payload:optional(payloadRef),encoding:optional(oneOf('utf8','binary')),metadata:optional(jsonValue)});
 /** @typedef {ReturnType<typeof contentAttachment>} ContentAttachment */
 /** @typedef {ReturnType<typeof textRange>|ContentAttachment} ContentSegment */

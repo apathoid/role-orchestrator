@@ -59,7 +59,7 @@ export async function runAcpStdio(args) {
       });
       host = serveAcp(runtime.api, runtime.directory,
         ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: userContentFrameBytes(options.userContentMaxBytes) }), mode, progressDisplay,
-        (operationId,turn,signal)=>renderOrderedTurn(turn,ref=>runtime.api.readUserPayload(operationId,ref),undefined,signal));
+        (operationId,turn,signal,onOmitted)=>renderOrderedTurn(turn,ref=>runtime.api.readUserPayload(operationId,ref),undefined,signal,onOmitted));
       const { connection } = host;
       const interrupt = () => {
         connection.close();

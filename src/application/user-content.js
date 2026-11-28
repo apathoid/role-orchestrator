@@ -58,7 +58,7 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
         payloads.push({bytes,reference:payload});
       }
       const ref='user-content:'+createHash('sha256').update(JSON.stringify([input.requestId,index])).digest('hex');
-      content.push({kind,ref,mediaType,uri,payload,encoding,metadata});
+      content.push({kind,ref,mediaType,uri,payload,encoding,metadata,...(block.mediaType===undefined&&(kind==='link'||kind==='resource')&&{mimeTypeOmitted: /** @type {const} */(true)})});
     }
     if(total>maxBytes)return reject(path,'User content exceeds '+maxBytes+' decoded bytes');
   }
@@ -77,21 +77,40 @@ export function userAttachments(operation){
  * not a new semantic selection mechanism. Reserve the latest accepted input first.
  * @param {readonly OrderedTurn[]} turns @param {string} latestId
  * @param {ReadonlySet<string>} represented @param {number} limit @param {boolean} supported
+ * @param {ReadonlySet<string>} [requested] exact model-selected content refs from the existing history request
  */
-export function projectOrderedTurns(turns,latestId,represented,limit,supported){
+export function projectOrderedTurns(turns,latestId,represented,limit,supported,requested=new Set()) {
   /** @type {{requestId:string,refs:string[],reason:string}[]} */ const omitted=[];
   /** @type {OrderedTurn[]} */ const selected=[];
   let remaining=limit;
+  /** @param {OrderedTurn} turn */
+  const size=turn=>Buffer.byteLength(turn.text)+turn.content.reduce((total,item)=>total+
+    (item.kind==='text'?0:(item.payload?.size??0)+Buffer.byteLength(item.mediaType??'')+Buffer.byteLength(item.uri??''))+Buffer.byteLength(JSON.stringify(item.metadata??null)),0);
+  const explicit=turns.flatMap(turn=>{
+    const content=turn.content.filter(item=>item.kind!=='text'&&requested.has(item.ref));
+    return content.length?[{...turn,text:'',content,required:false}]:[];
+  });
+  const explicitSize=explicit.reduce((sum,turn)=>sum+size(turn),0);
+  // A model-selected request is a subsequent Controller call. Unlike a new
+  // user turn, its optional history must not crowd out the selected content.
+  // No semantic choice among oversize explicit selections: report the limit.
+  const explicitTurns=new Set(explicit.map(turn=>turn.requestId));
+  for(const turn of explicit){
+    if(supported&&explicitSize<=remaining)selected.push(turn);
+    else omitted.push({requestId:turn.requestId,refs:turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref]),reason:supported?'selected_input_budget':'adapter_unsupported'});
+  }
+  if(supported&&explicitSize<=remaining)remaining-=explicitSize;
   for(const turn of [...turns].reverse()){
-    const required=turn.requestId===latestId;
-    const refs=turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref]);
-    const bytes=Buffer.byteLength(turn.text)+turn.content.reduce((total,item)=>total+
-      (item.kind==='text'?0:(item.payload?.size??0)+Buffer.byteLength(item.mediaType)+Buffer.byteLength(item.uri??''))+Buffer.byteLength(JSON.stringify(item.metadata??null)),0);
+    const required=explicit.length===0&&turn.requestId===latestId;
+    if(explicitTurns.has(turn.requestId))continue;
+    const bytes=size(turn);
     const reason=!supported?'adapter_unsupported':!required&&!represented.has(turn.requestId)?'not_projected':
       !required&&bytes>remaining?'input_budget':undefined;
-    if(reason){omitted.push({requestId:turn.requestId,refs,reason});continue;}
-    selected.unshift({...turn,required});
+    if(reason){omitted.push({requestId:turn.requestId,refs:turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref]),reason});continue;}
+    selected.push({...turn,required});
     remaining-=bytes;
   }
+  const order=new Map(turns.map((turn,index)=>[turn.requestId,index]));
+  selected.sort((a,b)=>(order.get(a.requestId)??0)-(order.get(b.requestId)??0));
   return {selected,omitted};
 }

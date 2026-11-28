@@ -7,7 +7,7 @@ import { boundedFieldError, decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
 import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, validRejectedResult, workspaceContextFor, controllerProfileFor, acceptedSettingsFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
-import { controllerContext, controllerInstructions, pendingControllerHistoryRequest } from './controller-context.js';
+import { controllerContext, controllerInstructions, pendingControllerHistoryRequest, operationHistory } from './controller-context.js';
 import { decisionRecovery } from './decision-recovery.js';
 import { handoffContext, materializeSkillInstructions, prepareHandoff } from './handoff.js';
 import { workerRequestHash } from './worker-request-identity.js';
@@ -922,7 +922,15 @@ export function createOrchestrator(deps) {
       const turns = handoff ? undefined : orderedTurns(state);
       const latestUserId=state.transcriptRefs.at(-1)??state.request.requestId;
       const invocationAttachments=handoff?attachments:state.request.attachments;
-      const mandatoryAttachments=handoff?attachments:[...invocationAttachments,...(turns?.find(turn=>turn.requestId===latestUserId)?.content.filter(item=>item.kind!=='text')??[])];
+      const selectedHistoryRequest=!handoff?pendingControllerHistoryRequest(state,attemptId):undefined;
+      const historyRefs=selectedHistoryRequest?.refs??[];
+      const orderedRefs=new Set(turns?.flatMap(turn=>turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref])));
+      const positions=historyRefs.some(ref=>typeof ref!=='string'&&!('offset' in ref))?operationHistory(state):[];
+      const requestedContent=new Set(historyRefs.flatMap(ref=>{
+        const id=typeof ref==='string'?ref:'offset' in ref?undefined:positions.find(item=>item.receivedSequence?.revision===ref.revision&&item.receivedSequence.index===ref.index)?.ref;
+        return id&&orderedRefs.has(id)?[id]:[];
+      }));
+      const mandatoryAttachments=handoff?attachments:[...invocationAttachments,...(requestedContent.size?[]:turns?.find(turn=>turn.requestId===latestUserId)?.content.filter(item=>item.kind!=='text')??[])];
       const requiredCapabilities = new Set(handoff?.requiredCapabilities);
       for(const item of mandatoryAttachments){
         if('kind' in item){
@@ -1068,8 +1076,12 @@ export function createOrchestrator(deps) {
           }
           signal.throwIfAborted();
           requireAuthority();
-          const projected=turns?.length?projectOrderedTurns(turns,latestUserId,new Set(context.context.map(item=>item.ref)),userContentMaxBytes,executor.supportsOrderedContent===true):undefined;
-          if(projected?.omitted.length)context.context.push({ref:'host:user-content-projection',source:'host_observed',completeness:'complete',value:projected.omitted});
+          const projected=turns?.length?projectOrderedTurns(turns,latestUserId,new Set(context.context.map(item=>item.ref)),userContentMaxBytes,executor.supportsOrderedContent===true,requestedContent):undefined;
+          if(projected?.omitted.length){
+            const omitted=projected.omitted;
+            const preview=omitted.filter(item=>item.refs.some(ref=>requestedContent.has(ref))||item.requestId===latestUserId);
+            context.context.push({ref:'host:user-content-projection',source:'host_observed',completeness:'complete',value:{total:omitted.length,selectedOrLatest:preview.map(item=>({requestId:item.requestId,reason:item.reason,refs:item.refs.filter(ref=>requestedContent.has(ref))})),historyAvailable:true}});
+          }
           const contextBytes = Buffer.byteLength(JSON.stringify(context.context));
           const hostFacts = !handoff ? context.context.find(item => item.ref === 'host:invocation-context')?.value : undefined;
           const map = hostFacts && typeof hostFacts === 'object' && 'workMap' in hostFacts

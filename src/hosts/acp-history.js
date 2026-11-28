@@ -11,7 +11,7 @@ import { boundedText, acpAccepted, acpExecutionInline, acpOwnMessage } from './p
 /** @typedef {{sessionId:string,cwd:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,skillsAdvertised?:boolean,operations:string[],requests:SessionRequest[]}} Session */
 /** @typedef {Pick<Operation,'operationId'|'status'|'waiting'|'assessment'>} ReplyState */
 /** @typedef {{text?:string,stopReason:StopReason}} Reply */
-/** @typedef {(operationId:string,turn:import('../core/ports.js').OrderedTurn,signal:AbortSignal)=>Promise<ContentBlock[]|undefined>} ReplayContent */
+/** @typedef {(operationId:string,turn:import('../core/ports.js').OrderedTurn,signal:AbortSignal,onOmitted:(ref:string)=>void)=>Promise<ContentBlock[]|undefined>} ReplayContent */
 
 /** @param {string} sessionId @param {string} requestId */
 export const operationRequestId=(sessionId,requestId)=>'acp:'+sessionId+':'+requestId;
@@ -212,13 +212,15 @@ export async function replayHistory(session,inspect,emit,mode,display,signal,rep
         if(inline)await background(operation,prior??0,earlier);
       }
       if(range.content){
-        const blocks=await replayContent?.(id,{requestId:durableId,text:range.text,content:range.content},signal??new AbortController().signal);
+        /** @type {string[]} */ const omitted=[];
+        const blocks=await replayContent?.(id,{requestId:durableId,text:range.text,content:range.content},signal??new AbortController().signal,ref=>omitted.push(ref));
         if(blocks)for(const content of blocks){if(signal?.aborted)return;await emit({sessionUpdate:'user_message_chunk',content});}
         else {
           await replayText(range.text,true,emit,signal);
           await emit(acpOwnMessage('Historical user content unavailable; embedded payloads were not reconstructed',
             {source:'history',operationId:id,requestId:durableId,recovered:true},durableId));
         }
+        for(const ref of omitted)await emit(acpOwnMessage('Historical user block unavailable: '+ref,{source:'history',operationId:id,requestId:durableId,recovered:true},durableId));
       }else await replayText(range.text,true,emit,signal);
       if(signal?.aborted)return;
       if(inline){const accepted=acpAccepted(id,durableId,range.continuing,'inline',true,mode);
