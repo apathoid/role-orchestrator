@@ -77,7 +77,19 @@ export async function configureReasoning(agent, methods, session, reasoning, sig
 export async function attachmentBlocks(invocation, capabilities, resolve, signal) {
   /** @type {ContentBlock[]} */
   const blocks = [];
+  const orderedRefs=new Set((invocation.orderedTurns??[]).flatMap(turn=>turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref])));
+  for(const turn of invocation.orderedTurns??[]){
+    const ordered=await renderOrderedTurn(turn,invocation.readUserPayload,capabilities,signal);
+    if(!ordered)return undefined;
+    blocks.push(...ordered);
+  }
   for (const attachment of invocation.attachments ?? []) {
+    if(orderedRefs.has(attachment.ref))continue;
+    if('kind' in attachment){
+      const block=await renderContentAttachment(attachment,invocation.readUserPayload,capabilities,signal);
+      if(!block)return undefined;
+      blocks.push(block);continue;
+    }
     signal.throwIfAborted();
     if (!resolve) return undefined;
     const image = attachment.mediaType.toLowerCase().startsWith('image/');
@@ -125,4 +137,47 @@ export async function configureBoundOption(agent,methods,session,binding,value,s
     session.configOptions=/** @type {{configOptions:NewSessionResponse['configOptions']}} */ (changed).configOptions;
   }
   return boundOption(session,binding)?.currentValue===value;
+}
+
+/** ACP metadata is untrusted user-supplied protocol data. Never allow it to
+ * replace the block's typed identity or embedded bytes.
+ * @param {unknown} metadata
+ */
+function metadataObject(metadata){
+  return metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?/** @type {Record<string,unknown>} */(metadata):{};
+}
+/** @param {import('../../core/contracts.js').ContentAttachment} item
+ * @param {Invocation['readUserPayload']} read @param {InitializeResponse['agentCapabilities']|undefined} capabilities
+ * @param {AbortSignal} signal @returns {Promise<ContentBlock|undefined>}
+ */
+export async function renderContentAttachment(item,read,capabilities,signal){
+  signal.throwIfAborted();
+  const caps=capabilities?.promptCapabilities;
+  if(capabilities&&(item.kind==='image'&&!caps?.image||item.kind==='audio'&&!caps?.audio||item.kind==='resource'&&!caps?.embeddedContext))return;
+  const meta=metadataObject(item.metadata);
+  if(item.kind==='link')return /** @type {ContentBlock} */ ({...meta,type:'resource_link',uri:item.uri,mimeType:item.mediaType,name:typeof meta.name==='string'?meta.name:item.uri});
+  const bytes=await read?.(item.ref);
+  signal.throwIfAborted();
+  if(!bytes)return;
+  if(item.kind==='image'||item.kind==='audio')return /** @type {ContentBlock} */ ({...meta,type:item.kind,mimeType:item.mediaType,data:Buffer.from(bytes).toString('base64'),...(item.uri&&{uri:item.uri})});
+  const outer=metadataObject(meta.outer),resource=metadataObject(meta.resource);
+  return /** @type {ContentBlock} */ ({...outer,type:'resource',resource:{...resource,uri:item.uri,mimeType:item.mediaType,
+    ...(item.encoding==='utf8'?{text:Buffer.from(bytes).toString('utf8')}:{blob:Buffer.from(bytes).toString('base64')})}});
+}
+/** @param {import('../../core/ports.js').OrderedTurn} turn @param {Invocation['readUserPayload']} read
+ * @param {InitializeResponse['agentCapabilities']|undefined} capabilities @param {AbortSignal} signal
+ * @returns {Promise<ContentBlock[]|undefined>}
+ */
+export async function renderOrderedTurn(turn,read,capabilities,signal){
+  /** @type {ContentBlock[]} */ const blocks=[];
+  for(const item of turn.content){
+    signal.throwIfAborted();
+    if(item.kind==='text')blocks.push(/** @type {ContentBlock} */ ({...metadataObject(item.metadata),type:'text',text:turn.text.slice(item.start,item.end)}));
+    else{
+      const block=await renderContentAttachment(item,read,capabilities,signal);
+      if(!block)return;
+      blocks.push(block);
+    }
+  }
+  return blocks;
 }

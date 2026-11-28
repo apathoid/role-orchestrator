@@ -5,12 +5,13 @@ import { executionFact } from '../application/execution-facts.js';
 import { boundedText, acpAccepted, acpExecutionInline, acpOwnMessage } from './presentation.js';
 
 /** @import {Event, Operation} from '../core/operation.js' */
-/** @import {SessionUpdate, StopReason} from '@agentclientprotocol/sdk' */
+/** @import {ContentBlock, SessionUpdate, StopReason} from '@agentclientprotocol/sdk' */
 /** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
 /** @typedef {{requestId:string,fingerprint:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,agentSkill?:ReturnType<typeof import('../core/contracts.js').agentSkill>,operationId?:string,responseEventId?:string,progressDisplay?:ProgressDisplay}} SessionRequest */
 /** @typedef {{sessionId:string,cwd:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,operations:string[],requests:SessionRequest[]}} Session */
 /** @typedef {Pick<Operation,'operationId'|'status'|'waiting'|'assessment'>} ReplyState */
 /** @typedef {{text?:string,stopReason:StopReason}} Reply */
+/** @typedef {(operationId:string,turn:import('../core/ports.js').OrderedTurn,signal:AbortSignal)=>Promise<ContentBlock[]|undefined>} ReplayContent */
 
 /** @param {string} sessionId @param {string} requestId */
 export const operationRequestId=(sessionId,requestId)=>'acp:'+sessionId+':'+requestId;
@@ -38,16 +39,16 @@ export function operationReply(operation){
  */
 export function turnRange(operation,durableId){
   const events=operation.events;
-  let start=0,text=operation.request.text,continuing=false;
+  let start=0,text=operation.request.text,content=operation.request.content,continuing=false;
   if(operation.request.requestId!==durableId){
     const index=events.findIndex(event=>event.kind==='operation.continued'&&event.input.requestId===durableId);
     if(index<0)return;
     const event=events[index];
     if(event.kind!=='operation.continued')return;
-    start=index+1;text=event.input.text;continuing=true;
+    start=index+1;text=event.input.text;content=event.input.content;continuing=true;
   }
   const next=events.findIndex((event,index)=>index>=start&&event.kind==='operation.continued');
-  return {start,end:next<0?events.length:next,text,continuing};
+  return {start,end:next<0?events.length:next,text,content,continuing};
 }
 
 /** @param {Event} event @returns {Reply|undefined} */
@@ -127,9 +128,9 @@ function journalUpdates(operation,index,mode,reports){
  * released on switch/last request. No copied journal or replayed tools.
  * @param {Session} session @param {(id:string)=>Promise<Operation>} inspect
  * @param {(update:SessionUpdate)=>Promise<void>} emit @param {PresentationMode} mode
- * @param {ProgressDisplay} display @param {AbortSignal} [signal]
+ * @param {ProgressDisplay} display @param {AbortSignal} [signal] @param {ReplayContent} [replayContent]
  */
-export async function replayHistory(session,inspect,emit,mode,display,signal){
+export async function replayHistory(session,inspect,emit,mode,display,signal,replayContent){
   // Keep at most one full snapshot, even when many Operations interleave.
   // A revisit reads the append-only journal again; recorded response IDs remain exact.
   /** @type {Operation|undefined} */
@@ -210,7 +211,15 @@ export async function replayHistory(session,inspect,emit,mode,display,signal){
         await orphanRecords(operation,prior??0,earlier);
         if(inline)await background(operation,prior??0,earlier);
       }
-      await replayText(range.text,true,emit,signal);
+      if(range.content){
+        const blocks=await replayContent?.(id,{requestId:durableId,text:range.text,content:range.content},signal??new AbortController().signal);
+        if(blocks)for(const content of blocks){if(signal?.aborted)return;await emit({sessionUpdate:'user_message_chunk',content});}
+        else {
+          await replayText(range.text,true,emit,signal);
+          await emit(acpOwnMessage('Historical user content unavailable; embedded payloads were not reconstructed',
+            {source:'history',operationId:id,requestId:durableId,recovered:true},durableId));
+        }
+      }else await replayText(range.text,true,emit,signal);
       if(signal?.aborted)return;
       if(inline){const accepted=acpAccepted(id,durableId,range.continuing,'inline',true,mode);
         if(accepted)await emit(accepted);}

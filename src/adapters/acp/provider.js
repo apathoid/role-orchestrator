@@ -24,6 +24,7 @@ import { attachmentBlocks, configureReasoning, configureSession, modelOption, su
 /** @typedef {{profile: Profile, call?: Call, closing?: Promise<void>}} Session */
 
 const maxOutputBytes = 1024 * 1024;
+const maxInputFrameBytes = 24 * 1024 * 1024;
 const closeGraceMs = 300;
 const maxStderrBytes = 64 * 1024;
 const maxErrorBytes = 4 * 1024;
@@ -42,13 +43,13 @@ function resultFor(invocation, code, terminal = 'failed', certainty = 'not_sent'
  * One process and one native session per invocation. The local handle is allocated
  * before dispatch, but the agent is started only when invocation cwd is available.
  * @param {{providerId: string, configuration: ProviderConfig, defaultCwd?: string, environment?: NodeJS.ProcessEnv,
- *   resolveAttachment?: ResolveAttachment, bridge?: Bridge, extensionRelay?: ExtensionRelay,
+ *   resolveAttachment?: ResolveAttachment, orderedContent?:true, bridge?: Bridge, extensionRelay?: ExtensionRelay,
  *   promptReporter?: import('../prompt-diagnostics.js').PromptReporter,
  *   bridgeCapabilities?: (operationId: string) => {terminal?: boolean, fs?: {readTextFile?: boolean, writeTextFile?: boolean}}}} options
  * @returns {ProviderPort}
  */
 export function createAcpProvider({ providerId, configuration, defaultCwd = process.cwd(), environment = process.env,
-  resolveAttachment, bridge: suppliedBridge, bridgeCapabilities, extensionRelay, promptReporter }) {
+  resolveAttachment, orderedContent, bridge: suppliedBridge, bridgeCapabilities, extensionRelay, promptReporter }) {
   const bridge = { ...suppliedBridge };
   const configuredFs = { readTextFile: !!bridge['fs/read_text_file'], writeTextFile: !!bridge['fs/write_text_file'] };
   const terminalMethods = /** @type {const} */ (['terminal/create', 'terminal/output', 'terminal/release', 'terminal/wait_for_exit', 'terminal/kill']);
@@ -59,6 +60,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
   const sessions = new Map();
 
   return {
+    ...(orderedContent&&{supportsOrderedContent: /** @type {const} */ (true)}),
     ...(!configuration.featureBindings?.reasoningEffort || supportsBinding(configuration.featureBindings.reasoningEffort) ? {supportsReasoningSelection: /** @type {const} */ (true)} : {}),
     ...(supportsBinding(configuration.featureBindings?.collaborationMode) ? {supportsCollaborationMode: /** @type {const} */ (true)} : {}),
     ...(supportsBinding(configuration.featureBindings?.approvalMode) ? {supportsApprovalMode: /** @type {const} */ (true)} : {}),
@@ -69,7 +71,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       return { providerId, maxConcurrency: null, capabilities: {
         'input.text': { support: 'supported', source: 'configured' },
         // Local prerequisites are configured; optional input also needs live negotiation.
-        'input.image': { support: resolveAttachment ? 'supported' : 'unsupported', source: 'configured' },
+        'input.image': { support: resolveAttachment||orderedContent ? 'supported' : 'unsupported', source: 'configured' },
+        ...(orderedContent&&{'input.audio':{support:/** @type {const} */('supported'),source:/** @type {const} */('configured')},'input.attachments':{support:/** @type {const} */('supported'),source:/** @type {const} */('configured')}}),
         'output.decision': { support: 'supported', source: 'configured' },
         'tools.bridge': { support: toolBridge && !bridgeCapabilities ? 'supported' : toolBridge || mcpEnabled ? 'unknown' : 'unsupported', source: 'configured' },
         'permissions.interactive': { support: 'supported', source: 'configured', detail: 'Requires a bound Host permission broker.' },
@@ -127,7 +130,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     const { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, CreateElicitationRequest, CreateElicitationResponse } = await import('@agentclientprotocol/sdk');
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const supported = new Set(['input.text', 'output.decision', 'cancel']);
-    if (resolveAttachment) supported.add('input.image');
+    if (resolveAttachment||orderedContent) supported.add('input.image');
+    if(orderedContent){supported.add('input.audio');supported.add('input.attachments');}
     const clientCapabilities = bridgeCapabilities?.(invocation.operationId);
     const form = invocation.interactions?.supports('input') === true;
     const extensions = extensionRelay?.capabilities(invocation.operationId);
@@ -521,7 +525,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         });
       }
       connection = app.connect(ndJsonStream(Writable.toWeb(owner.pipes.stdin), Readable.toWeb(owner.pipes.stdout),
-        { maxMessageBytes: maxOutputBytes }));
+        { maxMessageBytes: orderedContent ? maxInputFrameBytes : maxOutputBytes }));
       const agent = connection.agent;
       /** @type {InitializeResponse} */
       const initialized = await agent.request(a.initialize, {
@@ -534,8 +538,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       }, { cancellationSignal: signal, stopWaitingOnCancel: true });
       if (initialized.protocolVersion !== PROTOCOL_VERSION) return resultFor(invocation, 'PROTOCOL_ERROR');
       const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities, resolveAttachment, AbortSignal.any([signal, connection.signal]));
-      if (!blocks || (required.includes('input.image') && (!resolveAttachment || !initialized.agentCapabilities?.promptCapabilities?.image))) {
-        return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
+      if (!blocks || (required.includes('input.image') && (!initialized.agentCapabilities?.promptCapabilities?.image))) {
+        const refused=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+        refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',
+          value:{reason:'user_content_not_deliverable',profileId:invocation.profile.profileId,attachments:(invocation.attachments??[]).map(item=>({ref:item.ref,mediaType:item.mediaType}))}});
+        return refused;
       }
       signal.throwIfAborted();
       const httpMcp = mcpEnabled && initialized.agentCapabilities?.mcpCapabilities?.http === true;
@@ -622,6 +629,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const prompt = renderInvocationPrompt({...invocation, controllerDelivery, controllerDecisionToolName:mcp?.decisionToolName}, retrievalDetail(Boolean(mcp?.contextListToolName), mcp, invocation.kind),
           promptReporter?sizes=>{componentSizes=sizes;}:undefined);
         reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length,...componentSizes},prompt);
+        if(blocks.length&&Buffer.byteLength(JSON.stringify([{type:'text',text:prompt},...blocks]))>maxInputFrameBytes-4096){
+          const refused=resultFor(invocation,'RESOURCE_LIMIT');
+          refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content-limit',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',value:{reason:'native_prompt_frame_limit',limit:maxInputFrameBytes}});
+          return refused;
+        }
         signal.throwIfAborted();
         active = true;
         sent = true;

@@ -9,6 +9,7 @@ import { createInteractionBroker } from '../application/interactions.js';
 import { createPermissionBroker } from '../application/configuration/permissions.js';
 import { createOrchestrator } from '../application/orchestrator.js';
 import { describeUserSettings, resolveFeatureChoices, workerApproval, approvalMappingsRef } from '../application/configuration/user-settings.js';
+import { userAttachments } from '../application/user-content.js';
 import { sameRecord } from '../core/operation.js';
 import { createEventStream } from '../application/events.js';
 import { operationTrace } from '../hosts/commands.js';
@@ -169,6 +170,13 @@ export async function openRuntime(options, onStoreOpen) {
     /** @param {string} operationId */
     const trace = async operationId => operationTrace(await inspect(operationId), redaction);
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel, settings,
+      async readUserPayload(/** @type {string} */ operationId, /** @type {string} */ ref){
+        const operation=await inspect(operationId);
+        const item=userAttachments(operation).find(item=>item.ref===ref);
+        if(!item||!('payload' in item)||!item.payload)return;
+        const result=await store.readArtifact(item.payload,item.payload.size);
+        if(result.kind==='available')return result.bytes;
+      },
       skills: (/** @type {string} */ cwd) => discoverAgentSkills(cwd),
       selectSkill: (/** @type {string} */ cwd, /** @type {string} */ selection) => selectAgentSkill(cwd,selection),
       trace,

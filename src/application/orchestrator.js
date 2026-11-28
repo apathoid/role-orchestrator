@@ -919,8 +919,17 @@ export function createOrchestrator(deps) {
       const attachments = handoff ? handoff.attachments ?? [] : userAttachments(state);
       const turns = handoff ? undefined : orderedTurns(state);
       const requiredCapabilities = new Set(handoff?.requiredCapabilities);
-      if (attachments.some(item => item.mediaType.toLowerCase().startsWith('image/'))) {
-        requiredCapabilities.add('input.image');
+      for(const item of attachments){
+        if('kind' in item){
+          requiredCapabilities.add(item.kind==='image'?'input.image':item.kind==='audio'?'input.audio':'input.attachments');
+        }else if(item.mediaType.toLowerCase().startsWith('image/'))requiredCapabilities.add('input.image');
+      }
+      if(attachments.some(item=>'kind' in item)&&executor.supportsOrderedContent!==true){
+        const ref='host:content:'+attemptId;
+        observations.push(observation({ref,completeness:'complete',value:{reason:'adapter_without_ordered_content_support',profileId:selectedProfile.profileId}},
+          {kind:'host_transport',sourceId:selectedProfile.providerId,receivedAt:clock.now()}));
+        const failure=failedOutcome(attemptId,'CAPABILITY_UNAVAILABLE',false);failure.diagnostics[0].ref=ref;
+        return {outcome:failure,certainty:/** @type {const} */('not_sent'),output,observations,contextCursor,recordLate,decisionTextError};
       }
       // Materialize exactly the delegate context used by the adapter BEFORE
       // dispatch. This snapshot is hashed and sent unchanged, so changing

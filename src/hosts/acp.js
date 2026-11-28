@@ -30,8 +30,8 @@ const turnOptions = record({
 /** @param {string} message @param {unknown} [data] */
 const invalid = (message, data) => new RequestError(-32602, message, data);
 
-/** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] @param {ProgressDisplay} [progressDisplay] */
-export function serveAcp(api, directory, stream, mode = 'compact', progressDisplay = 'inline') {
+/** @param {AcpApi} api @param {string} directory @param {Stream} stream @param {PresentationMode} [mode] @param {ProgressDisplay} [progressDisplay] @param {import('./acp-history.js').ReplayContent} [replayContent] */
+export function serveAcp(api, directory, stream, mode = 'compact', progressDisplay = 'inline', replayContent) {
   /** @type {Map<string, Session>} */
   const sessions = new Map();
   /** @type {Map<string, Turn>} */
@@ -176,7 +176,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
       declarations.clear();
       return {
         protocolVersion: PROTOCOL_VERSION, agentInfo: { name: 'role-orchestrator', version: '0.1.0-dev.0' },
-        agentCapabilities: { loadSession: true, promptCapabilities: { image: false, audio: false, embeddedContext: false } },
+        agentCapabilities: { loadSession: true, promptCapabilities: { image: !!replayContent, audio: !!replayContent, embeddedContext: !!replayContent } },
       };
     })
     .onRequest(a.session.new, async ({ params,client }) => {
@@ -222,7 +222,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         session.userSettings=view.overrides;
         const options=configOptions(view,unavailable);
         await save(session);
-        await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay,connection.signal);
+        await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay,connection.signal,replayContent);
         sessions.set(sessionId, session);
         await publishSkills(client,session);
         return { configOptions: options };
@@ -257,9 +257,21 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
       const { sessionId, prompt } = params;
       const session = sessions.get(sessionId);
       if (!session || loading.has(sessionId)) throw invalid('Create or load the session before prompting');
-      if (prompt.some(block => block.type !== 'text')) throw invalid('This host supports text prompt blocks');
-      const text = prompt.map(block => block.type === 'text' ? block.text : '').join('\n');
-      if (!text.trim()) throw invalid('A nonempty prompt is required');
+      const ordered=prompt.some(block=>block.type!=='text'||block.annotations!==undefined||block._meta!==undefined)||prompt.length>1;
+      if(ordered&&!replayContent)throw invalid('Ordered content transport is unavailable');
+      if(!prompt.length)throw invalid('A nonempty prompt is required');
+      const text=prompt.map(block=>block.type==='text'?block.text:'').join('\n');
+      if(!ordered&&!text.trim())throw invalid('A nonempty prompt is required');
+      const content=ordered?prompt.map(block=>{
+        if(block.type==='text'){const {type,text,...metadata}=block;return {kind:'text',text,metadata};}
+        if(block.type==='image'||block.type==='audio'){const {type,data,mimeType,...metadata}=block;return {kind:type,data,mediaType:mimeType,encoding:'binary',metadata};}
+        if(block.type==='resource_link'){const {type,uri,mimeType,...metadata}=block;return {kind:'link',uri,mediaType:mimeType,metadata};}
+        const {type,resource,...outer}=block;
+        const raw=/** @type {Record<string,unknown>} */ (resource);
+        const {uri,mimeType,text:body,blob,...metadata}=raw;
+        return {kind:'resource',uri,mediaType:mimeType,data:typeof body==='string'?body:blob,encoding:typeof body==='string'?'utf8':'binary',metadata:{outer,resource:metadata}};
+      }):undefined;
+      const userInput=content?{content}:{text};
       const parsed = decode(turnOptions, params._meta?.roleOrchestrator ?? {});
       if (parsed.kind === 'rejected') throw invalid('Invalid Role Orchestrator turn options', parsed.reason.path);
       const { continueOperationId, supersedeOperationId, newOperation, requestId = randomUUID() } = parsed.value;
@@ -267,7 +279,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         throw invalid('Choose one turn action');
       }
       const durableRequestId = operationRequestId(sessionId, requestId);
-      const fingerprint = createHash('sha256').update(JSON.stringify([text, continueOperationId, supersedeOperationId, newOperation])).digest('hex');
+      const fingerprint = createHash('sha256').update(JSON.stringify([content??text, continueOperationId, supersedeOperationId, newOperation])).digest('hex');
       // Snapshot the committed UI preference before any asynchronous work.
       const selectedProfile = session.controllerProfile;
       const selectedSettings = structuredClone(session.userSettings);
@@ -353,10 +365,10 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
             });
           };
           const submission = prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished')
-            ? await api.resume(prior.operationId, { requestId: durableRequestId, text, workspaceContext, controllerProfile: request.controllerProfile, userSettings:request.userSettings, agentSkill:request.agentSkill, replaceSettings:true,
+            ? await api.resume(prior.operationId, { requestId: durableRequestId, ...userInput, workspaceContext, controllerProfile: request.controllerProfile, userSettings:request.userSettings, agentSkill:request.agentSkill, replaceSettings:true,
               questionId: prior.waiting?.kind === 'question' ? prior.waiting.questionId : undefined }, accepted)
             : await api.submit({
-              schemaVersion: 1, requestId: durableRequestId, text, attachments: [], userConstraints: [],
+              schemaVersion: 1, requestId: durableRequestId, ...userInput, attachments: [], userConstraints: [],
               configurationRef: api.configurationRef, workspaceContext, controllerProfile: request.controllerProfile, userSettings:request.userSettings, agentSkill:request.agentSkill,
             }, accepted);
           accepted(submission.operation.operationId);

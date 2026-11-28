@@ -67,6 +67,7 @@ await withOwnedRun(removal ? 'C00-removal' : 'C00-package', async (directory, ru
     // Resolve the pinned validator from the clean install while exercising the
     // actual schema shipped in the tarball.
     await symlink(join(product, 'node_modules', 'ajv'), join(consumer, 'node_modules', 'ajv'), 'dir');
+    await symlink(join(product, 'node_modules', 'yaml'), join(consumer, 'node_modules', 'yaml'), 'dir');
     await writeFile(join(consumer, 'local-extension.mjs'), `
       export const manifest = { id: 'local-extension', version: '1', apiVersion: 1, exports: ['loadSkill', 'tool'] };
       export async function loadSkill({ id, content }) {

@@ -80,6 +80,7 @@ export async function validateProvider(value, providerId) {
       (value.supportsReasoningSelection !== undefined && value.supportsReasoningSelection !== true) ||
       (value.supportsCollaborationMode !== undefined && value.supportsCollaborationMode !== true) ||
       (value.supportsApprovalMode !== undefined && value.supportsApprovalMode !== true) ||
+      (value.supportsOrderedContent !== undefined && value.supportsOrderedContent !== true) ||
       (value.negotiatesCapabilities !== undefined && (!Array.isArray(value.negotiatesCapabilities) ||
         value.negotiatesCapabilities.some(item => !label(item))))) {
     throw new PluginError('INVALID_PROVIDER', 'createProvider.optional');

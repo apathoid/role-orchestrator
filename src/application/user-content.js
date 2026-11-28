@@ -54,7 +54,7 @@ export function prepareUserContent(input){
     }
     if(total>maxUserContentBytes)return reject(path,'User content exceeds 16 MiB decoded limit');
   }
-  return {kind:'accepted',input:{...input,text,content},payloads};
+  return {kind:'accepted',input:{...input,...('schemaVersion' in input&&{attachments:[]}),text,content},payloads};
 }
 /** @param {StateStore} store @param {Extract<Prepared,{kind:'accepted'}>} prepared */
 export async function persistUserContent(store,prepared){

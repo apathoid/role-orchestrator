@@ -7,7 +7,7 @@ import { attributeProviderOutputRefs } from '../core/observation.js';
 
 /** @param {string} ref */
 export const reservedEvidenceRef = ref =>
-  /^(evidence|artifact|summary|decision|assessment|assessment-progress|finding|attempt-output|controller-output|attempt-status|question|host):/u.test(ref);
+  /^(evidence|artifact|summary|decision|assessment|assessment-progress|finding|attempt-output|controller-output|attempt-status|question|host|user-content):/u.test(ref);
 
 /** @param {string} operationId @param {string} attemptId @param {string} providerRef */
 export function providerEvidenceRef(operationId, attemptId, providerRef) {

@@ -30,7 +30,7 @@ const shape = record({
   operationId: optional(id),
   payload: record({
     text: optional(text), cwd: optional(id), questionId: optional(id), configurationRef: optional(id),
-    controllerProfile:optional(id),userSettings:optional(userSettings),agentSkill:optional(agentSkill),
+    controllerProfile:optional(id),userSettings:optional(userSettings),agentSkill:optional(agentSkill),attachmentPaths:optional(arrayOf(id)),
     cancellationSource: optional(oneOf('client')),
     stream: optional(oneOf('live')), interactive: optional(oneOf('yes')), ownerRequestId: optional(id), answerKey: optional(id), reconnectKey: optional(id),
     reply: optional(record({ requestId: id, operationId: id, attemptId: id, providerRequestId: id, payload: jsonValue })),
@@ -305,7 +305,7 @@ export function callControl(descriptor, configurationRef, command, accepted, lau
       const work = /** @type {Command} */ (command);
       const answer = action === 'answer' ? command : undefined;
       send(socket, { version, token: descriptor.token, requestId, action, operationId,
-        payload: { text: work.text, cwd: work.cwd, questionId: work.questionId,controllerProfile:work.controllerProfile,userSettings:work.userSettings,agentSkill:work.agentSkill, configurationRef, cancellationSource: work.cancellationSource, launch,
+        payload: { text: work.text, cwd: work.cwd, questionId: work.questionId,controllerProfile:work.controllerProfile,userSettings:work.userSettings,agentSkill:work.agentSkill,attachmentPaths:work.attachmentPaths, configurationRef, cancellationSource: work.cancellationSource, launch,
           stream: live?.notice && action !== 'subscribe' ? 'live' : undefined,
           interactive: live?.interactive ? 'yes' : undefined, reconnectKey: live?.reconnectKey,
           ownerRequestId: answer?.ownerRequestId, answerKey: answer?.answerKey, reply: answer?.reply } });

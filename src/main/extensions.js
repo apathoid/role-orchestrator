@@ -115,7 +115,7 @@ export async function loadExtensions(configuration, { directory, clock, ids, dia
       try {
         const value = await factory({
           ...(builtin && {promptReporter}),
-          ...(endpoint.adapter === 'acp' && acp),
+          ...(endpoint.adapter === 'acp' && {orderedContent: /** @type {const} */ (true),...acp}),
           providerId: id, configuration: structuredClone(endpoint),
           onClose(dispose) {
             if (typeof dispose !== 'function') throw new PluginError('INVALID_PROVIDER', 'onClose');

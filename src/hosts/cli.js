@@ -27,7 +27,7 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
 Common: --config FILE, --state-dir DIR, --format text|json, --help
 Run: --cwd DIR, --profile ID, --skill ID (repeatable), --stdin, --request-id ID, --presentation compact|detailed|debug
 Resume: --question ID, --profile ID, --stdin, --request-id ID, --presentation compact|detailed|debug
-Run and explicit resume: --reasoning-effort ID, --collaboration-mode ID, --approval-mode ID, --agent-skill NAME_OR_ABSOLUTE_PATH
+Run and explicit resume: --reasoning-effort ID, --collaboration-mode ID, --approval-mode ID, --agent-skill NAME_OR_ABSOLUTE_PATH, --attachment PATH (repeatable; reference only)
 Settings: --profile ID
 `;
 
@@ -37,8 +37,8 @@ const common = {
 const continuation = { presentation: { type: 'string' }, stdin: { type: 'boolean' }, 'request-id': { type: 'string' } };
 const selections={profile:{type:'string'},'reasoning-effort':{type:'string'},'collaboration-mode':{type:'string'},'approval-mode':{type:'string'},'agent-skill':{type:'string'}};
 const flags = {
-  run: { ...continuation, ...selections, cwd: { type: 'string' }, skill: { type: 'string', multiple: true } },
-  resume: { ...continuation, ...selections, question: { type: 'string' } },
+  run: { ...continuation, ...selections, attachment:{type:'string',multiple:true}, cwd: { type: 'string' }, skill: { type: 'string', multiple: true } },
+  resume: { ...continuation, ...selections, attachment:{type:'string',multiple:true}, question: { type: 'string' } },
   settings:{profile:{type:'string'}}, skills:{}, inspect: {}, cancel: {}, diagnose: {}, trace: {}, 'export-diagnostics': { output: { type: 'string' } },
 };
 
@@ -76,20 +76,22 @@ export function parseCli(argv, cwd) {
     ...(typeof values['collaboration-mode']==='string'&&{collaborationMode:values['collaboration-mode']}),
     ...(typeof values['approval-mode']==='string'&&{approvalMode:values['approval-mode']}),
   };
-  if(commandName==='resume'&&!positionals.length&&!values.stdin&&(values.profile!==undefined||values['agent-skill']!==undefined||Object.keys(userSettings).length))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
+  const attachmentPaths=Array.isArray(values.attachment)?values.attachment.map(value=>{if(typeof value!=='string'||!value.trim())throw new HostError('INVALID_ARGUMENT','Empty attachment path');return resolve(cwd,value);}):undefined;
+  if(commandName==='resume'&&!positionals.length&&!values.stdin&&!attachmentPaths?.length&&(values.profile!==undefined||values['agent-skill']!==undefined||Object.keys(userSettings).length))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
   /** @type {Command} */
   const command = {
     action: commandName, operationId, requestId: typeof values['request-id'] === 'string' ? values['request-id'] : newRequestId(),
     text: positionals.length ? positionals.join(' ') : undefined,
     cwd: commandName === 'run' ? resolve(cwd, typeof values.cwd === 'string' ? values.cwd : '.') : undefined,
     ...(typeof values.profile==='string'&&{controllerProfile:values.profile}),
+    ...(attachmentPaths?.length&&{attachmentPaths}),
     ...(typeof values['agent-skill']==='string'&&{agentSkillSelection:values['agent-skill']}),
     ...(Object.keys(userSettings).length&&{userSettings}),
     questionId: typeof values.question === 'string' ? values.question : undefined,
   };
   return {
     kind: /** @type {const} */ ('command'), command, format, output, presentation: /** @type {import('./presentation.js').PresentationMode | undefined} */ (presentation),
-    stdin: values.stdin === true || (commandName === 'run' && command.text === undefined),
+    stdin: values.stdin === true || (commandName === 'run' && command.text === undefined && !attachmentPaths?.length),
     config: typeof values.config === 'string' ? resolve(cwd, values.config) : undefined,
     stateDirectory: typeof values['state-dir'] === 'string' ? resolve(cwd, values['state-dir']) : undefined,
     launch: {
@@ -156,7 +158,7 @@ export async function runCli(args, io, execute, afterHuman) {
       return 0;
     }
     if (invocation.stdin) invocation.command.text = await readInput(io.stdin);
-    if ((invocation.command.action === 'run' || invocation.command.text !== undefined) && !invocation.command.text?.trim()) {
+    if ((invocation.command.action === 'run' || invocation.command.text !== undefined) && !invocation.command.text?.trim() && !invocation.command.attachmentPaths?.length) {
       throw new HostError('INVALID_ARGUMENT', 'A nonempty request is required');
     }
     const result = await execute(invocation);

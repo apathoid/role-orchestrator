@@ -1,3 +1,5 @@
+import { pathToFileURL } from 'node:url';
+import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { journalReasonCode, pendingControllerReasoning, resourceSnapshot } from '../core/operation.js';
 import { redactDiagnostic } from '../application/redact-diagnostic.js';
@@ -7,7 +9,7 @@ import { redactDiagnostic } from '../application/redact-diagnostic.js';
 /** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string, trace?: (operationId: string) => Promise<ReturnType<typeof operationTrace>>}} HostApi */
 /** @typedef {{
  *   action: 'run' | 'resume' | 'inspect' | 'cancel' | 'trace' | 'export-diagnostics' | 'diagnose' | 'settings' | 'skills',
- *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client', controllerProfile?: string, userSettings?:import('../core/contracts.js').UserSettings,agentSkillSelection?:string,agentSkill?:ReturnType<typeof import('../core/contracts.js').agentSkill>
+ *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client', controllerProfile?: string, userSettings?:import('../core/contracts.js').UserSettings,agentSkillSelection?:string,agentSkill?:ReturnType<typeof import('../core/contracts.js').agentSkill>,attachmentPaths?:string[]
  * }} Command */
 
 /** @param {string} action */
@@ -25,16 +27,17 @@ export class HostError extends Error {
 
 /** @param {HostApi} api @param {Command} command @param {(id: string) => void} [accepted] */
 export async function dispatchCommand(api, command, accepted) {
-  const { action, operationId, requestId, text, cwd, questionId, cancellationSource, controllerProfile, userSettings, agentSkill } = command;
+  const { action, operationId, requestId, text, cwd, questionId, cancellationSource, controllerProfile, userSettings, agentSkill, attachmentPaths } = command;
   // New dispatch notifies before launch; existing or synthetic submissions may
   // return without invoking the callback. Preserve one acceptance in both cases.
   let notified = false;
   /** @param {string} id */
   const notify = id => { if (!notified) { notified = true; accepted?.(id); } };
+  const input=attachmentPaths?.length?{content:[...(text!==undefined?[{kind:'text',text}]:[]),...attachmentPaths.map(path=>({kind:'link',uri:pathToFileURL(path).href,metadata:{name:basename(path)}}))]}:{text};
   if (action === 'run') {
-    if (!text?.trim()) throw new HostError('INVALID_ARGUMENT', 'A nonempty request is required');
+    if (!text?.trim()&&!attachmentPaths?.length) throw new HostError('INVALID_ARGUMENT', 'A nonempty request is required');
     const submission = await api.submit({
-      schemaVersion: 1, requestId, text, attachments: [], userConstraints: [],
+      schemaVersion: 1, requestId, ...input, attachments: [], userConstraints: [],
       configurationRef: api.configurationRef, ...(controllerProfile!==undefined&&{controllerProfile}), ...(userSettings&&{userSettings}), ...(agentSkill&&{agentSkill}), ...(cwd && { workspaceContext: { cwd } }),
     }, notify);
     notify(submission.operation.operationId);
@@ -42,9 +45,9 @@ export async function dispatchCommand(api, command, accepted) {
   }
   if (!operationId) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
   if (action === 'resume') {
-    if (text !== undefined && !text.trim()) throw new HostError('INVALID_ARGUMENT', 'Follow-up text is empty');
-    if(text===undefined&&(controllerProfile!==undefined||userSettings))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
-    const submission = await api.resume(operationId, text === undefined ? undefined : { requestId, text, questionId, controllerProfile, userSettings, agentSkill }, notify);
+    if (text !== undefined && !text.trim()&&!attachmentPaths?.length) throw new HostError('INVALID_ARGUMENT', 'Follow-up text is empty');
+    if(text===undefined&&!attachmentPaths?.length&&(controllerProfile!==undefined||userSettings))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
+    const submission = await api.resume(operationId, text === undefined&&!attachmentPaths?.length ? undefined : { requestId, ...input, questionId, controllerProfile, userSettings, agentSkill }, notify);
     notify(submission.operation.operationId);
     return submission.completion;
   }

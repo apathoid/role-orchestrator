@@ -52,6 +52,7 @@
  *   supportsReasoningSelection?: true,
  *   supportsCollaborationMode?: true,
  *   supportsApprovalMode?: true,
+ *   supportsOrderedContent?: true,
  *   negotiatesCapabilities?: readonly string[],
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
  *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => string | undefined, activity?: ActivityCallback) => Promise<ProviderResult>,
