@@ -1055,7 +1055,7 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
     const secondImage={type:'image',mimeType:'image/png',uri:'file:///second.png',data:'AQIDBA=='};
     const firstBlocks=[{type:'text',text:'before'},image,{type:'text',text:'after'},
       {type:'resource_link',uri:'file:///not-read-by-host.txt',name:'literal-link',mimeType:'text/plain'}];
-    const secondBlocks=[secondImage,{type:'audio',data:'AQID',mimeType:'audio/wav',uri:'file:///audio.wav'},
+    const secondBlocks=[secondImage,{type:'audio',data:'AQID',mimeType:'audio/wav',_meta:{sourceUri:'file:///audio.wav'}},
       {type:'resource',resource:{uri:'file:///embedded.txt',mimeType:'text/plain',text:'embedded text'}},{type:'text',text:'compare'}];
     const first=launch(cwd,config);
     let sessionId;
@@ -1079,7 +1079,9 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
       assert.deepEqual(comparison.blocks.map(b=>b.type),[...initial.blocks.map(b=>b.type),'image','audio','resource','text']);
       assert.equal(comparison.blocks[6].text,'embedded text');
       assert.equal(comparison.blocks[4].uri,secondImage.uri);
-      assert.equal(comparison.blocks[5].uri,secondBlocks[1].uri);
+      // ACP v1 AudioContent has no top-level URI (unlike ImageContent).
+      assert.equal(comparison.blocks[5].uri,undefined);
+      assert.deepEqual(comparison.blocks[5].meta,secondBlocks[1]._meta);
       const count=(await wire()).length;
       assert.equal((await send(first,secondBlocks,'ordered-b')).stopReason,'end_turn');
       assert.equal((await wire()).length,count,'redelivery does not dispatch again');
@@ -1095,7 +1097,9 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
       assert.ok(journals.every(body=>!body.includes(image.data)&&!body.includes(secondImage.data)));
       const saved=journals.map(JSON.parse).find(item=>item.request?.content);
       assert.equal(saved.request.content.find(item=>item.kind==='image').uri,image.uri);
-      assert.equal(saved.events.find(item=>item.kind==='operation.continued').input.content.find(item=>item.kind==='audio').uri,secondBlocks[1].uri);
+      const savedAudio=saved.events.find(item=>item.kind==='operation.continued').input.content.find(item=>item.kind==='audio');
+      assert.equal(savedAudio.uri,undefined);
+      assert.deepEqual(savedAudio.metadata._meta,secondBlocks[1]._meta);
       assert.ok(files.filter(name=>name.startsWith('artifact-')&&name.endsWith('.blob')).length>=3);
       const imageOnly=await first.agent.request(a.session.new,{cwd,mcpServers:[]});
       assert.equal((await first.agent.request(a.session.prompt,{sessionId:imageOnly.sessionId,prompt:[secondImage]})).stopReason,'end_turn');
@@ -1108,7 +1112,7 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
       assert.deepEqual(replay.map(b=>b.type),[...firstBlocks.map(b=>b.type),...secondBlocks.map(b=>b.type),'text']);
       assert.equal(replay[1].data,image.data);
       assert.equal(replay[4].data,secondImage.data);
-      assert.equal(replay[1].uri,image.uri);assert.equal(replay[4].uri,secondImage.uri);assert.equal(replay[5].uri,secondBlocks[1].uri);
+      assert.equal(replay[1].uri,image.uri);assert.equal(replay[4].uri,secondImage.uri);assert.equal(replay[5].uri,undefined);assert.deepEqual(replay[5]._meta,secondBlocks[1]._meta);
       assert.equal(replay[6].resource.text,'embedded text');
     }finally{await reopened.close();}
   }));

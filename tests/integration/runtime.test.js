@@ -378,6 +378,8 @@ test('C24-R3 T27 accepted payload redelivery after reducing input limit is read-
     const accepted=await(await first.api.submit(input)).completion;
     original=await(await first.api.resume(accepted.operationId,follow)).completion;
     assert.equal(original.status,'finished');
+    // Compare canonical persisted snapshots, not optional undefined keys of live objects.
+    original=await first.api.inspect(original.operationId);
   }finally{await first.close();}
   const wire=()=>readFile(join(directory,'c24-wire.jsonl'),'utf8');
   const before=await wire();

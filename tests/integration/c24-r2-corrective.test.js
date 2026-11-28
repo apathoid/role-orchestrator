@@ -134,4 +134,7 @@ test('C24-R3 T24 typed URI takes precedence and legacy ACP metadata URI survives
   const read=async()=>Buffer.from('x');
   assert.equal((await renderContentAttachment(item,read,undefined,signal)).uri,'file:///legacy.png');
   assert.equal((await renderContentAttachment({...item,uri:'file:///typed.png'},read,undefined,signal)).uri,'file:///typed.png');
+  const audio={kind:'audio',ref:'r',mediaType:'audio/wav',metadata:{uri:'file:///legacy.wav',_meta:{opaque:true}}};
+  assert.equal((await renderContentAttachment(audio,read,undefined,signal)).uri,'file:///legacy.wav');
+  assert.equal((await renderContentAttachment({...audio,uri:'file:///typed.wav'},read,undefined,signal)).uri,'file:///typed.wav');
 });

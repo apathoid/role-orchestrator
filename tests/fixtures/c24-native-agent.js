@@ -19,7 +19,7 @@ let options=[
 const summarize=block=>{
   if(block.type==='image'||block.type==='audio'){
     const bytes=Buffer.from(block.data,'base64');
-    return {type:block.type,mediaType:block.mimeType,size:bytes.length,uri:block.uri,hash:createHash('sha256').update(bytes).digest('hex')};
+    return {type:block.type,mediaType:block.mimeType,size:bytes.length,uri:block.uri,meta:block._meta,hash:createHash('sha256').update(bytes).digest('hex')};
   }
   if(block.type==='resource')return {type:block.type,uri:block.resource.uri,text:block.resource.text,mimeType:block.resource.mimeType,meta:block._meta};
   return block;
