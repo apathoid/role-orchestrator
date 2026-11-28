@@ -5,6 +5,7 @@
 - Shared logical feature templates, profile selection, exact native bindings and accepted settings provenance; прежние inline reasoning mappings удалены.
 - ACP selectors/Agent Skills shortcuts, CLI/API settings and skill discovery; ordered user content and native attachment delivery/replay, optional Store/provider extensions.
 - Existing C23 scope and authority remain; exact engineering evidence is recorded in roadmap STATUS, real native acceptance is separate.
+- C24-R2: preserve literal/native block identity and explicit context priority; persist per-admitted-Worker approval compatibility and CLI skill selector identity; align capabilities, recovery/replay and current-result diagnostics. Verification status is recorded separately.
 
 
 ### C23 — Configuration-scoped State & Concurrent Runtime Support (C23-R engineering PASS at 0c519ebf; native UNVERIFIED)

@@ -561,8 +561,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       if (!blocks || (required.includes('input.image') && (!initialized.agentCapabilities?.promptCapabilities?.image))) {
         const refused=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
         refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',
-          value:{reason:contentFailure?.cause??'native_modality_unavailable',ref:contentFailure?.ref,profileId:invocation.profile.profileId}});
-        refused.contentUnavailable=contentFailure??{cause:'native_modality_unavailable'};
+          value:{reason:contentFailure?.cause??(!blocks?'user_content_not_deliverable':'native_modality_unavailable'),ref:contentFailure?.ref,profileId:invocation.profile.profileId}});
+        refused.contentUnavailable=contentFailure??{cause:!blocks?'user_content_not_deliverable':'native_modality_unavailable'};
         return refused;
       }
       signal.throwIfAborted();

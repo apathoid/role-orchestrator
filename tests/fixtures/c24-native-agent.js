@@ -54,6 +54,9 @@ agent()
     if((variant==='history-request'||variant==='history-request-large')&&latest==='retrieve first image'&&!blocks.some(item=>item.type==='image'&&item.hash===createHash('sha256').update(Buffer.alloc(700*1024,7)).digest('hex'))){
       const ref=host.attachments.find(item=>item.mediaType==='image/png').ref;
       decision.nextController={continue:true,contextRequest:{refs:[ref]}};
+    }else if(variant==='approval-recovery'&&!host.workMap.entries.some(item=>item.actionId==='c24-approval-worker')){
+      decision.additions=[{kind:'delegate',actionId:'c24-approval-worker',profileId:'worker',objective:'Do accepted work',expectedResult:'Result',contextRefs:[],dependsOn:[]}];
+      decision.waitPolicy={kind:'all_requested',targets:[{kind:'action',id:'c24-approval-worker'}]};
     }else if(delegate){
       const ref=host.attachments.filter(item=>item.mediaType==='image/png').at(-1).ref;
       decision.additions=[{kind:'delegate',actionId:'c24-selected-worker',profileId:'worker',objective:'Inspect selected content',expectedResult:'Result',contextRefs:[ref],dependsOn:[]}];

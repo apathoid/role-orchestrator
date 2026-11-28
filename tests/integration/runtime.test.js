@@ -263,3 +263,84 @@ test('C24-R settings inspection closes trusted plugin factory without opening ex
   const view=await readUserSettings(configuration,directory,directory);assert.equal(view.controllerProfile.current,'primary');
   const calls=(await readFile(marker,'utf8')).trim().split('\n');assert.equal(calls[0],'create');assert.equal(calls.at(-1),'close');assert.ok(calls.includes('describe'));assert.ok(!calls.includes('open')&&!calls.includes('invoke'));await assert.rejects(access(join(directory,'state')),{code:'ENOENT'});
 }));
+
+test('C24-R2 T05/T06 recovered accepted Worker checks only its admitted approval mapping before native dispatch',{timeout:60000},()=>withOwnedRun('C24R2-worker-approval',async directory=>{
+  const {request}=await import('../fixtures/core.js');
+  const {createOperation,applyEvent}=await import('../../src/core/operation.js');
+  const {createLocalStateStore}=await import('../../src/adapters/state/local-store.js');
+  const {mkdir}=await import('node:fs/promises');
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const configuration={schemaVersion:1,controllerProfile:'primary',
+    profiles:{primary:{provider:'test',model:'fixture',features:{approvalMode:'controller'}},
+      worker:{provider:'test',model:'fixture',features:{approvalMode:'worker'}},
+      unused:{provider:'test',model:'fixture',features:{approvalMode:'unused'}}},
+    providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'approval-recovery']},featureBindings:{approvalMode:{kind:'configOption',id:'opaque-approval'}}}},
+    features:{approvalMode:Object.fromEntries(['controller','worker','unused'].map(name=>[name,{default:'review',options:[{id:'review',nativeValue:'native-review'}]}]))}};
+  const open=(config,stateDirectory)=>openRuntime({configuration:JSON.stringify(config),configurationDirectory:directory,stateDirectory});
+  const first=await open(configuration,join(directory,'original'));
+  let original;
+  try{
+    original=await(await first.api.submit(request({configurationRef:first.api.configurationRef,workspaceContext:{cwd:directory}}))).completion;
+    assert.equal(original.status,'finished');
+    const admitted=original.events.find(e=>e.kind==='controller.responded'&&e.admissions?.some(a=>a.kind==='accepted')).admissions[0];
+    assert.equal(admitted.approval.setting.nativeValue,'native-review');
+    assert.equal(original.attempts.find(a=>a.actionId==='c24-approval-worker').route.approvalMode.nativeValue,'native-review');
+  }finally{await first.close();}
+  const wire=async()=> (await readFile(join(directory,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+  for(const [changed,reserved,expected] of [['worker',false,false],['worker',true,false],['unused',true,true]]){
+    const config=structuredClone(configuration);
+    config.features.approvalMode[changed].options[0].nativeValue='native-open';
+    const stateDirectory=join(directory,changed+'-'+reserved);await mkdir(stateDirectory);
+    let restored=createOperation(original.operationId,original.request,original.authorityRef,original.limits,original.acceptedAt,original.acceptedSettings);
+    for(const event of original.events){
+      const applied=applyEvent(restored,event);
+      assert.equal(applied.kind,'applied');
+      restored=applied.state;
+      if(!reserved&&event.kind==='controller.responded'&&event.admissions?.some(a=>a.kind==='accepted'))break;
+      if(reserved&&event.kind==='attempt.reserved'&&event.actionId==='c24-approval-worker')break;
+    }
+    const store=createLocalStateStore(stateDirectory);await store.open();
+    try{assert.equal((await store.commit(restored.operationId,null,restored)).kind,'committed');}finally{await store.close();}
+    const count=(await wire()).length;
+    const second=await open(config,stateDirectory);
+    try{
+      const result=await(await second.api.resume(restored.operationId)).completion;
+      assert.equal(result.status,'finished');
+      const attempt=result.attempts.find(a=>a.actionId==='c24-approval-worker');
+      assert.equal(attempt.status,'terminal');
+      const delegated=(await wire()).slice(count).filter(item=>item.kind==='delegate');
+      if(expected){
+        assert.equal(delegated.length,1);
+        assert.equal(delegated[0].settings['opaque-approval'],'native-review');
+        assert.equal(attempt.route.approvalMode.nativeValue,'native-review');
+      }else{
+        assert.equal(delegated.length,0);
+        assert.equal(attempt.dispatchCertainty,'not_sent');
+        assert.equal(attempt.outcome.diagnostics[0].code,'CAPABILITY_UNAVAILABLE');
+        assert.ok(result.events.some(e=>e.kind==='attempt.outcome'&&e.observations?.some(o=>o.value?.reason==='accepted_worker_setting_changed')));
+      }
+    }finally{await second.close();}
+  }
+}));
+test('C24-R2 T13 ordered-capable plugin advertises unknown input only when it declares negotiation',()=>withOwnedRun('C24R2-input-capability',async directory=>{
+  const {request}=await import('../fixtures/core.js');
+  const module=join(directory,'fixture.mjs');
+  await writeFile(module,`export const manifest={id:'capability-fixture',version:'1',apiVersion:1,exports:['createProvider']};
+    export function createProvider({providerId}){
+      return {supportsOrderedContent:true,describe:async()=>({providerId,maxConcurrency:null,capabilities:{'input.image':{support:'unknown',source:'configured'},'input.audio':{support:'supported',source:'configured'}}}),
+        open:()=>{throw new Error('must not open')},invoke:()=>{throw new Error('must not invoke')},cancel(){},close(){}};
+    }`);
+  const configuration=JSON.stringify({schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},
+    providers:{test:{adapter:'capability-fixture'}},plugins:[{id:'capability-fixture',module}]});
+  const runtime=await openRuntime({configuration,stateDirectory:join(directory,'state')});
+  try{
+    const capabilities=await runtime.api.inputCapabilities();
+    assert.equal(capabilities.image,false);assert.equal(capabilities.audio,true);
+    const {text,...base}=request({configurationRef:runtime.api.configurationRef});
+    const result=await(await runtime.api.submit({...base,content:[{kind:'image',mediaType:'image/png',data:'AQID',encoding:'binary'}]})).completion;
+    assert.equal(result.status,'waiting');
+    assert.equal(result.waiting.reason.code,'CAPABILITY_UNAVAILABLE');
+    assert.match(result.waiting.reason.resource,/user_content:capability_unavailable:input.image/);
+    assert.equal(result.attempts[0].dispatchCertainty,'not_sent');
+  }finally{await runtime.close();}
+}));

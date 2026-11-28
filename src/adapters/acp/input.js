@@ -107,7 +107,7 @@ export async function attachmentBlocks(invocation, capabilities, resolve, signal
       .finally(() => listener[Symbol.dispose]());
     if (!block || (image ? block.type !== 'image' || block.mimeType !== attachment.mediaType :
       block.type !== 'resource_link' && (block.type !== 'resource' || !capabilities?.promptCapabilities?.embeddedContext))) {
-      onFailure?.({ref:attachment.ref,cause:!block?'payload_unavailable':'resource_transport_unavailable'});
+      onFailure?.({ref:attachment.ref,cause:!block?'payload_unavailable':!image&&block.type==='resource'&&!capabilities?.promptCapabilities?.embeddedContext?'resource_transport_unavailable':'user_content_not_deliverable'});
       return undefined;
     }
     blocks.push(block);
