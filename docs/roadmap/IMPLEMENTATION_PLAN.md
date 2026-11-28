@@ -1,5 +1,13 @@
 # Активный план реализации и приёмки
 
+## C24 — Unified User Configuration & Native Input Capabilities (PLANNED)
+
+Рабочая ветка `feature/unified-user-configuration`, implementation baseline `a8888fdaaf6990d16c259ae511f16edf607395ec` (master, D27 provider-first; C23 merged PR #6). Подробное задание: [C24_UNIFIED_USER_CONFIGURATION.md](C24_UNIFIED_USER_CONFIGURATION.md), acceptance A132–A142. Planning HEAD — коммит этого плана; сверить фактический SHA и CI. Baseline [CI #46151224720](https://github.com/apathoid/role-orchestrator/actions/runs/46151224720) наблюдался in_progress при подготовке, итог проверить перед реализацией.
+
+Цель: разблокировать привычные нативные возможности пользовательского взаимодействия через минимальный мост RO (settings, skills shortcuts, ordered multimodal content, follow-up, context actions). Сохранить model-first/provider-first/provider-agnostic, существующий execution lifecycle, authority/recovery и C23. Не реализовывать provider policies, общий feature/retrieval engine, discovery sessions, новый scheduler или provider reliability layer. C24.0 проверяет реальные native contracts; .1–.4 templates/settings/application/provenance; .5 skills; .6 ordered input; .7–.8 ACP/CLI/API; .9 exact-SHA regressions/native comparisons/docs. Это инженерная последовательность, не runtime stages.
+
+Implementation NOT RUN; RED/GREEN NOT RUN; native UNVERIFIED. Исторические C23 evidence не переносятся на C24. Не merge в master до независимого review и согласования.
+
 ## C23 — Configuration-scoped State & Concurrent Runtime Support (C23-R engineering PASS at 0c519ebf; native UNVERIFIED)
 
 Рабочая ветка `feature/configuration-scoped-state`, implementation baseline `e96b036b57495d3171ce68d98bbada3c97e4feb8` (master), [CI #45881827539](https://github.com/apathoid/role-orchestrator/actions/runs/45881827539) SUCCESS. Research baseline 8061e88e не является implementation HEAD. Согласованное задание: [C23_CONFIGURATION_SCOPED_STATE.md](C23_CONFIGURATION_SCOPED_STATE.md), acceptance A126–A131. Planning HEAD `a0a3c5821d59f50974f8caeecff6e70e36c2cf6a`.
