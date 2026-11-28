@@ -20,7 +20,7 @@
  *   reasoning?: ReasoningCatalog, unavailable?: string}} Profile
  * @typedef {{sessionId: string}} ProviderSession
  * @typedef {Request['attachments'][number]|import('./contracts.js').ContentAttachment} UserAttachment
- * @typedef {{requestId:string,text:string,content:readonly import('./contracts.js').ContentSegment[]}} OrderedTurn
+ * @typedef {{requestId:string,text:string,content:readonly import('./contracts.js').ContentSegment[],required?:boolean}} OrderedTurn
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
  *   attachments?: readonly UserAttachment[], orderedTurns?:readonly OrderedTurn[], userContentMaxBytes?:number, readUserPayload?:(ref:string)=>Promise<Uint8Array|undefined>, requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection, collaborationMode?: NativeSetting, approvalMode?: NativeSetting,

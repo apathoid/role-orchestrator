@@ -539,7 +539,8 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         },
       }, { cancellationSignal: signal, stopWaitingOnCancel: true });
       if (initialized.protocolVersion !== PROTOCOL_VERSION) return resultFor(invocation, 'PROTOCOL_ERROR');
-      const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities??{}, resolveAttachment, AbortSignal.any([signal, connection.signal]));
+      /** @type {{requestId:string,ref:string,reason:string}[]} */ const omittedContent=[];
+      const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities??{}, resolveAttachment, AbortSignal.any([signal, connection.signal]),(requestId,ref)=>omittedContent.push({requestId,ref,reason:'native_content_unavailable'}));
       if (!blocks || (required.includes('input.image') && (!initialized.agentCapabilities?.promptCapabilities?.image))) {
         const refused=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
         refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',
@@ -628,7 +629,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const preparationStarted=performance.now();
         /** @type {Record<string,number>} */
         let componentSizes={};
-        const prompt = renderInvocationPrompt({...invocation, controllerDelivery, controllerDecisionToolName:mcp?.decisionToolName}, retrievalDetail(Boolean(mcp?.contextListToolName), mcp, invocation.kind),
+        const prompt = renderInvocationPrompt({...invocation,...(omittedContent.length&&{context:[...invocation.context,{ref:'host:user-content-delivery',source:'host_observed',completeness:'complete',value:omittedContent}]}), controllerDelivery, controllerDecisionToolName:mcp?.decisionToolName}, retrievalDetail(Boolean(mcp?.contextListToolName), mcp, invocation.kind),
           promptReporter?sizes=>{componentSizes=sizes;}:undefined);
         reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length,...componentSizes},prompt);
         if(blocks.length&&Buffer.byteLength(JSON.stringify([{type:'text',text:prompt},...blocks]))>maxInputFrameBytes-4096){

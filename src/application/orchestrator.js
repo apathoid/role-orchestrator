@@ -1,4 +1,4 @@
-import { prepareUserContent, persistUserContent, userAttachments, orderedTurns, defaultUserContentMaxBytes, maximumUserContentMaxBytes } from './user-content.js';
+import { prepareUserContent, persistUserContent, userAttachments, orderedTurns, projectOrderedTurns, defaultUserContentMaxBytes, maximumUserContentMaxBytes } from './user-content.js';
 import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
@@ -921,13 +921,16 @@ export function createOrchestrator(deps) {
         ? await withinDeadline(materializeSkillInstructions(handoff.skillInstructions, catalog, skillInstructionsMaxBytes, signal)) : [];
       const attachments = handoff ? handoff.attachments ?? [] : userAttachments(state);
       const turns = handoff ? undefined : orderedTurns(state);
+      const latestUserId=state.transcriptRefs.at(-1)??state.request.requestId;
+      const invocationAttachments=handoff?attachments:state.request.attachments;
+      const mandatoryAttachments=handoff?attachments:[...invocationAttachments,...(turns?.find(turn=>turn.requestId===latestUserId)?.content.filter(item=>item.kind!=='text')??[])];
       const requiredCapabilities = new Set(handoff?.requiredCapabilities);
-      for(const item of attachments){
+      for(const item of mandatoryAttachments){
         if('kind' in item){
           requiredCapabilities.add(item.kind==='image'?'input.image':item.kind==='audio'?'input.audio':'input.attachments');
         }else if(item.mediaType.toLowerCase().startsWith('image/'))requiredCapabilities.add('input.image');
       }
-      if(attachments.some(item=>'kind' in item)&&executor.supportsOrderedContent!==true){
+      if(mandatoryAttachments.some(item=>'kind' in item)&&executor.supportsOrderedContent!==true){
         const ref='host:content:'+attemptId;
         observations.push(observation({ref,completeness:'complete',value:{reason:'adapter_without_ordered_content_support',profileId:selectedProfile.profileId}},
           {kind:'host_transport',sourceId:selectedProfile.providerId,receivedAt:clock.now()}));
@@ -1066,6 +1069,8 @@ export function createOrchestrator(deps) {
           }
           signal.throwIfAborted();
           requireAuthority();
+          const projected=turns?.length?projectOrderedTurns(turns,latestUserId,new Set(context.context.map(item=>item.ref)),userContentMaxBytes,executor.supportsOrderedContent===true):undefined;
+          if(projected?.omitted.length)context.context.push({ref:'host:user-content-projection',source:'host_observed',completeness:'complete',value:projected.omitted});
           const contextBytes = Buffer.byteLength(JSON.stringify(context.context));
           const hostFacts = !handoff ? context.context.find(item => item.ref === 'host:invocation-context')?.value : undefined;
           const map = hostFacts && typeof hostFacts === 'object' && 'workMap' in hostFacts
@@ -1091,14 +1096,14 @@ export function createOrchestrator(deps) {
           return executor.invoke(owned, {
           ...context, reasoning, collaborationMode, approvalMode,
           ...(turns?.length||attachments.some(item=>'kind' in item)?{userContentMaxBytes}:{}),
-          ...(turns?.length&&{orderedTurns:turns}),
+          ...(projected?.selected.length&&{orderedTurns:projected.selected}),
           ...(attachments.some(item=>'payload' in item&&item.payload)&&{readUserPayload:async (/** @type {string} */ ref)=>{
             if(!isActive())return;
             const item=attachments.find(item=>item.ref===ref);
             if(!item||!('payload' in item)||!item.payload)return;
             const read=await store.readArtifact?.(item.payload,item.payload.size);
             return isActive()&&read?.kind==='available'?read.bytes:undefined;
-          }}), isActive, contextAccess, evidenceAccess, preflightIntent, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          }}), isActive, contextAccess, evidenceAccess, preflightIntent, externalTools, idempotencyKey, attachments:invocationAttachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
           interactions: boundInteractions ? { request: boundInteractions.request, supports: boundInteractions.supports } : undefined,
         }, item => {

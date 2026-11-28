@@ -72,14 +72,14 @@ export async function configureReasoning(agent, methods, session, reasoning, sig
 
 /**
  * @param {Invocation} invocation @param {InitializeResponse['agentCapabilities']} capabilities
- * @param {ResolveAttachment | undefined} resolve @param {AbortSignal} signal
+ * @param {ResolveAttachment | undefined} resolve @param {AbortSignal} signal @param {(requestId:string,ref:string)=>void} [onOmitted]
  */
-export async function attachmentBlocks(invocation, capabilities, resolve, signal) {
+export async function attachmentBlocks(invocation, capabilities, resolve, signal,onOmitted) {
   /** @type {ContentBlock[]} */
   const blocks = [];
   const orderedRefs=new Set((invocation.orderedTurns??[]).flatMap(turn=>turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref])));
   for(const turn of invocation.orderedTurns??[]){
-    const ordered=await renderOrderedTurn(turn,invocation.readUserPayload,capabilities,signal);
+    const ordered=await renderOrderedTurn(turn,invocation.readUserPayload,capabilities,signal,turn.required===false?ref=>onOmitted?.(turn.requestId,ref):undefined);
     if(!ordered)return undefined;
     blocks.push(...ordered);
   }
@@ -166,16 +166,17 @@ export async function renderContentAttachment(item,read,capabilities,signal){
 }
 /** @param {import('../../core/ports.js').OrderedTurn} turn @param {Invocation['readUserPayload']} read
  * @param {InitializeResponse['agentCapabilities']|undefined} capabilities @param {AbortSignal} signal
+ * @param {(ref:string)=>void} [onOmitted]
  * @returns {Promise<ContentBlock[]|undefined>}
  */
-export async function renderOrderedTurn(turn,read,capabilities,signal){
+export async function renderOrderedTurn(turn,read,capabilities,signal,onOmitted){
   /** @type {ContentBlock[]} */ const blocks=[];
   for(const item of turn.content){
     signal.throwIfAborted();
     if(item.kind==='text')blocks.push(/** @type {ContentBlock} */ ({...metadataObject(item.metadata),type:'text',text:turn.text.slice(item.start,item.end)}));
     else{
       const block=await renderContentAttachment(item,read,capabilities,signal);
-      if(!block)return;
+      if(!block){if(!onOmitted)return;onOmitted(item.ref);continue;}
       blocks.push(block);
     }
   }
