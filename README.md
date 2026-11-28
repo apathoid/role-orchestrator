@@ -39,7 +39,18 @@ role-orchestrator diagnose --config /path/to/config.json
 role-orchestrator run --config /path/to/config.json 'Опиши содержимое проекта'
 ```
 
-Конфигурация по умолчанию находится в `$XDG_CONFIG_HOME/role-orchestrator/config.json` или `~/.config/role-orchestrator/config.json`. CLI использует отдельный state directory из конфигурации, XDG или `~/.local/state/role-orchestrator`. Для ACP клиента укажите команду `role-orchestrator acp --config /path/to/config.json`.
+Конфигурация по умолчанию находится в `$XDG_CONFIG_HOME/role-orchestrator/config.json` или `~/.config/role-orchestrator/config.json`. CLI/ACP выбирают Store: `--state-dir DIR` > `storage.directory` > автоматический каталог. Для стандартного config остаётся `$XDG_STATE_HOME/role-orchestrator` или `~/.local/state/role-orchestrator`; прочие логические пути выбирают независимые подкаталоги `configurations/`. Содержимое config не меняет автоматический путь. Для ACP клиента укажите `role-orchestrator acp --config /path/to/config.json` (при необходимости `--state-dir DIR`). Для просмотра точного пути используйте `diagnose --config FILE --format json`.
+
+Старую историю дополнительного config можно открыть явно, без миграции. При `--state-dir` команды управления не требуют валидной конфигурации:
+
+```sh
+role-orchestrator inspect OPERATION_ID --state-dir /path/to/old/state
+role-orchestrator cancel OPERATION_ID --state-dir /path/to/old/state
+role-orchestrator trace OPERATION_ID --state-dir /path/to/old/state
+role-orchestrator export-diagnostics OPERATION_ID --state-dir /path/to/old/state --output trace.json
+```
+
+Независимые Stores допускают параллельные CLI/ACP экземпляры, один физический Store — одного writer. При отсутствии доступного endpoint inspect/trace/export читают сохранённый snapshot без writer lock, не обязательно последнюю revision; offline cancel отдельно проверяет ownership. После обновления RO штатно перезапустите ранее запущенные ACP runtime: mixed-version execution и административный control могут быть несовместимы. RO не блокирует workspace или внешние инструменты. Trace/export сохраняют базовую redaction, дополняют её доступными текущими известными значениями секретов и сообщают coverage; перед передачей проверяйте данные.
 
 Для управляемого reasoning effort в `profiles.<id>` задаются `reasoningEffort` (массив `{level,effort}`) и `defaultReasoningLevel`; отсутствие поля или `"native"` сохраняет нативные настройки. Controller может передать `nextController: {continue: true, reasoningLevel: "high"}`, а delegate — `reasoningLevel`. Это необязательные поля прежней config/schema v1. [Пример и ограничения](docs/PROVIDERS_AND_CONFIGURATION.md#reasoning-effort-в-profiles).
 

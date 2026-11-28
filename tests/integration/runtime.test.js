@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, symlink, writeFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -182,3 +183,42 @@ test('C20 runtime resume preserves persisted authority under new defaults/projec
     assert.deepEqual(resumed.limits,{maxInvocations:null,maxConcurrentInvocations:5});
   }finally{await fourth.close();}
 }));
+
+
+test('C23 A127 API owners overlap in one process; closing/failing one does not close another and physical aliases share writer exclusion',
+  { timeout: 15_000 }, () => withOwnedRun('C23-api',async directory=>{
+    const {openOrchestrator}=await import('../../src/main/index.js');
+    const {request}=await import('../fixtures/core.js');
+    const configuration=JSON.stringify({
+      schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},
+      providers:{test:{adapter:'host-fixture'}},
+      plugins:[{id:'host-fixture',module:fileURLToPath(new URL('../fixtures/host-plugin.js',import.meta.url))}],
+    });
+    await assert.rejects(openOrchestrator({configuration}),{code:'INVALID_CONFIGURATION'});
+    const stateA=join(directory,'a'),stateB=join(directory,'b');
+    const [first,second]=await Promise.all([stateA,stateB].map(stateDirectory=>openOrchestrator({configuration,stateDirectory})));
+    async function active(api,id) {
+      for(let i=0;i<200;i++){
+        const state=await api.inspect(id);
+        if(state.attempts.some(attempt=>attempt.status==='dispatched'))return state;
+        await delay(10);
+      }
+      assert.fail('No dispatched attempt '+id);
+    }
+    try{
+      const alias=join(directory,'alias');await symlink(stateA,alias);
+      await assert.rejects(openOrchestrator({configuration,stateDirectory:alias}),{code:'STATE_STORE_IN_USE'});
+      const input=request({requestId:'same',text:'hold',configurationRef:first.configurationRef});
+      const [a,b]=await Promise.all([first.submit(input),second.submit(input)]);
+      await Promise.all([active(first,a.operation.operationId),active(second,b.operation.operationId)]);
+      assert.notEqual(a.operation.operationId,b.operation.operationId);
+      await first.close();
+      assert.equal((await a.completion).cancellation,'shutdown');
+      await assert.rejects(openRuntime({configuration,stateDirectory:join(directory,'failed'),launch:{controllerProfile:'missing'}}),{code:'INVALID_CONFIGURATION'});
+      assert.equal((await active(second,b.operation.operationId)).status,'active');
+      await second.cancel(b.operation.operationId);
+      assert.equal((await b.completion).status,'cancelled');
+      const final=await(await second.submit({...input,requestId:'next',text:'still active'})).completion;
+      assert.equal(final.assessment.answer,'Ответ: still active');
+    }finally{await Promise.all([first.close(),second.close()]);}
+  }));

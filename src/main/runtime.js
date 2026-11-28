@@ -11,6 +11,7 @@ import { createOrchestrator } from '../application/orchestrator.js';
 import { createEventStream } from '../application/events.js';
 import { operationTrace } from '../hosts/commands.js';
 import { loadExtensions } from './extensions.js';
+import { knownConfigurationSecrets } from './configuration-secrets.js';
 import { createNdjsonSink, defaultDiagnosticMaxFileBytes, defaultDiagnosticQueueMaxBytes } from '../adapters/state/ndjson-diagnostics.js';
 
 /** @import {DiagnosticPort} from '../core/diagnostics.js' */
@@ -42,11 +43,8 @@ export async function openRuntime(options, onStoreOpen) {
     throw new RuntimeError('INVALID_CONFIGURATION', 'State directory requires an absolute path or a configuration directory', '/storage/directory');
   }
   const directory = resolve(options.configurationDirectory ?? '/', location);
-  const secretValues = Object.values(config.value.providers).flatMap(provider =>
-    Object.values(provider.launch?.env ?? {}).flatMap(ref => {
-      const value = process.env[ref.fromEnv];
-      return value && value.length >= 4 ? [value] : [];
-    }));
+  const redaction = knownConfigurationSecrets(config.value.providers);
+  const secretValues = redaction.secrets;
   const diagnostics = createEventStream(options.diagnostics ?? createNdjsonSink({
     directory: resolve(directory, 'diagnostics'),
     maxFileBytes: config.value.diagnostics?.maxFileBytes,
@@ -132,7 +130,7 @@ export async function openRuntime(options, onStoreOpen) {
     }
     const { submit, resume, inspect, inspectFinding, findRequest, cancel, subscribeActivity } = coordinator;
     /** @param {string} operationId */
-    const trace = async operationId => operationTrace(await inspect(operationId), { secrets: secretValues });
+    const trace = async operationId => operationTrace(await inspect(operationId), redaction);
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel,
       trace,
       subscribe: diagnostics.subscribe, subscribeExecution: (/** @type {import('../core/ports.js').ActivityScope} */ scope, /** @type {import('../application/events.js').EventListener} */ listener) => diagnostics.subscribe(listener, scope), subscribeActivity, pendingInteractions: interactions.pending,

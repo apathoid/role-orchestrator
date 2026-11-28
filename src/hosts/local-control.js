@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { arrayOf, decode, id, jsonValue, oneOf, optional, record, text } from '../core/decode.js';
 import { createBoundedDelivery } from '../application/delivery.js';
-import { HostError, hostError } from './commands.js';
+import { HostError, hostError, isAdministrativeAction } from './commands.js';
 
 /** @import {Command} from './commands.js' */
 /** @import {Socket} from 'node:net' */
@@ -28,7 +28,7 @@ const shape = record({
   action: oneOf('run', 'resume', 'inspect', 'cancel', 'trace', 'export-diagnostics', 'subscribe', 'pending', 'answer'),
   operationId: optional(id),
   payload: record({
-    text: optional(text), cwd: optional(id), questionId: optional(id), configurationRef: id,
+    text: optional(text), cwd: optional(id), questionId: optional(id), configurationRef: optional(id),
     cancellationSource: optional(oneOf('client')),
     stream: optional(oneOf('live')), interactive: optional(oneOf('yes')), ownerRequestId: optional(id), answerKey: optional(id), reconnectKey: optional(id),
     reply: optional(record({ requestId: id, operationId: id, attemptId: id, providerRequestId: id, payload: jsonValue })),
@@ -132,10 +132,11 @@ export async function openControl(directory, configurationRef, execute, launch, 
     if (decoded.kind === 'rejected') throw new HostError('CONTROL_INVALID', 'Invalid control request: ' + decoded.reason.path);
     const { requestId, action, operationId, payload, token } = decoded.value;
     if (token !== descriptor.token) throw new HostError('CONTROL_UNAUTHORIZED', 'Invalid control session token');
-    if (payload.configurationRef !== configurationRef) {
+    const administrative = isAdministrativeAction(action);
+    if (!administrative && payload.configurationRef !== configurationRef) {
       throw new HostError('CONTROL_CONFIGURATION_MISMATCH', 'Live owner uses a different configuration');
     }
-    if (payload.launch && launchKey(payload.launch) !== launchKey() && launchKey(payload.launch) !== launchKey(launch)) {
+    if (!administrative && payload.launch && launchKey(payload.launch) !== launchKey() && launchKey(payload.launch) !== launchKey(launch)) {
       throw new HostError('CONTROL_LAUNCH_UNAVAILABLE', 'Live owner uses different launch preferences');
     }
     if (action === 'subscribe') {
@@ -154,7 +155,8 @@ export async function openControl(directory, configurationRef, execute, launch, 
     // A presentation subscription is not a new execution request. Retain the
     // original input owner/capabilities on retries, regardless of the new view.
     const {stream: _stream, interactive: _interactive, reconnectKey: _reconnectKey, ...executionPayload} = payload;
-    const fingerprint = JSON.stringify([action, operationId, executionPayload]);
+    const { configurationRef: _configuration, launch: _launch, ...administrativePayload } = executionPayload;
+    const fingerprint = JSON.stringify([action, operationId, administrative ? administrativePayload : executionPayload]);
     let entry = requests.get(requestId);
     if (entry && entry.fingerprint !== fingerprint) throw new HostError('IDENTITY_CONFLICT', 'Request id reused');
     if (stopping || (closing && !entry && (action === 'run' || action === 'resume'))) {
@@ -279,7 +281,7 @@ export async function readDescriptor(directory) {
   }
 }
 
-/** @param {Descriptor} descriptor @param {string} configurationRef @param {ControlCommand} command
+/** @param {Descriptor} descriptor @param {string | undefined} configurationRef @param {ControlCommand} command
  * @param {(operationId: string, answerKey?: string) => void} [accepted] @param {LaunchOverrides} [launch]
  * @param {{notice?: (notice: ControlNotice) => void | Promise<void>, signal?: AbortSignal, interactive?:boolean, reconnectKey?:string, onGap?:(count:number)=>void}} [live]
  */

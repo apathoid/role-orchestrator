@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 import { getEventListeners, once } from 'node:events';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { readDescriptor } from '../../src/hosts/local-control.js';
 import { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -28,8 +30,8 @@ async function fixture(cwd, overrides = {}) {
   return config;
 }
 
-function launch(cwd, config, setup = app => app, flags = []) {
-  const child = spawn(process.execPath, [entry, 'acp', '--config', config, ...flags], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+function launch(cwd, config, setup = app => app, flags = [], env = process.env) {
+  const child = spawn(process.execPath, [entry, 'acp', '--config', config, ...flags], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
   const messages = [];
   const progress = Promise.withResolvers();
   let wire = '';
@@ -889,3 +891,95 @@ test('C17R external ACP never forwards private configured Controller capture',{t
   assert.match(capture.details.prompt,/Controller Invocation \(sectioned JSON\)/);
   assert.equal(capture.details.captureLimitBytes,262144);
 }));
+
+
+test('C23 A127/A130 two ACP processes and one CLI overlap; restart changed config retains session and other owners',
+  { timeout: 30_000, skip: process.env.C10_SOCKET_UNAVAILABLE === '1' }, () =>
+  withOwnedRun('C23-acp-concurrent', async (cwd,sync) => {
+    const config=await fixture(cwd,{storage:undefined});
+    const other=join(cwd,'other.json'), cliConfig=join(cwd,'cli.json');
+    const original=await readFile(config,'utf8');
+    await writeFile(other,original); await writeFile(cliConfig,original);
+    const env={...process.env,XDG_CONFIG_HOME:join(cwd,'config-home'),XDG_STATE_HOME:join(cwd,'state-home')};
+    function call(args) {
+      return sync(process.execPath,[entry,...args,'--format','json'],{cwd,env});
+    }
+    function result(args) {
+      const response=call(args); assert.equal(response.status,0,response.stderr);
+      return JSON.parse(response.stdout);
+    }
+    const storeA=result(['diagnose','--config',config]).stateDirectory;
+    const storeB=result(['diagnose','--config',other]).stateDirectory;
+    const storeC=join(cwd,'explicit-cli');
+    assert.notEqual(storeA,storeB);
+    async function active(directory,text) {
+      for (let poll=0;poll<200;poll++) {
+        const names=await readdir(directory).catch(error=>{if(error.code!=='ENOENT')throw error;return [];});
+        for (const name of names.filter(name=>/^[a-f0-9]{64}.*\.json$/u.test(name))) {
+          const operation=JSON.parse(await readFile(join(directory,name),'utf8'));
+          if(operation.request.text===text && operation.attempts.some(attempt=>attempt.status==='dispatched'))return operation;
+        }
+        await delay(25);
+      }
+      assert.fail('No dispatched attempt for '+text);
+    }
+    const first=launch(cwd,config,undefined,[],env);
+    const second=launch(cwd,other,undefined,[],env);
+    let firstClosed=false, secondClosed=false, reopened, reopenedClosed=false, cli, cliClosed;
+    const turns=[];
+    try {
+      await Promise.all([initialize(first.agent),initialize(second.agent)]);
+      const {sessionId:history}=await first.agent.request(a.session.new,{cwd,mcpServers:[]});
+      await prompt(first.agent,history,'settings');
+      const {sessionId:one}=await first.agent.request(a.session.new,{cwd,mcpServers:[]});
+      const {sessionId:two}=await second.agent.request(a.session.new,{cwd,mcpServers:[]});
+      const heldA=prompt(first.agent,one,'hold ACP A');
+      const heldB=prompt(second.agent,two,'hold ACP B');
+      for (const turn of [heldA,heldB]) {turn.catch(()=>{});turns.push(turn);}
+      cli=spawn(process.execPath,[entry,'run','hold CLI C','--config',cliConfig,'--state-dir',storeC,'--format','json'],
+        {cwd,env,stdio:['ignore','pipe','pipe']});
+      let stdout='',stderr='';
+      cli.stdout.on('data',bytes=>{stdout+=bytes;}); cli.stderr.on('data',bytes=>{stderr+=bytes;});
+      cliClosed=once(cli,'close').then(([code])=>({code,stdout,stderr}));
+      const [opA,opB,opC]=await Promise.all([active(storeA,'hold ACP A'),active(storeB,'hold ACP B'),active(storeC,'hold CLI C')]);
+      assert.equal((await readDescriptor(storeA)).pid,first.child.pid);
+      assert.equal((await readDescriptor(storeB)).pid,second.child.pid);
+      assert.equal((await readDescriptor(storeC)).pid,cli.pid);
+      const attached=call(['run','not a CLI owner','--config',config,'--state-dir',storeA]);
+      assert.notEqual(attached.status,0); assert.match(attached.stderr,/CONTROL_ACP_SESSION_REQUIRED/);
+      const duplicate=sync(process.execPath,[entry,'acp','--config',config,'--state-dir',storeA],{cwd,env,input:''});
+      assert.notEqual(duplicate.status,0); assert.match(duplicate.stderr,/STATE_STORE_IN_USE/);
+      assert.equal(result(['inspect',opB.operationId,'--state-dir',storeB]).operationId,opB.operationId);
+      assert.equal(result(['cancel',opA.operationId,'--state-dir',storeA]).status,'cancelled');
+      assert.equal((await heldA).stopReason,'cancelled');
+      await first.close(); firstClosed=true;
+      const updated=JSON.parse(original);
+      updated.controllerProfile='secondary'; updated.profiles.secondary={provider:'test',model:'fixture'};
+      await writeFile(config,JSON.stringify(updated));
+      assert.equal(result(['diagnose','--config',config]).stateDirectory,storeA);
+      reopened=launch(cwd,config,undefined,['--state-dir',storeA],env);
+      await initialize(reopened.agent);
+      await reopened.agent.request(a.session.load,{sessionId:history,cwd,mcpServers:[]});
+      assert.ok(reopened.messages.some(message=>message.sessionId===history&&message.update.content?.text==='settings'));
+      assert.equal((await prompt(reopened.agent,history,'settings')).stopReason,'end_turn');
+      const answer=reopened.messages.filter(message=>message.sessionId===history&&message.update.sessionUpdate==='agent_message_chunk').at(-1);
+      assert.equal(JSON.parse(answer.update.content.text)[0],'secondary');
+      await reopened.close(); reopenedClosed=true;
+      assert.equal((await active(storeB,'hold ACP B')).operationId,opB.operationId);
+      assert.equal((await active(storeC,'hold CLI C')).operationId,opC.operationId);
+      await second.agent.notify(a.session.cancel,{sessionId:two});
+      assert.equal((await heldB).stopReason,'cancelled');
+      await second.close(); secondClosed=true;
+      assert.equal(result(['cancel',opC.operationId,'--state-dir',storeC]).status,'cancelled');
+      const completed=await cliClosed;
+      assert.equal(completed.code,0,completed.stderr);
+      assert.equal(JSON.parse(completed.stdout).status,'cancelled');
+    } finally {
+      if(!firstClosed)first.child.kill('SIGKILL');
+      if(!secondClosed)second.child.kill('SIGKILL');
+      if(reopened&&!reopenedClosed)reopened.child.kill('SIGKILL');
+      cli?.kill('SIGKILL');
+      await Promise.allSettled([...turns,...(!firstClosed?[first.close()]:[]),...(!secondClosed?[second.close()]:[]),
+        ...(reopened&&!reopenedClosed?[reopened.close()]:[]),...(cliClosed?[cliClosed]:[])]);
+    }
+  }));
