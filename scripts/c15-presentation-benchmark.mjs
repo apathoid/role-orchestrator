@@ -77,7 +77,15 @@ await withOwnedRun('C15-benchmark',async cwd=>{
   const old=join(cwd,'baseline');await mkdir(old);
   const archive=checked('git',['archive',baseline]);
   checked('tar',['-x','-C',old],{input:archive});
-  assert.deepEqual(await readFile(join(old,'package-lock.json')),await readFile(join(root,'package-lock.json')));
+  // Historical code shares the installed dependency tree. Every dependency it
+  // actually locked must remain byte-identical in resolution and metadata.
+  // C24 adds YAML; additional current-only packages do not change that baseline.
+  const baselineLock=JSON.parse(await readFile(join(old,'package-lock.json'),'utf8'));
+  const currentLock=JSON.parse(await readFile(join(root,'package-lock.json'),'utf8'));
+  for(const [key,value] of Object.entries(baselineLock.packages)){
+    if(key==='')continue;
+    assert.deepEqual(currentLock.packages[key],value,'Historical dependency changed: '+key);
+  }
   await symlink(join(root,'node_modules'),join(old,'node_modules'),'dir');
   const work=join(cwd,'work');await mkdir(work);
   const config=join(work,'config.json');

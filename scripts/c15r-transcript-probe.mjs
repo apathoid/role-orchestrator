@@ -28,7 +28,15 @@ await withOwnedRun('C15R-transcript',async cwd=>{
   const old=join(cwd,'baseline');await mkdir(old);checked('tar',['-x','-C',old],{input:checked('git',['archive',baseline])});
   await symlink(join(root,'node_modules'),join(old,'node_modules'),'dir');
   const work=join(cwd,'work');await mkdir(work);
-  assert.deepEqual(await readFile(join(old,'package-lock.json')),await readFile(join(root,'package-lock.json')));
+  // Historical code shares the installed dependency tree. Every dependency it
+  // actually locked must remain byte-identical in resolution and metadata.
+  // C24 adds YAML; additional current-only packages do not change that baseline.
+  const baselineLock=JSON.parse(await readFile(join(old,'package-lock.json'),'utf8'));
+  const currentLock=JSON.parse(await readFile(join(root,'package-lock.json'),'utf8'));
+  for(const [key,value] of Object.entries(baselineLock.packages)){
+    if(key==='')continue;
+    assert.deepEqual(currentLock.packages[key],value,'Historical dependency changed: '+key);
+  }
   const cases=[['baseline',join(old,'src/main/cli.js'),'compact'],
     ...(!process.argv.includes('--baseline-only')?['compact','detailed','debug'].map(mode=>[mode,join(root,'src/main/cli.js'),mode]):[])];
   const results=new Map(cases.map(([name])=>[name,[]]));
