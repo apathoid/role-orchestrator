@@ -37,7 +37,7 @@ test('project selection resolves installed extensions and the Controller sees pr
   }
   for (const [fields, expected] of [
     [{ preferredSkills: ['guide'] }, localFailure('$.preferredSkills[0]', 'available-skill')],
-    [{ controllerProfile: 'echo' }, localFailure('$.controllerProfile', 'available-profile')],
+    [{ controllerProfile: 'unknown' }, localFailure('$.controllerProfile', 'known-profile')],
     [{ plugins: [{ id: 'attack', module: './unsafe.js' }] }, localFailure('$.plugins', 'a supported field')],
   ]) {
     const current = await loadExtensions({ ...configuration, plugins: [] }, { ...runtime, projectText: project(fields) });
@@ -49,6 +49,19 @@ test('project selection resolves installed extensions and the Controller sees pr
       await current.close();
     }
   }
+  // Known but unavailable profile preferences remain inspectable. The
+  // selected profile still cannot execute, and no fallback is chosen.
+  const unavailable = await loadExtensions({ ...configuration, plugins: [] },
+    { ...runtime, projectText: project({controllerProfile:'echo'}) });
+  try {
+    assert.equal(unavailable.selection.kind,'accepted');
+    assert.equal(unavailable.selection.value.controllerProfile,'echo');
+    const selected=await unavailable.selectController();
+    assert.equal(selected.kind,'unavailable');
+    assert.equal(selected.profileId,'echo');
+    assert.notEqual(selected.reason,'PREFERENCES_REJECTED');
+    assert.equal((await unavailable.selectController('primary')).kind,'available');
+  } finally { await unavailable.close(); }
 });
 
 test('major version is local to a plugin and optional v1 fields preserve the original config', () =>
