@@ -983,3 +983,50 @@ test('C23 A127/A130 two ACP processes and one CLI overlap; restart changed confi
         ...(reopened&&!reopenedClosed?[reopened.close()]:[]),...(cliClosed?[cliClosed]:[])]);
     }
   }));
+
+test('C24 ACP exposes and persists Controller profile selection before prompting', { timeout: 12_000 }, () =>
+  withOwnedRun('C24-acp-profile', async cwd => {
+    const config = await fixture(cwd, {
+      profiles: {
+        primary: { provider: 'test', model: 'fixture' },
+        secondary: { provider: 'test', model: 'fixture' },
+      },
+    });
+    const first = launch(cwd, config);
+    let sessionId;
+    const profileOption = response => {
+      const option = response.configOptions?.find(item => item.id === 'controllerProfile');
+      assert.ok(option, 'session must expose the Controller profile selector before prompting');
+      assert.equal(option.category, 'model');
+      assert.equal(option.type, 'select');
+      assert.deepEqual(new Set(option.options.flatMap(item => 'options' in item ? item.options : [item]).map(item => item.value)),
+        new Set(['primary', 'secondary']));
+      return option;
+    };
+    try {
+      await initialize(first.agent);
+      const created = await first.agent.request(a.session.new, { cwd, mcpServers: [] });
+      sessionId = created.sessionId;
+      assert.equal(profileOption(created).currentValue, 'primary');
+      const changed = await first.agent.request(a.session.setConfigOption, {
+        sessionId, configId: 'controllerProfile', value: 'secondary',
+      });
+      assert.equal(profileOption(changed).currentValue, 'secondary');
+      await assert.rejects(first.agent.request(a.session.setConfigOption, {
+        sessionId, configId: 'controllerProfile', value: 'missing',
+      }));
+      assert.equal((await prompt(first.agent, sessionId, 'settings')).stopReason, 'end_turn');
+      const message = first.messages.filter(item => item.sessionId === sessionId &&
+        item.update.sessionUpdate === 'agent_message_chunk').at(-1);
+      assert.equal(JSON.parse(message.update.content.text)[0], 'secondary');
+    } finally { await first.close(); }
+
+    const reopened = launch(cwd, config);
+    try {
+      await initialize(reopened.agent);
+      const loaded = await reopened.agent.request(a.session.load, { sessionId, cwd, mcpServers: [] });
+      assert.equal(profileOption(loaded).currentValue, 'secondary');
+      const other = await reopened.agent.request(a.session.new, { cwd, mcpServers: [] });
+      assert.equal(profileOption(other).currentValue, 'primary');
+    } finally { await reopened.close(); }
+  }));
