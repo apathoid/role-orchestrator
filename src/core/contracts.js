@@ -15,7 +15,7 @@ const ids = arrayOf(id);
 const workspaceContext = optional(record({ cwd: optional(id) }));
 export const userSettings = record({ reasoningEffort: optional(id), collaborationMode: optional(id), approvalMode: optional(id) });
 /** @typedef {Partial<ReturnType<typeof userSettings>>} UserSettings */
-export const agentSkill = record({name:id,path:id,source:oneOf('project','global')});
+export const agentSkill = record({name:id,path:id,source:oneOf('project','global'),selection:optional(id)});
 // Ordered content contains text ranges into the one literal text field, and
 // scoped non-text references. Embedded bytes are never in the accepted journal.
 const payloadRef=record({ref:(value,path)=>/^sha256:[a-f0-9]{64}$/u.test(id(value,path))?id(value,path):invalid(path,'a SHA-256 reference'),size:count,originalSize:count,truncated:(value,path)=>value===false?false:invalid(path,'false')});

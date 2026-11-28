@@ -149,15 +149,27 @@ export async function replayHistory(session,inspect,emit,mode,display,signal,rep
     if(!ids)associated.set(req.operationId,ids=new Set());
     ids.add(operationRequestId(session.sessionId,req.requestId));
   }
-  /** @param {Operation} operation @param {string} id @param {string} text @param {string} origin */
-  async function unassociated(operation,id,text,origin){
+  /** @param {Operation} operation @param {string} id @param {string} text @param {string} origin @param {Operation['request']['content']} [ordered] */
+  async function unassociated(operation,id,text,origin,ordered){
+    if(signal?.aborted)return;
+    const source={source:'history',operationId:operation.operationId,recovered:true,requestId:id};
+    /** @type {string[]} */ const omitted=[];
+    const blocks=ordered?await replayContent?.(operation.operationId,{requestId:id,text,content:ordered},signal??new AbortController().signal,ref=>omitted.push(ref)):undefined;
     if(signal?.aborted)return;
     await emit(acpOwnMessage(
       'Recovered '+origin+' for Operation '+operation.operationId+
       ' (not associated with a recorded session turn; chronological position/answer unknown)'+
-      (text?'\n'+boundedText(text,2048):''),
-      {source:'history',operationId:operation.operationId,recovered:true,requestId:id},
-      'orphan:'+id));
+      (!blocks&&text?'\n'+boundedText(text,2048):'')+
+      (ordered&&!blocks?'\nHistorical user content unavailable; embedded payloads were not reconstructed':''),
+      source,'orphan:'+id));
+    for(const content of blocks??[]){
+      if(signal?.aborted)return;
+      await emit({sessionUpdate:'agent_message_chunk',content,_meta:{roleOrchestratorSource:source}});
+    }
+    for(const ref of omitted){
+      if(signal?.aborted)return;
+      await emit(acpOwnMessage('Historical user block unavailable: '+ref,source,'orphan:'+id));
+    }
   }
   for(const request of session.requests)if(request.operationId)remaining.set(request.operationId,(remaining.get(request.operationId)??0)+1);
   /** Recovered user records are independent of inline/notices presentation mode.
@@ -166,13 +178,13 @@ export async function replayHistory(session,inspect,emit,mode,display,signal,rep
    */
   async function orphanRecords(operation,from,to){
     const known=associated.get(operation.operationId);
-    if(from===0&&to>0&&!known?.has(operation.request.requestId)){
-      await unassociated(operation,operation.request.requestId,operation.request.text,'initial Request');
+    if(from===0&&!known?.has(operation.request.requestId)){
+      await unassociated(operation,operation.request.requestId,operation.request.text,'initial Request',operation.request.content);
     }
     for(let index=from;!signal?.aborted&&index<to;index++){
       const item=operation.events[index];
       if(item.kind==='operation.continued'&&!known?.has(item.input.requestId)){
-        await unassociated(operation,item.input.requestId,item.input.text,'continuation');
+        await unassociated(operation,item.input.requestId,item.input.text,'continuation',item.input.content);
       }
     }
   }

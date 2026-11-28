@@ -36,7 +36,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {AttemptInteractions, AttemptPermissions, AuthorityPort, Catalog, ContextShare, InteractionPort, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
- * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, settings?: import('../core/ports.js').AcceptedSettings, workerApproval?: (profile: Profile) => import('../core/ports.js').NativeSetting | undefined, approvalApplicability?:(profile:Profile)=>string, reasoningBindingFor?:(profile:Profile)=>unknown, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
+ * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, settings?: import('../core/ports.js').AcceptedSettings, workerApproval?: (profileId: string, choice: import('../core/ports.js').NativeSetting|undefined) => import('../core/ports.js').NativeSetting | undefined, approvalApplicability?:(profileId:string,choice:import('../core/ports.js').NativeSetting|undefined)=>string, reasoningBindingFor?:(profile:Profile)=>unknown, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
  * @typedef {(workspace: Operation['request']['workspaceContext'], controllerProfile?: string, input?: import('../core/ports.js').SettingsInput) => Promise<Execution>} ResolveExecution
  * @typedef {{
  *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
@@ -870,9 +870,20 @@ export function createOrchestrator(deps) {
       const reasoning = choice.selection;
       const reasoningBinding=reasoning.mode==='selectable'?reasoningBindingFor?.(selectedProfile)??(!handoff?settings?.reasoningEffort?.binding:undefined):undefined;
       const collaborationMode = handoff ? undefined : settings?.collaborationMode;
-      const approvalMode = handoff ? workerApproval?.(selectedProfile) : settings?.approvalMode;
-      if(handoff&&settings?.approvalMode&&approvalApplicability){
-        observations.push(observation({ref:'host:approval-applicability:'+attemptId,completeness:'complete',value:{profileId:selectedProfile.profileId,option:settings.approvalMode.id,applicability:approvalApplicability(selectedProfile)}},{kind:'host_transport',sourceId:selectedProfile.providerId,receivedAt:clock.now()}));
+      const admitted=action&&state.events.flatMap(event=>event.kind==='controller.responded'?event.admissions??[]:[])
+        .find(item=>item.kind==='accepted'&&item.action.actionId===action.actionId);
+      const acceptedApproval=admitted?.kind==='accepted'?admitted.approval:undefined;
+      const approvalChoice=acceptedApproval?acceptedApproval.choice:settings?.approvalMode;
+      const approvalMode=handoff?workerApproval?.(selectedProfile.profileId,approvalChoice):settings?.approvalMode;
+      if(handoff&&acceptedApproval&&!sameRecord(acceptedApproval.setting,approvalMode)){
+        const ref='host:setting:'+attemptId;
+        observations.push(observation({ref,completeness:'complete',value:{feature:'approvalMode',reason:'accepted_worker_setting_changed',profileId:selectedProfile.profileId}},
+          {kind:'host_transport',sourceId:selectedProfile.providerId,receivedAt:clock.now()}));
+        const failure=failedOutcome(attemptId,'CAPABILITY_UNAVAILABLE',false);failure.diagnostics[0].ref=ref;
+        return {outcome:failure,certainty:/** @type {const} */('not_sent'),output,observations,contextCursor,recordLate,decisionTextError};
+      }
+      if(handoff&&approvalChoice&&approvalApplicability){
+        observations.push(observation({ref:'host:approval-applicability:'+attemptId,completeness:'complete',value:{profileId:selectedProfile.profileId,option:approvalChoice.id,applicability:approvalApplicability(selectedProfile.profileId,approvalChoice)}},{kind:'host_transport',sourceId:selectedProfile.providerId,receivedAt:clock.now()}));
       }
       const missingFeature = collaborationMode?.nativeValue !== undefined && executor.supportsCollaborationMode !== true
         ? 'collaborationMode' : approvalMode?.nativeValue !== undefined && executor.supportsApprovalMode !== true ? 'approvalMode' : undefined;
@@ -1597,7 +1608,9 @@ export function createOrchestrator(deps) {
             const round = planRound(state, value);
             if (round.error) correction = round.error;
             else {
-              state = await transition(state, { kind: 'controller.responded', decision: value, attemptId, admissions: round.admissions });
+              const admissions=round.admissions.map(item=>item.kind==='accepted'&&execution.workerApproval
+                ? {...item,approval:{choice:execution.settings?.approvalMode,setting:execution.workerApproval(item.action.profileId,execution.settings?.approvalMode)}}:item);
+              state = await transition(state, { kind: 'controller.responded', decision: value, attemptId, admissions });
               for (const actionId of new Set(value.cancellations)) {
                 state = await transition(state, { kind: 'action.cancelled', actionId, source: 'superseded' });
                 pending.get(actionId)?.stop.abort('superseded');

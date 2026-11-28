@@ -3,7 +3,7 @@ import { sameRecord } from './operation.js';
 /** @import {Action, ReasonCode} from './contracts.js' */
 
 /**
- * @typedef {{kind: 'accepted', action: Action} | {kind: 'duplicate', actionId: string} |
+ * @typedef {{kind: 'accepted', action: Action, approval?: {choice?: import('./ports.js').NativeSetting, setting?: import('./ports.js').NativeSetting}} | {kind: 'duplicate', actionId: string} |
  *   {kind: 'rejected', actionId: string, code: ReasonCode, dependencyId?: string,
  *    reason: 'identity' | 'unknown_dependency' | 'unavailable_dependency' | 'cyclic_dependency'}} Admission
  */

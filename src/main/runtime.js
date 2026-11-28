@@ -129,8 +129,8 @@ export async function openRuntime(options, onStoreOpen) {
       return {
         catalog: registry.projectCatalog(selectedConfig), profile: selected.profile, provider: selected.provider,
         settings:accepted, reasoningBindingFor:(/** @type {import('../core/ports.js').Profile} */ profile)=>selectedConfig.providers[profile.providerId]?.featureBindings?.reasoningEffort,
-        ...(accepted?.approvalMode&&{workerApproval:(/** @type {import('../core/ports.js').Profile} */ profile)=>workerApproval(selectedConfig,profile.profileId,accepted?.approvalMode),
-          approvalApplicability:(/** @type {import('../core/ports.js').Profile} */ profile)=>workerApprovalApplicability(selectedConfig,profile.profileId,accepted?.approvalMode)}),
+        workerApproval:(/** @type {string} */ profileId,/** @type {import('../core/ports.js').NativeSetting|undefined} */ choice)=>workerApproval(selectedConfig,profileId,choice),
+        approvalApplicability:(/** @type {string} */ profileId,/** @type {import('../core/ports.js').NativeSetting|undefined} */ choice)=>workerApprovalApplicability(selectedConfig,profileId,choice),
         limits: {
           maxInvocations: selectedConfig.resources.maxInvocationsPerOperation,
           maxConcurrentInvocations: selectedConfig.resources.maxConcurrentInvocations,

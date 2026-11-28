@@ -6,7 +6,7 @@ import { redactDiagnostic } from '../application/redact-diagnostic.js';
 
 /** @import {Operation} from '../core/operation.js' */
 /** @typedef {ReturnType<typeof import('../application/orchestrator.js').createOrchestrator>} Coordinator */
-/** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string, selectSkill?:(cwd:string,selection:string)=>Promise<import('../adapters/configuration/agent-skills.js').AgentSkill|undefined>, trace?: (operationId: string) => Promise<ReturnType<typeof operationTrace>>}} HostApi */
+/** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string, findRequest?:Coordinator['findRequest'], selectSkill?:(cwd:string,selection:string)=>Promise<import('../adapters/configuration/agent-skills.js').AgentSkill|undefined>, trace?: (operationId: string) => Promise<ReturnType<typeof operationTrace>>}} HostApi */
 /** @typedef {{
  *   action: 'run' | 'resume' | 'inspect' | 'cancel' | 'trace' | 'export-diagnostics' | 'diagnose' | 'settings' | 'skills',
  *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client', controllerProfile?: string, userSettings?:import('../core/contracts.js').UserSettings,agentSkillSelection?:string,agentSkill?:ReturnType<typeof import('../core/contracts.js').agentSkill>,attachmentPaths?:string[]
@@ -31,10 +31,21 @@ export async function dispatchCommand(api, command, accepted) {
   let agentSkill=command.agentSkill;
   if(agentSkillSelection!==undefined){
     if(agentSkill||!api.selectSkill||!['run','resume'].includes(action))throw new HostError('INVALID_ARGUMENT','Agent Skill selection unavailable');
-    const workspace=action==='resume'&&operationId?workspaceContextFor(await api.inspect(operationId))?.cwd:cwd;
-    const selected=await api.selectSkill(workspace??process.cwd(),agentSkillSelection);
-    if(!selected)throw new HostError('INVALID_ARGUMENT','Unknown or ambiguous Agent Skill shortcut');
-    agentSkill={name:selected.name,path:selected.path,source:selected.source};
+    const prior=await api.findRequest?.(requestId);
+    if(prior){
+      const continued=prior.events.find(event=>event.kind==='operation.continued'&&event.input.requestId===requestId);
+      const stored=action==='run'&&prior.request.requestId===requestId?prior.request:
+        action==='resume'&&prior.operationId===operationId&&continued?.kind==='operation.continued'?continued.input:undefined;
+      const skill=stored?.agentSkill;
+      if(!skill||!(skill.selection!==undefined?skill.selection===agentSkillSelection:skill.name===agentSkillSelection||skill.path===agentSkillSelection))
+        throw new HostError('IDENTITY_CONFLICT','Request identity already exists with a different Agent Skill selection');
+      agentSkill=skill;
+    }else{
+      const workspace=action==='resume'&&operationId?workspaceContextFor(await api.inspect(operationId))?.cwd:cwd;
+      const selected=await api.selectSkill(workspace??process.cwd(),agentSkillSelection);
+      if(!selected)throw new HostError('INVALID_ARGUMENT','Unknown or ambiguous Agent Skill shortcut');
+      agentSkill={name:selected.name,path:selected.path,source:selected.source,selection:agentSkillSelection};
+    }
   }
   // New dispatch notifies before launch; existing or synthetic submissions may
   // return without invoking the callback. Preserve one acceptance in both cases.
@@ -54,7 +65,7 @@ export async function dispatchCommand(api, command, accepted) {
   if (!operationId) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
   if (action === 'resume') {
     if (text !== undefined && !text.trim()&&!attachmentPaths?.length) throw new HostError('INVALID_ARGUMENT', 'Follow-up text is empty');
-    if(text===undefined&&!attachmentPaths?.length&&(controllerProfile!==undefined||userSettings))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
+    if(text===undefined&&!attachmentPaths?.length&&(controllerProfile!==undefined||userSettings||agentSkill))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
     const submission = await api.resume(operationId, text === undefined&&!attachmentPaths?.length ? undefined : { requestId, ...input, questionId, controllerProfile, userSettings, agentSkill }, notify);
     notify(submission.operation.operationId);
     return submission.completion;

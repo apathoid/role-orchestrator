@@ -72,7 +72,7 @@ const attempt = tagged('status', {
 });
 /** @type {Decoder<Admission>} */
 const admission = tagged('kind', {
-  accepted: record({ kind: oneOf('accepted'), action }),
+  accepted: record({ kind: oneOf('accepted'), action, approval: optional(record({choice:optional(nativeSetting),setting:optional(nativeSetting)})) }),
   duplicate: record({ kind: oneOf('duplicate'), actionId: id }),
   rejected: record({
     kind: oneOf('rejected'), actionId: id, code: reasonCode, dependencyId: optional(id),
