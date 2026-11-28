@@ -44,22 +44,26 @@ agent()
     const latestRecord=context.find(item=>item.ref===host?.userTurns?.latest?.ref);
     const latestNative=context.find(item=>item.ref==='host:ordered-input')?.value?.find(item=>item.requestId===host?.userTurns?.latest?.ref&&item.literalText);
     const userText=latestNative?params.prompt.slice(latestNative.startBlock,latestNative.startBlock+latestNative.count).filter(item=>item.type==='text').map(item=>item.text).join(''):latestRecord?.value;
-    await appendFile('c24-wire.jsonl',JSON.stringify({kind,variant,profileId,blocks,mode,userSelectedSkills,userText:variant==='large'||variant==='history-request-large'?undefined:userText,literalCopies,...(variant==='history-request-large'&&{fallbackBoundary:objective.endsWith('\nC24-END-BLOCK')}),promptBytes:Buffer.byteLength(JSON.stringify(params.prompt)),settings:Object.fromEntries(options.map(item=>[item.id,item.currentValue]))})+'\n');
+    const attribution=variant==='worker-attribution'?{orderedInput:context.find(item=>item.ref==='host:ordered-input')?.value,contextRefs:context.map(item=>item.ref)}:undefined;
+    await appendFile('c24-wire.jsonl',JSON.stringify({kind,variant,profileId,blocks,mode,userSelectedSkills,...attribution,userText:variant==='large'||variant==='history-request-large'?undefined:userText,literalCopies,...(variant==='history-request-large'&&{fallbackBoundary:objective.endsWith('\nC24-END-BLOCK')}),promptBytes:Buffer.byteLength(JSON.stringify(params.prompt)),settings:Object.fromEntries(options.map(item=>[item.id,item.currentValue]))})+'\n');
     const send=text=>client.notify(c.session.update,{sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}});
     if(variant==='mode-change-during'){mode='native';await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'current_mode_update',currentModeId:mode}});}
     if(kind==='delegate'){await send('C24 worker result');return {stopReason:'end_turn'};}
     const latest=userText;
-    const delegate=latest==='delegate selected image'&&!context.some(item=>item.value==='C24 worker result');
+    const delegate=(latest==='delegate selected image'||variant==='worker-attribution'&&latest==='delegate two images')&&!context.some(item=>item.value==='C24 worker result');
     const decision={schemaVersion:1,operationId,decisionId:attemptId+'-decision',contextCursor:host.contextCursor,additions:[],cancellations:[]};
     if((variant==='history-request'||variant==='history-request-large')&&latest==='retrieve first image'&&!blocks.some(item=>item.type==='image'&&item.hash===createHash('sha256').update(Buffer.alloc(700*1024,7)).digest('hex'))){
       const ref=host.attachments.find(item=>item.mediaType==='image/png').ref;
       decision.nextController={continue:true,contextRequest:{refs:[ref]}};
+    }else if(variant==='history-boundary'&&latest==='retrieve boundary image'&&!context.some(item=>item.ref.startsWith('decision:')&&item.value?.nextController?.contextRequest)){
+      decision.nextController={continue:true,contextRequest:{refs:[host.attachments.find(item=>item.mediaType==='image/png').ref]}};
     }else if(variant==='approval-recovery'&&!host.workMap.entries.some(item=>item.actionId==='c24-approval-worker')){
       decision.additions=[{kind:'delegate',actionId:'c24-approval-worker',profileId:'worker',objective:'Do accepted work',expectedResult:'Result',contextRefs:[],dependsOn:[]}];
       decision.waitPolicy={kind:'all_requested',targets:[{kind:'action',id:'c24-approval-worker'}]};
     }else if(delegate){
-      const ref=host.attachments.filter(item=>item.mediaType==='image/png').at(-1).ref;
-      decision.additions=[{kind:'delegate',actionId:'c24-selected-worker',profileId:'worker',objective:'Inspect selected content',expectedResult:'Result',contextRefs:[ref],dependsOn:[]}];
+      const images=host.attachments.filter(item=>item.mediaType==='image/png');
+      const refs=variant==='worker-attribution'?images.slice(0,2).reverse().map(item=>item.ref):[images.at(-1).ref];
+      decision.additions=[{kind:'delegate',actionId:'c24-selected-worker',profileId:'worker',objective:'Inspect selected content',expectedResult:'Result',contextRefs:refs,dependsOn:[]}];
       decision.waitPolicy={kind:'all_requested',targets:[{kind:'action',id:'c24-selected-worker'}]};
     }else decision.finalAssessment={author:profileId,overall:'complete',answer:'C24 complete',requirements:[],observationRefs:[],findingRefs:[],unresolvedQuestions:[]};
     await send(JSON.stringify(decision));return {stopReason:'end_turn'};

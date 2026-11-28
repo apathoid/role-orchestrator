@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { PassThrough } from 'node:stream';
 import { createOperation, acceptedSettingsFor } from '../../src/core/operation.js';
 import { controllerContext, operationHistory, pendingControllerHistoryRequest } from '../../src/application/controller-context.js';
-import { prepareUserContent } from '../../src/application/user-content.js';
+import { prepareUserContent, projectOrderedTurns } from '../../src/application/user-content.js';
 import { bindContextAccess } from '../../src/application/context-access.js';
 import { attachmentBlocks, renderContentAttachment, renderOrderedTurn } from '../../src/adapters/acp/input.js';
 import { runCli } from '../../src/hosts/cli.js';
@@ -161,4 +161,37 @@ test('C24 final T36 model-facing ordered text ranges explicitly identify canonic
   assert.equal(chunk.kind,'chunk');assert.equal(chunk.format,'utf8');
   assert.equal(chunk.totalBytes,Buffer.byteLength(canonical.value));
   assert.equal(Buffer.from(chunk.base64,'base64').toString('utf8'),'éB');
+});
+
+test('C24 T40 admission and projection count identical decoded bytes for absent, empty, null and explicit metadata',()=>{
+  const mime='image/png';
+  for(const metadata of [undefined,{},null,{label:'é🧪',flag:true}]){
+    const block={kind:'image',mediaType:mime,encoding:'binary',data:Buffer.alloc(1015,7).toString('base64'),...(metadata!==undefined&&{metadata})};
+    const limit=1015+Buffer.byteLength(mime)+(metadata===undefined?0:Buffer.byteLength(JSON.stringify(metadata)));
+    const input={requestId:'size-test',content:[block]};
+    assert.equal(prepareUserContent(input,limit-1).kind,'rejected');
+    const accepted=prepareUserContent(input,limit);
+    assert.equal(accepted.kind,'accepted');
+    const {requestId,text,content}=accepted.input;
+    const turn={requestId,text,content};
+    const refs=new Set([content[0].ref]);
+    const exact=projectOrderedTurns([turn],'new',new Set([requestId]),limit,true,refs);
+    assert.deepEqual(exact.selected.map(item=>item.content[0].ref),[content[0].ref],JSON.stringify(metadata));
+    assert.deepEqual(exact.omitted,[]);
+    const tooSmall=projectOrderedTurns([turn],'new',new Set([requestId]),limit-1,true,refs);
+    assert.deepEqual(tooSmall.selected,[]);
+    assert.equal(tooSmall.omitted[0].reason,'selected_input_budget');
+  }
+  // Text is counted per original block, not by joining adjacent UTF-16
+  // ranges (even two isolated surrogate halves can form a pair on joining).
+  const blocks=[{kind:'text',text:'\ud83d'},{kind:'text',text:'\ude00',metadata:{}},
+    {kind:'link',uri:'file:///é',mediaType:'text/plain',metadata:null}];
+  const bytes=blocks.slice(0,2).reduce((sum,item)=>sum+Buffer.byteLength(item.text)+(item.metadata===undefined?0:Buffer.byteLength(JSON.stringify(item.metadata))),0)+
+    Buffer.byteLength('file:///é')+Buffer.byteLength('text/plain')+4;
+  const accepted=prepareUserContent({requestId:'mixed',content:blocks},bytes);
+  assert.equal(accepted.kind,'accepted');
+  const {requestId,text,content}=accepted.input;
+  const turn={requestId,text,content};
+  assert.equal(projectOrderedTurns([turn],'new',new Set([requestId]),bytes,true).selected.length,1);
+  assert.equal(projectOrderedTurns([turn],'new',new Set([requestId]),bytes-1,true).omitted[0].reason,'input_budget');
 });

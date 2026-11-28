@@ -1513,3 +1513,39 @@ test('C24 final T35 receive frame and decoded ordered admission have independent
     assert.equal(wire.blocks[1].text,'end');
   }finally{await host.close();}
 }));
+
+for(const handoffMaxBytes of [64*1024,1]){
+  test('C24 T37/T38 exact Worker attachment attribution with handoff budget '+handoffMaxBytes,{timeout:30000},()=>withOwnedRun('C24-worker-attribution',async cwd=>{
+    const {createHash}=await import('node:crypto');
+    const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+    const endpoint={adapter:'acp',launch:{command:process.execPath,args:[native,'worker-attribution']}};
+    const config=await fixture(cwd,{providers:{test:endpoint,worker:endpoint},
+      profiles:{primary:{provider:'test',model:'fixture'},worker:{provider:'worker',model:'fixture'}},
+      plugins:[],context:{handoffMaxBytes}});
+    const host=launch(cwd,config);
+    const image=byte=>({type:'image',mimeType:'image/png',data:Buffer.alloc(32,byte).toString('base64')});
+    try{
+      await initialize(host.agent);
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      const send=blocks=>host.agent.request(a.session.prompt,{sessionId,prompt:blocks});
+      assert.equal((await send([image(1)])).stopReason,'end_turn');
+      assert.equal((await send([image(2),image(3)])).stopReason,'end_turn');
+      assert.equal((await send([{type:'text',text:'delegate two images'}])).stopReason,'end_turn');
+      const records=(await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+      const worker=records.find(item=>item.kind==='delegate');
+      assert.ok(worker);
+      const files=await readdir(join(cwd,'state'));
+      const states=await Promise.all(files.filter(name=>name.endsWith('.json')).map(async name=>JSON.parse(await readFile(join(cwd,'state',name),'utf8'))));
+      const saved=states.find(item=>item.request?.content);
+      const A=saved.request.content[0].ref;
+      const B=saved.events.find(event=>event.kind==='operation.continued').input.content[0].ref;
+      const action=saved.events.flatMap(event=>event.kind==='controller.responded'?event.decision.additions:[]).find(item=>item.actionId==='c24-selected-worker');
+      assert.deepEqual(action.contextRefs,[B,A]);
+      assert.deepEqual(worker.blocks.map(item=>item.hash),[1,2].map(byte=>createHash('sha256').update(Buffer.alloc(32,byte)).digest('hex')));
+      const selectedContext=worker.contextRefs.filter(ref=>ref===A||ref===B);
+      assert.deepEqual(selectedContext,handoffMaxBytes===1?[]:[B,A]);
+      assert.deepEqual(worker.orderedInput?.flatMap(group=>group.refs),[{ref:A,block:1},{ref:B,block:2}],
+        'model-facing native block indexes must identify the actual prompt, not the handoff order');
+    }finally{await host.close();}
+  }));
+}

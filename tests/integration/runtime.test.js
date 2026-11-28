@@ -428,3 +428,26 @@ test('C24 final T33/T34 explicit project startup validates structure without dem
   await writeFile(project,JSON.stringify({schemaVersion:1,controllerProfile:'unknown-profile'}));
   await assert.rejects(openRuntime(options),{code:'INVALID_CONFIGURATION'});
 }));
+
+test('C24 T39 an exactly admitted attachment remains explicitly retrievable at the same decoded limit',()=>withOwnedRun('C24-boundary-retrieval',async directory=>{
+  const {request}=await import('../fixtures/core.js');
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const configuration=JSON.stringify({schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},
+    providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'history-boundary']}}},
+    input:{maxBytes:1024},resources:{maxInvocationsPerOperation:5}});
+  const runtime=await openRuntime({configuration,configurationDirectory:directory,stateDirectory:join(directory,'state')});
+  try{
+    const {text,...base}=request({configurationRef:runtime.api.configurationRef,workspaceContext:{cwd:directory}});
+    const image=byte=>({kind:'image',mediaType:'image/png',encoding:'binary',data:Buffer.alloc(byte===7?1015:8,byte).toString('base64')});
+    const first=await(await runtime.api.submit({...base,content:[image(7)]})).completion;
+    assert.equal(first.status,'finished');
+    const done=await(await runtime.api.resume(first.operationId,{requestId:'boundary-followup',content:[image(8),{kind:'text',text:'retrieve boundary image'}]})).completion;
+    assert.equal(done.status,'finished');
+    const records=(await readFile(join(directory,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(records.length,3);
+    const original=records[0].blocks.find(item=>item.type==='image');
+    assert.equal(original.size,1015);
+    assert.ok(!records[1].blocks.some(item=>item.hash===original.hash),'new turn consumes historical budget');
+    assert.deepEqual(records[2].blocks.filter(item=>item.type==='image').map(item=>item.hash),[original.hash]);
+  }finally{await runtime.close();}
+}));
