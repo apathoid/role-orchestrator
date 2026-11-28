@@ -19,9 +19,11 @@
  * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>,
  *   reasoning?: ReasoningCatalog, unavailable?: string}} Profile
  * @typedef {{sessionId: string}} ProviderSession
+ * @typedef {Request['attachments'][number]|import('./contracts.js').ContentAttachment} UserAttachment
+ * @typedef {{requestId:string,text:string,content:readonly import('./contracts.js').ContentSegment[]}} OrderedTurn
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
- *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection, collaborationMode?: NativeSetting, approvalMode?: NativeSetting,
+ *   attachments?: readonly UserAttachment[], orderedTurns?:readonly OrderedTurn[], readUserPayload?:(ref:string)=>Promise<Uint8Array|undefined>, requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection, collaborationMode?: NativeSetting, approvalMode?: NativeSetting,
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number | null,
  *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, evidenceAccess?: LiveEvidencePort, preflightIntent?: ControllerPreflight, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>,
  *   controllerDelivery?: 'intent_text' | 'intent_mcp', controllerDecisionToolName?: string}} Invocation

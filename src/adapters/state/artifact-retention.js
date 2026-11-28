@@ -30,6 +30,14 @@ export function expiredArtifacts(operations, files, policy, now) {
       usage.set(hash, entry);
     }
 
+    // Accepted embedded user input remains available for explicit continuation
+    // and history while its operation exists, even if it is currently finished.
+    const turns=[operation.request,...operation.events.flatMap(event=>event.kind==='operation.continued'?[event.input]:[])];
+    for(const turn of turns)for(const item of turn.content??[])if(item.kind!=='text'&&item.payload){
+      track(item.payload.ref,item.payload.size);
+      const hash=artifactRef.exec(item.payload.ref)?.[1];
+      const entry=hash&&usage.get(hash);if(entry)entry.protected=true;
+    }
     for (const event of operation.events) {
       if (event.kind !== 'attempt.outcome') continue;
       for (const output of event.outcome.outputRefs) {

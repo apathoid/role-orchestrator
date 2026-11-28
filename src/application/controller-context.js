@@ -1,3 +1,4 @@
+import { userAttachments } from './user-content.js';
 import { decisionContract } from './decision-instructions.js';
 import { decisionRecovery } from './decision-recovery.js';
 import { compactContext, defaultContextMaxBytes } from './context-bundle.js';
@@ -437,7 +438,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       }),
       ...(preferences && { preferences }),
       limits: state.limits, resources: resourceSnapshot(state),
-      attachments: state.request.attachments,
+      attachments: userAttachments(state),
       ...(state.request.agentSkill||state.events.some(event=>event.kind==='operation.continued'&&event.input.agentSkill)?{userSelectedSkills:[
         ...(state.request.agentSkill?[{requestId:state.request.requestId,...state.request.agentSkill}]:[]),
         ...state.events.flatMap(event=>event.kind==='operation.continued'&&event.input.agentSkill?[{requestId:event.input.requestId,...event.input.agentSkill}]:[]),

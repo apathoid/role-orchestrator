@@ -1,3 +1,4 @@
+import { prepareUserContent, persistUserContent, userAttachments, orderedTurns } from './user-content.js';
 import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
@@ -340,7 +341,9 @@ export function createOrchestrator(deps) {
 
   /** @param {unknown} input @param {(id: string) => void} [accepted] @returns {Promise<Submission>} */
   async function submit(input, accepted) {
-    const parsed = decodeRequest(input);
+    const prepared = prepareUserContent(input);
+    if(prepared.kind==='rejected')throw new OrchestrationError('INVALID_PROPOSAL',prepared.reason,prepared.path);
+    const parsed = decodeRequest(prepared.input);
     if (parsed.kind === 'rejected') {
       throw new OrchestrationError(parsed.reason.code, parsed.reason.expected, parsed.reason.path);
     }
@@ -371,6 +374,8 @@ export function createOrchestrator(deps) {
       }
       const execution = await resolveExecution(request.workspaceContext, request.controllerProfile, {explicit:request.userSettings});
       requireRunning();
+      if(!await persistUserContent(store,prepared))throw new OrchestrationError('STORE_UNAVAILABLE','Cannot persist complete user payload');
+      requireRunning();
       const state = createOperation(ids.newId(), request, authority.reference, execution.limits, clock.now(), execution.settings);
       const failure = await commit(state, null);
       if (failure) throw failure.error;
@@ -395,7 +400,9 @@ export function createOrchestrator(deps) {
         return launch(next, execution, true);
       });
     }
-    const parsed = decode(followup, input);
+    const prepared = prepareUserContent(input);
+    if(prepared.kind==='rejected')throw new OrchestrationError('INVALID_PROPOSAL',prepared.reason,prepared.path);
+    const parsed = decode(followup, prepared.input);
     if (parsed.kind === 'rejected') {
       throw new OrchestrationError(parsed.reason.code, parsed.reason.expected, parsed.reason.path);
     }
@@ -422,6 +429,8 @@ export function createOrchestrator(deps) {
       const execution = await resolveExecution(follow.workspaceContext ?? workspaceContextFor(state), follow.controllerProfile ?? controllerProfileFor(state), {
         explicit:follow.userSettings, inherited:follow.replaceSettings ? undefined : acceptedSettingsFor(state)?.overrides,
       });
+      requireRunning();
+      if(!await persistUserContent(store,prepared))throw new OrchestrationError('STORE_UNAVAILABLE','Cannot persist complete user payload');
       requireRunning();
       const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution, state) });
       notifyAccepted(accepted, operationId);
@@ -907,7 +916,8 @@ export function createOrchestrator(deps) {
       requireAuthority();
       const skillInstructions = handoff?.skillInstructions?.length
         ? await withinDeadline(materializeSkillInstructions(handoff.skillInstructions, catalog, skillInstructionsMaxBytes, signal)) : [];
-      const attachments = handoff ? handoff.attachments ?? [] : state.request.attachments;
+      const attachments = handoff ? handoff.attachments ?? [] : userAttachments(state);
+      const turns = handoff ? undefined : orderedTurns(state);
       const requiredCapabilities = new Set(handoff?.requiredCapabilities);
       if (attachments.some(item => item.mediaType.toLowerCase().startsWith('image/'))) {
         requiredCapabilities.add('input.image');
@@ -1011,7 +1021,7 @@ export function createOrchestrator(deps) {
           ? bindLiveEvidenceAccess({observations, isActive}) : undefined;
         const preflightIntent = !handoff
           ? bindControllerPreflight({
-            requestId: dispatched.request.requestId, attachments: dispatched.request.attachments, events: dispatched.events,
+            requestId: dispatched.request.requestId, attachments: userAttachments(dispatched), events: dispatched.events,
             observations, profileId: selectedProfile.profileId, isActive,
           }) : undefined;
         const externalTools = tools?.bind({
@@ -1067,7 +1077,15 @@ export function createOrchestrator(deps) {
           mayHaveSent = true;
           if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
           return executor.invoke(owned, {
-          ...context, reasoning, collaborationMode, approvalMode, isActive, contextAccess, evidenceAccess, preflightIntent, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
+          ...context, reasoning, collaborationMode, approvalMode,
+          ...(turns?.length&&{orderedTurns:turns}),
+          ...(attachments.some(item=>'payload' in item&&item.payload)&&{readUserPayload:async (/** @type {string} */ ref)=>{
+            if(!isActive())return;
+            const item=attachments.find(item=>item.ref===ref);
+            if(!item||!('payload' in item)||!item.payload)return;
+            const read=await store.readArtifact?.(item.payload,item.payload.size);
+            return isActive()&&read?.kind==='available'?read.bytes:undefined;
+          }}), isActive, contextAccess, evidenceAccess, preflightIntent, externalTools, idempotencyKey, attachments, requiredCapabilities: [...requiredCapabilities], attemptId, timeoutMs: invocationTimeoutMs, signal,
           permissions: boundPermissions ? { request: boundPermissions.request } : undefined,
           interactions: boundInteractions ? { request: boundInteractions.request, supports: boundInteractions.supports } : undefined,
         }, item => {

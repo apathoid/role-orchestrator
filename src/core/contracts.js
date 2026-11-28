@@ -1,5 +1,5 @@
 import { findings } from './finding.js';
-import { arrayOf, count, decode, id, invalid, measurement, nullable, oneOf, optional, record, text } from './decode.js';
+import { arrayOf, count, decode, id, invalid, jsonValue, measurement, nullable, oneOf, optional, record, text } from './decode.js';
 
 /**
  * All ids are opaque strings scoped by their owning record.
@@ -16,12 +16,49 @@ const workspaceContext = optional(record({ cwd: optional(id) }));
 export const userSettings = record({ reasoningEffort: optional(id), collaborationMode: optional(id), approvalMode: optional(id) });
 /** @typedef {Partial<ReturnType<typeof userSettings>>} UserSettings */
 export const agentSkill = record({name:id,path:id,source:oneOf('project','global')});
-export const request = record({
+// Ordered content contains text ranges into the one literal text field, and
+// scoped non-text references. Embedded bytes are never in the accepted journal.
+const payloadRef=record({ref:(value,path)=>/^sha256:[a-f0-9]{64}$/u.test(id(value,path))?id(value,path):invalid(path,'a SHA-256 reference'),size:count,originalSize:count,truncated:(value,path)=>value===false?false:invalid(path,'false')});
+const textRange=record({kind:oneOf('text'),start:count,end:count,metadata:optional(jsonValue)});
+const contentAttachment=record({kind:oneOf('image','audio','resource','link'),ref:id,mediaType:id,uri:optional(id),
+  payload:optional(payloadRef),encoding:optional(oneOf('utf8','binary')),metadata:optional(jsonValue)});
+/** @typedef {ReturnType<typeof contentAttachment>} ContentAttachment */
+/** @typedef {ReturnType<typeof textRange>|ContentAttachment} ContentSegment */
+/** @type {import('./decode.js').Decoder<ContentSegment>} */
+const contentSegment=(value,path)=>value&&typeof value==='object'&&'kind' in value&&value.kind==='text'?textRange(value,path):contentAttachment(value,path);
+const requestFields = record({
   schemaVersion: version, requestId: id, text,
-  attachments: arrayOf(record({ ref: id, mediaType: id })),
+  attachments: arrayOf(record({ ref: id, mediaType: id })), content:optional(arrayOf(contentSegment)),
   workspaceContext, controllerProfile: optional(id), userSettings: optional(userSettings), agentSkill:optional(agentSkill),
   userConstraints: arrayOf(text), configurationRef: id,
 });
+/** @param {ReturnType<typeof requestFields>} value @param {string} path */
+export function validateOrderedContent(value,path){
+  validateSegments(value,path);
+  if(value.content&&value.attachments.length)invalid(path+'.attachments','empty with ordered content');
+  return value;
+}
+/** @param {{text:string,content?:ContentSegment[]}} value @param {string} path */
+function validateSegments(value,path){
+  if(!value.content)return;
+  if(!value.content.length)invalid(path+'.content','nonempty ordered content');
+  let end=0;const refs=new Set();
+  for(const [index,item] of value.content.entries()){
+    const at=path+'.content['+index+']';
+    if(item.kind==='text'){
+      if(item.start!==end||item.end<item.start||item.end>value.text.length)invalid(at,'contiguous text range');
+      end=item.end;
+    }else{
+      if(!item.ref.startsWith('user-content:')||refs.has(item.ref))invalid(at+'.ref','unique scoped content reference');
+      refs.add(item.ref);
+      if((item.kind==='link'||item.kind==='resource')&&!item.uri)invalid(at+'.uri','resource URI');
+      if(item.kind==='link'?(item.payload!==undefined||item.encoding!==undefined):(!item.payload||!item.encoding||item.payload.size!==item.payload.originalSize))invalid(at,'complete embedded payload or reference');
+    }
+  }
+  if(end!==value.text.length)invalid(path+'.text','literal text exactly covered by content ranges');
+}
+/** @type {import('./decode.js').Decoder<ReturnType<typeof requestFields>>} */
+export const request=(input,path)=>validateOrderedContent(requestFields(input,path),path);
 
 const actionFields = record({
   actionId: id, kind: oneOf('delegate'), objective: text, profileId: id,
@@ -48,8 +85,10 @@ export const assessment = record({
   observationRefs: ids, findingRefs: ids, unresolvedQuestions: arrayOf(text), answer: text,
 });
 
-export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext, controllerProfile: optional(id), userSettings: optional(userSettings), agentSkill:optional(agentSkill),
+const followupFields = record({ requestId: id, text, content:optional(arrayOf(contentSegment)), questionId: optional(id), workspaceContext, controllerProfile: optional(id), userSettings: optional(userSettings), agentSkill:optional(agentSkill),
   replaceSettings: optional((value,path)=>value===true?/** @type {const} */ (true):invalid(path,'true')) });
+/** @type {import('./decode.js').Decoder<ReturnType<typeof followupFields>>} */
+export const followup=(input,path)=>{const value=followupFields(input,path);validateSegments(value,path);return value;};
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 const contextPositionFields = { revision: count, index: count };
 // These are annotations of the existing object-branch error, not new

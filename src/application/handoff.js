@@ -1,3 +1,4 @@
+import { userAttachments } from './user-content.js';
 import { workspaceContextFor } from '../core/operation.js';
 import { compactContext, unavailableContext } from './context-bundle.js';
 import { coordinationFacts, operationHistory } from './controller-context.js';
@@ -56,7 +57,7 @@ export function prepareHandoff(operation, action, catalog) {
       objective: action.objective, instructions, ...(skillInstructions.length ? { skillInstructions } : {}),
       profile: profile.value, workspaceContext: workspaceContextFor(operation),
       userConstraints: operation.request.userConstraints, authorityRef: operation.authorityRef,
-      attachments: operation.request.attachments.filter(attachment => action.contextRefs.includes(attachment.ref)),
+      attachments: userAttachments(operation).filter(attachment => action.contextRefs.includes(attachment.ref)),
       requiredCapabilities: action.requiredCapabilities,
       expectedResult: action.expectedResult, continuationReference: action.continuationReference,
     },
@@ -141,7 +142,7 @@ export function handoffContext(operation, refs, maxBytes, lookups) {
   for (const item of operationHistory(operation)) {
     if (selected.has(item.ref) && !found.has(item.ref)) found.set(item.ref, item);
   }
-  const attachments = new Set(operation.request.attachments.map(item => item.ref));
+  const attachments = new Set(userAttachments(operation).map(item => item.ref));
   const records = [...selected].filter(ref => found.has(ref) || !attachments.has(ref))
     .map(ref => found.get(ref) ?? unavailableContext(ref, 'missing'));
   let bounded = compactContext(records, maxBytes, true);
