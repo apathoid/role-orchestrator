@@ -590,7 +590,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const model = invocation.profile.model;
         const initialMode=session.modes?.currentModeId;
         if(legacy&&mode!==initialMode&&!session.modes?.availableModes.some(item=>item.id===mode))return settingFailure(legacy.kind,'native_mode_unavailable');
-        const configured = await configureSession(agent, a.session, session, model, typeof mode === 'string' ? mode : undefined, signal);
+        let rejectedMode=false;
+        const configured = await configureSession(agent, a.session, session, model, typeof mode === 'string' ? mode : undefined, signal,error=>{
+          rejectedMode=Boolean(legacy&&!signal.aborted&&error instanceof RequestError&&!connection?.signal.aborted);return rejectedMode;
+        });
+        if(legacy&&rejectedMode)return settingFailure(legacy.kind,'native_request_rejected');
         if (!configured || modelOption(session.configOptions)?.currentValue !== model) {
           return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
         }

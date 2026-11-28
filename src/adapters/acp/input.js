@@ -14,14 +14,15 @@ export function modelOption(options) {
 
 /**
  * @param {ClientContext} agent @param {typeof import('@agentclientprotocol/sdk').methods.agent.session} methods
- * @param {NewSessionResponse} session @param {string} model @param {string | undefined} mode @param {AbortSignal} signal
+ * @param {NewSessionResponse} session @param {string} model @param {string | undefined} mode @param {AbortSignal} signal @param {(error:unknown)=>boolean} [modeRejected]
  */
-export async function configureSession(agent, methods, session, model, mode, signal) {
+export async function configureSession(agent, methods, session, model, mode, signal,modeRejected) {
   const { sessionId } = session;
   const modeChanged = mode !== undefined && mode !== session.modes?.currentModeId;
   if (modeChanged) {
     if (!session.modes?.availableModes.some(item => item.id === mode)) return false;
-    await agent.request(methods.setMode, { sessionId, modeId: mode }, { cancellationSignal: signal, stopWaitingOnCancel: true });
+    try{await agent.request(methods.setMode, { sessionId, modeId: mode }, { cancellationSignal: signal, stopWaitingOnCancel: true });}
+    catch(error){if(modeRejected?.(error))return false;throw error;}
   }
   const option = modelOption(session.configOptions);
   if (!option) return false;

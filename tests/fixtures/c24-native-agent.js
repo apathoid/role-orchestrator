@@ -27,7 +27,7 @@ const summarize=block=>{
 agent()
   .onRequest(a.initialize,async()=>{await recordRpc('initialize');return {protocolVersion:1,agentCapabilities:{promptCapabilities:{image:true,audio:true,embeddedContext:true},sessionCapabilities:{close:{}}}};})
   .onRequest(a.session.new,async()=>{await recordRpc('session/new');return {sessionId,configOptions:options,modes:{currentModeId:mode,availableModes:['native','worker-review','worker-open'].map(id=>({id,name:id}))}};})
-  .onRequest(a.session.setMode,async({params})=>{await recordRpc('session/set_mode');mode=params.modeId;return {};})
+  .onRequest(a.session.setMode,async({params,client})=>{await recordRpc('session/set_mode');if(variant==='mode-reject')throw new RequestError(-32602,'Mode rejected');mode=params.modeId;if(variant==='mode-reset-before'){mode='native';await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'current_mode_update',currentModeId:mode}});}return {};})
   .onRequest(a.session.setConfigOption,async({params})=>{
     await recordRpc('session/set_config_option');
     const selected=options.find(item=>item.id===params.configId);
@@ -46,6 +46,7 @@ agent()
     const userText=latestNative?params.prompt.slice(latestNative.startBlock,latestNative.startBlock+latestNative.count).filter(item=>item.type==='text').map(item=>item.text).join(''):latestRecord?.value;
     await appendFile('c24-wire.jsonl',JSON.stringify({kind,variant,profileId,blocks,mode,userSelectedSkills,userText:variant==='large'?undefined:userText,literalCopies,promptBytes:Buffer.byteLength(JSON.stringify(params.prompt)),settings:Object.fromEntries(options.map(item=>[item.id,item.currentValue]))})+'\n');
     const send=text=>client.notify(c.session.update,{sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}});
+    if(variant==='mode-change-during'){mode='native';await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'current_mode_update',currentModeId:mode}});}
     if(kind==='delegate'){await send('C24 worker result');return {stopReason:'end_turn'};}
     const latest=userText;
     const delegate=latest==='delegate selected image'&&!context.some(item=>item.value==='C24 worker result');

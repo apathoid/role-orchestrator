@@ -1340,3 +1340,18 @@ test('C24-R native feature refusal has an addressable logical cause and sends no
     await assert.rejects(readFile(join(cwd,'c24-wire.jsonl')),{code:'ENOENT'});
   }finally{await host.close();}
 }));
+
+
+for(const [variant,cause] of [['mode-reject','native_request_rejected'],['mode-reset-before','native_mode_changed'],['mode-change-during',undefined]]){
+  test('C24-R legacy native mode '+variant,{timeout:12000},()=>withOwnedRun('C24R-mode',async cwd=>{
+    const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+    const config=await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,variant]},featureBindings:{approvalMode:{kind:'sessionMode'}}}},profiles:{primary:{provider:'test',model:'fixture',features:{approvalMode:'policy'}}},features:{approvalMode:{policy:{default:'review',options:[{id:'review',nativeValue:'worker-review'}]}}},plugins:[]});
+    const host=launch(cwd,config);
+    try{
+      await initialize(host.agent);const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      const reply=await prompt(host.agent,sessionId,'task');
+      if(cause){assert.equal(reply.stopReason,'refusal');assert.ok(host.messages.some(item=>item.update.content?.text?.includes('feature=approvalMode option=review cause='+cause)));await assert.rejects(readFile(join(cwd,'c24-wire.jsonl')),{code:'ENOENT'});}
+      else {assert.equal(reply.stopReason,'end_turn');const record=JSON.parse((await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim());assert.equal(record.mode,'worker-review');}
+    }finally{await host.close();}
+  }));
+}
