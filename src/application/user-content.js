@@ -11,6 +11,15 @@ export const userContentFrameBytes=bytes=>Math.ceil(bytes/3)*4+2*1024*1024;
 /** @typedef {{kind:'accepted',input:unknown,payloads:{bytes:Uint8Array,reference:PayloadRef}[]}|{kind:'rejected',path:string,reason:string,limitExceeded?:true}} Prepared */
 /** @param {unknown} v @returns {v is Record<string,unknown>} */
 const object=v=>!!v&&typeof v==='object'&&!Array.isArray(v)&&[Object.prototype,null].includes(Object.getPrototypeOf(v));
+// Admission and historical projection use the same normalized fields.
+// Absence is zero bytes, unlike explicit JSON null or an empty object.
+/** @param {unknown} metadata */
+const metadataBytes=metadata=>metadata===undefined?0:Buffer.byteLength(JSON.stringify(metadata));
+/** @param {string} text @param {ContentSegment} item */
+const segmentBodyBytes=(text,item)=>item.kind==='text'
+  ? Buffer.byteLength(text.slice(item.start,item.end))
+  : (item.payload?.size??0)+Buffer.byteLength(item.mediaType)+Buffer.byteLength(item.uri??'');
+
 /** @param {unknown} input @param {number} [maxBytes] @returns {Prepared} */
 export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
   if(!object(input)||input.content===undefined)return {kind:'accepted',input,payloads:[]};
@@ -27,12 +36,10 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
     const allowed=block.kind==='text'?['kind','text','metadata']:['kind','data','encoding','mediaType','uri','metadata'];
     if(Object.keys(block).some(key=>!allowed.includes(key)))return reject(path,'Unknown content field');
     const metadata=block.metadata;
-    if(metadata!==undefined){
-      try {total+=Buffer.byteLength(JSON.stringify(metadata));}catch{return reject(path+'.metadata','Expected JSON metadata');}
-    }
+    try {total+=metadataBytes(metadata);}catch{return reject(path+'.metadata','Expected JSON metadata');}
     if(block.kind==='text'){
       if(typeof block.text!=='string')return reject(path+'.text','Expected text');
-      const start=text.length;text+=block.text;total+=Buffer.byteLength(block.text);
+      const start=text.length;text+=block.text;
       content.push({kind:'text',start,end:text.length,metadata});
     }else{
       const kind=block.kind;
@@ -40,7 +47,6 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
       const uri=typeof block.uri==='string'&&block.uri?block.uri:undefined;
       const mediaType=typeof block.mediaType==='string'&&block.mediaType?block.mediaType:kind==='link'||kind==='resource'?'application/octet-stream':undefined;
       if(!mediaType||(kind==='resource'||kind==='link')&&!uri)return reject(path,'Missing MIME or resource URI');
-      total+=Buffer.byteLength(mediaType)+Buffer.byteLength(uri??'');
       if(kind==='image'&&!mediaType.startsWith('image/')||kind==='audio'&&!mediaType.startsWith('audio/'))return reject(path+'.mediaType','MIME does not match content kind');
       /** @type {PayloadRef|undefined} */ let payload;
       /** @type {'utf8'|'binary'|undefined} */ let encoding;
@@ -53,13 +59,13 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
         if(encoding==='binary'&&block.data.length>Math.ceil(maxBytes/3)*4)return reject(path+'.data','Oversized base64',true);
         const bytes=Buffer.from(block.data,encoding==='binary'?'base64':'utf8');
         if(encoding==='binary'&&bytes.toString('base64')!==block.data)return reject(path+'.data','Invalid base64');
-        total+=bytes.length;
         payload={ref:'sha256:'+createHash('sha256').update(bytes).digest('hex'),size:bytes.length,originalSize:bytes.length,truncated:false};
         payloads.push({bytes,reference:payload});
       }
       const ref='user-content:'+createHash('sha256').update(JSON.stringify([input.requestId,index])).digest('hex');
       content.push({kind,ref,mediaType,uri,payload,encoding,metadata,mimeTypeOmitted:block.mediaType===undefined&&(kind==='link'||kind==='resource')?/** @type {const} */(true):undefined});
     }
+    total+=segmentBodyBytes(text,content[content.length-1]);
     if(total>maxBytes)return reject(path,'User content exceeds '+maxBytes+' decoded bytes',true);
   }
   return {kind:'accepted',input:{...input,...('schemaVersion' in input&&{attachments:[]}),text,content},payloads};
@@ -92,8 +98,7 @@ export function projectOrderedTurns(turns,latestId,represented,limit,supported,r
   /** @type {OrderedTurn[]} */ const selected=[];
   let remaining=limit;
   /** @param {OrderedTurn} turn */
-  const size=turn=>Buffer.byteLength(turn.text)+turn.content.reduce((total,item)=>total+
-    (item.kind==='text'?0:(item.payload?.size??0)+Buffer.byteLength(item.mediaType??'')+Buffer.byteLength(item.uri??''))+Buffer.byteLength(JSON.stringify(item.metadata??null)),0);
+  const size=turn=>turn.content.reduce((total,item)=>total+segmentBodyBytes(turn.text,item)+metadataBytes(item.metadata),0);
   const explicit=turns.flatMap(turn=>{
     const content=turn.content.filter(item=>item.kind!=='text'&&requested.has(item.ref));
     return content.length?[{...turn,text:'',content,required:false}]:[];

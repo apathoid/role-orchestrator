@@ -553,9 +553,10 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       if (initialized.protocolVersion !== PROTOCOL_VERSION) return resultFor(invocation, 'PROTOCOL_ERROR');
       /** @type {{requestId:string,ref:string,reason:string}[]} */ const omittedContent=[];
       /** @type {{requestId:string,startBlock:number,count:number,literalText:boolean,refs:{ref:string,block:number}[]}[]} */ const deliveredTurns=[];
+      /** @type {{ref:string,block:number}[]} */ const deliveredAttachments=[];
       /** @type {ProviderResult['contentUnavailable']} */ let contentFailure;
       const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities??{}, resolveAttachment, AbortSignal.any([signal, connection.signal]),(requestId,ref,reason)=>omittedContent.push({requestId,ref,reason:reason??'user_content_not_deliverable'}),
-        (turn,startBlock,count,refs)=>deliveredTurns.push({requestId:turn.requestId,startBlock,count,literalText:turn.content.some(item=>item.kind==='text'),refs}),issue=>{contentFailure=issue;});
+        (turn,startBlock,count,refs)=>deliveredTurns.push({requestId:turn.requestId,startBlock,count,literalText:turn.content.some(item=>item.kind==='text'),refs}),issue=>{contentFailure=issue;},(ref,block)=>deliveredAttachments.push({ref,block}));
       if (!blocks || (required.includes('input.image') && (!initialized.agentCapabilities?.promptCapabilities?.image))) {
         const refused=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
         refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',
@@ -676,7 +677,11 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
           const {value:_value,excerpt:_excerpt,...identity}=item;
           return {...identity,value:turn?{nativeOrderedTurn:turn.requestId}:{literalTextAt:'Invocation.objective'}};
         });
-        if(deliveredTurns.length)context.push({ref:'host:ordered-input',source:'host_observed',completeness:'complete',value:deliveredTurns});
+        // Standalone attachments (including Worker handoff) share the exact
+        // native prompt-index contract. They are not literal user turns.
+        if(deliveredTurns.length||deliveredAttachments.length)context.push({ref:'host:ordered-input',source:'host_observed',completeness:'complete',
+          value:[...deliveredTurns,...(deliveredAttachments.length?[{kind:'attachments',startBlock:deliveredAttachments[0].block,
+            count:deliveredAttachments.length,literalText:false,refs:deliveredAttachments}]:[])]});
         if(omittedContent.length)context.push({ref:'host:user-content-delivery',source:'host_observed',completeness:'complete',value:omittedContent});
         const prompt = renderInvocationPrompt({...invocation,objective,context,controllerDelivery, controllerDecisionToolName:mcp?.decisionToolName}, retrievalDetail(Boolean(mcp?.contextListToolName), mcp, invocation.kind),
           promptReporter?sizes=>{componentSizes=sizes;}:undefined);

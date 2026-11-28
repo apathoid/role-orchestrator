@@ -76,8 +76,9 @@ export async function configureReasoning(agent, methods, session, reasoning, sig
  * @param {ResolveAttachment | undefined} resolve @param {AbortSignal} signal @param {(requestId:string,ref:string,reason?:NonNullable<import('../../core/ports.js').ProviderResult['contentUnavailable']>['cause'])=>void} [onOmitted]
  * @param {(turn:import('../../core/ports.js').OrderedTurn,start:number,count:number,refs:{ref:string,block:number}[])=>void} [onDelivered]
  * @param {(issue:NonNullable<import('../../core/ports.js').ProviderResult['contentUnavailable']>)=>void} [onFailure]
+ * @param {(ref:string,block:number)=>void} [onAttachmentDelivered] actual index in the prompt including its leading orchestration block
  */
-export async function attachmentBlocks(invocation, capabilities, resolve, signal,onOmitted,onDelivered,onFailure) {
+export async function attachmentBlocks(invocation, capabilities, resolve, signal,onOmitted,onDelivered,onFailure,onAttachmentDelivered) {
   /** @type {ContentBlock[]} */
   const blocks = [];
   const orderedRefs=new Set((invocation.orderedTurns??[]).flatMap(turn=>turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref])));
@@ -99,6 +100,7 @@ export async function attachmentBlocks(invocation, capabilities, resolve, signal
     if('kind' in attachment){
       const block=await renderContentAttachment(attachment,invocation.readUserPayload,capabilities,signal,onFailure);
       if(!block)return undefined;
+      onAttachmentDelivered?.(attachment.ref,blocks.length+1);
       blocks.push(block);continue;
     }
     signal.throwIfAborted();
@@ -115,6 +117,7 @@ export async function attachmentBlocks(invocation, capabilities, resolve, signal
       onFailure?.({ref:attachment.ref,cause:!block?'payload_unavailable':!image&&block.type==='resource'&&!capabilities?.promptCapabilities?.embeddedContext?'resource_transport_unavailable':'user_content_not_deliverable'});
       return undefined;
     }
+    onAttachmentDelivered?.(attachment.ref,blocks.length+1);
     blocks.push(block);
   }
   return blocks;
