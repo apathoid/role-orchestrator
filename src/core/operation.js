@@ -10,8 +10,8 @@
 /**
  * @typedef {'not_sent' | 'sent' | 'unknown'} DispatchCertainty
  * @typedef {{configurationRef: string, profileId: string, providerId: string, model: string, idempotencyKey?: string, requestHash?: string,
- *   reasoning?: import('./ports.js').ReasoningSelection}} DispatchRoute
- * @typedef {{authorityRef: string, configurationRef: string, limits: Limits}} ResumeAuthority
+ *   reasoning?: import('./ports.js').ReasoningSelection, reasoningBinding?:unknown, collaborationMode?:import('./ports.js').NativeSetting, approvalMode?:import('./ports.js').NativeSetting}} DispatchRoute
+ * @typedef {{authorityRef: string, configurationRef: string, limits: Limits, settings?: import('./ports.js').AcceptedSettings}} ResumeAuthority
  * @typedef {{attemptId: string, actionId: string, generation: number, reservedAt: number, reasoningDecisionId?: string,
  *   dispatchedAt?: number, route?: DispatchRoute, dispatchCertainty: DispatchCertainty, cancellation?: CancellationSource}} AttemptRecord
  * @typedef {AttemptRecord & (
@@ -24,7 +24,7 @@
  *   profileId?: string, reasoningLevel?: string, availableLevels?: readonly string[], reasoningCause?: string, resource?: string}} Reason
  * @typedef {{kind: 'question', questionId: string, question: string} | {kind: 'technical', reason: Reason}} Waiting
  * @typedef {{schemaVersion: 1, operationId: string, request: Request, generation: number, revision: number,
- *   authorityRef: string, acceptedAt?: number, transcriptRefs: readonly string[], limits: Limits, attempts: readonly Attempt[],
+ *   authorityRef: string, acceptedAt?: number, acceptedSettings?:import('./ports.js').AcceptedSettings, transcriptRefs: readonly string[], limits: Limits, attempts: readonly Attempt[],
  *   events: readonly Event[], assessment?: Assessment, waiting?: Waiting,
  *   cancellation?: CancellationSource, status: 'active' | 'waiting' | 'finished' | 'cancelled'}} Operation
  *
@@ -49,15 +49,15 @@
  *   {kind: 'duplicate', state: Operation} | {kind: 'rejected', state: Operation, reason: Reason}} Transition
  */
 
-/** @param {string} operationId @param {Request} request @param {string} authorityRef @param {Limits} limits @param {number} [acceptedAt] @returns {Operation} */
-export function createOperation(operationId, request, authorityRef, limits, acceptedAt) {
+/** @param {string} operationId @param {Request} request @param {string} authorityRef @param {Limits} limits @param {number} [acceptedAt] @param {import('./ports.js').AcceptedSettings} [acceptedSettings] @returns {Operation} */
+export function createOperation(operationId, request, authorityRef, limits, acceptedAt, acceptedSettings) {
   if (!Number.isSafeInteger(limits.maxConcurrentInvocations) || limits.maxConcurrentInvocations < 1 ||
       (limits.maxInvocations !== null && (!Number.isSafeInteger(limits.maxInvocations) || limits.maxInvocations < 1))) {
     throw new RangeError('Operation limits must be positive safe integers (cumulative limit may be null)');
   }
   return {
     schemaVersion: 1, operationId, request, authorityRef, limits: { ...limits },
-    ...(acceptedAt === undefined ? {} : { acceptedAt }), generation: 0, revision: 0,
+    ...(acceptedAt === undefined ? {} : { acceptedAt }), ...(acceptedSettings && {acceptedSettings}), generation: 0, revision: 0,
     status: 'active', transcriptRefs: [], attempts: [], events: [],
   };
 }
@@ -143,6 +143,14 @@ export function acceptedWorkerAllowed(state, actionId) {
 export function workspaceContextFor(operation) {
   const latest = operation.events.findLast(event => event.kind === 'operation.continued' && event.input.workspaceContext);
   return latest?.kind === 'operation.continued' ? latest.input.workspaceContext : operation.request.workspaceContext;
+}
+
+/** Current accepted user settings are tied to explicit continuation, never recovery.
+ * @param {Operation} operation
+ */
+export function acceptedSettingsFor(operation) {
+  const latest = operation.events.findLast(event => event.kind === 'operation.continued');
+  return latest?.kind === 'operation.continued' ? latest.trusted?.settings : operation.acceptedSettings;
 }
 
 /** The explicit user selection is durable input, not a mutation of the catalog.

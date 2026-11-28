@@ -8,8 +8,12 @@
  * @typedef {{providerId: string, maxConcurrency: number | null, capabilities: Readonly<Record<string, Capability>>}} ProviderDescription
  * @typedef {{mode: 'native'} | {mode: 'selectable', levels: readonly string[], defaultLevel: string,
  *   capability?: Capability}} ReasoningCatalog
- * @typedef {{mode: 'native', level?: 'native', selectionSource?: 'model' | 'default'} | {mode: 'selectable', level: string, nativeValue: string,
- *   selectionSource: 'model' | 'default'}} ReasoningSelection
+ * @typedef {{mode: 'native', level?: 'native', selectionSource?: 'model' | 'default' | 'user'} | {mode: 'selectable', level: string, nativeValue: string,
+ *   selectionSource: 'model' | 'default' | 'user'}} ReasoningSelection
+ * @typedef {{id:string, source:'user'|'default', nativeValue?:string|boolean, binding?:unknown}} NativeSetting
+ * @typedef {{profileId:string,providerId:string,model:string,configurationRef:string,
+ *   overrides?:import('./contracts.js').UserSettings,reasoningEffort?:NativeSetting,collaborationMode?:NativeSetting,approvalMode?:NativeSetting}} AcceptedSettings
+ * @typedef {{explicit?:import('./contracts.js').UserSettings,inherited?:import('./contracts.js').UserSettings,recovery?:AcceptedSettings}} SettingsInput
  * @typedef {{kind: 'selected', selection: ReasoningSelection} |
  *   {kind: 'rejected', profileId: string, requestedLevel?: string, availableLevels: readonly string[]}} ReasoningResolution
  * @typedef {{profileId: string, providerId: string, model: string, capabilities?: Readonly<Record<string, Capability>>,
@@ -17,7 +21,7 @@
  * @typedef {{sessionId: string}} ProviderSession
  * @typedef {{attemptId: string, operationId: string, actionId: string, kind: 'controller' | 'delegate',
  *   objective: string, expectedResult?: string, continuationReference?: string, instructions: readonly string[], profile: Profile, workspaceContext?: Request['workspaceContext'],
- *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection,
+ *   attachments?: readonly Request['attachments'][number][], requiredCapabilities?: readonly string[], reasoning?: ReasoningSelection, collaborationMode?: NativeSetting, approvalMode?: NativeSetting,
  *   userConstraints: readonly string[], skillInstructions?: readonly SkillInstructions[], context: readonly ContextItem[], authorityRef: string, timeoutMs: number | null,
  *   signal: AbortSignal, isActive?: () => boolean, contextAccess?: ContextPort, evidenceAccess?: LiveEvidencePort, preflightIntent?: ControllerPreflight, externalTools?: AttemptTools, idempotencyKey?: string, permissions?: Pick<AttemptPermissions, 'request'>, interactions?: Pick<AttemptInteractions, 'request' | 'supports'>,
  *   controllerDelivery?: 'intent_text' | 'intent_mcp', controllerDecisionToolName?: string}} Invocation
@@ -44,6 +48,8 @@
  *   describe: () => Promise<ProviderDescription>,
  *   supportsIdempotency?: true,
  *   supportsReasoningSelection?: true,
+ *   supportsCollaborationMode?: true,
+ *   supportsApprovalMode?: true,
  *   negotiatesCapabilities?: readonly string[],
  *   open: (profile: Profile, signal: AbortSignal) => Promise<ProviderSession>,
  *   invoke: (session: ProviderSession, request: Invocation, observe: (item: ProviderObservation) => string | undefined, activity?: ActivityCallback) => Promise<ProviderResult>,

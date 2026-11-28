@@ -1,6 +1,6 @@
 import { admitFindings, eventFindings, evidenceRefs, findingRef, findings, recordObservationRefs } from './finding.js';
-import { action, assessment, decision, followup, outcome, reasonCode, request } from './contracts.js';
-import { arrayOf, boundedAllowedFields, boundedFieldHint, count, decode, id, invalid, measurement, nullable, oneOf, optional, record, text } from './decode.js';
+import { action, assessment, decision, followup, outcome, reasonCode, request, userSettings } from './contracts.js';
+import { jsonValue, arrayOf, boundedAllowedFields, boundedFieldHint, count, decode, id, invalid, measurement, nullable, oneOf, optional, record, text } from './decode.js';
 import { contextItem } from './observation.js';
 import { classifyOutcomeReport, resolveOutcome, sameRecord, validRejectedResult } from './operation.js';
 
@@ -46,14 +46,20 @@ const waiting = tagged('kind', {
 /** @type {Decoder<number>} */
 const limit = (input, path) => count(input, path) || invalid(path, 'a positive safe integer');
 const limits = record({ maxInvocations: nullable(limit), maxConcurrentInvocations: limit });
-const trusted = record({ authorityRef: id, configurationRef: id, limits });
+/** @param {unknown} value @param {string} path */
+const nativeValue = (value, path) => typeof value === 'boolean' ? value : id(value,path);
+const nativeSetting = record({id,source:oneOf('user','default'),nativeValue:optional(nativeValue),binding:optional(jsonValue)});
+const acceptedSettings = record({profileId:id,providerId:id,model:id,configurationRef:id,
+  overrides:optional(userSettings),reasoningEffort:optional(nativeSetting),collaborationMode:optional(nativeSetting),approvalMode:optional(nativeSetting)});
+const trusted = record({ authorityRef: id, configurationRef: id, limits, settings:optional(acceptedSettings) });
 const reasoning = tagged('mode', {
-  native: record({mode: oneOf('native'), level: optional(oneOf('native')), selectionSource: optional(oneOf('model','default'))}),
+  native: record({mode: oneOf('native'), level: optional(oneOf('native')), selectionSource: optional(oneOf('model','default','user'))}),
   selectable: record({mode: oneOf('selectable'), level: id, nativeValue: id,
-    selectionSource: oneOf('model','default')}),
+    selectionSource: oneOf('model','default','user')}),
 });
 const route = record({ configurationRef: id, profileId: id, providerId: id, model: id,
-  idempotencyKey: optional(id), requestHash: optional(id), reasoning: optional(reasoning) });
+  idempotencyKey: optional(id), requestHash: optional(id), reasoning: optional(reasoning), reasoningBinding:optional(jsonValue),
+  collaborationMode:optional(nativeSetting),approvalMode:optional(nativeSetting) });
 const attemptFields = {
   attemptId: id, actionId: id, generation: count, reservedAt: measurement, reasoningDecisionId: optional(id),
   dispatchedAt: optional(measurement), route: optional(route), dispatchCertainty: certainty, cancellation: optional(cancellation),
@@ -115,7 +121,7 @@ const event = tagged('kind', {
 });
 const operation = record({
   schemaVersion: version, operationId: id, request, generation: count, revision: count,
-  authorityRef: id, transcriptRefs: arrayOf(id), acceptedAt: optional(measurement),
+  authorityRef: id, transcriptRefs: arrayOf(id), acceptedAt: optional(measurement), acceptedSettings:optional(acceptedSettings),
   limits,
   attempts: arrayOf(attempt), events: arrayOf(event), assessment: optional(assessment),
   waiting: optional(waiting), cancellation: optional(cancellation), status,
