@@ -279,3 +279,7 @@ No merge to master before independent review and user agreement.
 ### C24-R2 corrective candidate
 
 The existing plan and A132–A142 are unchanged in scope. Corrective contracts: exact historical native refs through existing contextRequest; explicit workMap page/current skill before optional previews; no duplicate literal initial objective; legacy text block boundaries without changing stored offsets; exact delivered block attribution and typed-field ownership; per-admitted-Worker approval compatibility and legacy recovery settings; current CLI result and structured content refusal; negotiated capabilities consistent with admission; durable CLI skill redelivery and honest unassociated ordered replay. Accepted embedded content retention is unchanged. See normative documents and STATUS for verification; deterministic SDK fixtures do not establish native acceptance.
+
+### C24-R3 corrective candidate
+
+Scope: current literal input/default workMap and bounded attachment previews; provider-owned outgoing native limits, per-turn fallback boundaries, image/audio URI and precise omission causes; one durable nextController selection boundary; Worker approval snapshot consistency; exact read-only redelivery under changed trusted defaults or reduced admission limit. T19–T29 supplement A132–A142. P3 Store double scan retained pending measured need; unassociated ACP presentation remains native-client UNVERIFIED. No general context-limit redesign, persistent sessions, migration, or new acceptance IDs.

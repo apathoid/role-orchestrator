@@ -191,3 +191,7 @@ Accepted logical/native settings и actual route binding сохраняются 
 ### C24 content delivery and current result
 
 For mandatory input delivery refusals use attempt-scoped diagnostics and the known profile with a technical `resource` beginning `user_content:`. Distinguish unsupported ordered adapters, missing input capabilities, native modality/resource transport, unavailable payload and native prompt frame limits. Adapter observations can name the affected reference; no guessed payload identity. ACP and CLI present the current waiting error/question rather than a historical assessment. Historical assessments remain in the durable journal. A refused Worker approval mapping is an attempt-local not-sent failure with `accepted_worker_setting_changed` observation. Do not equate transport acceptance or fixture execution with real-model/native client acceptance.
+
+### C24-R3 delivery provenance
+
+The ACP adapter no longer reports a synthetic native_prompt_frame_limit computed from the decoded input budget. A real adapter-specific pre-send resource refusal may still use the optional technical cause. Historical missing payload vs unavailable native modality/resource transport is preserved per ref in host:user-content-delivery. No guessed provider limitation or suggested semantic alternative.
