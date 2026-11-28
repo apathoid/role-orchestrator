@@ -541,7 +541,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         });
       }
       connection = app.connect(ndJsonStream(Writable.toWeb(owner.pipes.stdin), Readable.toWeb(owner.pipes.stdout),
-        { maxMessageBytes: invocation.userContentMaxBytes!==undefined ? maxInputFrameBytes : maxOutputBytes }));
+        { maxMessageBytes: maxOutputBytes }));
       const agent = connection.agent;
       /** @type {InitializeResponse} */
       const initialized = await agent.request(a.initialize, {

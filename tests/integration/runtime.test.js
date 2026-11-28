@@ -234,3 +234,32 @@ test('C24-R accepted generation records effective default Controller even withou
     assert.equal((await result.completion).acceptedSettings?.profileId,'primary');
   }finally{await runtime.close();}
 }));
+
+
+test('C24-R technical recovery keeps accepted Controller despite a new default and legacy global approval hash',()=>withOwnedRun('C24R-recover',async directory=>{
+  const {request}=await import('../fixtures/core.js');
+  const {createOperation}=await import('../../src/core/operation.js');
+  const {createLocalStateStore}=await import('../../src/adapters/state/local-store.js');
+  const {mkdir}=await import('node:fs/promises');
+  const configuration={schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'},other:{provider:'test',model:'fixture'}},providers:{test:{adapter:'host-fixture'}},plugins:[{id:'host-fixture',module:fileURLToPath(new URL('../fixtures/host-plugin.js',import.meta.url))}]};
+  const first=await openRuntime({configuration:JSON.stringify(configuration),stateDirectory:join(directory,'first')});
+  let accepted;
+  try{const submission=await first.api.submit(request({configurationRef:first.configurationRef,text:'settings'}));accepted=submission.operation;await submission.completion;}finally{await first.close();}
+  const stateDirectory=join(directory,'recovery');await mkdir(stateDirectory);const store=createLocalStateStore(stateDirectory);await store.open();
+  try{
+    const restored=createOperation('recovery-op',accepted.request,accepted.authorityRef,accepted.limits,accepted.acceptedAt,{...accepted.acceptedSettings,approvalMappingsRef:'legacy-global-hash'});
+    assert.equal((await store.commit(restored.operationId,null,restored)).kind,'committed');
+  }finally{await store.close();}
+  const second=await openRuntime({configuration:JSON.stringify({...configuration,controllerProfile:'other'}),stateDirectory});
+  try{const result=await(await second.api.resume('recovery-op')).completion;assert.equal(result.status,'finished');assert.deepEqual(JSON.parse(result.assessment.answer),['primary',null]);assert.equal(result.attempts[0].route.profileId,'primary');}finally{await second.close();}
+}));
+
+test('C24-R settings inspection closes trusted plugin factory without opening execution or Store',()=>withOwnedRun('C24R-inspection',async directory=>{
+  const {readUserSettings}=await import('../../src/main/runtime.js');
+  const {access}=await import('node:fs/promises');
+  const marker=join(directory,'lifecycle');const module=join(directory,'fixture.mjs');
+  await writeFile(module,`import {appendFile} from 'node:fs/promises';const mark=text=>appendFile(${JSON.stringify(marker)},text+'\\n');export const manifest={id:'test',version:'1',apiVersion:1,exports:['createProvider']};export async function createProvider({providerId,onClose}){await mark('create');onClose(()=>mark('close'));return {describe:async()=>{await mark('describe');return {providerId,maxConcurrency:null,capabilities:{}}},open:()=>mark('open'),invoke:()=>mark('invoke'),cancel(){},close(){}};}`);
+  const configuration=JSON.stringify({schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},providers:{test:{adapter:'test'}},plugins:[{id:'test',module}],storage:{directory:join(directory,'state')}});
+  const view=await readUserSettings(configuration,directory,directory);assert.equal(view.controllerProfile.current,'primary');
+  const calls=(await readFile(marker,'utf8')).trim().split('\\n');assert.equal(calls[0],'create');assert.equal(calls.at(-1),'close');assert.ok(calls.includes('describe'));assert.ok(!calls.includes('open')&&!calls.includes('invoke'));await assert.rejects(access(join(directory,'state')),{code:'ENOENT'});
+}));

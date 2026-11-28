@@ -322,18 +322,24 @@ export function createLocalStateStore(directory, io = fs) {
   async function cleanPendingUserPayloads(handle,names){
     const pending=names.filter(name=>pendingUserName.test(name));
     if(!pending.length)return;
-    const records=[];
+    const referenced=new Set();
+    // Keep the conservative incidental-match rule, but retain only marker hashes,
+    // never a second in-memory copy of every operation in the Store.
     for(const name of names.filter(name=>snapshotName.test(name))){
       const operation=await read(name).catch(()=>undefined);
       if(!operation)return;
-      records.push(JSON.stringify(operation));
+      const record=JSON.stringify(operation);
+      for(const marker of pending){
+        const hash=pendingUserName.exec(marker)?.[1];
+        if(hash&&!referenced.has(hash)&&record.includes('sha256:'+hash))referenced.add(hash);
+      }
     }
     for(const marker of pending){
       const hash=pendingUserName.exec(marker)?.[1];
       if(!hash)continue;
       try{
         // Conservative reference check: even an incidental match retains bytes.
-        if(!records.some(record=>record.includes('sha256:'+hash))){
+        if(!referenced.has(hash)){
           await io.unlink(join(root,'artifact-'+hash+'.blob')).catch(error=>{if(!isMissing(error))throw error;});
           verifiedCache=undefined;
           await handle.sync();

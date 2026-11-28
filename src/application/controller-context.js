@@ -457,7 +457,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       limits: state.limits, resources: resourceSnapshot(state),
       attachments: /** @type {{ref:string,mediaType:string,kind?:string}[]} */ ([...state.request.attachments]),
       ...(orderedTurns(state).length&&{userContentTurns:/** @type {{requestId:string,segments:unknown[]}[]} */([]),
-        userContentCoverage:{total:userAttachments(state).length,represented:state.request.attachments.length}}),
+        userContentCoverage:{total:userAttachments(state).length,represented:state.request.attachments.length,selection:'nextController.contextRequest.refs (user-content refs request native delivery)'}}),
       ...(state.request.agentSkill||state.events.some(event=>event.kind==='operation.continued'&&event.input.agentSkill)?{userSelectedSkills:/** @type {{requestId:string,name:string,path:string,source:string}[]} */([])}:{}),
       controllerReasoning: {
         ...(acceptedSettingsFor(state)?.reasoningEffort && {default: {level:acceptedSettingsFor(state)?.reasoningEffort?.id,source:acceptedSettingsFor(state)?.reasoningEffort?.source}}),

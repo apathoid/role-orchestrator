@@ -1279,3 +1279,64 @@ test('C24-R Controller selects historical native image beyond automatic input bu
     assert.ok(records.every(item=>item.kind==='controller'));
   }finally{await host.close();}
 }));
+
+
+test('C24-R large mixed input retains one literal copy and optional resource MIME stays absent',{timeout:30000},()=>withOwnedRun('C24R-large',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config=await fixture(cwd,{input:{maxBytes:4*1024*1024},providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'large']}}},plugins:[]});
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    const text='C24-UNIQUE-LITERAL-START'+'x'.repeat(3*1024*1024);
+    const blocks=[{type:'text',text},{type:'resource_link',uri:'file:///explicit-link',name:'link',_meta:{tag:'link'}},{type:'resource',resource:{uri:'file:///embedded',text:'embedded'},_meta:{tag:'resource'}}];
+    assert.equal((await host.agent.request(a.session.prompt,{sessionId,prompt:blocks})).stopReason,'end_turn');
+    const result=JSON.parse((await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim());
+    assert.equal(result.literalCopies,1);
+    assert.equal(result.blocks[0].text,text);
+    assert.equal(result.blocks[1].mimeType,undefined);
+    assert.equal(result.blocks[1]._meta.tag,'link');
+    assert.equal(result.blocks[2].mimeType,undefined);
+    assert.equal(result.blocks[2].meta.tag,'resource');
+  }finally{await host.close();}
+}));
+
+test('C24-R partial historical replay survives a missing payload and reduced new input limit',{timeout:30000},()=>withOwnedRun('C24R-replay',async cwd=>{
+  const {unlink}=await import('node:fs/promises');
+  const {createHash}=await import('node:crypto');
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config=await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']}}},plugins:[]});
+  const initial=launch(cwd,config);
+  const aBytes=Buffer.alloc(700*1024,7), bBytes=Buffer.alloc(800*1024,8);
+  let sessionId;
+  try{
+    await initialize(initial.agent);
+    ({sessionId}=await initial.agent.request(a.session.new,{cwd,mcpServers:[]}));
+    assert.equal((await initial.agent.request(a.session.prompt,{sessionId,prompt:[{type:'text',text:'before'},{type:'image',mimeType:'image/png',data:aBytes.toString('base64')},{type:'text',text:'between'},{type:'image',mimeType:'image/png',data:bBytes.toString('base64')}]})).stopReason,'end_turn');
+  }finally{await initial.close();}
+  await unlink(join(cwd,'state','artifact-'+createHash('sha256').update(aBytes).digest('hex')+'.blob'));
+  const updated=JSON.parse(await readFile(config,'utf8'));updated.input={maxBytes:64};await writeFile(config,JSON.stringify(updated));
+  const reopened=launch(cwd,config);
+  try{
+    await initialize(reopened.agent);
+    await reopened.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+    const blocks=reopened.messages.filter(item=>item.update.sessionUpdate==='user_message_chunk').map(item=>item.update.content);
+    assert.deepEqual(blocks.map(item=>item.type),['text','text','image']);
+    assert.equal(blocks[0].text,'before');assert.equal(blocks[1].text,'between');assert.equal(blocks[2].data,bBytes.toString('base64'));
+    assert.ok(reopened.messages.some(item=>item.update.content?.text?.includes('Historical user block unavailable: user-content:')));
+  }finally{await reopened.close();}
+}));
+
+test('C24-R native feature refusal has an addressable logical cause and sends no prompt',{timeout:12000},()=>withOwnedRun('C24R-setting-cause',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config=await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']},featureBindings:{approvalMode:{kind:'configOption',id:'absent-selector'}}}},
+    profiles:{primary:{provider:'test',model:'fixture',features:{approvalMode:'policy'}}},features:{approvalMode:{policy:{default:'review',options:[{id:'native'},{id:'review',nativeValue:'native-review'}]}}},plugins:[]});
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    await prompt(host.agent,sessionId,'task');
+    assert.ok(host.messages.some(item=>item.update.content?.text?.includes('feature=approvalMode option=review cause=native_selector_missing')));
+    await assert.rejects(readFile(join(cwd,'c24-wire.jsonl')),{code:'ENOENT'});
+  }finally{await host.close();}
+}));
