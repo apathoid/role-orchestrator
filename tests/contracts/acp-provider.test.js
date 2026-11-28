@@ -688,8 +688,9 @@ test('F1 actual ACP reasoning and process facts keep Host source across journal,
     const endpoint = provider(cwd, 'reasoning-supported');
     const controller = {profileId:'primary', providerId:'synthetic-controller', model:'fixture'};
     const catalog = createCatalog({schemaVersion:1, providers:{'synthetic-controller':{adapter:'fixture'}, acp:{adapter:'acp'}},
+      features:{reasoningEffort:{workerEffort:{default:'high',options:[{id:'high',nativeValue:'high-native'}]}}},
       profiles:{primary:{provider:'synthetic-controller',model:'fixture'}, worker:{provider:'acp',model:'fixture',
-        reasoningEffort:[{level:'high',effort:'high-native'}]}},controllerProfile:'primary'});
+        features:{reasoningEffort:'workerEffort'}}},controllerProfile:'primary'});
     await mkdir(join(cwd, 'state'));
     const store = createLocalStateStore(join(cwd, 'state'));
     await store.open();
