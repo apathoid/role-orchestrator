@@ -1,5 +1,9 @@
 # Role Orchestrator — оперативный статус
 
+## C24-R — corrective review (IN PROGRESS)
+
+Reviewed HEAD `2dc085b1b07883725c4fd813d488ae07d53c2a39`; CI #46159672474 SUCCESS. Review scope P1.1–P1.6, P2.1–P2.12, P3.1–P3.4 and R01–R44. No merge. Initial RED candidate `2d8af9830f4aeeab87ee1222f64e7504aa15dcbb` covers R09/R11/R14 and accepted default selection. Local checkout unavailable (DNS; Node 22 instead of 24). New candidate: always record effective Controller, remove global approval mapping hash from new settings/recovery comparison (legacy field decodable; actual Worker retry identity still includes approval), expose unavailable current selections with real alternatives and explicit native, report removed overrides at load, defer selector collision to actual invocation. CI pending; no completion claim.
+
 ## C24 — Unified User Configuration & Native Input Capabilities (engineering CI PASS; native UNVERIFIED)
 
 Рабочая ветка `feature/unified-user-configuration`, implementation baseline `a8888fdaaf6990d16c259ae511f16edf607395ec` (master, D27 provider-first; C23 merged PR #6). Подробное задание: [C24_UNIFIED_USER_CONFIGURATION.md](C24_UNIFIED_USER_CONFIGURATION.md), acceptance A132–A142. Planning HEAD — коммит этого плана; сверить фактический SHA и CI. Baseline [CI #46151224720](https://github.com/apathoid/role-orchestrator/actions/runs/46151224720) наблюдался in_progress при подготовке, итог проверить перед реализацией.

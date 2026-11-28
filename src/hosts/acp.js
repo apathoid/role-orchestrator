@@ -99,18 +99,20 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
     /** @type {SessionConfigOption[]} */
     const options=[];
     const profile=view.controllerProfile;
-    if(profile.current===undefined)return options;
+    const current=profile.current??profile.unavailable;
+    if(current===undefined)return options;
     options.push({id:'controllerProfile',name:'Controller profile',category:'model',type:'select',
-      ...(unavailable&&{description:'Previous profile unavailable: '+unavailable+'. Current default selected for future prompts.'}),
-      currentValue:profile.current,options:profile.options.map(item=>({value:item.id,name:item.name}))});
+      ...(profile.unavailable?{description:'Current profile unavailable; select an available profile before prompting.'}:unavailable?{description:'Previous profile unavailable: '+unavailable+'. Current default selected for future prompts.'}:{}),
+      currentValue:current,options:[...(profile.current===undefined?[{value:current,name:current+' (unavailable)'}]:[]),...profile.options.map(item=>({value:item.id,name:item.name}))]});
     for(const kind of featureKinds) {
       const descriptor=view[kind];
       if(!descriptor||descriptor.current===undefined)continue;
       options.push({id:kind,type:'select',name:kind==='reasoningEffort'?'Reasoning effort':kind==='collaborationMode'?'Collaboration mode':'Approval mode',
         ...(kind==='reasoningEffort'&&{category:/** @type {const} */('thought_level')}),
         ...(kind==='collaborationMode'&&{category:/** @type {const} */('mode')}),
-        currentValue:descriptor.current,options:descriptor.options.map(item=>({value:item.id,name:item.name,
-          ...(item.description!==undefined&&{description:item.description})}))});
+        ...(descriptor.unavailable&&{description:'Current override is unsupported by the adapter; select an available option.'}),
+        currentValue:descriptor.current,options:[...(descriptor.unavailable?[{value:descriptor.current,name:descriptor.current+' (unavailable)'}]:[]),...descriptor.options.map(item=>({value:item.id,name:item.name,
+          ...(item.description!==undefined&&{description:item.description})}))]});
     }
     return options;
   }
@@ -225,11 +227,14 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
           session.controllerProfile=undefined;
           view=await settingsView(session);
         }
+        const previousOverrides=session.userSettings??{};
+        const changed=featureKinds.flatMap(kind=>previousOverrides[kind]!==undefined&&previousOverrides[kind]!==view.overrides[kind]?[kind+': '+previousOverrides[kind]+' → '+(view[kind]?.current??'not available')]:[]);
         session.userSettings=view.overrides;
         const options=configOptions(view,unavailable);
         await save(session);
         await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay,connection.signal,replayContent);
         sessions.set(sessionId, session);
+        if(changed.length)await sendUpdate(client,sessionId,acpOwnMessage('Stored settings no longer available for future prompts: '+changed.join('; '),{source:'history',recovered:true},sessionId));
         await publishSkills(client,session);
         return { configOptions: options };
       } finally { loading.delete(sessionId); }
@@ -324,7 +329,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
           const skill=shortcut&&api.selectSkill?await api.selectSkill(session.cwd,shortcut[1]):undefined;
           const view=await api.settings({cwd:session.cwd},selectedProfile,selectedSettings);
           const selection=view.controllerProfile;
-          if(selection.current===undefined&&selectedProfile!==undefined)throw invalid('Selected Controller profile is unavailable');
+          if(selection.current===undefined)throw invalid('Selected Controller profile is unavailable; choose an available profile');
           request={requestId,fingerprint,controllerProfile:selection.current,userSettings:view.overrides,...(skill&&{agentSkill:{name:skill.name,path:skill.path,source:skill.source}})};
           session.requests.push(request);
           await save(session);

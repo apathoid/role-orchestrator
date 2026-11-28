@@ -8,7 +8,7 @@ import { decodeConfiguration } from '../application/configuration/decode-config.
 import { createInteractionBroker } from '../application/interactions.js';
 import { createPermissionBroker } from '../application/configuration/permissions.js';
 import { createOrchestrator } from '../application/orchestrator.js';
-import { describeUserSettings, resolveFeatureChoices, workerApproval, approvalMappingsRef } from '../application/configuration/user-settings.js';
+import { describeUserSettings, resolveFeatureChoices, workerApproval } from '../application/configuration/user-settings.js';
 import { defaultUserContentMaxBytes, userAttachments } from '../application/user-content.js';
 import { sameRecord } from '../core/operation.js';
 import { createEventStream } from '../application/events.js';
@@ -115,15 +115,14 @@ export async function openRuntime(options, onStoreOpen) {
       if(resolved.kind==='rejected')throw new RuntimeError('CAPABILITY_UNAVAILABLE','Unknown logical user setting',resolved.path);
       const {choices,overrides}=resolved;
       /** @type {import('../core/ports.js').AcceptedSettings|undefined} */
-      let accepted=requested!==undefined||Object.keys(choices).length?{
+      let accepted={
         profileId:selected.profile.profileId,providerId:selected.profile.providerId,model:selected.profile.model,configurationRef,
         ...(Object.keys(overrides).length&&{overrides}),...choices,
-        ...(approvalMappingsRef(selectedConfig,choices.approvalMode)&&{approvalMappingsRef:approvalMappingsRef(selectedConfig,choices.approvalMode)}),
-      }:undefined;
+      };
       if(input.recovery) {
         if(!accepted)throw new RuntimeError('CAPABILITY_UNAVAILABLE','Accepted settings missing','/userSettings');
         const {configurationRef:_current,...effective}=accepted;
-        const {configurationRef:_historical,...historical}=input.recovery;
+        const {configurationRef:_historical,approvalMappingsRef:_legacyMappings,...historical}=input.recovery;
         if(!sameRecord(effective,historical))throw new RuntimeError('CAPABILITY_UNAVAILABLE','Accepted Controller settings are no longer compatible','/userSettings');
         accepted=input.recovery;
       }

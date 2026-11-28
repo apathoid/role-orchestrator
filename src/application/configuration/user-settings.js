@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 /** @import {Configuration,FeatureKind} from './decode-config.js' */
 /** @import {UserSettings} from '../../core/contracts.js' */
 /** @import {NativeSetting, Catalog, Profile, ProviderPort, AuthorityPort} from '../../core/ports.js' */
@@ -84,8 +83,10 @@ export async function describeUserSettings(config,catalog,authority,providerFor,
   for(const kind of featureKinds) {
     const template=featureTemplate(config,profile.profileId,kind);
     const current=resolved.choices[kind]?.id;
-    if(!template||current===undefined||!supports(provider,kind))continue;
-    view[kind]={current,options:template.options.map(item=>({id:item.id,name:item.name??item.id,
+    if(!template||current===undefined)continue;
+    const supported=supports(provider,kind);
+    const available=template.options.filter(item=>supported||item.nativeValue===undefined);
+    view[kind]={current,...(!supported&&resolved.choices[kind]?.nativeValue!==undefined&&{unavailable:current}),options:available.map(item=>({id:item.id,name:item.name??item.id,
       ...(item.description!==undefined&&{description:item.description})}))};
   }
   return view;
@@ -97,17 +98,4 @@ export async function describeUserSettings(config,catalog,authority,providerFor,
  */
 export function workerApproval(config,profileId,approval) {
   return approval?featureSelection(config,profileId,'approvalMode',approval.id,approval.source):undefined;
-}
-
-/** Proof of the compatible approval mappings for an accepted generation.
- * This is trusted configuration identity, not a workspace check or registry.
- * @param {Configuration} config @param {NativeSetting|undefined} approval
- */
-export function approvalMappingsRef(config,approval) {
-  if(!approval||approval.nativeValue===undefined)return undefined;
-  const entries=Object.keys(config.profiles).sort().flatMap(profileId=>{
-    const mapped=workerApproval(config,profileId,approval);
-    return mapped?.nativeValue!==undefined?[[profileId,config.profiles[profileId].provider,mapped]]:[];
-  });
-  return createHash('sha256').update(JSON.stringify(entries)).digest('hex');
 }
