@@ -189,12 +189,12 @@ export function createOrchestrator(deps) {
     return state;
   }
 
-  /** @param {string} requestId */
-  async function findRequest(requestId) {
+  /** @param {string} requestId @param {boolean} [strict] */
+  async function findRequest(requestId,strict=true) {
     const entries = await store.list();
     const operation = entries.filter(isAvailable).find(item => item.request.requestId === requestId ||
       item.events.some(event => event.kind === 'operation.continued' && event.input.requestId === requestId));
-    if (!operation && entries.some(item => !isAvailable(item))) {
+    if (!operation && strict && entries.some(item => !isAvailable(item))) {
       throw new OrchestrationError('STORE_UNAVAILABLE', 'Cannot confirm request identity in an unreadable snapshot');
     }
     return operation;

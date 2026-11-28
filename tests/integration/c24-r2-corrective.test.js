@@ -62,6 +62,8 @@ test('C24-R2 T12 only an undispatched pre-recovery Controller reservation preser
   assert.deepEqual(pendingControllerHistoryRequest(state,'new'),contextRequest);
   state.events=[choice,prior,{kind:'attempt.dispatched',attemptId:'old'},recovered,next];
   assert.equal(pendingControllerHistoryRequest(state,'new'),undefined);
+  state.events=[choice,prior,{kind:'attempt.outcome',attemptId:'old',outcome:{attemptId:'old'}},recovered,next];
+  assert.equal(pendingControllerHistoryRequest(state,'new'),undefined);
   state.events=[choice,prior,recovered,{kind:'operation.continued'},next];
   assert.equal(pendingControllerHistoryRequest(state,'new'),undefined);
 });
@@ -70,7 +72,7 @@ test('C24-R2 T03/T04/T10 explicit work page and current skill survive large opti
   const prepared=prepareUserContent({...base,content:[{kind:'text',text},...Array.from({length:300},(_,i)=>({kind:'link',uri:'file:///a'+i}))]});
   assert.equal(prepared.kind,'accepted');
   const state=operation(prepared.input);
-  for(let i=0;i<5;i++){
+  for(let i=0;i<40;i++){
     const attemptId='controller-'+i;
     state.events.push({kind:'attempt.reserved',attemptId,actionId:attemptId});
     state.attempts.push({attemptId,actionId:attemptId,status:'terminal',dispatchCertainty:'sent',outcome:outcome(attemptId)});
@@ -80,11 +82,10 @@ test('C24-R2 T03/T04/T10 explicit work page and current skill survive large opti
   const host=context.find(item=>item.ref==='host:invocation-context').value;
   assert.ok(host.workMap.entries.length>0);
   assert.equal(host.userSelectedSkills[0].name,'changed');
-  if(host.workMap.nextCursor){
-    const following=controllerContext(state,[],undefined,undefined,3000,undefined,[],host.workMap.nextCursor).find(item=>item.ref==='host:invocation-context').value.workMap;
-    assert.ok(following.entries.length>0);
-    assert.notEqual(following.entries[0].attemptId,host.workMap.entries[0].attemptId);
-  }
+  assert.ok(host.workMap.nextCursor);
+  const following=controllerContext(state,[],undefined,undefined,3000,undefined,[],host.workMap.nextCursor).find(item=>item.ref==='host:invocation-context').value.workMap;
+  assert.ok(following.entries.length>0);
+  assert.notEqual(following.entries[0].attemptId,host.workMap.entries[0].attemptId);
 });
 test('C24-R2 T07/T08 CLI renders current technical failure/question instead of historical answer',async()=>{
   const state=operation(request());

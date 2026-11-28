@@ -31,7 +31,9 @@ export async function dispatchCommand(api, command, accepted) {
   let agentSkill=command.agentSkill;
   if(agentSkillSelection!==undefined){
     if(agentSkill||!api.selectSkill||!['run','resume'].includes(action))throw new HostError('INVALID_ARGUMENT','Agent Skill selection unavailable');
-    const prior=await api.findRequest?.(requestId);
+    // Advisory lookup: submit/resume still enforce durable request identity.
+    // Unrelated unreadable snapshots must not add a CLI-only admission gate.
+    const prior=await api.findRequest?.(requestId,false);
     if(prior){
       const continued=prior.events.find(event=>event.kind==='operation.continued'&&event.input.requestId===requestId);
       const stored=action==='run'&&prior.request.requestId===requestId?prior.request:

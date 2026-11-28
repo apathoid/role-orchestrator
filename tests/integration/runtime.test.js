@@ -292,15 +292,19 @@ test('C24-R2 T05/T06 recovered accepted Worker checks only its admitted approval
     config.features.approvalMode[changed].options[0].nativeValue='native-open';
     const stateDirectory=join(directory,changed+'-'+reserved);await mkdir(stateDirectory);
     let restored=createOperation(original.operationId,original.request,original.authorityRef,original.limits,original.acceptedAt,original.acceptedSettings);
-    for(const event of original.events){
-      const applied=applyEvent(restored,event);
-      assert.equal(applied.kind,'applied');
-      restored=applied.state;
-      if(!reserved&&event.kind==='controller.responded'&&event.admissions?.some(a=>a.kind==='accepted'))break;
-      if(reserved&&event.kind==='attempt.reserved'&&event.actionId==='c24-approval-worker')break;
-    }
     const store=createLocalStateStore(stateDirectory);await store.open();
-    try{assert.equal((await store.commit(restored.operationId,null,restored)).kind,'committed');}finally{await store.close();}
+    try{
+      assert.equal((await store.commit(restored.operationId,null,restored)).kind,'committed');
+      for(const event of original.events){
+        const revision=restored.revision;
+        const applied=applyEvent(restored,event);
+        assert.equal(applied.kind,'applied');
+        restored=applied.state;
+        assert.equal((await store.commit(restored.operationId,revision,restored)).kind,'committed');
+        if(!reserved&&event.kind==='controller.responded'&&event.admissions?.some(a=>a.kind==='accepted'))break;
+        if(reserved&&event.kind==='attempt.reserved'&&event.actionId==='c24-approval-worker')break;
+      }
+    }finally{await store.close();}
     const count=(await wire()).length;
     const second=await open(config,stateDirectory);
     try{

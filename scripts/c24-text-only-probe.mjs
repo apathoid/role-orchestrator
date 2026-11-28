@@ -4,7 +4,8 @@ import { mkdir, writeFile, readFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { root, withOwnedRun } from './owned-run.mjs';
 
-const baseline='a8888fdaaf6990d16c259ae511f16edf607395ec';
+const baseline=process.argv[2]??'a8888fdaaf6990d16c259ae511f16edf607395ec';
+assert.match(baseline,/^[a-f0-9]{40}$/);
 const fixture=join(root,'tests/fixtures/c24-native-agent.js');
 function checked(command,args,options={}){
   const r=spawnSync(command,args,{cwd:root,maxBuffer:64*1024*1024,timeout:30000,...options});

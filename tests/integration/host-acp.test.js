@@ -1377,3 +1377,14 @@ test('C24-R2 T01/T02 large initial objective is not duplicated on historical nat
     assert.equal(records[2].blocks.find(item=>item.type==='image').hash,first);
   }finally{await host.close();}
 }));
+
+ test('C24-R2 T09 legacy provider receives boundaries between ACP text blocks',{timeout:12000},()=>withOwnedRun('C24R2-legacy-text',async cwd=>{
+  const host=launch(cwd,await fixture(cwd));
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    const result=await host.agent.request(a.session.prompt,{sessionId,prompt:[{type:'text',text:'left'},{type:'text',text:'right'}]});
+    assert.equal(result.stopReason,'end_turn');
+    assert.ok(host.messages.some(message=>message.sessionId===sessionId&&message.update.content?.text==='Ответ: left\nright'));
+  }finally{await host.close();}
+}));
