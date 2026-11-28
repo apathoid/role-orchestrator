@@ -555,12 +555,14 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       if (initialized.protocolVersion !== PROTOCOL_VERSION) return resultFor(invocation, 'PROTOCOL_ERROR');
       /** @type {{requestId:string,ref:string,reason:string}[]} */ const omittedContent=[];
       /** @type {{requestId:string,startBlock:number,count:number,literalText:boolean,refs:{ref:string,block:number}[]}[]} */ const deliveredTurns=[];
+      /** @type {ProviderResult['contentUnavailable']} */ let contentFailure;
       const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities??{}, resolveAttachment, AbortSignal.any([signal, connection.signal]),(requestId,ref)=>omittedContent.push({requestId,ref,reason:'native_content_unavailable'}),
-        (turn,startBlock,count,refs)=>deliveredTurns.push({requestId:turn.requestId,startBlock,count,literalText:turn.content.some(item=>item.kind==='text'),refs}));
+        (turn,startBlock,count,refs)=>deliveredTurns.push({requestId:turn.requestId,startBlock,count,literalText:turn.content.some(item=>item.kind==='text'),refs}),issue=>{contentFailure=issue;});
       if (!blocks || (required.includes('input.image') && (!initialized.agentCapabilities?.promptCapabilities?.image))) {
         const refused=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
         refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',
-          value:{reason:'user_content_not_deliverable',profileId:invocation.profile.profileId,attachments:(invocation.attachments??[]).map(item=>({ref:item.ref,mediaType:item.mediaType}))}});
+          value:{reason:contentFailure?.cause??'native_modality_unavailable',ref:contentFailure?.ref,profileId:invocation.profile.profileId}});
+        refused.contentUnavailable=contentFailure??{cause:'native_modality_unavailable'};
         return refused;
       }
       signal.throwIfAborted();
@@ -684,6 +686,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if(blocks.length&&Buffer.byteLength(JSON.stringify([{type:'text',text:prompt},...blocks]))>maxInputFrameBytes-4096){
           const refused=resultFor(invocation,'RESOURCE_LIMIT');
           refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content-limit',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',value:{reason:'native_prompt_frame_limit',limit:maxInputFrameBytes}});
+          refused.contentUnavailable={cause:'native_prompt_frame_limit'};
           return refused;
         }
         signal.throwIfAborted();

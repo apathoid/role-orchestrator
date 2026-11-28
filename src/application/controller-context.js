@@ -62,12 +62,12 @@ export function coordinationFacts(state, lookups) {
   };
 }
 
-/** @param {Operation} state @param {number} [throughRevision] @returns {ContextItem[]} */
-export function operationHistory(state, throughRevision = state.events.length) {
+/** @param {Operation} state @param {number} [throughRevision] @param {boolean} [legacyText] @returns {ContextItem[]} */
+export function operationHistory(state, throughRevision = state.events.length,legacyText=false) {
   const events = throughRevision === state.events.length ? state.events : state.events.slice(0, throughRevision);
   /** @type {ContextItem[]} */
   const items = [
-    { ...observation({ ref: state.request.requestId, completeness: 'complete', value: userTextProjection(state.request) },
+    { ...observation({ ref: state.request.requestId, completeness: 'complete', value: legacyText?userTextProjection(state.request):state.request.text },
       { kind: 'user', sourceId: state.request.requestId, receivedAt: state.acceptedAt }),
     receivedSequence: { revision: 0, index: 0 } },
   ];
@@ -94,7 +94,7 @@ export function operationHistory(state, throughRevision = state.events.length) {
     } else if (event.kind === 'operation.finished') {
       append('assessment:' + event.eventId, event.assessment, 'model', event.assessment.author);
     } else if (event.kind === 'operation.continued') {
-      append(event.input.requestId, userTextProjection(event.input), 'user', event.input.requestId);
+      append(event.input.requestId, legacyText?userTextProjection(event.input):event.input.text, 'user', event.input.requestId);
       appendUserContent(event.input,revision,event.receivedAt);
     }
 
@@ -321,7 +321,8 @@ export function pendingControllerHistoryRequest(state, attemptId) {
     const later=subsequent.slice(position+1);
     // Only the known pre-dispatch crash gap is reusable. A durable dispatch
     // marker remains a consumption boundary even if lookup later says not_sent.
-    if(!later.some(item=>item.kind==='operation.recovered')||
+    const recovery=later.findIndex(item=>item.kind==='operation.recovered');
+    if(recovery<0||later.slice(0,recovery).some(item=>item.kind==='attempt.outcome'&&item.outcome.attemptId===event.attemptId)||
       later.some(item=>item.kind==='attempt.dispatched'&&item.attemptId===event.attemptId))return undefined;
   }
   const choice = before[index];
@@ -335,13 +336,17 @@ export function pendingControllerHistoryRequest(state, attemptId) {
  * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {number} [maxBytes]
  * @param {Catalog['preferences']} [preferences]
  * @param {readonly ContextItem[]} [requested]
- * @param {number | {revision: number, index: number}} [workCursor]
+ * @param {number | {revision: number, index: number}} [workCursor] @param {boolean} [legacyText]
  * @returns {ContextItem[]}
  */
-export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor) {
+export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor,legacyText=false) {
   const explicitWorkPage = workCursor !== undefined;
   workCursor ??= 0;
-  const [request, ...history] = operationHistory(state);
+  const [request, ...history] = operationHistory(state,state.events.length,legacyText);
+  if(legacyText){
+    const projected=new Map([request,...history].filter(item=>item.provenance?.kind==='user'&&item.receivedSequence?.index===0).map(item=>[item.ref,item]));
+    requested=requested.map(item=>item.completeness==='complete'&&projected.has(item.ref)&&item.provenance?.kind==='user'&&item.receivedSequence?.index===0?projected.get(item.ref)??item:item);
+  }
   // References point to the original user ContextItems. Chronology is a
   // transport fact, not a Host decision about the current task or priority.
   const latestUser = history.findLast(item => item.provenance?.kind === 'user' && item.receivedSequence?.index === 0) ?? request;

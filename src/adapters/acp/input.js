@@ -75,15 +75,16 @@ export async function configureReasoning(agent, methods, session, reasoning, sig
  * @param {Invocation} invocation @param {InitializeResponse['agentCapabilities']} capabilities
  * @param {ResolveAttachment | undefined} resolve @param {AbortSignal} signal @param {(requestId:string,ref:string)=>void} [onOmitted]
  * @param {(turn:import('../../core/ports.js').OrderedTurn,start:number,count:number,refs:{ref:string,block:number}[])=>void} [onDelivered]
+ * @param {(issue:NonNullable<import('../../core/ports.js').ProviderResult['contentUnavailable']>)=>void} [onFailure]
  */
-export async function attachmentBlocks(invocation, capabilities, resolve, signal,onOmitted,onDelivered) {
+export async function attachmentBlocks(invocation, capabilities, resolve, signal,onOmitted,onDelivered,onFailure) {
   /** @type {ContentBlock[]} */
   const blocks = [];
   const orderedRefs=new Set((invocation.orderedTurns??[]).flatMap(turn=>turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref])));
   for(const turn of invocation.orderedTurns??[]){
     /** @type {{ref:string,block:number}[]} */ const refs=[];
     const ordered=await renderOrderedTurn(turn,invocation.readUserPayload,capabilities,signal,turn.required===false?ref=>onOmitted?.(turn.requestId,ref):undefined,
-      (ref,index)=>refs.push({ref,block:blocks.length+1+index}));
+      (ref,index)=>refs.push({ref,block:blocks.length+1+index}),turn.required===false?undefined:onFailure);
     if(!ordered)return undefined;
     onDelivered?.(turn,blocks.length+1,ordered.length,refs);
     blocks.push(...ordered);
@@ -91,14 +92,14 @@ export async function attachmentBlocks(invocation, capabilities, resolve, signal
   for (const attachment of invocation.attachments ?? []) {
     if(orderedRefs.has(attachment.ref))continue;
     if('kind' in attachment){
-      const block=await renderContentAttachment(attachment,invocation.readUserPayload,capabilities,signal);
+      const block=await renderContentAttachment(attachment,invocation.readUserPayload,capabilities,signal,onFailure);
       if(!block)return undefined;
       blocks.push(block);continue;
     }
     signal.throwIfAborted();
-    if (!resolve) return undefined;
+    if (!resolve){onFailure?.({ref:attachment.ref,cause:'payload_unavailable'});return undefined;}
     const image = attachment.mediaType.toLowerCase().startsWith('image/');
-    if (image && !capabilities?.promptCapabilities?.image) return undefined;
+    if (image && !capabilities?.promptCapabilities?.image){onFailure?.({ref:attachment.ref,cause:'native_modality_unavailable'});return undefined;}
     /** @type {PromiseWithResolvers<never>} */
     const stopped = Promise.withResolvers();
     const listener = addAbortListener(signal, () => stopped.reject(signal.reason));
@@ -106,6 +107,7 @@ export async function attachmentBlocks(invocation, capabilities, resolve, signal
       .finally(() => listener[Symbol.dispose]());
     if (!block || (image ? block.type !== 'image' || block.mimeType !== attachment.mediaType :
       block.type !== 'resource_link' && (block.type !== 'resource' || !capabilities?.promptCapabilities?.embeddedContext))) {
+      onFailure?.({ref:attachment.ref,cause:!block?'payload_unavailable':'resource_transport_unavailable'});
       return undefined;
     }
     blocks.push(block);
@@ -153,12 +155,12 @@ function metadataObject(metadata){
 }
 /** @param {import('../../core/contracts.js').ContentAttachment} item
  * @param {Invocation['readUserPayload']} read @param {InitializeResponse['agentCapabilities']|undefined} capabilities
- * @param {AbortSignal} signal @returns {Promise<ContentBlock|undefined>}
+ * @param {AbortSignal} signal @param {(issue:NonNullable<import('../../core/ports.js').ProviderResult['contentUnavailable']>)=>void} [onFailure] @returns {Promise<ContentBlock|undefined>}
  */
-export async function renderContentAttachment(item,read,capabilities,signal){
+export async function renderContentAttachment(item,read,capabilities,signal,onFailure){
   signal.throwIfAborted();
   const caps=capabilities?.promptCapabilities;
-  if(capabilities&&(item.kind==='image'&&!caps?.image||item.kind==='audio'&&!caps?.audio||item.kind==='resource'&&!caps?.embeddedContext))return;
+  if(capabilities&&(item.kind==='image'&&!caps?.image||item.kind==='audio'&&!caps?.audio||item.kind==='resource'&&!caps?.embeddedContext)){onFailure?.({ref:item.ref,cause:item.kind==='resource'?'resource_transport_unavailable':'native_modality_unavailable'});return;}
   const meta=metadataObject(item.metadata);
   if(item.kind==='link'){
     const {mimeType:_mime,...opaque}=meta;
@@ -166,7 +168,7 @@ export async function renderContentAttachment(item,read,capabilities,signal){
   }
   const bytes=await read?.(item.ref);
   signal.throwIfAborted();
-  if(!bytes)return;
+  if(!bytes){onFailure?.({ref:item.ref,cause:'payload_unavailable'});return;}
   if(item.kind==='image'||item.kind==='audio'){
     const {uri:_uri,...opaque}=meta;
     return /** @type {ContentBlock} */ ({...opaque,type:item.kind,mimeType:item.mediaType,data:Buffer.from(bytes).toString('base64'),...(item.uri&&{uri:item.uri})});
@@ -180,15 +182,16 @@ export async function renderContentAttachment(item,read,capabilities,signal){
  * @param {InitializeResponse['agentCapabilities']|undefined} capabilities @param {AbortSignal} signal
  * @param {(ref:string)=>void} [onOmitted]
  * @param {(ref:string,index:number)=>void} [onDelivered]
+ * @param {(issue:NonNullable<import('../../core/ports.js').ProviderResult['contentUnavailable']>)=>void} [onFailure]
  * @returns {Promise<ContentBlock[]|undefined>}
  */
-export async function renderOrderedTurn(turn,read,capabilities,signal,onOmitted,onDelivered){
+export async function renderOrderedTurn(turn,read,capabilities,signal,onOmitted,onDelivered,onFailure){
   /** @type {ContentBlock[]} */ const blocks=[];
   for(const item of turn.content){
     signal.throwIfAborted();
     if(item.kind==='text')blocks.push(/** @type {ContentBlock} */ ({...metadataObject(item.metadata),type:'text',text:turn.text.slice(item.start,item.end)}));
     else{
-      const block=await renderContentAttachment(item,read,capabilities,signal);
+      const block=await renderContentAttachment(item,read,capabilities,signal,onFailure);
       if(!block){if(!onOmitted)return;onOmitted(item.ref);continue;}
       onDelivered?.(item.ref,blocks.length);
       blocks.push(block);

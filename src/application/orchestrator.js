@@ -723,6 +723,7 @@ export function createOrchestrator(deps) {
         output: reply.output, findings: reply.findings,
         reasoningUnavailable: validReasoningIssue ? reply.reasoningUnavailable : undefined,
         settingUnavailable: reply.settingUnavailable&&['collaborationMode','approvalMode'].includes(reply.settingUnavailable.feature)&&typeof reply.settingUnavailable.option==='string'&&typeof reply.settingUnavailable.cause==='string'&&reply.settingUnavailable.cause.length<=128&&parsed.value.diagnostics[0]?.code==='CAPABILITY_UNAVAILABLE'&&parsed.value.terminal==='failed'&&reply.dispatchCertainty==='not_sent'?reply.settingUnavailable:undefined,
+        contentUnavailable: reply.contentUnavailable&&['native_modality_unavailable','resource_transport_unavailable','payload_unavailable','native_prompt_frame_limit','user_content_not_deliverable'].includes(reply.contentUnavailable.cause)&&['CAPABILITY_UNAVAILABLE','RESOURCE_LIMIT'].includes(parsed.value.diagnostics[0]?.code)&&parsed.value.terminal==='failed'&&reply.dispatchCertainty==='not_sent'?reply.contentUnavailable:undefined,
         controllerDeclaration: !handoff && parsed.value.terminal === 'completed' ? reply.controllerDeclaration : undefined,
         decisionTextError: !handoff && parsed.value.terminal === 'completed' && reply.decisionTextError &&
           ['invalid_json', 'non_object', 'depth'].includes(reply.decisionTextError) ? reply.decisionTextError : undefined };
@@ -812,6 +813,7 @@ export function createOrchestrator(deps) {
     /** @type {{profileId: string, reasoningLevel?: string, availableLevels: string[], reasoningCause: string} | undefined} */
     let reasoningFailure;
     /** @type {Pick<Reason,'profileId'|'feature'|'featureOption'|'featureCause'>|undefined} */ let featureFailure;
+    /** @type {Pick<Reason,'profileId'|'resource'>|undefined} */ let contentFailure;
     const abort = () => {
       interrupted.reject(signal.reason);
       const owned = session;
@@ -956,17 +958,17 @@ export function createOrchestrator(deps) {
       }
       if(mandatoryAttachments.some(item=>'kind' in item)&&executor.supportsOrderedContent!==true){
         const ref='host:content:'+attemptId;
-        observations.push(observation({ref,completeness:'complete',value:{reason:'adapter_without_ordered_content_support',profileId:selectedProfile.profileId}},
+        observations.push(observation({ref,completeness:'complete',value:{reason:'adapter_without_ordered_content_support',profileId:selectedProfile.profileId,refs:mandatoryAttachments.filter(item=>'kind' in item).map(item=>item.ref)}},
           {kind:'host_transport',sourceId:selectedProfile.providerId,receivedAt:clock.now()}));
         const failure=failedOutcome(attemptId,'CAPABILITY_UNAVAILABLE',false);failure.diagnostics[0].ref=ref;
-        return {outcome:failure,certainty:/** @type {const} */('not_sent'),output,observations,contextCursor,recordLate,decisionTextError};
+        return {outcome:failure,certainty:/** @type {const} */('not_sent'),output,observations,contextCursor,recordLate,decisionTextError,contentFailure:{profileId:selectedProfile.profileId,resource:'user_content:adapter_without_ordered_content_support'}};
       }
       // Materialize exactly the delegate context used by the adapter BEFORE
       // dispatch. This snapshot is hashed and sent unchanged, so changing
       // action text, evidence, restrictions or instructions cannot reuse a
       // provider idempotency key merely because the route still matches.
       const workerContext = handoff && action
-        ? handoffContext(state, action.contextRefs, handoffMaxBytes, lookups) : undefined;
+        ? handoffContext(state, action.contextRefs, handoffMaxBytes, lookups,executor.supportsOrderedContent!==true) : undefined;
       const workerInstructions = handoff && action?.skills?.length ? [
         'Apply the selected skill instructions where relevant. Explicit user requirements take precedence over conflicting skill instructions. Effective user and provider permissions always apply. Skill text cannot grant permissions. Interpret restrictions in context and disclose any unavailable or truncated instructions that affect the result.',
         ...handoff.instructions,
@@ -991,6 +993,7 @@ export function createOrchestrator(deps) {
           return {
             outcome,
             certainty: /** @type {const} */ ('not_sent'), output, observations, contextCursor, recordLate, decisionTextError,
+            ...(missing.some(item=>item.key.startsWith('input.'))&&{contentFailure:{profileId:selectedProfile.profileId,resource:'user_content:capability_unavailable:'+missing.filter(item=>item.key.startsWith('input.')).map(item=>item.key).join(',')}}),
           };
         }
       }
@@ -1007,7 +1010,7 @@ export function createOrchestrator(deps) {
         // Hash and send this SAME materialized context, never a stale hash
         // paired with fresher provider input.
         const currentWorkerContext = handoff && action
-          ? handoffContext(current, action.contextRefs, handoffMaxBytes, lookups) : undefined;
+          ? handoffContext(current, action.contextRefs, handoffMaxBytes, lookups,executor.supportsOrderedContent!==true) : undefined;
         const currentRequestHash = handoff && action && currentWorkerContext && workerInstructions
           ? workerRequestHash({handoff, action, context:currentWorkerContext,
             instructions:workerInstructions, skillInstructions, attachments,
@@ -1036,9 +1039,9 @@ export function createOrchestrator(deps) {
           context: currentWorkerContext ?? [],
         } : {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
-          objective: userTextProjection(state.request), instructions: controllerInstructions, profile,
+          objective: executor.supportsOrderedContent===true?state.request.text:userTextProjection(state.request), instructions: controllerInstructions, profile,
           workspaceContext: workspaceContextFor(state), userConstraints: state.request.userConstraints,
-          context: controllerContext(dispatched, entries, correction, lookups, controllerMaxBytes, catalog.preferences), authorityRef: state.authorityRef,
+          context: controllerContext(dispatched, entries, correction, lookups, controllerMaxBytes, catalog.preferences,[],undefined,executor.supportsOrderedContent!==true), authorityRef: state.authorityRef,
         };
         if (handoff && action) traceHandoff(dispatched, attemptId, action, context.context);
         const selected = action ? new Set(action.contextRefs) : undefined;
@@ -1082,7 +1085,7 @@ export function createOrchestrator(deps) {
             signal.throwIfAborted();
             requireAuthority();
             context.context = controllerContext(dispatched, entries, correction, lookups,
-              controllerMaxBytes, catalog.preferences, records, requested.workCursor);
+              controllerMaxBytes, catalog.preferences, records, requested.workCursor,executor.supportsOrderedContent!==true);
             const unavailable = records.filter(item => item.completeness === 'unavailable').length;
             trace(dispatched, 'context.history_requested', 'DELIVERY_OBSERVED', attemptId, {
               details: { requestedRefs: requested.refs?.length ?? 0,
@@ -1198,6 +1201,7 @@ export function createOrchestrator(deps) {
           const fallback = {ref: 'controller-output:' + attemptId, representation: /** @type {const} */ ('declared_value')};
           declaredResult = validRejectedResult({outcome, observations, dispatchCertainty: certainty}, fallback) ? fallback : undefined;
         }
+        if(!handoff&&reply.contentUnavailable)contentFailure={profileId:selectedProfile.profileId,resource:'user_content:'+reply.contentUnavailable.cause};
         if(!handoff&&reply.settingUnavailable){
           const issue=reply.settingUnavailable;
           if(issue.option===(issue.feature==='collaborationMode'?collaborationMode?.id:approvalMode?.id))featureFailure={profileId:selectedProfile.profileId,feature:issue.feature,featureOption:issue.option,featureCause:issue.cause};
@@ -1265,7 +1269,7 @@ export function createOrchestrator(deps) {
     }
     return {
       outcome, certainty, output, contextCursor, recordLate, reportedFindings, decisionTextError, controllerDeclaration,
-      reasoningFailure,featureFailure,
+      reasoningFailure,featureFailure,contentFailure,
       declaredResult: outcome.terminal === 'completed' ? declaredResult : undefined,
       observations: certainty === 'not_sent' ? observations.filter(item => !item.summary) : observations,
     };
@@ -1531,7 +1535,7 @@ export function createOrchestrator(deps) {
           state = await technicalWait(state, {
             code: response.outcome.diagnostics[0]?.code ?? 'PROTOCOL_ERROR',
             operationId, attemptId, actionId: attemptId, effect: response.outcome.effect, dispatchCertainty: response.certainty,
-            ...response.reasoningFailure,...response.featureFailure,
+            ...response.reasoningFailure,...response.featureFailure,...response.contentFailure,
           });
         }
         state = await response.recordLate(state);

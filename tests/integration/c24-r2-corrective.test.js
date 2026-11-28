@@ -17,7 +17,8 @@ test('C24-R2 T09 fallback text retains ordered boundaries while native slices an
   assert.equal(prepared.kind,'accepted');
   const turn=prepared.input;
   assert.equal(turn.text,'firstsecond');
-  assert.equal(operationHistory(operation(turn))[0].value,'first\nsecond');
+  assert.equal(operationHistory(operation(turn))[0].value,'firstsecond');
+  assert.equal(operationHistory(operation(turn),0,true)[0].value,'first\nsecond');
   const wire=await renderOrderedTurn(turn,undefined,{},signal);
   assert.deepEqual(wire.map(block=>block.text),['first','second']);
 });

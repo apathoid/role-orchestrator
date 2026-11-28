@@ -176,7 +176,8 @@ export async function runCli(args, io, execute, afterHuman) {
             ? (view.waiting.reason.profileId ? 'Error: ' : 'Waiting: ') + view.waiting.reason.code +
               (view.waiting.reason.profileId ? ' profile=' + view.waiting.reason.profileId +
                 (view.waiting.reason.feature?' feature='+view.waiting.reason.feature+' option='+view.waiting.reason.featureOption+' cause='+view.waiting.reason.featureCause:
-                ' reasoningLevel=' + (view.waiting.reason.reasoningLevel ?? '(default)') +
+                view.waiting.reason.resource?.startsWith('user_content:')?' resource='+view.waiting.reason.resource:
+                 ' reasoningLevel=' + (view.waiting.reason.reasoningLevel ?? '(default)') +
                 ' available=' + (view.waiting.reason.availableLevels ?? []).join(',') +
                 (view.waiting.reason.reasoningCause ? ' cause=' + view.waiting.reason.reasoningCause : '')) : '')
             : view.status);

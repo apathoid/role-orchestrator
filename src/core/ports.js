@@ -44,6 +44,7 @@
  * @typedef {{outcome: Outcome, output?: unknown, outputObservationRef?: string, outputObservationParsed?: true, findings?: unknown, dispatchCertainty: 'not_sent' | 'sent' | 'unknown',
  *   reasoningUnavailable?: 'session_option_unavailable' | 'session_option_rejected',
  *   settingUnavailable?: {feature:'collaborationMode'|'approvalMode',option:string,cause:string},
+ *   contentUnavailable?: {cause:'native_modality_unavailable'|'resource_transport_unavailable'|'payload_unavailable'|'native_prompt_frame_limit'|'user_content_not_deliverable',ref?:string},
  *   decisionTextError?: 'invalid_json' | 'non_object' | 'depth',
  *   controllerDeclaration?: {kind:'intent',value:unknown,observationRef?:string} |
  *     {kind:'missing'|'conflict'} | {kind:'invalid',reason:import('./decode.js').FieldError}}} ProviderResult
