@@ -154,7 +154,7 @@ test('C24 CLI lists shared settings and skills without a Store, applies explicit
   const settings=call(['settings']);
   assert.equal(settings.status,0,settings.stderr);
   const {readUserSettings}=await import('../../src/main/index.js');
-  assert.deepEqual(JSON.parse(settings.stdout),await readUserSettings(config,undefined,cwd,undefined));
+  assert.deepEqual(JSON.parse(settings.stdout),JSON.parse(JSON.stringify(await readUserSettings(JSON.stringify(spec),cwd,cwd))));
   const skills=call(['skills']);
   assert.equal(skills.status,0,skills.stderr);
   assert.ok(JSON.parse(skills.stdout).commands.some(x=>x.path===skill));

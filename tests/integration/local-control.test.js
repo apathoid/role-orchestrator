@@ -453,3 +453,21 @@ test('C14R.5R attached actual socket final survives failed CLI Writable', {timeo
     assert.deepEqual(await result,{done:true});assert.equal(omitted,1);assert.equal(dispatches,1);
   }finally{gate.resolve();renderer.close();terminal.close();output.destroy();await server.close();}
 }));
+
+test('C24 local control forwards explicit settings, skill and attachments and includes them in request identity',{skip:localSocketCheck},()=>withOwnedRun('C24-control',async directory=>{
+  let executions=0;
+  const server=await openControl(directory,'config',async(command,accepted)=>{
+    executions++;accepted('operation');
+    return {controllerProfile:command.controllerProfile,userSettings:command.userSettings,agentSkill:command.agentSkill,attachmentPaths:command.attachmentPaths};
+  });
+  try{
+    const descriptor=await readDescriptor(directory);
+    const fields={controllerProfile:'secondary',userSettings:{reasoningEffort:'high',collaborationMode:'plan',approvalMode:'review'},agentSkill:{name:'example',path:join(directory,'SKILL.md'),source:'project'},attachmentPaths:[join(directory,'external.txt')]};
+    const command={action:'run',requestId:'c24-settings',text:'task',...fields};
+    assert.deepEqual(await callControl(descriptor,'config',command),fields);
+    assert.deepEqual(await callControl(descriptor,'config',command),fields);
+    await assert.rejects(callControl(descriptor,'config',{...command,userSettings:{reasoningEffort:'low'}}),{code:'IDENTITY_CONFLICT'});
+    await assert.rejects(callControl(descriptor,'config',{...command,attachmentPaths:[]}),{code:'IDENTITY_CONFLICT'});
+    assert.equal(executions,1);
+  }finally{await server.close();}
+}));

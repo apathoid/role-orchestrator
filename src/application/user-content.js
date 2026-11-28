@@ -40,6 +40,7 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
       const uri=typeof block.uri==='string'&&block.uri?block.uri:undefined;
       const mediaType=typeof block.mediaType==='string'&&block.mediaType?block.mediaType:kind==='link'||kind==='resource'?'application/octet-stream':undefined;
       if(!mediaType||(kind==='resource'||kind==='link')&&!uri)return reject(path,'Missing MIME or resource URI');
+      total+=Buffer.byteLength(mediaType)+Buffer.byteLength(uri??'');
       if(kind==='image'&&!mediaType.startsWith('image/')||kind==='audio'&&!mediaType.startsWith('audio/'))return reject(path+'.mediaType','MIME does not match content kind');
       /** @type {PayloadRef|undefined} */ let payload;
       /** @type {'utf8'|'binary'|undefined} */ let encoding;
@@ -85,7 +86,7 @@ export function projectOrderedTurns(turns,latestId,represented,limit,supported){
     const required=turn.requestId===latestId;
     const refs=turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref]);
     const bytes=Buffer.byteLength(turn.text)+turn.content.reduce((total,item)=>total+
-      (item.kind==='text'?0:item.payload?.size??0)+Buffer.byteLength(JSON.stringify(item.metadata??null)),0);
+      (item.kind==='text'?0:(item.payload?.size??0)+Buffer.byteLength(item.mediaType)+Buffer.byteLength(item.uri??''))+Buffer.byteLength(JSON.stringify(item.metadata??null)),0);
     const reason=!supported?'adapter_unsupported':!required&&!represented.has(turn.requestId)?'not_projected':
       !required&&bytes>remaining?'input_budget':undefined;
     if(reason){omitted.push({requestId:turn.requestId,refs,reason});continue;}

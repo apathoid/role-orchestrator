@@ -1211,3 +1211,16 @@ test('C24 ACP advertises project skills, preserves explicit selection and clears
       assert.deepEqual(commands(),[]);
     }finally{await host.close();}
   }));
+
+test('C24 decoded input limit rejects oversized embedded data before native dispatch',{timeout:12_000},()=>withOwnedRun('C24-input-limit',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config=await fixture(cwd,{input:{maxBytes:64},providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']}}},plugins:[]});
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    await assert.rejects(host.agent.request(a.session.prompt,{sessionId,prompt:[{type:'image',mimeType:'image/png',data:Buffer.alloc(65).toString('base64')}]}));
+    await assert.rejects(readFile(join(cwd,'c24-wire.jsonl')),{code:'ENOENT'});
+    assert.equal((await prompt(host.agent,sessionId,'ordinary')).stopReason,'end_turn');
+  }finally{await host.close();}
+}));
