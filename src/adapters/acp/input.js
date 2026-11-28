@@ -52,9 +52,11 @@ export function thoughtOption(options) {
  * @param {NewSessionResponse} session
  * @param {Invocation['reasoning']} reasoning
  * @param {AbortSignal} signal
+ * @param {import('../../application/configuration/decode-config.js').FeatureBinding} [binding]
  */
-export async function configureReasoning(agent, methods, session, reasoning, signal) {
+export async function configureReasoning(agent, methods, session, reasoning, signal, binding) {
   if (!reasoning || reasoning.mode === 'native') return true;
+  if (binding) return configureBoundOption(agent, methods, session, binding, reasoning.nativeValue, signal);
   const option = thoughtOption(session.configOptions);
   if (!option) return false;
   const candidates = option.options.flatMap(item => 'options' in item ? item.options : [item]);
@@ -92,4 +94,33 @@ export async function attachmentBlocks(invocation, capabilities, resolve, signal
     blocks.push(block);
   }
   return blocks;
+}
+
+/** @param {import('../../application/configuration/decode-config.js').FeatureBinding|undefined} binding */
+export function supportsBinding(binding) {
+  return binding?.kind === 'sessionMode' || (binding?.kind === 'configOption' && typeof binding.id === 'string');
+}
+
+/** @param {NewSessionResponse} session @param {import('../../application/configuration/decode-config.js').FeatureBinding} binding */
+export function boundOption(session,binding) {
+  const options=session.configOptions?.filter(item=>item.id===binding.id&&item.type===(binding.optionType??'select'))??[];
+  return options.length===1?options[0]:undefined;
+}
+
+/** @param {ClientContext} agent @param {typeof import('@agentclientprotocol/sdk').methods.agent.session} methods
+ * @param {NewSessionResponse} session @param {import('../../application/configuration/decode-config.js').FeatureBinding} binding
+ * @param {string|boolean} value @param {AbortSignal} signal
+ */
+export async function configureBoundOption(agent,methods,session,binding,value,signal) {
+  if(binding.kind!=='configOption')return false;
+  const option=boundOption(session,binding);
+  if(!option||option.id===modelOption(session.configOptions)?.id)return false;
+  if(option.type==='select') {
+    if(typeof value!=='string'||!option.options.flatMap(item=>'options' in item?item.options:[item]).some(item=>item.value===value))return false;
+  } else if(typeof value!=='boolean')return false;
+  if(option.currentValue!==value) {
+    const changed=await agent.request(methods.setConfigOption,{sessionId:session.sessionId,configId:option.id,value},{cancellationSignal:signal,stopWaitingOnCancel:true});
+    session.configOptions=changed.configOptions;
+  }
+  return boundOption(session,binding)?.currentValue===value;
 }

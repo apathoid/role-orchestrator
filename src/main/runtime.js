@@ -119,7 +119,8 @@ export async function openRuntime(options, onStoreOpen) {
         ...(approvalMappingsRef(selectedConfig,choices.approvalMode)&&{approvalMappingsRef:approvalMappingsRef(selectedConfig,choices.approvalMode)}),
       }:undefined;
       if(input.recovery) {
-        const {configurationRef:_current,...effective}=accepted??{};
+        if(!accepted)throw new RuntimeError('CAPABILITY_UNAVAILABLE','Accepted settings missing','/userSettings');
+        const {configurationRef:_current,...effective}=accepted;
         const {configurationRef:_historical,...historical}=input.recovery;
         if(!sameRecord(effective,historical))throw new RuntimeError('CAPABILITY_UNAVAILABLE','Accepted Controller settings are no longer compatible','/userSettings');
         accepted=input.recovery;

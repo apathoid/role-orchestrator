@@ -8,7 +8,7 @@ import { launchEnvironment } from '../launch-environment.js';
 import { bridgeName, retrievalDetail, startMcpBridge } from '../mcp-bridge.js';
 import { reportPrompt } from '../prompt-diagnostics.js';
 import { parseDecisionText, renderInvocationPrompt } from '../invocation-prompt.js';
-import { attachmentBlocks, configureReasoning, configureSession, modelOption } from './input.js';
+import { attachmentBlocks, configureReasoning, configureSession, modelOption, supportsBinding, boundOption, configureBoundOption, thoughtOption } from './input.js';
 
 /** @import {ClientConnection, ClientRequestParamsByMethod, ClientRequestResponsesByMethod, InitializeResponse, NewSessionResponse, SessionUpdate, ToolCallUpdate} from '@agentclientprotocol/sdk' */
 /** @import {Invocation, Profile, ProviderPort, ProviderResult, ProviderSession} from '../../core/ports.js' */
@@ -59,7 +59,9 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
   const sessions = new Map();
 
   return {
-    supportsReasoningSelection: true,
+    ...(!configuration.featureBindings?.reasoningEffort || supportsBinding(configuration.featureBindings.reasoningEffort) ? {supportsReasoningSelection: /** @type {const} */ (true)} : {}),
+    ...(supportsBinding(configuration.featureBindings?.collaborationMode) ? {supportsCollaborationMode: /** @type {const} */ (true)} : {}),
+    ...(supportsBinding(configuration.featureBindings?.approvalMode) ? {supportsApprovalMode: /** @type {const} */ (true)} : {}),
     ...(mcpEnabled || bridgeCapabilities ? {
       negotiatesCapabilities: mcpEnabled ? ['context.retrieval', 'tools.bridge'] : ['tools.bridge'],
     } : {}),
@@ -141,7 +143,17 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
     if (invocation.permissions) supported.add('permissions.interactive');
     if (required.some(key => !supported.has(key))) return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
     const { launch, nativeSettings = {} } = configuration;
-    const mode = nativeSettings.mode;
+    let mode = nativeSettings.mode;
+    const bindings=configuration.featureBindings??{};
+    const selected=[{kind:'collaborationMode',value:invocation.collaborationMode?.nativeValue,binding:bindings.collaborationMode},
+      {kind:'approvalMode',value:invocation.approvalMode?.nativeValue,binding:bindings.approvalMode},
+      {kind:'reasoningEffort',value:invocation.reasoning?.mode==='selectable'?invocation.reasoning.nativeValue:undefined,binding:bindings.reasoningEffort}].filter(item=>item.value!==undefined);
+    const explicit=selected.filter(item=>item.binding!==undefined||item.kind!=='reasoningEffort');
+    if(explicit.some(item=>!supportsBinding(item.binding)))return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+    const targets=explicit.map(item=>item.binding?.kind==='sessionMode'?'mode':'config:'+item.binding?.id);
+    if(new Set(targets).size!==targets.length)return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+    const legacy=explicit.find(item=>item.binding?.kind==='sessionMode');
+    if(legacy){if(typeof legacy.value!=='string')return resultFor(invocation,'CAPABILITY_UNAVAILABLE');mode=legacy.value;}
     if (!launch || !launch.command.trim() || Object.keys(nativeSettings).some(key => key !== 'mode') ||
         (mode !== undefined && (typeof mode !== 'string' || !mode.trim()))) return resultFor(invocation, 'PROVIDER_START_FAILED');
     const cwd = resolve(defaultCwd, invocation.workspaceContext?.cwd ?? '.');
@@ -554,11 +566,22 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         if (!configured || modelOption(session.configOptions)?.currentValue !== model) {
           return resultFor(invocation, 'CAPABILITY_UNAVAILABLE');
         }
+        for(const item of explicit) {
+          if(item.kind==='reasoningEffort'||item.binding?.kind==='sessionMode')continue;
+          if(!item.binding||item.value===undefined)return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+          if(!bindings.reasoningEffort&&invocation.reasoning?.mode==='selectable'&&item.binding.id===thoughtOption(session.configOptions)?.id)return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+          try {
+            if(!await configureBoundOption(agent,a.session,session,item.binding,item.value,signal))return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+          } catch(error) {
+            if(signal.aborted||!(error instanceof RequestError)||connection.signal.aborted)throw error;
+            return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+          }
+        }
         // Selection is session-local; the native agent must explicitly advertise
         // and confirm its effective value before receiving any prompt.
         let configuredEffort = false;
         try {
-          configuredEffort = await configureReasoning(agent, a.session, session, invocation.reasoning, signal);
+          configuredEffort = legacy?.kind==='reasoningEffort' || await configureReasoning(agent, a.session, session, invocation.reasoning, signal, bindings.reasoningEffort);
         } catch (error) {
           if (signal.aborted) throw error;
           if (invocation.reasoning?.mode === 'selectable' && error instanceof RequestError && !connection.signal.aborted) {
@@ -582,10 +605,14 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
             kind:'host_transport',completeness:'complete',value:{reason:'model_selection_not_confirmed',profileId:invocation.profile.profileId}});
           return failure;
         }
+        for(const item of explicit) {
+          if(item.binding?.kind==='configOption'&&boundOption(session,item.binding)?.currentValue!==item.value)return resultFor(invocation,'CAPABILITY_UNAVAILABLE');
+          if(item.kind!=='reasoningEffort')publish({ref:'acp-setting-'+item.kind,kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',value:{kind:item.kind,status:item.binding?.kind==='sessionMode'?'mode_submitted':'config_option_confirmed'}});
+        }
         if (invocation.reasoning?.mode === 'selectable') {
           publish({ref:'acp-reasoning-ack',kind:'host_transport',sourceId:invocation.attemptId,
             completeness:'complete',value:{
-              status:'config_option_confirmed',level:invocation.reasoning.level,profileId:invocation.profile.profileId,
+              status:legacy?.kind==='reasoningEffort'?'mode_submitted':'config_option_confirmed',level:invocation.reasoning.level,profileId:invocation.profile.profileId,
               // The nativeValue stays in the trusted route, never the model context.
             }});
         }
