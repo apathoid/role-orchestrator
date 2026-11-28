@@ -1,4 +1,4 @@
-import { prepareUserContent, persistUserContent, userAttachments, orderedTurns, projectOrderedTurns, defaultUserContentMaxBytes, maximumUserContentMaxBytes } from './user-content.js';
+import { prepareUserContent, userAttachments, orderedTurns, projectOrderedTurns, defaultUserContentMaxBytes, maximumUserContentMaxBytes } from './user-content.js';
 import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
@@ -207,9 +207,11 @@ export function createOrchestrator(deps) {
     return history;
   }
 
-  /** @param {Operation} next @param {number | null} revision @param {string} [attemptId] */
-  async function commit(next, revision, attemptId) {
-    const result = await store.commit(next.operationId, revision, next);
+  /** @param {Operation} next @param {number | null} revision @param {string} [attemptId] @param {readonly import('../core/ports.js').UserPayload[]} [payloads] */
+  async function commit(next, revision, attemptId,payloads) {
+    const result = payloads?.length
+      ? store.supportsUserPayloadCommit===true?await store.commit(next.operationId,revision,next,payloads):{kind:'unavailable'}
+      : await store.commit(next.operationId, revision, next);
     if (result.kind !== 'committed') {
       const code = result.kind === 'conflict' ? 'STORE_CONFLICT' : 'STORE_UNAVAILABLE';
       // A failed acknowledgement can follow a visible rename. Read for
@@ -221,8 +223,8 @@ export function createOrchestrator(deps) {
     }
   }
 
-  /** @param {Operation} state @param {EventData<Event>} data */
-  async function transition(state, data) {
+  /** @param {Operation} state @param {EventData<Event>} data @param {readonly import('../core/ports.js').UserPayload[]} [payloads] */
+  async function transition(state, data,payloads) {
     const event = /** @type {Event} */ ({
       ...data, operationId: state.operationId, eventId: ids.newId(), receivedAt: clock.now(),
     });
@@ -232,7 +234,7 @@ export function createOrchestrator(deps) {
 
     const attemptId = event.kind === 'attempt.outcome' ? event.outcome.attemptId
       : 'attemptId' in event ? event.attemptId : undefined;
-    const failure = await commit(result.state, state.revision, attemptId);
+    const failure = await commit(result.state, state.revision, attemptId,payloads);
     if (failure) {
       const { observed, error } = failure;
       if (!observed || (event.kind !== 'attempt.outcome' && event.kind !== 'operation.finished')) throw error;
@@ -377,10 +379,8 @@ export function createOrchestrator(deps) {
       }
       const execution = await resolveExecution(request.workspaceContext, request.controllerProfile, {explicit:request.userSettings});
       requireRunning();
-      if(!await persistUserContent(store,prepared))throw new OrchestrationError('STORE_UNAVAILABLE','Cannot persist complete user payload');
-      requireRunning();
       const state = createOperation(ids.newId(), request, authority.reference, execution.limits, clock.now(), execution.settings);
-      const failure = await commit(state, null);
+      const failure = await commit(state, null,undefined,prepared.payloads);
       if (failure) throw failure.error;
       trace(state, 'operation.accepted', 'ACCEPTED');
       notifyAccepted(accepted, state.operationId);
@@ -433,9 +433,7 @@ export function createOrchestrator(deps) {
         explicit:follow.userSettings, inherited:follow.replaceSettings ? undefined : acceptedSettingsFor(state)?.overrides,
       });
       requireRunning();
-      if(!await persistUserContent(store,prepared))throw new OrchestrationError('STORE_UNAVAILABLE','Cannot persist complete user payload');
-      requireRunning();
-      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution, state) });
+      const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution, state) },prepared.payloads);
       notifyAccepted(accepted, operationId);
       return launch(next, execution, true);
     });

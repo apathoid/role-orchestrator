@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 /** @import {Operation} from '../core/operation.js' */
 /** @import {ContentSegment} from '../core/contracts.js' */
-/** @import {StateStore,UserAttachment,OrderedTurn} from '../core/ports.js' */
+/** @import {UserAttachment,OrderedTurn} from '../core/ports.js' */
 export const defaultUserContentMaxBytes=16*1024*1024;
 export const maximumUserContentMaxBytes=64*1024*1024;
 /** @param {number} bytes */
@@ -62,18 +62,6 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
     if(total>maxBytes)return reject(path,'User content exceeds '+maxBytes+' decoded bytes');
   }
   return {kind:'accepted',input:{...input,...('schemaVersion' in input&&{attachments:[]}),text,content},payloads};
-}
-/** @param {StateStore} store @param {Extract<Prepared,{kind:'accepted'}>} prepared */
-export async function persistUserContent(store,prepared){
-  if(!prepared.payloads.length)return true;
-  if(!store.writeArtifact)return false;
-  try{
-    for(const {bytes,reference} of prepared.payloads){
-      const result=await store.writeArtifact(bytes,bytes.byteLength);
-      if(result.ref!==reference.ref||result.size!==reference.size||result.truncated)return false;
-    }
-    return true;
-  }catch{return false;}
 }
 /** @param {Operation} operation @returns {OrderedTurn[]} */
 export function orderedTurns(operation){

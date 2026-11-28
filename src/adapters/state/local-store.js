@@ -12,6 +12,7 @@ import { decodeSnapshot, encodeSnapshot } from '../../core/snapshot.js';
 /** @import {Operation} from '../../core/operation.js' */
 
 const snapshotName = /^([a-f0-9]{64})(?:-([a-f0-9]{64}))?\.json$/u;
+const pendingUserName = /^artifact-([a-f0-9]{64})\.user-pending$/u;
 const temporaryName = /^\.state-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.tmp$/u;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
@@ -312,7 +313,38 @@ export function createLocalStateStore(directory, io = fs) {
     }
   }
 
+  /** Clean only blobs specifically staged by interrupted user-input commits.
+   * A missing/corrupt snapshot is never proof of absence. The marker is created
+   * only for a previously absent blob, and ordinary capture clears it on reuse.
+   * @param {import('node:fs/promises').FileHandle} handle @param {readonly string[]} names
+   */
+  async function cleanPendingUserPayloads(handle,names){
+    const pending=names.filter(name=>pendingUserName.test(name));
+    if(!pending.length)return;
+    const records=[];
+    for(const name of names.filter(name=>snapshotName.test(name))){
+      const operation=await read(name).catch(()=>undefined);
+      if(!operation)return;
+      records.push(JSON.stringify(operation));
+    }
+    for(const marker of pending){
+      const hash=pendingUserName.exec(marker)?.[1];
+      if(!hash)continue;
+      try{
+        // Conservative reference check: even an incidental match retains bytes.
+        if(!records.some(record=>record.includes('sha256:'+hash))){
+          await io.unlink(join(root,'artifact-'+hash+'.blob')).catch(error=>{if(!isMissing(error))throw error;});
+          verifiedCache=undefined;
+          await handle.sync();
+        }
+        await io.unlink(join(root,marker));
+        await handle.sync();
+      }catch{/* An interrupted cleanup is retried at the next writer open. */}
+    }
+  }
+
   return {
+    supportsUserPayloadCommit:true,
     open(retention) {
       return serialize(async () => {
         if (directoryHandle) return;
@@ -330,6 +362,7 @@ export function createLocalStateStore(directory, io = fs) {
           for (const name of names) {
             if (temporaryName.test(name)) await io.unlink(join(root, name)).catch(() => {});
           }
+          await cleanPendingUserPayloads(handle,names);
           if (retention) await retainArtifacts(handle, names, retention);
         } catch (error) {
           lock?.close();
@@ -373,7 +406,7 @@ export function createLocalStateStore(directory, io = fs) {
       return entries.filter(entry => entry !== undefined);
     },
 
-    commit(operationId, expectedRevision, next) {
+    commit(operationId, expectedRevision, next,payloads=[]) {
       return serialize(async () => {
         /** @type {CommitResult} */
         const unavailable = { kind: 'unavailable' };
@@ -392,9 +425,29 @@ export function createLocalStateStore(directory, io = fs) {
             return { kind: 'committed' };
           }
           if (next.revision !== (expectedRevision ?? -1) + 1) return unavailable;
-          await publish(handle, name, encodeSnapshot(next));
+          const serialized=encodeSnapshot(next);
+          if(payloads.length){
+            const names=new Set(await io.readdir(root));
+            const expected=new Set([next.request,...next.events.flatMap(event=>event.kind==='operation.continued'?[event.input]:[])]
+              .flatMap(turn=>(turn.content??[]).flatMap(item=>item.kind!=='text'&&item.payload?[item.payload.ref]:[])));
+            for(const {bytes,reference} of payloads){
+              const hash=hashBytes(bytes);
+              if(reference.ref!=='sha256:'+hash||reference.size!==bytes.byteLength||reference.originalSize!==bytes.byteLength||reference.truncated||!expected.has(reference.ref))return unavailable;
+            }
+            for(const {bytes,reference} of payloads){
+              const hash=reference.ref.slice(7),blob='artifact-'+hash+'.blob';
+              if(!names.has(blob))await publish(handle,'artifact-'+hash+'.user-pending','');
+              verifiedCache=undefined;
+              await publish(handle,blob,bytes);
+              names.add(blob);
+              if(await hasRetentionMarker(hash))await io.unlink(join(root,'artifact-'+hash+'.retention')).then(()=>handle.sync()).catch(()=>{});
+            }
+          }
+          await publish(handle, name, serialized);
+          for(const {reference} of payloads)await io.unlink(join(root,'artifact-'+reference.ref.slice(7)+'.user-pending')).then(()=>handle.sync()).catch(()=>{});
           return { kind: 'committed' };
         } catch {
+          if(payloads.length&&directoryHandle)await cleanPendingUserPayloads(directoryHandle,await io.readdir(root).catch(()=>[])).catch(()=>{});
           return unavailable;
         }
       });
@@ -410,6 +463,7 @@ export function createLocalStateStore(directory, io = fs) {
         try {
           verifiedCache = undefined;
           await publish(handle, 'artifact-' + hash + '.blob', data);
+          await io.unlink(join(root,'artifact-'+hash+'.user-pending')).then(()=>handle.sync()).catch(()=>{});
           if (await hasRetentionMarker(hash)) {
             await io.unlink(join(root, 'artifact-' + hash + '.retention')).then(() => handle.sync()).catch(() => {});
           }
