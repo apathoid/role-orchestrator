@@ -883,7 +883,7 @@ export function createOrchestrator(deps) {
         const failure=failedOutcome(attemptId,'CAPABILITY_UNAVAILABLE',false);
         failure.diagnostics[0].ref=ref;
         return {outcome:failure,certainty:/** @type {const} */ ('not_sent'),output,observations,contextCursor,recordLate,decisionTextError,
-          featureFailure:{profileId:selectedProfile.profileId,feature:missingFeature,featureOption:missingFeature==='collaborationMode'?collaborationMode?.id:approvalMode?.id,featureCause:'adapter_without_setting_support'}};
+          featureFailure:/** @type {Pick<Reason,'profileId'|'feature'|'featureOption'|'featureCause'>} */ ({profileId:selectedProfile.profileId,feature:missingFeature,featureOption:missingFeature==='collaborationMode'?collaborationMode?.id:approvalMode?.id,featureCause:'adapter_without_setting_support'})};
       }
       function requireAuthority() {
         const decision = authority.authorize(state.authorityRef, selectedProfile.profileId);
