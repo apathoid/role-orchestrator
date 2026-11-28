@@ -1,6 +1,6 @@
 # C24 — Unified User Configuration & Native Input Capabilities
 
-**Статус: implementation candidate; final regression verification in progress, native integration UNVERIFIED.**
+**Статус: implementation delivered, engineering CI PASS at dc00645e; native integration UNVERIFIED; independent review pending.**
 
 - Repository: apathoid/role-orchestrator.
 - Рабочая ветка: feature/unified-user-configuration.

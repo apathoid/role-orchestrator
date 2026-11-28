@@ -1,6 +1,6 @@
 # Role Orchestrator — оперативный статус
 
-## C24 — Unified User Configuration & Native Input Capabilities (implementation candidate; verification in progress; native UNVERIFIED)
+## C24 — Unified User Configuration & Native Input Capabilities (engineering CI PASS; native UNVERIFIED)
 
 Рабочая ветка `feature/unified-user-configuration`, implementation baseline `a8888fdaaf6990d16c259ae511f16edf607395ec` (master, D27 provider-first; C23 merged PR #6). Подробное задание: [C24_UNIFIED_USER_CONFIGURATION.md](C24_UNIFIED_USER_CONFIGURATION.md), acceptance A132–A142. Planning HEAD — коммит этого плана; сверить фактический SHA и CI. Baseline [CI #46151224720](https://github.com/apathoid/role-orchestrator/actions/runs/46151224720) наблюдался in_progress при подготовке, итог проверить перед реализацией.
 
@@ -18,6 +18,13 @@ C24 continuation: new template decoder tests RED at `5dc0e5ea183dd7b061f9c9bd261
 ### C24 continuation — current implementation and evidence
 
 Agent Skills candidate integrated. Ordered input, ACP native settings and payload delivery, session history, selected Worker handoff, Store staging and CLI/API/local control implemented. CI #46155638941 on f29880a passed earlier settings slice. CI #46157085378 on abe1ce30 passed integration/acceptance/PTY/root including actual SDK mixed wire scenario; stopped on historical full lock equality. CI #46157522290 on 2eeab3d2 passed all tests and historical comparisons, then failed only Nix hash mismatch (new YAML dependency); measured Nix hash pinned at c13ea9bb. CI #46158025336 found two old history tests receiving unexpected empty command notification; corrected production no-skill path, added skill lifecycle, CLI and local-control verification and input limit. Latest code candidate bece247954a0b6fa262f11458b2d2c4a84e53da8 / [CI #46158436033](https://github.com/apathoid/role-orchestrator/actions/runs/46158436033) pending when documentation prepared. Prior historical statements above describe intermediate states only; candidate is not a final PASS. Real native agents/Zed, direct comparison and model quality UNVERIFIED (no live environment/credentials). Independent architecture review pending, no master merge.
+
+
+### C24 final engineering evidence
+
+Exact engineering implementation HEAD `dc00645e26019738403b16820319383a25324931` / [CI #46158946982](https://github.com/apathoid/role-orchestrator/actions/runs/46158946982) SUCCESS (Node v24.21.0). Root 750/750: foundation 4, core 31, provider contracts 98, integration 613, acceptance 4; actual Linux PTY 15/15. Specification/checkJs/import boundaries, npm locked installation/package/removal, historical comparisons, C24 actual SDK text-only comparison, Nix flake/build/install/package/import, NixOS evaluation, release archive/checksum and lock immutability PASS. C24 probe against baseline a8888fda: 3 runs each, one provider prompt, initialize/session-new/session-prompt only; serialized native prompt array 14435 → 14579 bytes (+144 bytes, approximately 1%, reflecting new input capability facts), elapsed medians 487 → 513 ms (process fixture, not native model latency). Mixed-wire fixture: 900 KiB decoded image, >1 MiB encoded wire, A/B follow-up, selected Worker, reload, no base64 journal copies; dedicated full-process multimedia memory and direct real native performance comparison UNVERIFIED. Real Zed, actual external provider settings IDs and model behavior UNVERIFIED; no native acceptance inferred. Independent review pending; no merge to master.
+
+C24.1–C24.8 implementation delivered; C24.9 engineering suite passed. No claim that every real-client/provider scenario or independent architecture review has passed. Acceptance matrix separates observed automated coverage from remaining native/coverage questions.
 
 ## C23 — Configuration-scoped State & Concurrent Runtime Support (C23-R engineering PASS at 0c519ebf; native UNVERIFIED)
 
