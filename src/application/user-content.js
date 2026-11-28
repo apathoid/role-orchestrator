@@ -58,7 +58,7 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
         payloads.push({bytes,reference:payload});
       }
       const ref='user-content:'+createHash('sha256').update(JSON.stringify([input.requestId,index])).digest('hex');
-      content.push({kind,ref,mediaType,uri,payload,encoding,metadata,...(block.mediaType===undefined&&(kind==='link'||kind==='resource')&&{mimeTypeOmitted: /** @type {const} */(true)})});
+      content.push({kind,ref,mediaType,uri,payload,encoding,metadata,mimeTypeOmitted:block.mediaType===undefined&&(kind==='link'||kind==='resource')?/** @type {const} */(true):undefined});
     }
     if(total>maxBytes)return reject(path,'User content exceeds '+maxBytes+' decoded bytes');
   }
