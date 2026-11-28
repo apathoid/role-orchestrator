@@ -183,6 +183,10 @@ test('C24 CLI lists shared settings and skills without a Store, applies explicit
   const {rename}=await import('node:fs/promises');
   await rename(skill,skill+'.moved');
   const count=(await read()).length;
+  // C24-R3 T26: same Store, different trusted defaults, removed skill file.
+  spec.features.reasoningEffort.shared.default='high';
+  spec.features.approvalMode.approval.default='open';
+  await writeFile(config,JSON.stringify(spec));
   const redelivery=call(runArgs);
   assert.equal(redelivery.status,0,redelivery.stderr);
   assert.equal(JSON.parse(redelivery.stdout).operationId,result.operationId);

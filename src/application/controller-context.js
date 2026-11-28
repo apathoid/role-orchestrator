@@ -62,12 +62,12 @@ export function coordinationFacts(state, lookups) {
   };
 }
 
-/** @param {Operation} state @param {number} [throughRevision] @param {boolean} [legacyText] @returns {ContextItem[]} */
-export function operationHistory(state, throughRevision = state.events.length,legacyText=false) {
+/** @param {Operation} state @param {number} [throughRevision] @param {boolean} [projectText] @returns {ContextItem[]} */
+export function operationHistory(state, throughRevision = state.events.length,projectText=false) {
   const events = throughRevision === state.events.length ? state.events : state.events.slice(0, throughRevision);
   /** @type {ContextItem[]} */
   const items = [
-    { ...observation({ ref: state.request.requestId, completeness: 'complete', value: legacyText?userTextProjection(state.request):state.request.text },
+    { ...observation({ ref: state.request.requestId, completeness: 'complete', value: projectText?userTextProjection(state.request):state.request.text },
       { kind: 'user', sourceId: state.request.requestId, receivedAt: state.acceptedAt }),
     receivedSequence: { revision: 0, index: 0 } },
   ];
@@ -94,7 +94,7 @@ export function operationHistory(state, throughRevision = state.events.length,le
     } else if (event.kind === 'operation.finished') {
       append('assessment:' + event.eventId, event.assessment, 'model', event.assessment.author);
     } else if (event.kind === 'operation.continued') {
-      append(event.input.requestId, legacyText?userTextProjection(event.input):event.input.text, 'user', event.input.requestId);
+      append(event.input.requestId, projectText?userTextProjection(event.input):event.input.text, 'user', event.input.requestId);
       appendUserContent(event.input,revision,event.receivedAt);
     }
 
@@ -321,14 +321,14 @@ export function pendingControllerHistoryRequest(state, attemptId) {
  * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {number} [maxBytes]
  * @param {Catalog['preferences']} [preferences]
  * @param {readonly ContextItem[]} [requested]
- * @param {number | {revision: number, index: number}} [workCursor] @param {boolean} [legacyText]
+ * @param {number | {revision: number, index: number}} [workCursor] @param {boolean} [projectText]
  * @returns {ContextItem[]}
  */
-export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor,legacyText=false) {
+export function controllerContext(state, catalog, correction, lookups, maxBytes = defaultContextMaxBytes, preferences, requested = [], workCursor,projectText=false) {
   const explicitWorkPage = workCursor !== undefined;
   workCursor ??= 0;
-  const [request, ...history] = operationHistory(state,state.events.length,legacyText);
-  if(legacyText){
+  const [request, ...history] = operationHistory(state,state.events.length,projectText);
+  if(projectText){
     const projected=new Map([request,...history].filter(item=>item.provenance?.kind==='user'&&item.receivedSequence?.index===0).map(item=>[item.ref,item]));
     requested=requested.map(item=>item.completeness==='complete'&&projected.has(item.ref)&&item.provenance?.kind==='user'&&item.receivedSequence?.index===0?projected.get(item.ref)??item:item);
   }

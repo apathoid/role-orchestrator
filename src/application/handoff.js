@@ -129,9 +129,9 @@ export async function materializeSkillInstructions(selected, catalog, maxBytes, 
 
 /**
  * @param {Operation} operation @param {readonly string[]} refs @param {number} maxBytes
- * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {boolean} [legacyText] @returns {ContextItem[]}
+ * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {boolean} [projectText] @returns {ContextItem[]}
  */
-export function handoffContext(operation, refs, maxBytes, lookups,legacyText=false) {
+export function handoffContext(operation, refs, maxBytes, lookups,projectText=false) {
   const selected = new Set(refs);
   const facts = coordinationFacts(operation, lookups);
   const includeFacts = facts.unresolvedAttempts.length || facts.cancellations.length;
@@ -139,7 +139,7 @@ export function handoffContext(operation, refs, maxBytes, lookups,legacyText=fal
   if (includeFacts) selected.delete(factsRef);
   /** @type {Map<string, ContextItem>} */
   const found = new Map();
-  for (const item of operationHistory(operation,operation.events.length,legacyText)) {
+  for (const item of operationHistory(operation,operation.events.length,projectText)) {
     if (selected.has(item.ref) && !found.has(item.ref)) found.set(item.ref, item);
   }
   const attachments = new Set(userAttachments(operation).map(item => item.ref));

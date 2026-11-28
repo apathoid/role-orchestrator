@@ -1051,11 +1051,11 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
       profiles:{primary:{provider:'test',model:'fixture'},worker:{provider:'worker',model:'fixture'}},plugins:[],
       storage:{directory:'state',artifactRetention:{maxAgeMs:0,maxBytes:0}},
     });
-    const image={type:'image',mimeType:'image/png',data:Buffer.alloc(900*1024,7).toString('base64')};
-    const secondImage={type:'image',mimeType:'image/png',data:'AQIDBA=='};
+    const image={type:'image',mimeType:'image/png',uri:'file:///first.png',data:Buffer.alloc(900*1024,7).toString('base64')};
+    const secondImage={type:'image',mimeType:'image/png',uri:'file:///second.png',data:'AQIDBA=='};
     const firstBlocks=[{type:'text',text:'before'},image,{type:'text',text:'after'},
       {type:'resource_link',uri:'file:///not-read-by-host.txt',name:'literal-link',mimeType:'text/plain'}];
-    const secondBlocks=[secondImage,{type:'audio',data:'AQID',mimeType:'audio/wav'},
+    const secondBlocks=[secondImage,{type:'audio',data:'AQID',mimeType:'audio/wav',uri:'file:///audio.wav'},
       {type:'resource',resource:{uri:'file:///embedded.txt',mimeType:'text/plain',text:'embedded text'}},{type:'text',text:'compare'}];
     const first=launch(cwd,config);
     let sessionId;
@@ -1072,11 +1072,14 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
       assert.deepEqual(initial.blocks.map(b=>b.type),['text','image','text','resource_link']);
       assert.deepEqual(initial.blocks.filter(b=>b.type==='text').map(b=>b.text),['before','after']);
       assert.equal(initial.blocks[1].size,900*1024);
+      assert.equal(initial.blocks[1].uri,image.uri);
       assert.equal(initial.blocks[3].uri,'file:///not-read-by-host.txt');
       assert.equal((await send(first,secondBlocks,'ordered-b')).stopReason,'end_turn');
       const comparison=(await wire()).at(-1);
       assert.deepEqual(comparison.blocks.map(b=>b.type),[...initial.blocks.map(b=>b.type),'image','audio','resource','text']);
       assert.equal(comparison.blocks[6].text,'embedded text');
+      assert.equal(comparison.blocks[4].uri,secondImage.uri);
+      assert.equal(comparison.blocks[5].uri,secondBlocks[1].uri);
       const count=(await wire()).length;
       assert.equal((await send(first,secondBlocks,'ordered-b')).stopReason,'end_turn');
       assert.equal((await wire()).length,count,'redelivery does not dispatch again');
@@ -1086,9 +1089,13 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
       assert.ok(worker);
       assert.deepEqual(worker.blocks.map(b=>b.type),['image']);
       assert.equal(worker.blocks[0].size,4);
+      assert.equal(worker.blocks[0].uri,secondImage.uri);
       const files=await readdir(join(cwd,'state'));
       const journals=await Promise.all(files.filter(name=>name.endsWith('.json')).map(name=>readFile(join(cwd,'state',name),'utf8')));
       assert.ok(journals.every(body=>!body.includes(image.data)&&!body.includes(secondImage.data)));
+      const saved=journals.map(JSON.parse).find(item=>item.request?.content);
+      assert.equal(saved.request.content.find(item=>item.kind==='image').uri,image.uri);
+      assert.equal(saved.events.find(item=>item.kind==='operation.continued').input.content.find(item=>item.kind==='audio').uri,secondBlocks[1].uri);
       assert.ok(files.filter(name=>name.startsWith('artifact-')&&name.endsWith('.blob')).length>=3);
       const imageOnly=await first.agent.request(a.session.new,{cwd,mcpServers:[]});
       assert.equal((await first.agent.request(a.session.prompt,{sessionId:imageOnly.sessionId,prompt:[secondImage]})).stopReason,'end_turn');
@@ -1101,6 +1108,7 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
       assert.deepEqual(replay.map(b=>b.type),[...firstBlocks.map(b=>b.type),...secondBlocks.map(b=>b.type),'text']);
       assert.equal(replay[1].data,image.data);
       assert.equal(replay[4].data,secondImage.data);
+      assert.equal(replay[1].uri,image.uri);assert.equal(replay[4].uri,secondImage.uri);assert.equal(replay[5].uri,secondBlocks[1].uri);
       assert.equal(replay[6].resource.text,'embedded text');
     }finally{await reopened.close();}
   }));
@@ -1356,7 +1364,7 @@ for(const [variant,cause] of [['mode-reject','native_request_rejected'],['mode-r
   }));
 }
 
-test('C24-R2 T01/T02 large initial objective is not duplicated on historical native selection', {timeout:60000},()=>withOwnedRun('C24R2-large-history',async cwd=>{
+test('C24-R2 T01/T02 and R3 T22/T23 large historical selection keeps literal boundaries and no synthetic frame gate', {timeout:60000},()=>withOwnedRun('C24R2-large-history',async cwd=>{
   const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
   const config=await fixture(cwd,{input:{maxBytes:14*1024*1024},resources:{maxInvocationsPerOperation:4},
     providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'history-request-large']}}},plugins:[]});
@@ -1367,11 +1375,14 @@ test('C24-R2 T01/T02 large initial objective is not duplicated on historical nat
     const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
     const send=blocks=>host.agent.request(a.session.prompt,{sessionId,prompt:blocks});
     const text='C24-UNIQUE-LITERAL-START'+'x'.repeat(13*1024*1024);
-    assert.equal((await send([{type:'text',text},image(7)])).stopReason,'end_turn');
-    assert.equal((await send([image(8),{type:'text',text:'retrieve first image'}])).stopReason,'end_turn');
+    assert.equal((await send([{type:'text',text},image(7),{type:'text',text:'C24-END-BLOCK'}])).stopReason,'end_turn');
+    const largeImage={...image(8),data:Buffer.alloc(13*1024*1024,8).toString('base64')};
+    assert.equal((await send([largeImage,{type:'text',text:'retrieve first image'}])).stopReason,'end_turn');
     const records=(await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
     assert.equal(records.length,3);
     assert.deepEqual(records.map(item=>item.literalCopies),[1,1,1]);
+    assert.deepEqual(records.map(item=>item.fallbackBoundary),[false,true,true]);
+    assert.ok(records[2].promptBytes>30*1024*1024);
     const first=records[0].blocks.find(item=>item.type==='image').hash;
     assert.notEqual(records[1].blocks.find(item=>item.type==='image').hash,first);
     assert.equal(records[2].blocks.find(item=>item.type==='image').hash,first);
@@ -1404,5 +1415,20 @@ test('C24-R3 T21 two individually accepted turns do not encounter a synthetic ou
     assert.equal(records[1].literalCopies,1);
     assert.equal(records[1].blocks.find(b=>b.type==='image').size,13*1024*1024);
     assert.ok(records[1].promptBytes>30*1024*1024);
+  }finally{await host.close();}
+}));
+
+test('C24-R3 T19/T20 first native Controller after a text-only continuation receives the literal input with crowded history',{timeout:30000},()=>withOwnedRun('C24R3-current-user',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const host=launch(cwd,await fixture(cwd,{context:{controllerMaxBytes:3000},providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']}}},plugins:[]}));
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    const send=prompt=>host.agent.request(a.session.prompt,{sessionId,prompt});
+    assert.equal((await send([{type:'text',text:'Inspect the repository'},...Array.from({length:300},(_,i)=>({type:'resource_link',name:'link-'+i,uri:'file:///a'+i}))])).stopReason,'end_turn');
+    assert.equal((await send([{type:'text',text:'Do not edit the repository'}])).stopReason,'end_turn');
+    const records=(await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(records.length,2);
+    assert.equal(records[1].userText,'Do not edit the repository');
   }finally{await host.close();}
 }));

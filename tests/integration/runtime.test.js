@@ -285,6 +285,19 @@ test('C24-R2 T05/T06 recovered accepted Worker checks only its admitted approval
     const admitted=original.events.find(e=>e.kind==='controller.responded'&&e.admissions?.some(a=>a.kind==='accepted')).admissions[0];
     assert.equal(admitted.approval.setting.nativeValue,'native-review');
     assert.equal(original.attempts.find(a=>a.actionId==='c24-approval-worker').route.approvalMode.nativeValue,'native-review');
+    // T29: modify both event and summary so the route/ledger check alone
+    // cannot catch the mismatch. The admission itself is the durable fact.
+    const {encodeSnapshot,decodeSnapshot}=await import('../../src/core/snapshot.js');
+    const valid=encodeSnapshot(original);
+    const altered=JSON.parse(valid);
+    const worker=altered.attempts.find(a=>a.actionId==='c24-approval-worker');
+    worker.route.approvalMode.nativeValue='native-open';
+    altered.events.find(e=>e.kind==='attempt.dispatched'&&e.attemptId===worker.attemptId).route.approvalMode.nativeValue='native-open';
+    const corrupt=decodeSnapshot(JSON.stringify(altered));
+    assert.equal(corrupt.kind,'corrupt');assert.match(corrupt.reason.path,/route\.approvalMode$/);
+    const legacy=JSON.parse(valid);
+    for(const event of legacy.events)for(const item of event.admissions??[])delete item.approval;
+    assert.equal(decodeSnapshot(JSON.stringify(legacy)).kind,'accepted');
   }finally{await first.close();}
   const wire=async()=> (await readFile(join(directory,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
   for(const [changed,reserved,expected] of [['worker',false,false],['worker',true,false],['unused',true,true]]){
@@ -347,4 +360,39 @@ test('C24-R2 T13 ordered-capable plugin advertises unknown input only when it de
     assert.match(result.waiting.reason.resource,/user_content:capability_unavailable:input.image/);
     assert.equal(result.attempts[0].dispatchCertainty,'not_sent');
   }finally{await runtime.close();}
+}));
+
+test('C24-R3 T27 accepted payload redelivery after reducing input limit is read-only, changed or new requests are rejected',()=>withOwnedRun('C24R3-redelivery',async directory=>{
+  const {request}=await import('../fixtures/core.js');
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config={schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture'}},
+    providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']}}},input:{maxBytes:1024*1024}};
+  const open=()=>openRuntime({configuration:JSON.stringify(config),configurationDirectory:directory,stateDirectory:join(directory,'state')});
+  const payload=[{kind:'text',text:'initial'},{kind:'image',mediaType:'image/png',encoding:'binary',data:Buffer.alloc(128*1024,7).toString('base64')}];
+  const first=await open();
+  const {text,...fields}=request({configurationRef:first.api.configurationRef,workspaceContext:{cwd:directory}});
+  const input={...fields,content:payload};
+  const follow={requestId:'r3-follow',content:[{...payload[1]},{kind:'text',text:'follow'}]};
+  let original;
+  try{
+    const accepted=await(await first.api.submit(input)).completion;
+    original=await(await first.api.resume(accepted.operationId,follow)).completion;
+    assert.equal(original.status,'finished');
+  }finally{await first.close();}
+  const wire=()=>readFile(join(directory,'c24-wire.jsonl'),'utf8');
+  const before=await wire();
+  config.input.maxBytes=64;
+  const second=await open();
+  try{
+    const replay={...input,configurationRef:second.api.configurationRef};
+    const same=await(await second.api.submit(replay)).completion;
+    const sameFollow=await(await second.api.resume(original.operationId,follow)).completion;
+    assert.deepEqual(same,original);assert.deepEqual(sameFollow,original);
+    assert.equal(same.request.configurationRef,input.configurationRef);
+    await assert.rejects(second.api.submit({...replay,requestId:'r3-new'}),{code:'INVALID_PROPOSAL'});
+    await assert.rejects(second.api.submit({...replay,content:[payload[0],{...payload[1],data:Buffer.alloc(128*1024,8).toString('base64')}]}),{code:'IDENTITY_CONFLICT'});
+    await assert.rejects(second.api.submit({...replay,configurationRef:input.configurationRef}),{code:'PERMISSION_DENIED'});
+    await assert.rejects(second.api.resume(original.operationId,{...follow,requestId:'r3-new-follow'}),{code:'INVALID_PROPOSAL'});
+    assert.equal(await wire(),before);
+  }finally{await second.close();}
 }));

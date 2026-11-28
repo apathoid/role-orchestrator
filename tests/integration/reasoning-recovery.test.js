@@ -124,6 +124,68 @@ test('C11R.9 changed mapping denies old idempotency key; unrelated worker runs',
 });
 
 
+test('C11R review P1: crash after Decision, reopen and resume preserves one-shot Controller effort',async t=>{
+  const directory=await fs.mkdtemp(join(tmpdir(),'role-orchestrator-effort-resume-'));
+  t.after(()=>fs.rm(directory,{recursive:true,force:true}));
+  const initial=createLocalStateStore(directory);
+  await initial.open();
+  const id='operation-recovery-effort';
+  let state=createOperation(id,request({requestId:'recovery-effort'}),'fixture-authority',
+    {maxInvocations:5,maxConcurrentInvocations:2});
+  assert.deepEqual(await initial.commit(id,null,state),{kind:'committed'});
+  const selected=decision({operationId:id,decisionId:'pending-high',
+    finalAssessment:undefined,nextController:{continue:true,reasoningLevel:'high'}});
+  state=apply(state,'controller.responded',1,{decision:selected});
+  assert.deepEqual(await initial.commit(id,0,state),{kind:'committed'});
+  await initial.close();
+
+  const reopened=createLocalStateStore(directory);
+  t.after(()=>reopened.close());
+  await reopened.open();
+  const restored=await reopened.load(id);
+  assert.equal(pendingControllerReasoning(restored)?.reasoningLevel,'high');
+  const profile={profileId:'primary',providerId:'fixture',model:'same'};
+  const catalog=createCatalog({schemaVersion:1,providers:{fixture:{adapter:'fixture'}},
+    features:{reasoningEffort:{reasoning2:{default:'low',options:[{id:'low',nativeValue:'native-low'},{id:'high',nativeValue:'native-high'}]}}},
+    profiles:{primary:{provider:'fixture',model:'same',features:{reasoningEffort:'reasoning2'}}},controllerProfile:'primary'});
+  const {api,invocations}=setup({store:reopened,profile,catalog,maxInvocations:5,
+    respond:invocation=>final(invocation,{decisionId:'final-after-recovery'})});
+  const result=await(await api.resume(id)).completion;
+  assert.equal(result.status,'finished');
+  assert.equal(invocations.length,1);
+  assert.equal(invocations[0].reasoning.level,'high');
+  assert.equal(invocations[0].reasoning.nativeValue,'native-high');
+  assert.equal(result.events.filter(event=>event.kind==='operation.recovered').length,1);
+  const attempt=result.attempts[0];
+  assert.equal(attempt.reasoningDecisionId,'pending-high');
+  assert.equal(attempt.route.reasoning.selectionSource,'model');
+  assert.equal(attempt.route.reasoning.level,'high');
+  assert.equal(pendingControllerReasoning(result),undefined);
+  assert.equal(decodeSnapshot(encodeSnapshot(result)).kind,'accepted');
+  await api.close();
+});
+
+test('C11R review P1: repeated technical recovery does not consume a selection',()=>{
+  let state=createOperation('operation-repeated',request(),'fixture-authority',
+    {maxInvocations:5,maxConcurrentInvocations:1});
+  state=apply(state,'controller.responded',1,{decision:decision({
+    operationId:'operation-repeated',decisionId:'pending',finalAssessment:undefined,
+    nextController:{continue:true,reasoningLevel:'high'},
+  })});
+  for (let i=2;i<=3;i++){
+    state=apply(state,'operation.recovered',i,{trusted:{
+      authorityRef:'fixture-authority',configurationRef:'test-config',limits:state.limits,
+    }});
+    assert.equal(pendingControllerReasoning(state)?.reasoningLevel,'high');
+    assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
+  }
+  state=apply(state,'attempt.reserved',4,{
+    attemptId:'next',actionId:'next',reasoningDecisionId:'pending',
+  });
+  assert.equal(pendingControllerReasoning(state),undefined);
+  assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
+});
+
 test('C24-R3 T25 crash after reservation, reopen and resume preserves one Decision selections',async t=>{
   const directory=await fs.mkdtemp(join(tmpdir(),'role-orchestrator-effort-resume-'));
   t.after(()=>fs.rm(directory,{recursive:true,force:true}));
@@ -169,23 +231,3 @@ test('C24-R3 T25 crash after reservation, reopen and resume preserves one Decisi
   await api.close();
 });
 
-test('C11R review P1: repeated technical recovery does not consume a selection',()=>{
-  let state=createOperation('operation-repeated',request(),'fixture-authority',
-    {maxInvocations:5,maxConcurrentInvocations:1});
-  state=apply(state,'controller.responded',1,{decision:decision({
-    operationId:'operation-repeated',decisionId:'pending',finalAssessment:undefined,
-    nextController:{continue:true,reasoningLevel:'high'},
-  })});
-  for (let i=2;i<=3;i++){
-    state=apply(state,'operation.recovered',i,{trusted:{
-      authorityRef:'fixture-authority',configurationRef:'test-config',limits:state.limits,
-    }});
-    assert.equal(pendingControllerReasoning(state)?.reasoningLevel,'high');
-    assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
-  }
-  state=apply(state,'attempt.reserved',4,{
-    attemptId:'next',actionId:'next',reasoningDecisionId:'pending',
-  });
-  assert.equal(pendingControllerReasoning(state),undefined);
-  assert.equal(decodeSnapshot(encodeSnapshot(state)).kind,'accepted');
-});

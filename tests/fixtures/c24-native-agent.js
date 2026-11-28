@@ -36,7 +36,7 @@ agent()
   })
   .onRequest(a.session.prompt,async ({params,client})=>{
     await recordRpc('session/prompt');
-    const {kind,operationId,attemptId,profileId,context}=readInvocationPrompt(params.prompt[0].text);
+    const {kind,operationId,attemptId,profileId,context,objective}=readInvocationPrompt(params.prompt[0].text);
     const blocks=params.prompt.slice(1).map(summarize);
     const literalCopies=variant==='large'||variant==='history-request-large'?params.prompt.filter(item=>item.type==='text').reduce((n,item)=>n+item.text.split('C24-UNIQUE-LITERAL-START').length-1,0):undefined;
     const userSelectedSkills=context.find(item=>item.ref==='host:invocation-context')?.value?.userSelectedSkills;
@@ -44,7 +44,7 @@ agent()
     const latestRecord=context.find(item=>item.ref===host?.userTurns?.latest?.ref);
     const latestNative=context.find(item=>item.ref==='host:ordered-input')?.value?.find(item=>item.requestId===host?.userTurns?.latest?.ref&&item.literalText);
     const userText=latestNative?params.prompt.slice(latestNative.startBlock,latestNative.startBlock+latestNative.count).filter(item=>item.type==='text').map(item=>item.text).join(''):latestRecord?.value;
-    await appendFile('c24-wire.jsonl',JSON.stringify({kind,variant,profileId,blocks,mode,userSelectedSkills,userText:variant==='large'||variant==='history-request-large'?undefined:userText,literalCopies,promptBytes:Buffer.byteLength(JSON.stringify(params.prompt)),settings:Object.fromEntries(options.map(item=>[item.id,item.currentValue]))})+'\n');
+    await appendFile('c24-wire.jsonl',JSON.stringify({kind,variant,profileId,blocks,mode,userSelectedSkills,userText:variant==='large'||variant==='history-request-large'?undefined:userText,literalCopies,...(variant==='history-request-large'&&{fallbackBoundary:objective.endsWith('\nC24-END-BLOCK')}),promptBytes:Buffer.byteLength(JSON.stringify(params.prompt)),settings:Object.fromEntries(options.map(item=>[item.id,item.currentValue]))})+'\n');
     const send=text=>client.notify(c.session.update,{sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}});
     if(variant==='mode-change-during'){mode='native';await client.notify(c.session.update,{sessionId,update:{sessionUpdate:'current_mode_update',currentModeId:mode}});}
     if(kind==='delegate'){await send('C24 worker result');return {stopReason:'end_turn'};}
