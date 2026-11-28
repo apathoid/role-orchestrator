@@ -21,7 +21,7 @@
         version = "0.1.0-dev.0";
         src = productSource;
         nodejs = pkgs.nodejs_24;
-        npmDepsHash = "sha256-zVo+cwI0Sj/6Es/PhL7VOyTo/IeIWqPUTg+7yOX3a54=";
+        npmDepsHash = "sha256-vFthHDWvX8uvkk2RlYjZ+e8JwqvjeV4Av4VO5+Dtba0=";
         npmFlags = [ "--ignore-scripts" ];
         dontNpmBuild = true;
         meta.mainProgram = "role-orchestrator";
