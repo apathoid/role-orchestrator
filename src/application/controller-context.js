@@ -336,7 +336,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   const [request, ...history] = operationHistory(state);
   // References point to the original user ContextItems. Chronology is a
   // transport fact, not a Host decision about the current task or priority.
-  const latestUser = history.findLast(item => item.provenance?.kind === 'user' && state.transcriptRefs.includes(item.ref)) ?? request;
+  const latestUser = history.findLast(item => item.provenance?.kind === 'user' && item.receivedSequence?.index === 0) ?? request;
   const userTurns = {
     initial: { ref: request.ref, receivedSequence: request.receivedSequence },
     latest: { ref: latestUser.ref, receivedSequence: latestUser.receivedSequence },
