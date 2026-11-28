@@ -64,6 +64,14 @@ export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
   }
   return {kind:'accepted',input:{...input,...('schemaVersion' in input&&{attachments:[]}),text,content},payloads};
 }
+/** Text-only projection retains block boundaries without altering the durable
+ * text ranges, original native blocks or request identity.
+ * @param {{text:string,content?:readonly ContentSegment[]}} turn
+ */
+export function userTextProjection(turn){
+  return turn.content?turn.content.filter(item=>item.kind==='text').map(item=>turn.text.slice(item.start,item.end)).join('\n'):turn.text;
+}
+
 /** @param {Operation} operation @returns {OrderedTurn[]} */
 export function orderedTurns(operation){
   return [operation.request,...operation.events.flatMap(event=>event.kind==='operation.continued'?[event.input]:[])].flatMap(turn=>turn.content?[{requestId:turn.requestId,text:turn.text,content:turn.content}]:[]);

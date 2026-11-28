@@ -174,14 +174,17 @@ export async function openRuntime(options, onStoreOpen) {
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel, settings,
       async inputCapabilities(){
         const entries=await catalog.list();
-        const candidates=entries.flatMap(entry=>entry.kind==='profile'&&!entry.value.unavailable&&
-          authority.authorize(authority.reference,entry.value.profileId)==='ALLOWED'&&
-          registry.providerFor(entry.value)?.supportsOrderedContent===true?[entry.value.capabilities??{}]:[]);
-        // Connection-level ability to accept and route a block, not a claim
-        // that every available profile or native model can interpret it.
-        return {image:candidates.some(c=>c['input.image']?.support==='supported'||c['input.image']?.support==='unknown'),
-          audio:candidates.some(c=>c['input.audio']?.support==='supported'||c['input.audio']?.support==='unknown'),
-          embeddedContext:candidates.some(c=>c['input.attachments']?.support==='supported'||c['input.attachments']?.support==='unknown')};
+        const candidates=entries.flatMap(entry=>{
+          if(entry.kind!=='profile'||entry.value.unavailable||
+            authority.authorize(authority.reference,entry.value.profileId)!=='ALLOWED')return [];
+          const executor=registry.providerFor(entry.value);
+          return executor?.supportsOrderedContent===true?[{capabilities:entry.value.capabilities??{},executor}]:[];
+        });
+        // Use the same support/negotiation contract as invocation admission.
+        /** @param {string} key */
+        const supports=key=>candidates.some(({capabilities,executor})=>capabilities[key]?.support==='supported'||
+          (capabilities[key]?.support==='unknown'&&executor.negotiatesCapabilities?.includes(key)));
+        return {image:supports('input.image'),audio:supports('input.audio'),embeddedContext:supports('input.attachments')};
       },
       async readUserPayload(/** @type {string} */ operationId, /** @type {string} */ ref){
         const operation=await inspect(operationId);

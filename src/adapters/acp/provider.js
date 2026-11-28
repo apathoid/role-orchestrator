@@ -554,9 +554,9 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       }, { cancellationSignal: signal, stopWaitingOnCancel: true });
       if (initialized.protocolVersion !== PROTOCOL_VERSION) return resultFor(invocation, 'PROTOCOL_ERROR');
       /** @type {{requestId:string,ref:string,reason:string}[]} */ const omittedContent=[];
-      /** @type {{requestId:string,startBlock:number,count:number,literalText:boolean}[]} */ const deliveredTurns=[];
+      /** @type {{requestId:string,startBlock:number,count:number,literalText:boolean,refs:{ref:string,block:number}[]}[]} */ const deliveredTurns=[];
       const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities??{}, resolveAttachment, AbortSignal.any([signal, connection.signal]),(requestId,ref)=>omittedContent.push({requestId,ref,reason:'native_content_unavailable'}),
-        (turn,startBlock,count)=>deliveredTurns.push({requestId:turn.requestId,startBlock,count,literalText:turn.content.some(item=>item.kind==='text')}));
+        (turn,startBlock,count,refs)=>deliveredTurns.push({requestId:turn.requestId,startBlock,count,literalText:turn.content.some(item=>item.kind==='text'),refs}));
       if (!blocks || (required.includes('input.image') && (!initialized.agentCapabilities?.promptCapabilities?.image))) {
         const refused=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
         refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',
@@ -667,9 +667,14 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const objective=initial&&literal.has(initial.ref)?'Original user objective is in native ordered turn '+initial.ref:invocation.objective;
         const context=invocation.context.map(item=>{
           const turn=literal.get(item.ref);
-          if(!turn)return item;
+          // A partial/non-delivered native initial turn still has its full
+          // literal objective in the orchestration prompt. Reference that
+          // representation instead of copying the same user text again.
+          const initialInObjective=invocation.kind==='controller'&&invocation.userContentMaxBytes!==undefined&&
+            item===initial&&item.completeness==='complete'&&item.value===invocation.objective;
+          if(!turn&&!initialInObjective)return item;
           const {value:_value,excerpt:_excerpt,...identity}=item;
-          return {...identity,value:{nativeOrderedTurn:turn.requestId}};
+          return {...identity,value:turn?{nativeOrderedTurn:turn.requestId}:{literalTextAt:'Invocation.objective'}};
         });
         if(deliveredTurns.length)context.push({ref:'host:ordered-input',source:'host_observed',completeness:'complete',value:deliveredTurns});
         if(omittedContent.length)context.push({ref:'host:user-content-delivery',source:'host_observed',completeness:'complete',value:omittedContent});

@@ -170,7 +170,8 @@ export async function runCli(args, io, execute, afterHuman) {
     if (result && typeof result === 'object' && 'request' in result && 'limits' in result && 'attempts' in result) {
       const view = operationView(/** @type {Operation} */ (result));
       if (invocation.format === 'text' && ['run', 'resume'].includes(invocation.command.action)) {
-        const human = view.assessment?.answer ?? (view.waiting?.kind === 'question' ? view.waiting.question
+        const currentAnswer=view.status==='finished'?view.assessment?.answer:undefined;
+        const human = currentAnswer ?? (view.waiting?.kind === 'question' ? view.waiting.question
           : view.waiting?.kind === 'technical'
             ? (view.waiting.reason.profileId ? 'Error: ' : 'Waiting: ') + view.waiting.reason.code +
               (view.waiting.reason.profileId ? ' profile=' + view.waiting.reason.profileId +
@@ -180,7 +181,7 @@ export async function runCli(args, io, execute, afterHuman) {
                 (view.waiting.reason.reasoningCause ? ' cause=' + view.waiting.reason.reasoningCause : '')) : '')
             : view.status);
         const tty='isTTY' in io.stdout && io.stdout.isTTY;
-        const answer=typeof view.assessment?.answer==='string';
+        const answer=typeof currentAnswer==='string';
         const formatted=tty?(answer?renderMarkdownAnswer(human,terminalColor(io.stdout)):terminalText(human)):human;
         // This last-mile layout applies only to an interactive terminal.
         // Redirected stdout, JSON, --output and the assessment stay byte-exact.

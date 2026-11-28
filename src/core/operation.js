@@ -145,12 +145,15 @@ export function workspaceContextFor(operation) {
   return latest?.kind === 'operation.continued' ? latest.input.workspaceContext : operation.request.workspaceContext;
 }
 
-/** Current accepted user settings are tied to explicit continuation, never recovery.
+/** An explicit continuation starts a new accepted settings boundary. Recovery
+ * may durably establish missing legacy settings, but cannot cross that boundary.
  * @param {Operation} operation
  */
 export function acceptedSettingsFor(operation) {
-  const latest = operation.events.findLast(event => event.kind === 'operation.continued');
-  return latest?.kind === 'operation.continued' ? latest.trusted?.settings : operation.acceptedSettings;
+  const latest = operation.events.findLast(event => event.kind === 'operation.continued' ||
+    (event.kind==='operation.recovered'&&event.trusted.settings!==undefined));
+  return latest?.kind==='operation.continued'||latest?.kind==='operation.recovered'
+    ? latest.trusted?.settings : operation.acceptedSettings;
 }
 
 /** The explicit user selection is durable input, not a mutation of the catalog.

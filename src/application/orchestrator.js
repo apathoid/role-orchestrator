@@ -1,4 +1,4 @@
-import { prepareUserContent, userAttachments, orderedTurns, projectOrderedTurns, defaultUserContentMaxBytes, maximumUserContentMaxBytes } from './user-content.js';
+import { prepareUserContent, userAttachments, orderedTurns, userTextProjection, projectOrderedTurns, defaultUserContentMaxBytes, maximumUserContentMaxBytes } from './user-content.js';
 import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
@@ -1025,7 +1025,7 @@ export function createOrchestrator(deps) {
           context: currentWorkerContext ?? [],
         } : {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
-          objective: state.request.text, instructions: controllerInstructions, profile,
+          objective: userTextProjection(state.request), instructions: controllerInstructions, profile,
           workspaceContext: workspaceContextFor(state), userConstraints: state.request.userConstraints,
           context: controllerContext(dispatched, entries, correction, lookups, controllerMaxBytes, catalog.preferences), authorityRef: state.authorityRef,
         };
