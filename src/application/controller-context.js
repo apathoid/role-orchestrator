@@ -438,6 +438,10 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       ...(preferences && { preferences }),
       limits: state.limits, resources: resourceSnapshot(state),
       attachments: state.request.attachments,
+      ...(state.request.agentSkill||state.events.some(event=>event.kind==='operation.continued'&&event.input.agentSkill)?{userSelectedSkills:[
+        ...(state.request.agentSkill?[{requestId:state.request.requestId,...state.request.agentSkill}]:[]),
+        ...state.events.flatMap(event=>event.kind==='operation.continued'&&event.input.agentSkill?[{requestId:event.input.requestId,...event.input.agentSkill}]:[]),
+      ]}:{}),
       controllerReasoning: {
         ...(acceptedSettingsFor(state)?.reasoningEffort && {default: {level:acceptedSettingsFor(state)?.reasoningEffort?.id,source:acceptedSettingsFor(state)?.reasoningEffort?.source}}),
         current: (() => {

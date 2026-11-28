@@ -20,6 +20,7 @@ import { createNdjsonSink, defaultDiagnosticMaxFileBytes, defaultDiagnosticQueue
 /** @import {AuthorityPort} from '../core/ports.js' */
 
 import { RuntimeError } from './runtime-error.js';
+import { discoverAgentSkills, selectAgentSkill } from '../adapters/configuration/agent-skills.js';
 
 /**
  * @typedef {{
@@ -168,6 +169,8 @@ export async function openRuntime(options, onStoreOpen) {
     /** @param {string} operationId */
     const trace = async operationId => operationTrace(await inspect(operationId), redaction);
     const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel, settings,
+      skills: (/** @type {string} */ cwd) => discoverAgentSkills(cwd),
+      selectSkill: (/** @type {string} */ cwd, /** @type {string} */ selection) => selectAgentSkill(cwd,selection),
       trace,
       subscribe: diagnostics.subscribe, subscribeExecution: (/** @type {import('../core/ports.js').ActivityScope} */ scope, /** @type {import('../application/events.js').EventListener} */ listener) => diagnostics.subscribe(listener, scope), subscribeActivity, pendingInteractions: interactions.pending,
       respondInteraction: interactions.respond, configurationRef, close });

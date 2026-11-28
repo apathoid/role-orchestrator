@@ -61,6 +61,13 @@ async function diagnoseState(directory) {
 process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).runAcpStdio(process.argv.slice(3))
   : await runCli(process.argv.slice(2), { cwd, stdin: process.stdin, stdout: process.stdout, stderr: process.stderr },
   async invocation => {
+    if(invocation.command.action==='skills')return (await import('../adapters/configuration/agent-skills.js')).discoverAgentSkills(cwd);
+    if(invocation.command.agentSkillSelection!==undefined){
+      const {selectAgentSkill}=await import('../adapters/configuration/agent-skills.js');
+      const selected=await selectAgentSkill(invocation.command.cwd??cwd,invocation.command.agentSkillSelection);
+      if(!selected)throw new HostError('INVALID_ARGUMENT','Unknown or ambiguous Agent Skill shortcut');
+      invocation.command.agentSkill={name:selected.name,path:selected.path,source:selected.source};
+    }
     const administrative = isAdministrativeAction(invocation.command.action);
     const configured = administrative && invocation.stateDirectory !== undefined
       ? undefined : await cliConfiguration(invocation.config, invocation.stateDirectory).catch(error => {

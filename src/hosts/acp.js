@@ -4,7 +4,7 @@ import { isAbsolute, join } from 'node:path';
 import { agent, methods, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
 import { decode, id, invalid as invalidField, optional, record } from '../core/decode.js';
 import { hostError } from './commands.js';
-import { userSettings } from '../core/contracts.js';
+import { userSettings, agentSkill } from '../core/contracts.js';
 import { featureKinds } from '../application/configuration/user-settings.js';
 import { acpActivity, acpExecutionNotices, acpExecutionInline, acpAccepted, acpProgressGap, acpOwnMessage } from './presentation.js';
 
@@ -16,7 +16,7 @@ import { createBoundedDelivery } from '../application/delivery.js';
 /** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
 /** @import {Session} from './acp-history.js' */
 /** @import {HostApi} from './commands.js' */
-/** @typedef {HostApi & {settings: (workspace: import('../core/contracts.js').Request['workspaceContext'], controllerProfile?: string, overrides?:import('../core/contracts.js').UserSettings) => Promise<import('../application/configuration/user-settings.js').UserSettingsView>, findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
+/** @typedef {HostApi & {settings: (workspace: import('../core/contracts.js').Request['workspaceContext'], controllerProfile?: string, overrides?:import('../core/contracts.js').UserSettings) => Promise<import('../application/configuration/user-settings.js').UserSettingsView>, skills?: (cwd:string)=>Promise<Awaited<ReturnType<typeof import('../adapters/configuration/agent-skills.js').discoverAgentSkills>>>, selectSkill?: (cwd:string,selection:string)=>Promise<import('../adapters/configuration/agent-skills.js').AgentSkill|undefined>, findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
 /** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>, stopDisplay?:()=>void}} Turn */
 
 const a = methods.agent;
@@ -157,6 +157,15 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
     if (!session.operations.includes(operationId)) session.operations.push(operationId);
   }
 
+  /** @param {AgentContext} client @param {Session} session */
+  async function publishSkills(client,session) {
+    if(!api.skills)return;
+    try {
+      const {commands}=await api.skills(session.cwd);
+      if(!commands.length)return;
+      await sendUpdate(client,session.sessionId,{sessionUpdate:'available_commands_update',availableCommands:commands.map(item=>({name:item.name,description:item.description,input:{hint:'Optional instruction'}}))});
+    }catch{/* Discovery never prevents an ordinary session. */}
+  }
   const app = agent()
     .onRequest(a.initialize, ({ params, requestId }) => {
       if (initialized) throw invalid('ACP connection is already initialized');
@@ -170,12 +179,13 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         agentCapabilities: { loadSession: true, promptCapabilities: { image: false, audio: false, embeddedContext: false } },
       };
     })
-    .onRequest(a.session.new, async ({ params }) => {
+    .onRequest(a.session.new, async ({ params,client }) => {
       checkSession(params.cwd, params.mcpServers);
       const session = { sessionId: randomUUID(), cwd: params.cwd, operations: [], requests: [] };
       const options = configOptions(await settingsView(session));
       await save(session);
       sessions.set(session.sessionId, session);
+      await publishSkills(client,session);
       return { sessionId: session.sessionId, configOptions: options };
     })
     .onRequest(a.session.load, async ({ params, client }) => {
@@ -195,6 +205,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         if(!Array.isArray(session.requests)||session.requests.some(request=>!request||typeof request.requestId!=='string'||typeof request.fingerprint!=='string'||
           (request.controllerProfile!==undefined&&typeof request.controllerProfile!=='string')||
           (request.userSettings!==undefined&&decode(userSettings,request.userSettings).kind!=='accepted')||
+          (request.agentSkill!==undefined&&decode(agentSkill,request.agentSkill).kind!=='accepted')||
           (request.operationId!==undefined&&!session.operations.includes(request.operationId))))throw invalid('Invalid stored session requests');
         for (const request of session.requests) {
           if (request.operationId) continue;
@@ -213,6 +224,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         await save(session);
         await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay,connection.signal);
         sessions.set(sessionId, session);
+        await publishSkills(client,session);
         return { configOptions: options };
       } finally { loading.delete(sessionId); }
     })
@@ -290,10 +302,12 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
       connection.signal.addEventListener('abort',stopDisplay,{once:true});
       try {
         if (!request) {
+          const shortcut=/^\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s|$)/u.exec(text);
+          const skill=shortcut&&api.selectSkill?await api.selectSkill(session.cwd,shortcut[1]):undefined;
           const view=await api.settings({cwd:session.cwd},selectedProfile,selectedSettings);
           const selection=view.controllerProfile;
           if(selection.current===undefined&&selectedProfile!==undefined)throw invalid('Selected Controller profile is unavailable');
-          request={requestId,fingerprint,controllerProfile:selection.current,userSettings:view.overrides};
+          request={requestId,fingerprint,controllerProfile:selection.current,userSettings:view.overrides,...(skill&&{agentSkill:{name:skill.name,path:skill.path,source:skill.source}})};
           session.requests.push(request);
           await save(session);
         }
@@ -339,11 +353,11 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
             });
           };
           const submission = prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished')
-            ? await api.resume(prior.operationId, { requestId: durableRequestId, text, workspaceContext, controllerProfile: request.controllerProfile, userSettings:request.userSettings, replaceSettings:true,
+            ? await api.resume(prior.operationId, { requestId: durableRequestId, text, workspaceContext, controllerProfile: request.controllerProfile, userSettings:request.userSettings, agentSkill:request.agentSkill, replaceSettings:true,
               questionId: prior.waiting?.kind === 'question' ? prior.waiting.questionId : undefined }, accepted)
             : await api.submit({
               schemaVersion: 1, requestId: durableRequestId, text, attachments: [], userConstraints: [],
-              configurationRef: api.configurationRef, workspaceContext, controllerProfile: request.controllerProfile, userSettings:request.userSettings,
+              configurationRef: api.configurationRef, workspaceContext, controllerProfile: request.controllerProfile, userSettings:request.userSettings, agentSkill:request.agentSkill,
             }, accepted);
           accepted(submission.operation.operationId);
           if (turn.cancelled) await cancel(sessionId);

@@ -7,7 +7,7 @@ import { boundedText, acpAccepted, acpExecutionInline, acpOwnMessage } from './p
 /** @import {Event, Operation} from '../core/operation.js' */
 /** @import {SessionUpdate, StopReason} from '@agentclientprotocol/sdk' */
 /** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
-/** @typedef {{requestId:string,fingerprint:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,operationId?:string,responseEventId?:string,progressDisplay?:ProgressDisplay}} SessionRequest */
+/** @typedef {{requestId:string,fingerprint:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,agentSkill?:ReturnType<typeof import('../core/contracts.js').agentSkill>,operationId?:string,responseEventId?:string,progressDisplay?:ProgressDisplay}} SessionRequest */
 /** @typedef {{sessionId:string,cwd:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,operations:string[],requests:SessionRequest[]}} Session */
 /** @typedef {Pick<Operation,'operationId'|'status'|'waiting'|'assessment'>} ReplyState */
 /** @typedef {{text?:string,stopReason:StopReason}} Reply */

@@ -15,10 +15,11 @@ const ids = arrayOf(id);
 const workspaceContext = optional(record({ cwd: optional(id) }));
 export const userSettings = record({ reasoningEffort: optional(id), collaborationMode: optional(id), approvalMode: optional(id) });
 /** @typedef {Partial<ReturnType<typeof userSettings>>} UserSettings */
+export const agentSkill = record({name:id,path:id,source:oneOf('project','global')});
 export const request = record({
   schemaVersion: version, requestId: id, text,
   attachments: arrayOf(record({ ref: id, mediaType: id })),
-  workspaceContext, controllerProfile: optional(id), userSettings: optional(userSettings),
+  workspaceContext, controllerProfile: optional(id), userSettings: optional(userSettings), agentSkill:optional(agentSkill),
   userConstraints: arrayOf(text), configurationRef: id,
 });
 
@@ -47,7 +48,7 @@ export const assessment = record({
   observationRefs: ids, findingRefs: ids, unresolvedQuestions: arrayOf(text), answer: text,
 });
 
-export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext, controllerProfile: optional(id), userSettings: optional(userSettings),
+export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext, controllerProfile: optional(id), userSettings: optional(userSettings), agentSkill:optional(agentSkill),
   replaceSettings: optional((value,path)=>value===true?/** @type {const} */ (true):invalid(path,'true')) });
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 const contextPositionFields = { revision: count, index: count };

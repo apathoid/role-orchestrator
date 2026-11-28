@@ -6,8 +6,8 @@ import { redactDiagnostic } from '../application/redact-diagnostic.js';
 /** @typedef {ReturnType<typeof import('../application/orchestrator.js').createOrchestrator>} Coordinator */
 /** @typedef {Pick<Coordinator, 'submit' | 'resume' | 'inspect' | 'cancel'> & {configurationRef: string, trace?: (operationId: string) => Promise<ReturnType<typeof operationTrace>>}} HostApi */
 /** @typedef {{
- *   action: 'run' | 'resume' | 'inspect' | 'cancel' | 'trace' | 'export-diagnostics' | 'diagnose' | 'settings',
- *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client', controllerProfile?: string, userSettings?:import('../core/contracts.js').UserSettings
+ *   action: 'run' | 'resume' | 'inspect' | 'cancel' | 'trace' | 'export-diagnostics' | 'diagnose' | 'settings' | 'skills',
+ *   requestId: string, operationId?: string, text?: string, cwd?: string, questionId?: string, cancellationSource?: 'client', controllerProfile?: string, userSettings?:import('../core/contracts.js').UserSettings,agentSkillSelection?:string,agentSkill?:ReturnType<typeof import('../core/contracts.js').agentSkill>
  * }} Command */
 
 /** @param {string} action */
@@ -25,7 +25,7 @@ export class HostError extends Error {
 
 /** @param {HostApi} api @param {Command} command @param {(id: string) => void} [accepted] */
 export async function dispatchCommand(api, command, accepted) {
-  const { action, operationId, requestId, text, cwd, questionId, cancellationSource, controllerProfile, userSettings } = command;
+  const { action, operationId, requestId, text, cwd, questionId, cancellationSource, controllerProfile, userSettings, agentSkill } = command;
   // New dispatch notifies before launch; existing or synthetic submissions may
   // return without invoking the callback. Preserve one acceptance in both cases.
   let notified = false;
@@ -35,7 +35,7 @@ export async function dispatchCommand(api, command, accepted) {
     if (!text?.trim()) throw new HostError('INVALID_ARGUMENT', 'A nonempty request is required');
     const submission = await api.submit({
       schemaVersion: 1, requestId, text, attachments: [], userConstraints: [],
-      configurationRef: api.configurationRef, ...(controllerProfile!==undefined&&{controllerProfile}), ...(userSettings&&{userSettings}), ...(cwd && { workspaceContext: { cwd } }),
+      configurationRef: api.configurationRef, ...(controllerProfile!==undefined&&{controllerProfile}), ...(userSettings&&{userSettings}), ...(agentSkill&&{agentSkill}), ...(cwd && { workspaceContext: { cwd } }),
     }, notify);
     notify(submission.operation.operationId);
     return submission.completion;
@@ -44,7 +44,7 @@ export async function dispatchCommand(api, command, accepted) {
   if (action === 'resume') {
     if (text !== undefined && !text.trim()) throw new HostError('INVALID_ARGUMENT', 'Follow-up text is empty');
     if(text===undefined&&(controllerProfile!==undefined||userSettings))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
-    const submission = await api.resume(operationId, text === undefined ? undefined : { requestId, text, questionId, controllerProfile, userSettings }, notify);
+    const submission = await api.resume(operationId, text === undefined ? undefined : { requestId, text, questionId, controllerProfile, userSettings, agentSkill }, notify);
     notify(submission.operation.operationId);
     return submission.completion;
   }

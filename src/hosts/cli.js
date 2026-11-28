@@ -18,6 +18,7 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
   inspect ID              Show status, attempts and budget
   cancel ID               Cancel an operation
   settings                Show available logical user settings
+  skills                  List discovered Agent Skills shortcuts
   diagnose                Check local configuration and launch paths
   acp                     Serve ACP v1 over stdio
   trace ID                Show redacted operation journal
@@ -26,7 +27,7 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
 Common: --config FILE, --state-dir DIR, --format text|json, --help
 Run: --cwd DIR, --profile ID, --skill ID (repeatable), --stdin, --request-id ID, --presentation compact|detailed|debug
 Resume: --question ID, --profile ID, --stdin, --request-id ID, --presentation compact|detailed|debug
-Run and explicit resume: --reasoning-effort ID, --collaboration-mode ID, --approval-mode ID
+Run and explicit resume: --reasoning-effort ID, --collaboration-mode ID, --approval-mode ID, --agent-skill NAME_OR_ABSOLUTE_PATH
 Settings: --profile ID
 `;
 
@@ -34,11 +35,11 @@ const common = {
   config: { type: 'string' }, 'state-dir': { type: 'string' }, format: { type: 'string' }, help: { type: 'boolean', short: 'h' },
 };
 const continuation = { presentation: { type: 'string' }, stdin: { type: 'boolean' }, 'request-id': { type: 'string' } };
-const selections={profile:{type:'string'},'reasoning-effort':{type:'string'},'collaboration-mode':{type:'string'},'approval-mode':{type:'string'}};
+const selections={profile:{type:'string'},'reasoning-effort':{type:'string'},'collaboration-mode':{type:'string'},'approval-mode':{type:'string'},'agent-skill':{type:'string'}};
 const flags = {
   run: { ...continuation, ...selections, cwd: { type: 'string' }, skill: { type: 'string', multiple: true } },
   resume: { ...continuation, ...selections, question: { type: 'string' } },
-  settings:{profile:{type:'string'}}, inspect: {}, cancel: {}, diagnose: {}, trace: {}, 'export-diagnostics': { output: { type: 'string' } },
+  settings:{profile:{type:'string'}}, skills:{}, inspect: {}, cancel: {}, diagnose: {}, trace: {}, 'export-diagnostics': { output: { type: 'string' } },
 };
 
 /** @param {string[]} argv @param {string} cwd */
@@ -59,7 +60,7 @@ export function parseCli(argv, cwd) {
   if (presentation !== undefined && presentation !== 'compact' && presentation !== 'detailed' && presentation !== 'debug') {
     throw new HostError('INVALID_ARGUMENT', 'Expected --presentation compact, detailed or debug');
   }
-  const needsId = commandName !== 'run' && commandName !== 'diagnose' && commandName !== 'settings';
+  const needsId = commandName !== 'run' && commandName !== 'diagnose' && commandName !== 'settings' && commandName !== 'skills';
   const operationId = needsId ? positionals.shift() : undefined;
   if (needsId && !operationId?.trim()) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
   const acceptsText = commandName === 'run' || commandName === 'resume';
@@ -75,13 +76,14 @@ export function parseCli(argv, cwd) {
     ...(typeof values['collaboration-mode']==='string'&&{collaborationMode:values['collaboration-mode']}),
     ...(typeof values['approval-mode']==='string'&&{approvalMode:values['approval-mode']}),
   };
-  if(commandName==='resume'&&!positionals.length&&!values.stdin&&(values.profile!==undefined||Object.keys(userSettings).length))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
+  if(commandName==='resume'&&!positionals.length&&!values.stdin&&(values.profile!==undefined||values['agent-skill']!==undefined||Object.keys(userSettings).length))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
   /** @type {Command} */
   const command = {
     action: commandName, operationId, requestId: typeof values['request-id'] === 'string' ? values['request-id'] : newRequestId(),
     text: positionals.length ? positionals.join(' ') : undefined,
     cwd: commandName === 'run' ? resolve(cwd, typeof values.cwd === 'string' ? values.cwd : '.') : undefined,
     ...(typeof values.profile==='string'&&{controllerProfile:values.profile}),
+    ...(typeof values['agent-skill']==='string'&&{agentSkillSelection:values['agent-skill']}),
     ...(Object.keys(userSettings).length&&{userSettings}),
     questionId: typeof values.question === 'string' ? values.question : undefined,
   };
