@@ -1,4 +1,3 @@
-import { defaultUserContentMaxBytes, userContentFrameBytes } from '../../application/user-content.js';
 import { randomUUID } from 'node:crypto';
 import { addAbortListener } from 'node:events';
 import { resolve } from 'node:path';
@@ -128,7 +127,6 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
   async function run(invocation, signal, observe, activity) {
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const required = invocation.requiredCapabilities ?? [];
-    const maxInputFrameBytes=userContentFrameBytes(invocation.userContentMaxBytes??defaultUserContentMaxBytes);
     const { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, CreateElicitationRequest, CreateElicitationResponse } = await import('@agentclientprotocol/sdk');
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const supported = new Set(['input.text', 'output.decision', 'cancel']);
@@ -556,7 +554,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
       /** @type {{requestId:string,ref:string,reason:string}[]} */ const omittedContent=[];
       /** @type {{requestId:string,startBlock:number,count:number,literalText:boolean,refs:{ref:string,block:number}[]}[]} */ const deliveredTurns=[];
       /** @type {ProviderResult['contentUnavailable']} */ let contentFailure;
-      const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities??{}, resolveAttachment, AbortSignal.any([signal, connection.signal]),(requestId,ref)=>omittedContent.push({requestId,ref,reason:'native_content_unavailable'}),
+      const blocks = await attachmentBlocks(invocation, initialized.agentCapabilities??{}, resolveAttachment, AbortSignal.any([signal, connection.signal]),(requestId,ref,reason)=>omittedContent.push({requestId,ref,reason:reason??'user_content_not_deliverable'}),
         (turn,startBlock,count,refs)=>deliveredTurns.push({requestId:turn.requestId,startBlock,count,literalText:turn.content.some(item=>item.kind==='text'),refs}),issue=>{contentFailure=issue;});
       if (!blocks || (required.includes('input.image') && (!initialized.agentCapabilities?.promptCapabilities?.image))) {
         const refused=resultFor(invocation,'CAPABILITY_UNAVAILABLE');
@@ -683,12 +681,9 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         const prompt = renderInvocationPrompt({...invocation,objective,context,controllerDelivery, controllerDecisionToolName:mcp?.decisionToolName}, retrievalDetail(Boolean(mcp?.contextListToolName), mcp, invocation.kind),
           promptReporter?sizes=>{componentSizes=sizes;}:undefined);
         reportPrompt(promptReporter,invocation,'prepared',{transport:'acp',preparationMs:performance.now()-preparationStarted,attachmentBlocks:blocks.length,...componentSizes},prompt);
-        if(blocks.length&&Buffer.byteLength(JSON.stringify([{type:'text',text:prompt},...blocks]))>maxInputFrameBytes-4096){
-          const refused=resultFor(invocation,'RESOURCE_LIMIT');
-          refused.outcome.diagnostics[0].ref=publish({ref:'acp-user-content-limit',kind:'host_transport',sourceId:invocation.attemptId,completeness:'complete',value:{reason:'native_prompt_frame_limit',limit:maxInputFrameBytes}});
-          refused.contentUnavailable={cause:'native_prompt_frame_limit'};
-          return refused;
-        }
+        // The SDK maxMessageBytes bounds reception, not outbound writes.
+        // Decoded acceptance/projection limits are not a provider frame limit.
+        // Send the assembled prompt through the actual native transport.
         signal.throwIfAborted();
         active = true;
         sent = true;

@@ -119,7 +119,10 @@ export function boundContextItem(item, maxBytes, excerptLimit = maxExcerptBytes)
 }
 
 /** @param {ContextItem} item */
-const isUserMessage = item => item.provenance?.kind === 'user' && !item.attemptId;
+// Literal user text is mandatory; derived attachment/skill directory rows
+// are addressable technical history, not literal user messages.
+const isUserMessage = item => item.provenance?.kind === 'user' && !item.attemptId &&
+  (item.receivedSequence===undefined||item.receivedSequence.index===0);
 
 /** @param {string} ref @param {'missing' | 'budget'} unavailableReason @returns {ContextItem} */
 export function unavailableContext(ref, unavailableReason) {

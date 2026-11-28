@@ -1388,3 +1388,21 @@ test('C24-R2 T01/T02 large initial objective is not duplicated on historical nat
     assert.ok(host.messages.some(message=>message.sessionId===sessionId&&message.update.content?.text==='Ответ: left\nright'));
   }finally{await host.close();}
 }));
+
+test('C24-R3 T21 two individually accepted turns do not encounter a synthetic outgoing frame gate',{timeout:60000},()=>withOwnedRun('C24R3-two-turns',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const host=launch(cwd,await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'large']}}},plugins:[]}));
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    const send=prompt=>host.agent.request(a.session.prompt,{sessionId,prompt});
+    const text='C24-UNIQUE-LITERAL-START'+'x'.repeat(13*1024*1024);
+    assert.equal((await send([{type:'text',text},{type:'image',mimeType:'image/png',data:'AQID'}])).stopReason,'end_turn');
+    assert.equal((await send([{type:'image',mimeType:'image/png',data:Buffer.alloc(13*1024*1024,8).toString('base64')},{type:'text',text:'next'}])).stopReason,'end_turn');
+    const records=(await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(records.length,2);
+    assert.equal(records[1].literalCopies,1);
+    assert.equal(records[1].blocks.find(b=>b.type==='image').size,13*1024*1024);
+    assert.ok(records[1].promptBytes>30*1024*1024);
+  }finally{await host.close();}
+}));

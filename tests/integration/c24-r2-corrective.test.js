@@ -110,3 +110,28 @@ test('C24-R2 T16 required native attachment refusals distinguish capability and 
   assert.equal(await attachmentBlocks(invocation,{promptCapabilities:{image:true}},undefined,signal,undefined,undefined,issue=>failures.push(issue)),undefined);
   assert.deepEqual(failures.pop(),{ref:'image-ref',cause:'payload_unavailable'});
 });
+
+test('C24-R3 T19/T20 current literal user input is delivered despite historical attachment metadata and a tiny budget',()=>{
+  const {text,...base}=request();
+  const prepared=prepareUserContent({...base,content:[{kind:'text',text},...Array.from({length:300},(_,i)=>({kind:'link',uri:'file:///a'+i}))]});
+  const state=operation(prepared.input);
+  state.events=[{kind:'operation.continued',input:{requestId:'latest',text:'Do not edit the repository'},receivedAt:1}];
+  state.revision=1;
+  const items=controllerContext(state,[],undefined,undefined,2000);
+  assert.equal(items.find(i=>i.ref==='latest').value,'Do not edit the repository');
+  assert.equal(items[0].value,text);
+  assert.ok(items[1].value.historyBudget.omitted>0);
+});
+test('C24-R3 T28 optional native failures retain exact causes per ref',async()=>{
+  const omissions=[];
+  const turn={requestId:'old',text:'',required:false,content:[nativeImage('missing'),{kind:'audio',ref:'unsupported',mediaType:'audio/wav'}]};
+  const blocks=await attachmentBlocks({orderedTurns:[turn]}, {promptCapabilities:{image:true}},undefined,signal,(id,ref,reason)=>omissions.push([id,ref,reason]));
+  assert.deepEqual(blocks,[]);
+  assert.deepEqual(omissions,[['old','missing','payload_unavailable'],['old','unsupported','native_modality_unavailable']]);
+});
+test('C24-R3 T24 typed URI takes precedence and legacy ACP metadata URI survives',async()=>{
+  const item={...nativeImage('r'),metadata:{uri:'file:///legacy.png',_meta:{opaque:true}}};
+  const read=async()=>Buffer.from('x');
+  assert.equal((await renderContentAttachment(item,read,undefined,signal)).uri,'file:///legacy.png');
+  assert.equal((await renderContentAttachment({...item,uri:'file:///typed.png'},read,undefined,signal)).uri,'file:///typed.png');
+});

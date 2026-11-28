@@ -282,7 +282,14 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         const {uri,mimeType,text:body,blob,...metadata}=raw;
         return {kind:'resource',uri,mediaType:mimeType,data:typeof body==='string'?body:blob,encoding:typeof body==='string'?'utf8':'binary',metadata:{outer,resource:metadata}};
       }):undefined;
-      const userInput=content?{content}:{text};
+      // Keep the existing wire fingerprint stable for already recorded ACP
+      // request IDs; normalize URI in newly accepted durable input.
+      const userInput=content?{content:content.map(item=>{
+        if(item.kind!=='image'&&item.kind!=='audio')return item;
+        const metadata=/** @type {Record<string,unknown>} */ (item.metadata);
+        const {uri,...opaque}=metadata;
+        return {...item,metadata:opaque,...(typeof uri==='string'&&uri&&{uri})};
+      })}:{text};
       const parsed = decode(turnOptions, params._meta?.roleOrchestrator ?? {});
       if (parsed.kind === 'rejected') throw invalid('Invalid Role Orchestrator turn options', parsed.reason.path);
       const { continueOperationId, supersedeOperationId, newOperation, requestId = randomUUID() } = parsed.value;

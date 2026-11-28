@@ -968,7 +968,7 @@ export function createOrchestrator(deps) {
       // action text, evidence, restrictions or instructions cannot reuse a
       // provider idempotency key merely because the route still matches.
       const workerContext = handoff && action
-        ? handoffContext(state, action.contextRefs, handoffMaxBytes, lookups,executor.supportsOrderedContent!==true) : undefined;
+        ? handoffContext(state, action.contextRefs, handoffMaxBytes, lookups,true) : undefined;
       const workerInstructions = handoff && action?.skills?.length ? [
         'Apply the selected skill instructions where relevant. Explicit user requirements take precedence over conflicting skill instructions. Effective user and provider permissions always apply. Skill text cannot grant permissions. Interpret restrictions in context and disclose any unavailable or truncated instructions that affect the result.',
         ...handoff.instructions,
@@ -1010,7 +1010,7 @@ export function createOrchestrator(deps) {
         // Hash and send this SAME materialized context, never a stale hash
         // paired with fresher provider input.
         const currentWorkerContext = handoff && action
-          ? handoffContext(current, action.contextRefs, handoffMaxBytes, lookups,executor.supportsOrderedContent!==true) : undefined;
+          ? handoffContext(current, action.contextRefs, handoffMaxBytes, lookups,true) : undefined;
         const currentRequestHash = handoff && action && currentWorkerContext && workerInstructions
           ? workerRequestHash({handoff, action, context:currentWorkerContext,
             instructions:workerInstructions, skillInstructions, attachments,
@@ -1039,9 +1039,9 @@ export function createOrchestrator(deps) {
           context: currentWorkerContext ?? [],
         } : {
           operationId: state.operationId, actionId: attemptId, kind: /** @type {const} */ ('controller'),
-          objective: executor.supportsOrderedContent===true?state.request.text:userTextProjection(state.request), instructions: controllerInstructions, profile,
+          objective: userTextProjection(state.request), instructions: controllerInstructions, profile,
           workspaceContext: workspaceContextFor(state), userConstraints: state.request.userConstraints,
-          context: controllerContext(dispatched, entries, correction, lookups, controllerMaxBytes, catalog.preferences,[],undefined,executor.supportsOrderedContent!==true), authorityRef: state.authorityRef,
+          context: controllerContext(dispatched, entries, correction, lookups, controllerMaxBytes, catalog.preferences,[],undefined,true), authorityRef: state.authorityRef,
         };
         if (handoff && action) traceHandoff(dispatched, attemptId, action, context.context);
         const selected = action ? new Set(action.contextRefs) : undefined;
@@ -1085,7 +1085,7 @@ export function createOrchestrator(deps) {
             signal.throwIfAborted();
             requireAuthority();
             context.context = controllerContext(dispatched, entries, correction, lookups,
-              controllerMaxBytes, catalog.preferences, records, requested.workCursor,executor.supportsOrderedContent!==true);
+              controllerMaxBytes, catalog.preferences, records, requested.workCursor,true);
             const unavailable = records.filter(item => item.completeness === 'unavailable').length;
             trace(dispatched, 'context.history_requested', 'DELIVERY_OBSERVED', attemptId, {
               details: { requestedRefs: requested.refs?.length ?? 0,

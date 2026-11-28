@@ -73,7 +73,7 @@ export async function configureReasoning(agent, methods, session, reasoning, sig
 
 /**
  * @param {Invocation} invocation @param {InitializeResponse['agentCapabilities']} capabilities
- * @param {ResolveAttachment | undefined} resolve @param {AbortSignal} signal @param {(requestId:string,ref:string)=>void} [onOmitted]
+ * @param {ResolveAttachment | undefined} resolve @param {AbortSignal} signal @param {(requestId:string,ref:string,reason?:NonNullable<import('../../core/ports.js').ProviderResult['contentUnavailable']>['cause'])=>void} [onOmitted]
  * @param {(turn:import('../../core/ports.js').OrderedTurn,start:number,count:number,refs:{ref:string,block:number}[])=>void} [onDelivered]
  * @param {(issue:NonNullable<import('../../core/ports.js').ProviderResult['contentUnavailable']>)=>void} [onFailure]
  */
@@ -83,8 +83,13 @@ export async function attachmentBlocks(invocation, capabilities, resolve, signal
   const orderedRefs=new Set((invocation.orderedTurns??[]).flatMap(turn=>turn.content.flatMap(item=>item.kind==='text'?[]:[item.ref])));
   for(const turn of invocation.orderedTurns??[]){
     /** @type {{ref:string,block:number}[]} */ const refs=[];
-    const ordered=await renderOrderedTurn(turn,invocation.readUserPayload,capabilities,signal,turn.required===false?ref=>onOmitted?.(turn.requestId,ref):undefined,
-      (ref,index)=>refs.push({ref,block:blocks.length+1+index}),turn.required===false?undefined:onFailure);
+    /** @type {import('../../core/ports.js').ProviderResult['contentUnavailable']} */ let failure;
+    const ordered=await renderOrderedTurn(turn,invocation.readUserPayload,capabilities,signal,
+      turn.required===false?ref=>onOmitted?.(turn.requestId,ref,failure?.ref===ref?failure.cause:undefined):undefined,
+      (ref,index)=>refs.push({ref,block:blocks.length+1+index}),issue=>{
+        if(turn.required===false)failure=issue;
+        else onFailure?.(issue);
+      });
     if(!ordered)return undefined;
     onDelivered?.(turn,blocks.length+1,ordered.length,refs);
     blocks.push(...ordered);
@@ -170,8 +175,10 @@ export async function renderContentAttachment(item,read,capabilities,signal,onFa
   signal.throwIfAborted();
   if(!bytes){onFailure?.({ref:item.ref,cause:'payload_unavailable'});return;}
   if(item.kind==='image'||item.kind==='audio'){
-    const {uri:_uri,...opaque}=meta;
-    return /** @type {ContentBlock} */ ({...opaque,type:item.kind,mimeType:item.mediaType,data:Buffer.from(bytes).toString('base64'),...(item.uri&&{uri:item.uri})});
+    const {uri:historicalUri,...opaque}=meta;
+    // C24 ingress stored URI inside metadata. A typed URI always wins.
+    const uri=item.uri??(typeof historicalUri==='string'&&historicalUri?historicalUri:undefined);
+    return /** @type {ContentBlock} */ ({...opaque,type:item.kind,mimeType:item.mediaType,data:Buffer.from(bytes).toString('base64'),...(uri&&{uri})});
   }
   const outer=metadataObject(meta.outer);
   const {text:_text,blob:_blob,mimeType:_mime,...resource}=metadataObject(meta.resource);

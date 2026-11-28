@@ -604,7 +604,6 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
     host.value.userSelectedSkills.reverse();
   }
   }
-  if(!explicitWorkPage)packUserPreviews();
   // The work-map is the addressable technical index over existing Operation,
   // and a model-selected workCursor must be able to page even if the legacy
   // actions preview is large. Pack that preview only after the map.
@@ -627,10 +626,8 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
   if (cursorAvailable && represented === 0 && from < workRows.length) {
     host.value.workMap.unavailableReason = 'budget';
   }
-  if (explicitWorkPage) {
-    reserveRecovery();
-    packUserPreviews();
-  }
+  if (explicitWorkPage) reserveRecovery();
+  packUserPreviews();
   // Existing legacy technical fields remain short, budgeted previews.
   for (const value of facts.unresolvedAttempts) if (!tryAdd(host.value.unresolvedAttempts, value)) break;
   for (const value of facts.effectUncertainties) if (!tryAdd(host.value.effectUncertainties, value)) break;
