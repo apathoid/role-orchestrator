@@ -283,3 +283,7 @@ The existing plan and A132–A142 are unchanged in scope. Corrective contracts: 
 ### C24-R3 corrective candidate
 
 Scope: current literal input/default workMap and bounded attachment previews; provider-owned outgoing native limits, per-turn fallback boundaries, image/audio URI and precise omission causes; one durable nextController selection boundary; Worker approval snapshot consistency; exact read-only redelivery under changed trusted defaults or reduced admission limit. T19–T29 supplement A132–A142. P3 Store double scan retained pending measured need; unassociated ACP presentation remains native-client UNVERIFIED. No general context-limit redesign, persistent sessions, migration, or new acceptance IDs.
+
+### Final local corrective patch after C24-R3 review
+
+T30–T36 supplement existing A132–A142: keep mandatory literal user records despite explicitly requested byte ranges/excerpts/unavailable whole-record retrieval; keep range failures distinct; external ACP fixed finite receive limit independent of current decoded admission; known unavailable project preference permits explicit authorized selection without fallback; mark canonical UTF-16 text ranges separately from projected text and ContextPort byte ranges. No persistent sessions, general context-limit redesign, Store optimization or native-client presentation changes. Engineering evidence is recorded in STATUS; real native acceptance remains separate.
