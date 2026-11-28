@@ -275,3 +275,7 @@ Done means user can actually select supported settings before prompt, change pro
 Final report: implementation baseline, branch and exact HEAD; implemented contracts and minimal design choices, final schema/checked native IDs; RED/GREEN, CI/Nix/PTY/native evidence and performance comparison, limitations and UNVERIFIED items; decisions taken without explicit user instruction. Answer whether existing third-party adapter and future TUI can use interfaces without Core/provider-specific changes; whether model still chooses Worker/reasoning/strategy; whether new launches/gates/extra prompts exist; whether text-only/no features and C23 authority/cancel/recovery remain intact.
 
 No merge to master before independent review and user agreement.
+
+### C24-R2 corrective candidate
+
+The existing plan and A132–A142 are unchanged in scope. Corrective contracts: exact historical native refs through existing contextRequest; explicit workMap page/current skill before optional previews; no duplicate literal initial objective; legacy text block boundaries without changing stored offsets; exact delivered block attribution and typed-field ownership; per-admitted-Worker approval compatibility and legacy recovery settings; current CLI result and structured content refusal; negotiated capabilities consistent with admission; durable CLI skill redelivery and honest unassociated ordered replay. Accepted embedded content retention is unchanged. See normative documents and STATUS for verification; deterministic SDK fixtures do not establish native acceptance.

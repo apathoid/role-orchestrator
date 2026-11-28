@@ -1355,3 +1355,25 @@ for(const [variant,cause] of [['mode-reject','native_request_rejected'],['mode-r
     }finally{await host.close();}
   }));
 }
+
+test('C24-R2 T01/T02 large initial objective is not duplicated on historical native selection', {timeout:60000},()=>withOwnedRun('C24R2-large-history',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config=await fixture(cwd,{input:{maxBytes:14*1024*1024},resources:{maxInvocationsPerOperation:4},
+    providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'history-request-large']}}},plugins:[]});
+  const host=launch(cwd,config);
+  const image=byte=>({type:'image',mimeType:'image/png',data:Buffer.alloc(700*1024,byte).toString('base64')});
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    const send=blocks=>host.agent.request(a.session.prompt,{sessionId,prompt:blocks});
+    const text='C24-UNIQUE-LITERAL-START'+'x'.repeat(13*1024*1024);
+    assert.equal((await send([{type:'text',text},image(7)])).stopReason,'end_turn');
+    assert.equal((await send([image(8),{type:'text',text:'retrieve first image'}])).stopReason,'end_turn');
+    const records=(await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(records.length,3);
+    assert.deepEqual(records.map(item=>item.literalCopies),[1,1,1]);
+    const first=records[0].blocks.find(item=>item.type==='image').hash;
+    assert.notEqual(records[1].blocks.find(item=>item.type==='image').hash,first);
+    assert.equal(records[2].blocks.find(item=>item.type==='image').hash,first);
+  }finally{await host.close();}
+}));

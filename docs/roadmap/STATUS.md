@@ -1,5 +1,10 @@
 # Role Orchestrator — оперативный статус
 
+## C24-R2 — corrective candidate (verification incomplete)
+
+Baseline `25ec07792bedf182df3bc46966d013da1b90aa81` / [CI #46163699269](https://github.com/apathoid/role-orchestrator/actions/runs/46163699269) SUCCESS. Existing branch only; no master merge. First candidate `7301691839f82be15e5af1e6b1543d970acd4aff` / [CI #46166890814](https://github.com/apathoid/role-orchestrator/actions/runs/46166890814) observed PASS specification/checkJs, foundation/package, core, provider contracts, integration, resource probes, Linux PTY and acceptance; superseded during full suite. Subsequent [#46167181360](https://github.com/apathoid/role-orchestrator/actions/runs/46167181360) and [#46167335116](https://github.com/apathoid/role-orchestrator/actions/runs/46167335116) failed checkJs on the new optional CLI skill selector's ACP type construction; corrected in current candidate. Exact final CI, complete T01–T18 coverage and independent review still required. Local checkout unavailable (DNS, Node 22, no Nix); real agents/Zed and multimodal memory/performance UNVERIFIED. No acceptance closure claimed.
+
+
 ## C24-R — corrective review (IN PROGRESS)
 
 Reviewed HEAD `2dc085b1b07883725c4fd813d488ae07d53c2a39`; CI #46159672474 SUCCESS. Review scope P1.1–P1.6, P2.1–P2.12, P3.1–P3.4 and R01–R44. No merge. Initial RED candidate `2d8af9830f4aeeab87ee1222f64e7504aa15dcbb` covers R09/R11/R14 and accepted default selection. Local checkout unavailable (DNS; Node 22 instead of 24). New candidate: always record effective Controller, remove global approval mapping hash from new settings/recovery comparison (legacy field decodable; actual Worker retry identity still includes approval), expose unavailable current selections with real alternatives and explicit native, report removed overrides at load, defer selector collision to actual invocation. CI pending; no completion claim.

@@ -216,3 +216,19 @@ test('R2F-A121 replayHistory retains partial/unresolved model assessments, Markd
   }
   assert.deepEqual(all[1],all[0]);
 });
+
+test('C24-R2 T17 unassociated attachment-only record keeps available native block provenance',async()=>{
+  const A=operation('A','a0','',[]);
+  A.request.content=[{kind:'image',ref:'missing'},{kind:'image',ref:'available'}];
+  const updates=[];
+  const image={type:'image',mimeType:'image/png',data:'AQID'};
+  await replayHistory({sessionId:'session',cwd:'/tmp',operations:['A'],requests:[]},async()=>A,async u=>updates.push(u),'compact','inline',undefined,
+    async (operationId,turn,signal,omit)=>{assert.equal(operationId,'A');assert.equal(turn.requestId,id('a0'));omit('missing');return [image];});
+  const delivered=updates.find(u=>u.content?.type==='image');
+  assert.deepEqual(delivered.content,image);
+  assert.equal(delivered.sessionUpdate,'agent_message_chunk');
+  assert.equal(delivered._meta.roleOrchestratorSource.requestId,id('a0'));
+  assert.equal(delivered._meta.roleOrchestratorSource.recovered,true);
+  assert.ok(updates.some(u=>u.content?.text?.includes('Historical user block unavailable: missing')));
+  assert.ok(!updates.some(u=>u.sessionUpdate==='user_message_chunk'));
+});

@@ -187,3 +187,7 @@ Existing trusted `diagnostics.captureBodies` is off by default. If explicitly en
 ## C24 — Диагностика native settings и входного контента
 
 Accepted logical/native settings и actual route binding сохраняются с источником; applied/acknowledgment и техническая ошибка не доказывают поведение модели. Ordered user data имеет scoped refs и digest/size, без дублирования base64 в обычном journal. Unavailable/omitted historical content имеет техническую причину; неподдержанный обязательный content отклоняется до workload prompt. Existing capture policy, redaction и C23 offline diagnostics не заменяются новой службой. Native payload quality и реальное использование skills не выводятся из fixture PASS.
+
+### C24 content delivery and current result
+
+For mandatory input delivery refusals use attempt-scoped diagnostics and the known profile with a technical `resource` beginning `user_content:`. Distinguish unsupported ordered adapters, missing input capabilities, native modality/resource transport, unavailable payload and native prompt frame limits. Adapter observations can name the affected reference; no guessed payload identity. ACP and CLI present the current waiting error/question rather than a historical assessment. Historical assessments remain in the durable journal. A refused Worker approval mapping is an attempt-local not-sent failure with `accepted_worker_setting_changed` observation. Do not equate transport acceptance or fixture execution with real-model/native client acceptance.

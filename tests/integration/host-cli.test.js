@@ -162,7 +162,8 @@ test('C24 CLI lists shared settings and skills without a Store, applies explicit
   const {stat}=await import('node:fs/promises');
   await assert.rejects(stat(join(cwd,'state')),{code:'ENOENT'});
   const path=join(cwd,'not-created file.txt');
-  const run=call(['run','task','--profile','primary','--reasoning-effort','high','--agent-skill','c24-cli','--attachment',path]);
+  const runArgs=['run','task','--request-id','c24-r2-skill-delivery','--profile','primary','--reasoning-effort','high','--agent-skill','c24-cli','--attachment',path];
+  const run=call(runArgs);
   assert.equal(run.status,0,run.stderr);
   const result=JSON.parse(run.stdout);
   assert.equal(result.status,'finished');
@@ -179,4 +180,17 @@ test('C24 CLI lists shared settings and skills without a Store, applies explicit
   assert.equal((await read()).at(-1).settings['opaque-approval'],'native-open');
   assert.ok((await read()).at(-1).userSelectedSkills.every(item=>item.path===skill));
   assert.equal(call(['resume',result.operationId,'--reasoning-effort','low']).status,2);
+  const {rename}=await import('node:fs/promises');
+  await rename(skill,skill+'.moved');
+  const count=(await read()).length;
+  const redelivery=call(runArgs);
+  assert.equal(redelivery.status,0,redelivery.stderr);
+  assert.equal(JSON.parse(redelivery.stdout).operationId,result.operationId);
+  assert.equal((await read()).length,count);
+  const changed=call(runArgs.map(arg=>arg==='task'?'different task':arg));
+  assert.notEqual(changed.status,0);
+  assert.match(changed.stderr,/IDENTITY_CONFLICT/);
+  const changedSkill=call(runArgs.map(arg=>arg==='c24-cli'?skill:arg));
+  assert.notEqual(changedSkill.status,0);
+  assert.match(changedSkill.stderr,/IDENTITY_CONFLICT/);
 }));

@@ -100,3 +100,12 @@ test('C24-R2 T07/T08 CLI renders current technical failure/question instead of h
     assert.equal(code,waiting.kind==='question'?0:1);
   }
 });
+
+test('C24-R2 T16 required native attachment refusals distinguish capability and missing payload',async()=>{
+  const invocation={orderedTurns:[{requestId:'current',text:'',required:true,content:[nativeImage('image-ref')]}]};
+  const failures=[];
+  assert.equal(await attachmentBlocks(invocation,{},undefined,signal,undefined,undefined,issue=>failures.push(issue)),undefined);
+  assert.deepEqual(failures.pop(),{ref:'image-ref',cause:'native_modality_unavailable'});
+  assert.equal(await attachmentBlocks(invocation,{promptCapabilities:{image:true}},undefined,signal,undefined,undefined,issue=>failures.push(issue)),undefined);
+  assert.deepEqual(failures.pop(),{ref:'image-ref',cause:'payload_unavailable'});
+});

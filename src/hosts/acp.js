@@ -330,7 +330,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
           const view=await api.settings({cwd:session.cwd},selectedProfile,selectedSettings);
           const selection=view.controllerProfile;
           if(selection.current===undefined)throw invalid('Selected Controller profile is unavailable; choose an available profile');
-          request={requestId,fingerprint,controllerProfile:selection.current,userSettings:view.overrides,...(skill&&{agentSkill:{name:skill.name,path:skill.path,source:skill.source}})};
+          request={requestId,fingerprint,controllerProfile:selection.current,userSettings:view.overrides,...(skill&&{agentSkill:{name:skill.name,path:skill.path,source:skill.source,selection:undefined}})};
           session.requests.push(request);
           await save(session);
         }
