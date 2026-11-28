@@ -158,11 +158,17 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
   }
 
   /** @param {AgentContext} client @param {Session} session */
-  async function publishSkills(client,session,refresh=false) {
+  async function publishSkills(client,session) {
     if(!api.skills)return;
     try {
       const {commands}=await api.skills(session.cwd);
-      if(!commands.length&&!refresh)return;
+      const had=session.skillsAdvertised===true;
+      if(!commands.length&&!had)return;
+      if(had!==Boolean(commands.length)){
+        if(commands.length)session.skillsAdvertised=true;
+        else delete session.skillsAdvertised;
+        await save(session);
+      }
       await sendUpdate(client,session.sessionId,{sessionUpdate:'available_commands_update',availableCommands:commands.map(item=>({name:item.name,description:item.description,input:{hint:'Optional instruction'}}))});
     }catch{/* Discovery never prevents an ordinary session. */}
   }
@@ -224,7 +230,7 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         await save(session);
         await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay,connection.signal,replayContent);
         sessions.set(sessionId, session);
-        await publishSkills(client,session,true);
+        await publishSkills(client,session);
         return { configOptions: options };
       } finally { loading.delete(sessionId); }
     })

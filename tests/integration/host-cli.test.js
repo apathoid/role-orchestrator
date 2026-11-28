@@ -138,3 +138,42 @@ test('C17R configured capture reaches local sink only and leaves CLI machine out
   assert.equal(capture.details.captureCompleteness,'complete_before_redaction');
   assert.equal(capture.details.captureLimitBytes,262144);
 }));
+
+test('C24 CLI lists shared settings and skills without a Store, applies explicit flags and forwards file references',()=>withOwnedRun('C24-cli',async(cwd,spawn)=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config=join(cwd,'config.json');
+  const skillDir=join(cwd,'.agents','skills','c24-cli');
+  await mkdir(skillDir,{recursive:true});
+  const skill=join(skillDir,'SKILL.md');
+  await writeFile(skill,'---\nname: c24-cli\ndescription: CLI skill\n---\nInstructions\n');
+  const spec={schemaVersion:1,controllerProfile:'primary',profiles:{primary:{provider:'test',model:'fixture',features:{reasoningEffort:'shared',approvalMode:'approval'}}},
+    providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']},featureBindings:{reasoningEffort:{kind:'configOption',id:'arbitrary-thought-id'},approvalMode:{kind:'configOption',id:'opaque-approval'}}}},
+    features:{reasoningEffort:{shared:{default:'low',options:[{id:'low',nativeValue:'native-low'},{id:'high',nativeValue:'native-high'}]}},approvalMode:{approval:{default:'review',options:[{id:'review',nativeValue:'native-review'},{id:'open',nativeValue:'native-open'}]}}},storage:{directory:'state'}};
+  await writeFile(config,JSON.stringify(spec));
+  const call=args=>spawn(process.execPath,[entry,...args,'--config',config,'--format','json'],{cwd});
+  const settings=call(['settings']);
+  assert.equal(settings.status,0,settings.stderr);
+  const {readUserSettings}=await import('../../src/main/index.js');
+  assert.deepEqual(JSON.parse(settings.stdout),await readUserSettings(config,undefined,cwd,undefined));
+  const skills=call(['skills']);
+  assert.equal(skills.status,0,skills.stderr);
+  assert.ok(JSON.parse(skills.stdout).commands.some(x=>x.path===skill));
+  await assert.rejects(readFile(join(cwd,'c24-wire.jsonl')),{code:'ENOENT'});
+  const {stat}=await import('node:fs/promises');
+  await assert.rejects(stat(join(cwd,'state')),{code:'ENOENT'});
+  const path=join(cwd,'not-created file.txt');
+  const run=call(['run','task','--profile','primary','--reasoning-effort','high','--agent-skill','c24-cli','--attachment',path]);
+  assert.equal(run.status,0,run.stderr);
+  const result=JSON.parse(run.stdout);
+  assert.equal(result.status,'finished');
+  const read=async()=> (await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+  const first=(await read())[0];
+  assert.equal(first.settings['arbitrary-thought-id'],'native-high');
+  assert.equal(first.userSelectedSkills[0].path,skill);
+  const {pathToFileURL}=await import('node:url');
+  assert.equal(first.blocks.find(x=>x.type==='resource_link').uri,pathToFileURL(path).href);
+  const resume=call(['resume',result.operationId,'follow-up','--approval-mode','open']);
+  assert.equal(resume.status,0,resume.stderr);
+  assert.equal((await read()).at(-1).settings['opaque-approval'],'native-open');
+  assert.equal(call(['resume',result.operationId,'--reasoning-effort','low']).status,2);
+}));

@@ -8,7 +8,7 @@ import { boundedText, acpAccepted, acpExecutionInline, acpOwnMessage } from './p
 /** @import {ContentBlock, SessionUpdate, StopReason} from '@agentclientprotocol/sdk' */
 /** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
 /** @typedef {{requestId:string,fingerprint:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,agentSkill?:ReturnType<typeof import('../core/contracts.js').agentSkill>,operationId?:string,responseEventId?:string,progressDisplay?:ProgressDisplay}} SessionRequest */
-/** @typedef {{sessionId:string,cwd:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,operations:string[],requests:SessionRequest[]}} Session */
+/** @typedef {{sessionId:string,cwd:string,controllerProfile?:string,userSettings?:import('../core/contracts.js').UserSettings,skillsAdvertised?:boolean,operations:string[],requests:SessionRequest[]}} Session */
 /** @typedef {Pick<Operation,'operationId'|'status'|'waiting'|'assessment'>} ReplyState */
 /** @typedef {{text?:string,stopReason:StopReason}} Reply */
 /** @typedef {(operationId:string,turn:import('../core/ports.js').OrderedTurn,signal:AbortSignal)=>Promise<ContentBlock[]|undefined>} ReplayContent */

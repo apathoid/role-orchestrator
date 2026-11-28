@@ -35,7 +35,9 @@ agent()
   .onRequest(a.session.prompt,async ({params,client})=>{
     const {kind,operationId,attemptId,profileId,context}=readInvocationPrompt(params.prompt[0].text);
     const blocks=params.prompt.slice(1).map(summarize);
-    await appendFile('c24-wire.jsonl',JSON.stringify({kind,variant,profileId,blocks,mode,settings:Object.fromEntries(options.map(item=>[item.id,item.currentValue]))})+'\n');
+    const userSelectedSkills=context.find(item=>item.ref==='host:invocation-context')?.value?.userSelectedSkills;
+    const userText=context.findLast(item=>item.provenance?.kind==='user')?.value;
+    await appendFile('c24-wire.jsonl',JSON.stringify({kind,variant,profileId,blocks,mode,userSelectedSkills,userText,settings:Object.fromEntries(options.map(item=>[item.id,item.currentValue]))})+'\n');
     const send=text=>client.notify(c.session.update,{sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}});
     if(kind==='delegate'){await send('C24 worker result');return {stopReason:'end_turn'};}
     const host=context.find(item=>item.ref==='host:invocation-context').value;

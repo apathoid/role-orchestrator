@@ -1183,3 +1183,31 @@ test('C24 ordinary continuation remains usable after an earlier image on a diffe
       assert.equal(JSON.parse(answer)[0],'plain');
     }finally{await host.close();}
   }));
+
+test('C24 ACP advertises project skills, preserves explicit selection and clears removed commands on reload',{timeout:20_000},()=>
+  withOwnedRun('C24-acp-skills',async cwd=>{
+    const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+    const config=await fixture(cwd,{providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']}}},plugins:[]});
+    const directory=join(cwd,'.agents','skills','c24-project');
+    await mkdir(directory,{recursive:true});
+    const path=join(directory,'SKILL.md');
+    await writeFile(path,'---\nname: c24-project\ndescription: Example project skill\n---\nPrivate body\n');
+    const host=launch(cwd,config,undefined,[],{...process.env,HOME:cwd});
+    try{
+      await initialize(host.agent);
+      const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      const commands=()=>host.messages.filter(x=>x.update.sessionUpdate==='available_commands_update').at(-1)?.update.availableCommands;
+      assert.ok(commands().some(x=>x.name==='c24-project'));
+      await assert.rejects(readFile(join(cwd,'c24-wire.jsonl')), {code:'ENOENT'});
+      assert.equal((await prompt(host.agent,sessionId,'/c24-project task')).stopReason,'end_turn');
+      assert.equal((await prompt(host.agent,sessionId,'/unknown-c24 ordinary')).stopReason,'end_turn');
+      const records=(await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+      assert.equal(records[0].userSelectedSkills[0].path,path);
+      assert.equal(records[0].userSelectedSkills[0].source,'project');
+      assert.equal(records[1].userSelectedSkills.length,1);
+      assert.equal(records[1].userText,'/unknown-c24 ordinary');
+      await writeFile(path,'not a skill');
+      await host.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+      assert.deepEqual(commands(),[]);
+    }finally{await host.close();}
+  }));
