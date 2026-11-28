@@ -138,3 +138,19 @@ test('C24-R3 T24 typed URI takes precedence and legacy ACP metadata URI survives
   assert.equal((await renderContentAttachment(audio,read,undefined,signal)).uri,'file:///legacy.wav');
   assert.equal((await renderContentAttachment({...audio,uri:'file:///typed.wav'},read,undefined,signal)).uri,'file:///typed.wav');
 });
+
+test('C24 final T36 model-facing ordered text ranges explicitly identify canonical UTF-16 basis',()=>{
+  const {text,...base}=request();
+  const prepared=prepareUserContent({...base,content:[{kind:'text',text:'🧪A'},{kind:'text',text:'éB'}]});
+  assert.equal(prepared.kind,'accepted');
+  const state=operation(prepared.input);
+  const canonical=operationHistory(state)[0];
+  const items=controllerContext(state,[],undefined,undefined,64*1024,undefined,[],undefined,true);
+  assert.equal(canonical.value,'🧪AéB');
+  assert.equal(items[0].value,'🧪A\néB');
+  const host=items[1].value;
+  assert.equal(host.userContentTextRanges,'UTF-16 offsets in canonical concatenated text, not projected text; ContextPort ranges use bytes');
+  assert.deepEqual(host.userContentTurns[0].segments,[{kind:'text',start:0,end:3},{kind:'text',start:3,end:5}]);
+  assert.equal(canonical.value.slice(3,5),'éB');
+  assert.equal(items[0].value.slice(3,5),'\né');
+});

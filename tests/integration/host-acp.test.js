@@ -1436,3 +1436,80 @@ test('C24-R3 T19/T20 first native Controller after a text-only continuation rece
     assert.equal(records[1].userText,'Do not edit the repository');
   }finally{await host.close();}
 }));
+
+test('C24 final T32 ACP redelivery remains read-only after reducing decoded admission limit',{timeout:30000},()=>withOwnedRun('C24-final-redelivery',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config=await fixture(cwd,{input:{maxBytes:4*1024*1024},providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']}}},plugins:[]});
+  const image={type:'image',mimeType:'image/png',data:Buffer.alloc(3*1024*1024,7).toString('base64')};
+  const blocks=[{type:'text',text:'accepted image'},image];
+  const send=(host,sessionId,requestId,promptBlocks=blocks)=>host.agent.request(a.session.prompt,{sessionId,prompt:promptBlocks,_meta:{roleOrchestrator:{requestId}}});
+  const first=launch(cwd,config);let sessionId;
+  try{
+    await initialize(first.agent);
+    ({sessionId}=await first.agent.request(a.session.new,{cwd,mcpServers:[]}));
+    assert.equal((await send(first,sessionId,'accepted-initial')).stopReason,'end_turn');
+    assert.equal((await send(first,sessionId,'accepted-followup')).stopReason,'end_turn');
+  }finally{await first.close();}
+  const wire=()=>readFile(join(cwd,'c24-wire.jsonl'),'utf8');
+  const before=await wire();
+  const updated=JSON.parse(await readFile(config,'utf8'));updated.input={maxBytes:64};await writeFile(config,JSON.stringify(updated));
+  const second=launch(cwd,config);
+  try{
+    await initialize(second.agent);
+    await second.agent.request(a.session.load,{sessionId,cwd,mcpServers:[]});
+    assert.equal((await send(second,sessionId,'accepted-initial')).stopReason,'end_turn');
+    assert.equal((await send(second,sessionId,'accepted-followup')).stopReason,'end_turn');
+    await assert.rejects(send(second,sessionId,'accepted-initial',[blocks[0],{...image,data:Buffer.alloc(3*1024*1024,8).toString('base64')}]));
+    await assert.rejects(send(second,sessionId,'new-large'));
+    assert.equal(await wire(),before,'no duplicate or rejected native dispatch');
+    assert.equal((await send(second,sessionId,'new-small',[{type:'text',text:'new small turn'}])).stopReason,'end_turn');
+    assert.equal((await wire()).trim().split('\n').length,3);
+  }finally{await second.close();}
+}));
+
+test('C24 final T33/T34 unavailable known project preference exposes alternatives and permits explicit selection',{timeout:12000},()=>withOwnedRun('C24-final-project-profile',async cwd=>{
+  const config=await fixture(cwd,{providers:{test:{adapter:'host-fixture'},missing:{adapter:'not-installed'}},
+    profiles:{primary:{provider:'test',model:'fixture'},missing:{provider:'missing',model:'fixture'}}});
+  const project=join(cwd,'.role-orchestrator.json');
+  await writeFile(project,JSON.stringify({schemaVersion:1,controllerProfile:'missing'}));
+  const {readUserSettings}=await import('../../src/main/index.js');
+  const spec=await readFile(config,'utf8');
+  const settings=await readUserSettings(spec,cwd,cwd);
+  assert.equal(settings.controllerProfile.current,undefined);
+  assert.equal(settings.controllerProfile.unavailable,'missing');
+  assert.deepEqual(settings.controllerProfile.options.map(item=>item.id),['primary']);
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const created=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    const selector=created.configOptions.find(item=>item.id==='controllerProfile');
+    assert.equal(selector.currentValue,'missing');
+    assert.ok(selector.options.some(item=>item.value==='primary'));
+    await assert.rejects(prompt(host.agent,created.sessionId,'settings'));
+    await host.agent.request(a.session.setConfigOption,{sessionId:created.sessionId,configId:'controllerProfile',value:'primary'});
+    assert.equal((await prompt(host.agent,created.sessionId,'settings')).stopReason,'end_turn');
+    assert.ok(host.messages.some(message=>message.update.content?.text?.includes('primary')));
+    await writeFile(project,JSON.stringify({schemaVersion:1,controllerProfile:'unknown-profile'}));
+    await assert.rejects(host.agent.request(a.session.new,{cwd,mcpServers:[]}));
+    await assert.rejects(readUserSettings(spec,cwd,cwd),{code:'INVALID_CONFIGURATION'});
+  }finally{await host.close();}
+}));
+
+test('C24 final T35 receive frame and decoded ordered admission have independent byte limits',{timeout:30000},()=>withOwnedRun('C24-final-escaped-input',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const limit=512*1024;
+  const config=await fixture(cwd,{input:{maxBytes:limit},providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']}}},plugins:[]});
+  const text='\u0000'.repeat(500*1024);
+  const blocks=[{type:'text',text},{type:'text',text:'end'}];
+  assert.ok(Buffer.byteLength(text+'end')<limit);
+  assert.ok(Buffer.byteLength(JSON.stringify(blocks))>Math.ceil(limit/3)*4+2*1024*1024);
+  const host=launch(cwd,config);
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    assert.equal((await host.agent.request(a.session.prompt,{sessionId,prompt:blocks})).stopReason,'end_turn');
+    const wire=JSON.parse((await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim());
+    assert.equal(wire.blocks[0].text,text);
+    assert.equal(wire.blocks[1].text,'end');
+  }finally{await host.close();}
+}));

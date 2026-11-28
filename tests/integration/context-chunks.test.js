@@ -642,3 +642,53 @@ test('C22-R2 context_fetch description and actual cross-operation scope, includi
     assert.equal(external.output,'external');assert.equal(externalCalls,1);
   }finally{stop.abort();for(const bridge of bridges)bridge.close();}
 });
+
+// Exercise the real nextController materialization path, not a prebuilt
+// ContextItem. A fresh Controller must retain accepted user input even when
+// the optional retrieval of the same source is partial or unavailable.
+for(const [name,fetchMaxBytes,selection,expected] of [
+  ['T30 byte range',4096,{ref:'literal-followup',offset:4096},'chunk'],
+  ['T31 excerpt',1024,'literal-followup','excerpt'],
+  ['T31 unavailable budget',1,'literal-followup','budget'],
+  ['T30 complete record',64*1024,'literal-followup','complete'],
+]){
+  test('C24 final '+name+' never replaces the complete literal follow-up',async()=>{
+    const body='Keep this instruction verbatim. '+('Ǎ🧪-'.repeat(90)+'\n').repeat(45);
+    const {api,invocations,respondErrors}=setup({maxInvocations:4,
+      context:{controllerMaxBytes:64*1024,fetchMaxBytes},
+      async respond(invocation,count){
+        if(count===1)return final(invocation,{finalAssessment:undefined,clarification:{question:'Next?'}});
+        if(count===2){
+          const result=await invocation.contextAccess.fetch('literal-followup');
+          if(expected==='excerpt'){assert.equal(result.kind,'available');assert.equal(result.item.completeness,'truncated');assert.ok(result.item.excerpt);}
+          if(expected==='budget')assert.deepEqual(result,{kind:'unavailable',reason:'budget'});
+          if(expected==='complete'){assert.equal(result.kind,'available');assert.equal(result.item.value,body);}
+          return final(invocation,{finalAssessment:undefined,nextController:{continue:true,contextRequest:{refs:[selection]}}});
+        }
+        assert.equal(count,3);
+        const records=invocation.context.filter(item=>item.ref==='literal-followup');
+        assert.equal(records.length,1,'one canonical literal user record');
+        assert.equal(records[0].completeness,'complete');
+        assert.equal(records[0].value,body);
+        if(expected==='chunk'){
+          const chunk=invocation.context.find(item=>item.ref==='host:history-chunk:0');
+          assert.ok(chunk);
+          assert.equal(chunk.value.requestedRef,'literal-followup');
+          assert.equal(chunk.value.offset,4096);
+          assert.deepEqual(chunk.receivedSequence,records[0].receivedSequence);
+          const bytes=Buffer.from(chunk.value.base64,'base64');
+          assert.ok(bytes.length>0);
+          assert.deepEqual(bytes,Buffer.from(body).subarray(4096,4096+bytes.length));
+        }
+        return final(invocation);
+      }});
+    try{
+      const first=await(await api.submit(request())).completion;
+      assert.equal(first.status,'waiting');
+      const done=await(await api.resume(first.operationId,{requestId:'literal-followup',questionId:first.waiting.questionId,text:body})).completion;
+      assert.equal(done.status,'finished',respondErrors.map(e=>String(e.stack??e)).join('\n'));
+      assert.equal(invocations.length,3);
+      assert.equal(respondErrors.length,0);
+    }finally{await api.close();}
+  });
+}
