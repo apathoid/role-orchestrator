@@ -47,7 +47,10 @@ agent()
     const latest=context.findLast(item=>item.provenance?.kind==='user')?.value;
     const delegate=latest==='delegate selected image'&&!context.some(item=>item.value==='C24 worker result');
     const decision={schemaVersion:1,operationId,decisionId:attemptId+'-decision',contextCursor:host.contextCursor,additions:[],cancellations:[]};
-    if(delegate){
+    if(variant==='history-request'&&latest==='retrieve first image'&&!blocks.some(item=>item.type==='image'&&item.hash===createHash('sha256').update(Buffer.alloc(700*1024,7)).digest('hex'))){
+      const ref=host.attachments.find(item=>item.mediaType==='image/png').ref;
+      decision.nextController={continue:true,contextRequest:{refs:[ref]}};
+    }else if(delegate){
       const ref=host.attachments.filter(item=>item.mediaType==='image/png').at(-1).ref;
       decision.additions=[{kind:'delegate',actionId:'c24-selected-worker',profileId:'worker',objective:'Inspect selected content',expectedResult:'Result',contextRefs:[ref],dependsOn:[]}];
       decision.waitPolicy={kind:'all_requested',targets:[{kind:'action',id:'c24-selected-worker'}]};

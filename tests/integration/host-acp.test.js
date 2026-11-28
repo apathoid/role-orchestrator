@@ -1255,3 +1255,25 @@ test('C24-R unsupported feature still permits explicit native no-override', {tim
     assert.equal((await prompt(host.agent,created.sessionId,'settings')).stopReason,'end_turn');
   }finally{await host.close();}
 }));
+
+test('C24-R Controller selects historical native image beyond automatic input budget', {timeout:30000},()=>withOwnedRun('C24R-history',async cwd=>{
+  const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+  const config=await fixture(cwd,{input:{maxBytes:1024*1024},resources:{maxInvocationsPerOperation:4},
+    providers:{test:{adapter:'acp',launch:{command:process.execPath,args:[native,'history-request']}}},plugins:[]});
+  const host=launch(cwd,config);
+  const image=byte=>({type:'image',mimeType:'image/png',data:Buffer.alloc(700*1024,byte).toString('base64')});
+  try{
+    await initialize(host.agent);
+    const {sessionId}=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+    const send=blocks=>host.agent.request(a.session.prompt,{sessionId,prompt:blocks});
+    assert.equal((await send([{type:'text',text:'first picture'},image(7)])).stopReason,'end_turn');
+    assert.equal((await send([image(8),{type:'text',text:'retrieve first image'}])).stopReason,'end_turn');
+    const records=(await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(records.length,3);
+    const first=records[0].blocks.find(item=>item.type==='image').hash;
+    assert.notEqual(records[1].blocks.find(item=>item.type==='image').hash,first);
+    assert.equal(records[2].blocks.find(item=>item.type==='image').hash,first);
+    assert.equal(records[2].blocks.filter(item=>item.type==='image').length,1);
+    assert.ok(records.every(item=>item.kind==='controller'));
+  }finally{await host.close();}
+}));
