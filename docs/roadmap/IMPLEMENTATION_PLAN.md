@@ -1,12 +1,12 @@
 # Активный план реализации и приёмки
 
-## C24 — Unified User Configuration & Native Input Capabilities (PLANNED)
+## C24 — Unified User Configuration & Native Input Capabilities (implementation candidate; verification in progress)
 
 Рабочая ветка `feature/unified-user-configuration`, implementation baseline `a8888fdaaf6990d16c259ae511f16edf607395ec` (master, D27 provider-first; C23 merged PR #6). Подробное задание: [C24_UNIFIED_USER_CONFIGURATION.md](C24_UNIFIED_USER_CONFIGURATION.md), acceptance A132–A142. Planning HEAD — коммит этого плана; сверить фактический SHA и CI. Baseline [CI #46151224720](https://github.com/apathoid/role-orchestrator/actions/runs/46151224720) наблюдался in_progress при подготовке, итог проверить перед реализацией.
 
 Цель: разблокировать привычные нативные возможности пользовательского взаимодействия через минимальный мост RO (settings, skills shortcuts, ordered multimodal content, follow-up, context actions). Сохранить model-first/provider-first/provider-agnostic, существующий execution lifecycle, authority/recovery и C23. Не реализовывать provider policies, общий feature/retrieval engine, discovery sessions, новый scheduler или provider reliability layer. C24.0 проверяет реальные native contracts; .1–.4 templates/settings/application/provenance; .5 skills; .6 ordered input; .7–.8 ACP/CLI/API; .9 exact-SHA regressions/native comparisons/docs. Это инженерная последовательность, не runtime stages.
 
-Implementation NOT RUN; RED/GREEN NOT RUN; native UNVERIFIED. Исторические C23 evidence не переносятся на C24. Не merge в master до независимого review и согласования.
+Implementation candidate includes C24.1–C24.8; RED/GREEN and intermediate CI evidence in STATUS. Final exact-SHA verification pending; native UNVERIFIED. Исторические C23 evidence не переносятся на C24. Не merge в master до независимого review и согласования.
 
 ## C23 — Configuration-scoped State & Concurrent Runtime Support (C23-R engineering PASS at 0c519ebf; native UNVERIFIED)
 

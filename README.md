@@ -75,3 +75,14 @@ role-orchestrator acp --config /path/to/config.json --presentation detailed
 
 ### Интерактивный вывод (C13R/C14R)
 `role-orchestrator run --presentation compact|detailed|debug` и `role-orchestrator acp --presentation compact|detailed|debug` меняют только presentation. В CLI — нативные thinking fragments, события исполнения, принятые findings и доступные интерактивные запросы; final/clarification в человекочитаемом TTY очищается от управляющих последовательностей, JSON/redirected stdout сохраняются. Attached input при потере ответа проверяет pending state, не повторяет автоматически ответ; reconnect только исходного live binding. В ACP SDK 2.4.0 default inline показывает accepted findings/lifecycle/gaps в transcript; explicit `--progress-display notices` показывает стандартные notices при объявленной client session.notices. Нет искусственных thinking/tool events. Реальная поддержка и визуализация Zed/native quality остаются UNVERIFIED. [Подробнее](docs/roadmap/C13R_C14R_INTERACTION_RELIABILITY.md).
+
+## C24 — Настройки, shortcuts и вложения
+
+~~~sh
+role-orchestrator settings --config config.json --format json
+role-orchestrator skills --format json
+role-orchestrator run "Проверь изменения" --profile primary --reasoning-effort high --agent-skill changed --attachment ./notes.md
+role-orchestrator resume OPERATION_ID "Уточнение" --approval-mode review
+~~~
+
+Флаги используют логические IDs, объявленные в trusted config. Plain technical resume не принимает новые settings. `--attachment PATH` передаёт file URI (не читает/копирует внешний файл); возможность обработки зависит от выбранного провайдера. `--agent-skill` выбирает обнаруженный shortcut/точный абсолютный путь к SKILL.md, не заменяет зарегистрированный `--skill`. В ACP стандартные configOptions и commands появляются при new/load; известный slash shortcut сохраняет provenance. Unknown slash prompt остаётся обычным текстом. Ordered text/image/audio/resource/link и replay поддерживаются мостом ACP; конкретные capabilities проверяются на native invocation. Реальные Zed/LLM сравнения остаются UNVERIFIED. [Конфигурация](docs/PROVIDERS_AND_CONFIGURATION.md#c24--общие-настройки-пользователя).

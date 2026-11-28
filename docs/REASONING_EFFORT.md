@@ -171,3 +171,7 @@ Inspect/trace/export показывают profile/model, logical level, исто
 ## Проверка реальных моделей
 
 Автоматизированные сценарии A44–A54 проверяют конфигурацию, выбор, журнал, idempotency и delivery на doubles/fixture. Они не устанавливают реальную способность данной версии Codex CLI/ACP агента применять запрошенный effort или повышать качество решения. Отдельная native-проверка обязана фиксировать версию, модель, объявленные варианты, факт set/launch и полученный ответ; отсутствие provider ACK не является доказательством неподдерживаемости. Внешняя native-приёмка и реальное поведение Controller остаются UNVERIFIED.
+
+## C24 — Пользовательский default
+
+User settings задают initial Controller reasoning default и default после завершения одноразового model selection. Они не изменяют Worker defaults и не ограничивают выбор модели. Принятые logical/native choices, binding identity и источник фиксируются для generation; несовместимое изменение accepted mapping при recovery не заменяется текущим default. Explicit continuation может принять новые settings. Native sentinel не отправляет override. См. [общие настройки](PROVIDERS_AND_CONFIGURATION.md#c24--общие-настройки-пользователя).

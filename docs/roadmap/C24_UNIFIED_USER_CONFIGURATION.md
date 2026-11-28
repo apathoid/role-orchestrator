@@ -1,6 +1,6 @@
 # C24 — Unified User Configuration & Native Input Capabilities
 
-**Статус: PLANNED — implementation, regression и native integration NOT RUN.**
+**Статус: implementation candidate; final regression verification in progress, native integration UNVERIFIED.**
 
 - Repository: apathoid/role-orchestrator.
 - Рабочая ветка: feature/unified-user-configuration.

@@ -224,3 +224,42 @@ Omitted resource fields inherit their trusted value or default: 5 concurrent inv
 ACP history retains up to 1 MiB of encoded relevant native updates. Current native text has an independent 1 MiB UTF-8 bound. History overflow alone does not reject a complete text/legacy/Worker result after native end_turn; MCP still requires its separate finalized declaration. A result that itself exceeds the bound or lacks a provable anonymous message boundary remains incomplete. Tool IDs are retained within a separate byte budget, not unlimited payload retention. Existing ACP SDK per-frame 1 MiB and downstream context/artifact bounds remain. No changes to resource defaults, timers, provider-native tools or settings.
 
 After history overflow, later tool payload/metadata may be omitted (including previous details used in permission display); actual native request payload, granted options and authority are unchanged. Identity-only retention uses 1 MiB serialized-ID-plus-overhead accounting, not a total heap bound. Exact-SHA engineering evidence and native limitations are in [STATUS](roadmap/STATUS.md).
+
+## C24 — Общие настройки пользователя
+
+Схема v1: `features.<kind>.<template>` содержит `default` (logical ID) и `options` (id, необязательные name/description, nativeValue). `profiles.<id>.features.<kind>` ссылается на template, `providers.<id>.featureBindings.<kind>` явно задаёт транспортный selector. Виды: reasoningEffort, collaborationMode, approvalMode. Отсутствующая feature не требует selector; объявленная опция `{ "id": "native" }` оставляет native configuration без override. Старые inline reasoning mappings не принимаются, миграции нет.
+
+Проверенный на ACP fixture (не идентификаторы реальных агентов) пример:
+
+~~~json
+{
+  "schemaVersion": 1,
+  "controllerProfile": "primary",
+  "providers": {
+    "fixture": {
+      "adapter": "acp",
+      "launch": {"command": "node", "args": ["/path/to/c24-native-agent.js", "controller"]},
+      "featureBindings": {
+        "reasoningEffort": {"kind":"configOption","id":"arbitrary-thought-id"},
+        "collaborationMode": {"kind":"configOption","id":"opaque-collaboration"},
+        "approvalMode": {"kind":"configOption","id":"opaque-approval"}
+      }
+    }
+  },
+  "profiles": {
+    "primary": {"provider":"fixture","model":"fixture","features":{"reasoningEffort":"shared","collaborationMode":"plans","approvalMode":"review"}}
+  },
+  "features": {
+    "reasoningEffort": {"shared":{"default":"low","options":[{"id":"native"},{"id":"low","nativeValue":"native-low"},{"id":"high","nativeValue":"native-high"}]}},
+    "collaborationMode": {"plans":{"default":"default","options":[{"id":"default","nativeValue":"native-default"},{"id":"plan","nativeValue":"native-plan"}]}},
+    "approvalMode": {"review":{"default":"review","options":[{"id":"review","nativeValue":"native-review"},{"id":"open","nativeValue":"native-open"}]}}
+  },
+  "input": {"maxBytes":16777216}
+}
+~~~
+
+ACP binding configOption использует точный id, optionType (select по умолчанию, boolean при соответствующем nativeValue), наблюдаемые options и подтверждение после setConfigOption. Legacy sessionMode — точный ID mode без предположения о readback. Без явного reasoning binding сохраняется прежний уникальный thought_level selector. Codex CLI использует прежний native argv reasoning contract; явный поддержанный binding — kind codexConfig/id model_reasoning_effort. Другие CLI features/селекторы не эмулируются. Конфликтующие активные bindings отклоняются. Нативные permissions, sandbox и plan принадлежат провайдеру.
+
+`settings` и ACP configOptions читают общий logical descriptor без открытия native session. При смене profile пересчитываются доступные options, ранее явно выбранный ID переносится только при его наличии, иначе применяется default. Пользовательский reasoning default относится к Controller; модели по-прежнему выбирают reasoning для следующих turns/Workers. Collaboration только Controller; approval передаёт логический ID Worker только по его собственной объявленной mapping. Недоступная обязательная настройка даёт адресный технический отказ, а не fallback. Нативная совместимость конкретной версии агента проверяется отдельно.
+
+`input.maxBytes`: trusted decoded ordered input budget, default 16 MiB, максимум 64 MiB. Frame budget учитывает base64 overhead; historical projection расходует тот же input budget. Это технический предел, не запрет модели использовать файлы/tools.

@@ -9,6 +9,7 @@
 | Durable operation/recovery/unknown effects | [CONTEXT_AND_RECOVERY](CONTEXT_AND_RECOVERY.md) | File-backed regression; live provider failure pending |
 | CLI, Generic ACP, внешний ACP host и plugin API | [ARCHITECTURE](ARCHITECTURE.md), [CONTRACTS](CONTRACTS.md) | Process/SDK fixtures; real Zed pending |
 | Adaptive reasoning Controller/Workers | [REASONING_EFFORT](REASONING_EFFORT.md) | A44–A54 automated; native effort pending |
+| C24 logical settings, Agent Skills and ordered user input | [PROVIDERS_AND_CONFIGURATION](PROVIDERS_AND_CONFIGURATION.md), [CONTRACTS](CONTRACTS.md) | ACP SDK/subprocess and integration fixtures; actual Zed/LLM UNVERIFIED |
 | Diagnostics and bounded export | [DIAGNOSTICS](DIAGNOSTICS.md) | Synthetic failure/race tests; native traces pending |
 | Installable npm/Nix package | [NIX_AND_CI](NIX_AND_CI.md) | CI on source-layout HEAD; migrated package must be reverified |
 

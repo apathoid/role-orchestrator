@@ -222,3 +222,18 @@ A parsed, attributable control request whose fingerprint or existing registry by
 Preflight checks resolved Action.contextRefs against existing attachment identities as well as observations/findings; attachment selection does not make an attachment evidence. Generic shared admission errors retain path/expected without a fabricated availability classification. Explicit missing Action context refs and existing ambiguous aliases keep their accurate availability labels. Conflict receipts may carry selectedProposalRef (the existing selected ref at processing, not a recommendation or guarantee); optional annotations can be omitted at the existing wire bound.
 
 Historical context_fetch accepts a positional ref only for the current operation (including explicit current sourceOperationId); another operation requires a string ref and existing trusted sharing permission. The short and full descriptions retain this distinction without modifying schemas or scope.
+
+## C24 — User input and client settings
+
+Request/explicit continuation дополнительно принимают optional controllerProfile, userSettings (logical IDs reasoningEffort/collaborationMode/approvalMode), agentSkill (name/path/source) и альтернативный ordered content. На API ingress ordered content вместо legacy text/attachments:
+
+~~~json
+[
+  {"kind":"text","text":"Compare"},
+  {"kind":"image","mediaType":"image/png","encoding":"binary","data":"AQID"},
+  {"kind":"text","text":"with this"},
+  {"kind":"link","uri":"file:///workspace/reference.txt","mediaType":"text/plain"}
+]
+~~~
+
+Image/audio используют canonical base64 binary; resource — binary или utf8 и URI; link — URI без data; metadata — JSON. Journal хранит текст один раз с ordered ranges, typed refs/metadata и digest/size embedded payload, не base64. Source attribution user и request ID сохраняются. ProviderPort optional supportsOrderedContent получает orderedTurns и readUserPayload, выбранный Worker — только selected attachment refs. StorePort optional supportsUserPayloadCommit обеспечивает атомарную durable acceptance с payloads; legacy providers/stores не обязаны реализовать новые capabilities для обычного текста. Клиент не передаёт native values в logical userSettings. Public exports readUserSettings(configuration JSON text, directory, cwd, optional profile), listAgentSkills(cwd), runtime API использует те же contracts.

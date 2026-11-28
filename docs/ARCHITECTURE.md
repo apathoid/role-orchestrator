@@ -83,7 +83,7 @@ Host гарантирует ограничения только там, где �
 
 ## Внешняя ACP сессия
 
-ACP v1 работает через `role-orchestrator acp --config FILE [--state-dir DIR]` и резервирует stdout для протокола. Сессии сохраняются в state directory. `session/load` воспроизводит сохранённый диалог и принимает новый абсолютный cwd без поиска Git или сверки исходников. Поддерживаются текстовые блоки. Клиентские MCP серверы не принимаются. Файлы и terminal передаются через вложенный ACP только с явным флагом `--relay-client-tools` и соответствующими client capabilities.
+ACP v1 работает через `role-orchestrator acp --config FILE [--state-dir DIR]` и резервирует stdout для протокола. Сессии сохраняются в state directory. `session/load` воспроизводит сохранённый диалог и принимает новый абсолютный cwd без поиска Git или сверки исходников. Поддерживаются ordered text/image/audio/resource/link блоки; delivery зависит от negotiated native capabilities. Стандартные configOptions и доступные Agent Skills shortcuts предоставляются без отдельного native discovery session. Session selection не изменяет accepted generation. Клиентские MCP серверы не принимаются. Файлы и terminal передаются через вложенный ACP только с явным флагом `--relay-client-tools` и соответствующими client capabilities.
 
 Клиентская сессия сохраняет привязку операции для permission и client tools после возврата уточняющего вопроса. Каждый вызов проверяет соединение и активность попытки. Потеря транспорта прекращает доставку событий и запросов разрешения этому клиенту. Принятая операция может завершиться в рамках действующих лимитов. Явный `session/cancel` адресуется активной операции этой сессии. При следующем запуске load восстанавливает историю без dispatch.
 
