@@ -70,7 +70,7 @@ M01–M04 выполняются в C12.0 и повторно проверяют
 
 | ID | Требования | Сценарий и обязательное наблюдение | Уровень / владелец |
 |---|---|---|---|
-| A44 | R17,R24,R32 | Config v1 без reasoningEffort и с native не отправляет override; один level допускает implicit default, несколько требуют явного; null/empty/duplicate/default вне списка дают точный JSON path; старые конфиги работают | U/I C11R.1–2 |
+| A44 | R17,R24,R32 | Config v1 без feature reference и с явно объявленным native не отправляет override; template default обязателен; null/empty/duplicate/default вне списка дают точный JSON path; прежний inline mapping отклоняется (C24) | U/I C11R.1–2 |
 | A45 | R08,R17,R32 | Один xhigh у двух профилей разрешается в разные native values; новый доверенный level не требует правки core; порядок массива не выбирает default; project/skill не расширяет mapping/authority | U/I C11R.2 |
 | A46 | R03,R05,R06,R32 | Параллельные workers одного профиля получают различные efforts, локальный отказ третьему не блокирует независимые actions; evidence может привести к следующему новому назначению; дубликат Decision не вызывает dispatch | U/C/I C11R.1,4 |
 | A47 | R02,R03,R16,R33 | Один Controller без workers/новых внешних данных явно продолжает и меняет effort; повторные переходы в обе стороны разрешены до общего бюджета; next selection одноразовый, один активный Controller, нет forced delegation/anti-loop gate | U/I/E C11R.1,5 |

@@ -14,49 +14,30 @@ Host проверяет форму и идентичность решения, �
 
 ## 2. Доверенная конфигурация профиля
 
-Расширение остаётся в **config schemaVersion: 1**. Отсутствие `reasoningEffort` эквивалентно `"native"` для новых вызовов. Это сохраняет поведение существующих конфигураций; runtime schema/decoder принимают новые необязательные поля без повышения версии.
+Config остаётся **schemaVersion: 1**; C24 заменяет прежние inline mapping/default на trusted templates. Миграции нет: старые `profile.reasoningEffort`/`defaultReasoningLevel` отклоняются. Отсутствие ссылки в профиле сохраняет native mode.
 
 ```json
 {
-  "profiles": {
-    "primary": {
-      "provider": "provider-a",
-      "model": "model-a",
-      "reasoningEffort": [
-        { "level": "medium", "effort": "medium" },
-        { "level": "xhigh", "effort": "high" }
-      ],
-      "defaultReasoningLevel": "medium"
-    },
-    "specialist": {
-      "provider": "provider-b",
-      "model": "model-b",
-      "reasoningEffort": [
-        { "level": "high", "effort": "high" },
-        { "level": "xhigh", "effort": "ultra" }
-      ],
-      "defaultReasoningLevel": "high"
-    },
-    "unmanaged": {
-      "provider": "provider-c",
-      "model": "model-c",
-      "reasoningEffort": "native"
+  "features": {
+    "reasoningEffort": {
+      "standard": {
+        "default": "medium",
+        "options": [
+          {"id":"native"},
+          {"id":"medium","nativeValue":"medium"},
+          {"id":"xhigh","nativeValue":"high"}
+        ]
+      }
     }
+  },
+  "profiles": {
+    "primary":{"provider":"provider-a","model":"model-a","features":{"reasoningEffort":"standard"}},
+    "unmanaged":{"provider":"provider-b","model":"model-b"}
   }
 }
 ```
 
-Это фрагмент действующей конфигурации профилей, а не самостоятельный launch-файл. Модели, providers и нативные значения иллюстративны; поддержка проверяется для конкретного исполнителя.
-
-- `reasoningEffort`: отсутствует, строка `"native"` либо непустой массив объектов `{level, effort}`.
-- `level`: непустой унифицированный идентификатор выбора. Рекомендуемый общий словарь: `minimal`, `low`, `medium`, `high`, `xhigh`. Пользователь сам сопоставляет им значения моделей. Например, `xhigh` → `xhigh` для одной и `xhigh` → `ultra` для другой.
-- Идентификаторы расширяемы через доверенную конфигурацию, а не закрытый enum в core. Пользователь должен применять одинаковые имена последовательно. Это унификация названий, не доказательство равной мощности моделей или универсальная шкала качества/стоимости. Host не сортирует уровни и не выбирает «ближайший».
-- `effort`: непустая строка нативного значения, непрозрачная для core. Adapter проверяет её по своему известному контракту/доступным данным negotiation. Нативные значения не являются shell-фрагментами.
-- `level` уникален внутри профиля. Порядок массива значения не имеет. Неполный набор уровней допустим; неуказанный уровень недоступен.
-- Для одного элемента default можно опустить: он однозначен. Для нескольких элементов `defaultReasoningLevel` обязателен и должен ссылаться на элемент массива. Это deterministic default, не интеллектуальное решение Host.
-- При `"native"` или отсутствии массива `defaultReasoningLevel` запрещён. `null`, пустой массив, неизвестные поля и другие строки вместо `"native"` дают точную ошибку JSON path.
-- `"native"` означает **не переопределять настройку**. Провайдер может рассуждать и иметь собственные defaults, в том числе в нативном launch profile. Не передавать строку `native` как effort и не переименовывать её в medium.
-- Mapping принадлежит доверенному user config. Project preferences, текст модели и skill не добавляют levels/native values и не меняют permissions. Новый project override для effort не требуется.
+Фрагмент конфигурации; native значения иллюстративны, не доказательство совместимости реального агента. Шаблон может использоваться несколькими профилями. Logical ID непустой, уникальный в template; рекомендуемые уровни `minimal`, `low`, `medium`, `high`, `xhigh` не закрытый enum. Default обязателен и ссылается на option даже для одного элемента. Порядок не задаёт мощность; разные logical IDs могут иметь одинаковые native значения. `native` доступен явно только при объявлении, не имеет nativeValue и не отправляет override. Project preferences, модель и skill не добавляют mappings/authority. Модель видит логические уровни, не private mapping.
 
 Один provider/model может иметь несколько профилей по существующим причинам. Создавать профиль на каждый effort не требуется. Эффективная настройка для конкретного вызова имеет приоритет над нативным default только при selectable-выборе; adapter обязан проверить и документировать этот приоритет. В режиме native сохраняется прежний порядок нативных настроек.
 
@@ -177,7 +158,7 @@ Inspect/trace/export показывают profile/model, logical level, исто
 
 ## 8. Фактически реализованные границы и проверка
 
-- Schema v1: `reasoningEffort` и `defaultReasoningLevel` принимаются trusted decoder, не project preferences. Модель видит только `mode`, логические уровни, default и источник; **не** значения нативного mapping. Отсутствие поля в старом snapshot/route означает `not_recorded`, а не выбранный сейчас default.
+- Schema v1: `features.reasoningEffort` и явные profile template references принимаются trusted decoder, не project preferences. Модель видит только `mode`, логические уровни, default и источник; **не** значения нативного mapping. Отсутствие поля в старом snapshot/route означает `not_recorded`, а не выбранный сейчас default.
 - `Action.reasoningLevel` проверяется при admission конкретного worker. `Decision.nextController` с `continue:true` даёт самостоятельный новый Controller turn без новых событий/делегирования; выбор привязывается через `reasoningDecisionId` к одной попытке и фиксируется в `Attempt.route.reasoning`. При явном пользовательском продолжении pending выбор сбрасывается; технический recovery не потребляет его.
 - ProviderPort с `supportsReasoningSelection: true` подтверждает, что адаптер **умеет принимать** selectable-выбор. Старые плагины без флага выполняют native; selectable отклоняется до `open()`. Это декларация поддержанного пути, не гарантия нативного ACK.
 - Codex CLI: для selectable-профиля в argv конкретной попытки добавляется `-c model_reasoning_effort=<nativeValue as JSON string>`; `native` не добавляет override и сохраняет профиль через `--profile`. Значение не формируется из model prompt и не исполняется shell. Версия реального Codex и его подтверждённое поведение должны проверяться отдельно.

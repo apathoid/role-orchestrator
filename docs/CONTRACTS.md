@@ -104,7 +104,7 @@ Coordinator ограничивает ожидание открытия сесс�
 
 ## Реализованное расширение reasoning effort (native-пробы отдельно)
 
-[Полный контракт](REASONING_EFFORT.md) определяет необязательные Profile.reasoningEffort/defaultReasoningLevel, Action.reasoningLevel, Decision.nextController, разрешённый выбор Invocation и дополнение существующего Attempt.route. Config остаётся v1; отсутствие поля в новом config означает native, отсутствие поля в исторической route — not recorded.
+[Полный контракт](REASONING_EFFORT.md) определяет trusted reasoning templates и profile feature references, Action.reasoningLevel, Decision.nextController, разрешённый выбор Invocation и дополнение существующего Attempt.route. Config остаётся v1; отсутствие поля в новом config означает native, отсутствие поля в исторической route — not recorded.
 
 nextController.continue разрешает самостоятельный ход без внешнего события. Выбор следующего effort одноразовый, привязан к одной новой попытке; один Controller lifecycle и общий ledger сохраняются. Недоступный собственный effort возвращается пользователю через технический результат без автоматического fallback; для worker отказ адресуется Controller. Observation о настройке не является новым условием допуска, а idempotent retry учитывает эффективный native параметр.
 

@@ -131,29 +131,24 @@ CLI и ACP выбирают каталог в порядке: явный `--stat
 
 ## Reasoning effort в profiles
 
-[Действующий контракт](REASONING_EFFORT.md) расширяет **config schemaVersion 1** без обязательной миграции. Отсутствие `reasoningEffort` эквивалентно `"native"`: adapter не получает override. В selectable-профиле задаётся непустой массив `{level, effort}`. Для нескольких уровней обязателен `defaultReasoningLevel`, для единственного можно его опустить.
+[Действующий контракт](REASONING_EFFORT.md): config schemaVersion 1, без миграции. Общие trusted templates задают logical IDs, native values и обязательный default; профили явно подключают template. Отсутствие ссылки не ограничивает нативную возможность. Старые inline mapping/default отклоняются.
 
-Пример **только секции profiles** (заменить провайдеры/модели и native values на значения своих исполнителей):
+Пример фрагмента (native values иллюстративны):
 
 ```json
 {
-  "primary": {
-    "provider": "codex", "model": "configured-model",
-    "reasoningEffort": [
-      {"level": "low", "effort": "low"},
-      {"level": "high", "effort": "high"}
-    ],
-    "defaultReasoningLevel": "low"
+  "features":{
+    "reasoningEffort":{
+      "standard":{"default":"low","options":[
+        {"id":"native"},{"id":"low","nativeValue":"low"},{"id":"high","nativeValue":"high"}
+      ]}
+    }
   },
-  "reviewer": {
-    "provider": "acp-agent", "model": "agent-published-model",
-    "reasoningEffort": [
-      {"level": "high", "effort": "high-native"},
-      {"level": "xhigh", "effort": "ultra-native"}
-    ],
-    "defaultReasoningLevel": "high"
-  },
-  "legacy": {"provider": "codex", "model": "configured-model", "reasoningEffort": "native"}
+  "profiles":{
+    "primary":{"provider":"codex","model":"configured-model","features":{"reasoningEffort":"standard"}},
+    "reviewer":{"provider":"codex","model":"configured-model","features":{"reasoningEffort":"standard"}},
+    "unmanaged":{"provider":"codex","model":"configured-model"}
+  }
 }
 ```
 
