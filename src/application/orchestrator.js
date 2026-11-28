@@ -36,7 +36,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 /** @import {AttemptInteractions, AttemptPermissions, AuthorityPort, Catalog, ContextShare, InteractionPort, PermissionPort, Profile, ProviderPort, ProviderResult, ProviderSession, RetryApproval, StateListEntry, StateStore} from '../core/ports.js' */
 
 /**
- * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, settings?: import('../core/ports.js').AcceptedSettings, workerApproval?: (profile: Profile) => import('../core/ports.js').NativeSetting | undefined, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
+ * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, settings?: import('../core/ports.js').AcceptedSettings, workerApproval?: (profile: Profile) => import('../core/ports.js').NativeSetting | undefined, reasoningBindingFor?:(profile:Profile)=>unknown, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
  * @typedef {(workspace: Operation['request']['workspaceContext'], controllerProfile?: string, input?: import('../core/ports.js').SettingsInput) => Promise<Execution>} ResolveExecution
  * @typedef {{
  *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
@@ -615,7 +615,7 @@ export function createOrchestrator(deps) {
    * @param {Execution} execution @param {FieldError | undefined} correction @param {Handoff} [handoff] @param {ProviderPort} [executor]
    * @param {ReadonlyMap<string, LookupStatus>} [lookups] @param {Action} [action]
    */
-  async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs, settings, workerApproval }, correction, handoff, executor = provider, lookups, action) {
+  async function invoke(state, attemptId, stop, { catalog, profile, provider, invocationTimeoutMs, settings, workerApproval, reasoningBindingFor }, correction, handoff, executor = provider, lookups, action) {
     const deadline = invocationTimeoutMs === null ? null : clock.monotonicNow() + invocationTimeoutMs;
     const local = new AbortController();
     const signal = AbortSignal.any([stop, local.signal, shuttingDown.signal]);
@@ -866,6 +866,7 @@ export function createOrchestrator(deps) {
       }
       if (choice.kind !== 'selected') throw new OrchestrationError('CAPABILITY_UNAVAILABLE', 'Reasoning selection not admitted');
       const reasoning = choice.selection;
+      const reasoningBinding=reasoning.mode==='selectable'?reasoningBindingFor?.(selectedProfile)??(!handoff?settings?.reasoningEffort?.binding:undefined):undefined;
       const collaborationMode = handoff ? undefined : settings?.collaborationMode;
       const approvalMode = handoff ? workerApproval?.(selectedProfile) : settings?.approvalMode;
       const missingFeature = collaborationMode?.nativeValue !== undefined && executor.supportsCollaborationMode !== true
@@ -991,7 +992,7 @@ export function createOrchestrator(deps) {
           kind: 'attempt.dispatched', attemptId, route: {
             configurationRef, profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, model: selectedProfile.model,
             idempotencyKey, requestHash: currentRequestHash, reasoning,
-            ...(!handoff && settings?.reasoningEffort?.binding !== undefined ? {reasoningBinding:settings.reasoningEffort.binding} : {}), collaborationMode, approvalMode,
+            ...(reasoningBinding!==undefined?{reasoningBinding}:{}), collaborationMode, approvalMode,
           },
         });
         contextCursor = dispatched.revision;

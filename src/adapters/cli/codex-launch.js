@@ -36,6 +36,7 @@ export function prepareCodexLaunch(provider, { model, cwd, prompt, mcpUrl, reaso
   // JSON string quoting is valid TOML for Codex's -c key=value option.
   const effortArgs = [];
   if (reasoning?.mode === 'selectable') {
+    if(!supportsCodexReasoningBinding(provider))throw new TypeError('Unsupported explicit Codex reasoning binding');
     checkArgument(reasoning.nativeValue, 'reasoning.nativeValue');
     effortArgs.push('-c', 'model_reasoning_effort=' + JSON.stringify(reasoning.nativeValue));
   } else if (reasoning !== undefined && reasoning.mode !== 'native') {
@@ -69,4 +70,12 @@ function checkArgument(value, field) {
   if (typeof value !== 'string' || !value.trim() || value.includes('\0')) {
     throw new TypeError(`${field} must be a nonblank string without NUL`);
   }
+}
+
+/** The only verified CLI reasoning contract is the existing config override.
+ * @param {import('../../application/configuration/decode-config.js').ProviderConfig} provider
+ */
+export function supportsCodexReasoningBinding(provider){
+  const binding=provider.featureBindings?.reasoningEffort;
+  return !binding||binding.kind==='codexConfig'&&binding.id==='model_reasoning_effort';
 }

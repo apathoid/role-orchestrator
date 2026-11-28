@@ -2,7 +2,7 @@ import { reportPrompt } from '../prompt-diagnostics.js';
 import { randomUUID } from 'node:crypto';
 import { unavailableCapabilities } from '../../application/configuration/catalog.js';
 import { startMcpBridge } from '../mcp-bridge.js';
-import { prepareCodexLaunch } from './codex-launch.js';
+import { prepareCodexLaunch, supportsCodexReasoningBinding } from './codex-launch.js';
 import { startCodexProcess } from './codex-output.js';
 import { renderCodexPrompt } from './codex-prompt.js';
 import { receiveCodexResult, unstartedCodexResult } from './codex-result.js';
@@ -46,7 +46,7 @@ export function createCodexProvider({ providerId, configuration, environment = p
    *   process?: ReturnType<typeof startCodexProcess>}>} */
   const sessions = new Map();
   return {
-    supportsReasoningSelection: true,
+    ...(supportsCodexReasoningBinding(configuration)?{supportsReasoningSelection: /** @type {const} */(true)}:{}),
     async describe() {
       return { providerId, maxConcurrency: null, capabilities: Object.fromEntries(
         Object.entries(capabilities).map(([key, value]) => [key, { ...value }]),
@@ -69,6 +69,11 @@ export function createCodexProvider({ providerId, configuration, environment = p
       state.attemptId = request.attemptId;
       request = { ...request, signal: AbortSignal.any([request.signal, state.stop.signal]) };
       if (request.signal.aborted) return unstartedCodexResult(request.attemptId, 'CANCELLED');
+      if(request.reasoning?.mode==='selectable'&&!supportsCodexReasoningBinding(configuration)){
+        const result=unstartedCodexResult(request.attemptId,'CAPABILITY_UNAVAILABLE');
+        result.outcome.diagnostics[0].ref=observe({ref:'codex-reasoning-binding',kind:'host_transport',sourceId:request.attemptId,completeness:'complete',value:{reason:'unsupported_explicit_binding'}});
+        return result;
+      }
       const required = new Set(request.requiredCapabilities);
       for (const { mediaType } of request.attachments ?? []) {
         required.add(mediaType.toLowerCase().startsWith('image/') ? 'input.image' : 'input.attachments');

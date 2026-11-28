@@ -60,6 +60,8 @@ test('C24 invalid feature declarations and references have local exact paths; ol
     [v => v.features.reasoningEffort.common.options[0].nativeValue = 'native', '/features/reasoningEffort/common/options/0/nativeValue'],
     [v => delete v.features.reasoningEffort.common.options[1].nativeValue, '/features/reasoningEffort/common/options/1/nativeValue'],
     [v => v.providers.p.featureBindings.reasoningEffort.id = '', '/providers/p/featureBindings/reasoningEffort/id'],
+    [v => v.providers.p.featureBindings.approvalMode={kind:'configOption',id:'arbitrary-thought-id'}, '/providers/p/featureBindings/approvalMode'],
+    [v => v.providers.p.featureBindings.approvalMode={kind:'configOption',id:'approval',optionType:'boolean'}, '/features/approvalMode/first/options/1/nativeValue'],
     [v => v.profiles.primary.reasoningEffort = 'native', '/profiles/primary/reasoningEffort'],
   ];
   for (const [change, path] of cases) {

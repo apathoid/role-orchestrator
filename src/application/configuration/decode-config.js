@@ -122,10 +122,25 @@ export async function decodeConfiguration(input) {
     if (!Object.hasOwn(config.providers, profile.provider)) {
       return reject('/profiles/' + escapePointer(id) + '/provider', 'known-provider');
     }
+    const nativeTargets=new Set();
+    const provider=config.providers[profile.provider];
     for (const kind of featureKinds) {
       const name = profile.features?.[kind];
       if (name !== undefined && !Object.hasOwn(config.features?.[kind] ?? {}, name)) {
         return reject('/profiles/' + escapePointer(id) + '/features/' + kind, 'known-template');
+      }
+      if(name===undefined)continue;
+      const template=config.features?.[kind]?.[name];
+      const binding=provider.featureBindings?.[kind];
+      if(!binding||!template?.options.some(option=>option.nativeValue!==undefined))continue;
+      const target=binding.kind==='sessionMode'?'mode':binding.kind==='configOption'?'config:'+binding.id:undefined;
+      const path='/providers/'+escapePointer(profile.provider)+'/featureBindings/'+kind;
+      if(target){
+        if(nativeTargets.has(target))return reject(path,'conflicting-active-binding');
+        nativeTargets.add(target);
+        const expected=binding.kind==='sessionMode'||binding.optionType!=='boolean'?'string':'boolean';
+        const index=template.options.findIndex(option=>option.nativeValue!==undefined&&typeof option.nativeValue!==expected);
+        if(index>=0)return reject('/features/'+kind+'/'+escapePointer(name)+'/options/'+index+'/nativeValue','binding-value-type');
       }
     }
   }
