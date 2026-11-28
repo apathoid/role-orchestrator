@@ -48,7 +48,7 @@ export const assessment = record({
 });
 
 export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext, controllerProfile: optional(id), userSettings: optional(userSettings),
-  replaceSettings: optional(oneOf(true)) });
+  replaceSettings: optional((value,path)=>value===true?/** @type {const} */ (true):invalid(path,'true')) });
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 const contextPositionFields = { revision: count, index: count };
 // These are annotations of the existing object-branch error, not new

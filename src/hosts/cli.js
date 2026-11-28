@@ -17,6 +17,7 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
   resume ID [TEXT]        Recover or continue an operation
   inspect ID              Show status, attempts and budget
   cancel ID               Cancel an operation
+  settings                Show available logical user settings
   diagnose                Check local configuration and launch paths
   acp                     Serve ACP v1 over stdio
   trace ID                Show redacted operation journal
@@ -24,17 +25,20 @@ export const help = `Usage: role-orchestrator COMMAND [OPTIONS]
 
 Common: --config FILE, --state-dir DIR, --format text|json, --help
 Run: --cwd DIR, --profile ID, --skill ID (repeatable), --stdin, --request-id ID, --presentation compact|detailed|debug
-Resume: --question ID, --stdin, --request-id ID, --presentation compact|detailed|debug
+Resume: --question ID, --profile ID, --stdin, --request-id ID, --presentation compact|detailed|debug
+Run and explicit resume: --reasoning-effort ID, --collaboration-mode ID, --approval-mode ID
+Settings: --profile ID
 `;
 
 const common = {
   config: { type: 'string' }, 'state-dir': { type: 'string' }, format: { type: 'string' }, help: { type: 'boolean', short: 'h' },
 };
 const continuation = { presentation: { type: 'string' }, stdin: { type: 'boolean' }, 'request-id': { type: 'string' } };
+const selections={profile:{type:'string'},'reasoning-effort':{type:'string'},'collaboration-mode':{type:'string'},'approval-mode':{type:'string'}};
 const flags = {
-  run: { ...continuation, cwd: { type: 'string' }, profile: { type: 'string' }, skill: { type: 'string', multiple: true } },
-  resume: { ...continuation, question: { type: 'string' } },
-  inspect: {}, cancel: {}, diagnose: {}, trace: {}, 'export-diagnostics': { output: { type: 'string' } },
+  run: { ...continuation, ...selections, cwd: { type: 'string' }, skill: { type: 'string', multiple: true } },
+  resume: { ...continuation, ...selections, question: { type: 'string' } },
+  settings:{profile:{type:'string'}}, inspect: {}, cancel: {}, diagnose: {}, trace: {}, 'export-diagnostics': { output: { type: 'string' } },
 };
 
 /** @param {string[]} argv @param {string} cwd */
@@ -55,7 +59,7 @@ export function parseCli(argv, cwd) {
   if (presentation !== undefined && presentation !== 'compact' && presentation !== 'detailed' && presentation !== 'debug') {
     throw new HostError('INVALID_ARGUMENT', 'Expected --presentation compact, detailed or debug');
   }
-  const needsId = commandName !== 'run' && commandName !== 'diagnose';
+  const needsId = commandName !== 'run' && commandName !== 'diagnose' && commandName !== 'settings';
   const operationId = needsId ? positionals.shift() : undefined;
   if (needsId && !operationId?.trim()) throw new HostError('INVALID_ARGUMENT', 'An operation id is required');
   const acceptsText = commandName === 'run' || commandName === 'resume';
@@ -65,11 +69,20 @@ export function parseCli(argv, cwd) {
   if (values['request-id'] === '' || values.question === '' || values.cwd === '' || values['state-dir'] === '') {
     throw new HostError('INVALID_ARGUMENT', 'Empty option value');
   }
+  for(const key of Object.keys(selections))if(typeof values[key]==='string'&&!String(values[key]).trim())throw new HostError('INVALID_ARGUMENT','Empty --'+key);
+  const userSettings={
+    ...(typeof values['reasoning-effort']==='string'&&{reasoningEffort:values['reasoning-effort']}),
+    ...(typeof values['collaboration-mode']==='string'&&{collaborationMode:values['collaboration-mode']}),
+    ...(typeof values['approval-mode']==='string'&&{approvalMode:values['approval-mode']}),
+  };
+  if(commandName==='resume'&&!positionals.length&&!values.stdin&&(values.profile!==undefined||Object.keys(userSettings).length))throw new HostError('INVALID_ARGUMENT','User settings require an explicit continuation');
   /** @type {Command} */
   const command = {
     action: commandName, operationId, requestId: typeof values['request-id'] === 'string' ? values['request-id'] : newRequestId(),
     text: positionals.length ? positionals.join(' ') : undefined,
     cwd: commandName === 'run' ? resolve(cwd, typeof values.cwd === 'string' ? values.cwd : '.') : undefined,
+    ...(typeof values.profile==='string'&&{controllerProfile:values.profile}),
+    ...(Object.keys(userSettings).length&&{userSettings}),
     questionId: typeof values.question === 'string' ? values.question : undefined,
   };
   return {
@@ -78,7 +91,6 @@ export function parseCli(argv, cwd) {
     config: typeof values.config === 'string' ? resolve(cwd, values.config) : undefined,
     stateDirectory: typeof values['state-dir'] === 'string' ? resolve(cwd, values['state-dir']) : undefined,
     launch: {
-      ...(typeof values.profile === 'string' && { controllerProfile: values.profile }),
       ...(Array.isArray(values.skill) && { preferredSkills: /** @type {string[]} */ (values.skill) }),
     },
   };

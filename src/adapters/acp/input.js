@@ -119,8 +119,10 @@ export async function configureBoundOption(agent,methods,session,binding,value,s
     if(typeof value!=='string'||!option.options.flatMap(item=>'options' in item?item.options:[item]).some(item=>item.value===value))return false;
   } else if(typeof value!=='boolean')return false;
   if(option.currentValue!==value) {
-    const changed=await agent.request(methods.setConfigOption,{sessionId:session.sessionId,configId:option.id,value},{cancellationSignal:signal,stopWaitingOnCancel:true});
-    session.configOptions=changed.configOptions;
+    const changed=typeof value==='boolean'
+      ? await agent.request(methods.setConfigOption,{sessionId:session.sessionId,configId:option.id,type:'boolean',value},{cancellationSignal:signal,stopWaitingOnCancel:true})
+      : await agent.request(methods.setConfigOption,{sessionId:session.sessionId,configId:option.id,value},{cancellationSignal:signal,stopWaitingOnCancel:true});
+    session.configOptions=/** @type {{configOptions:NewSessionResponse['configOptions']}} */ (changed).configOptions;
   }
   return boundOption(session,binding)?.currentValue===value;
 }

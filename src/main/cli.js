@@ -88,6 +88,11 @@ process.exitCode = process.argv[2] === 'acp' ? await (await import('./acp.js')).
         launchProbe: 'static_file_type_and_permissions_only',
       };
     }
+    if(invocation.command.action==='settings') {
+      if(!configured)throw new HostError('INVALID_CONFIGURATION','Configuration is required');
+      const {readUserSettings}=await import('./runtime.js');
+      return readUserSettings(configured.configuration,configured.configurationDirectory,cwd,invocation.command.controllerProfile);
+    }
     const stop = new AbortController();
     const interrupt = () => stop.abort();
     process.on('SIGINT', interrupt);

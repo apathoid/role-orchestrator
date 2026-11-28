@@ -968,7 +968,7 @@ export function createOrchestrator(deps) {
           kind: 'attempt.dispatched', attemptId, route: {
             configurationRef, profileId: selectedProfile.profileId, providerId: selectedProfile.providerId, model: selectedProfile.model,
             idempotencyKey, requestHash: currentRequestHash, reasoning,
-            ...(!handoff && settings?.reasoningEffort?.binding && {reasoningBinding:settings.reasoningEffort.binding}), collaborationMode, approvalMode,
+            ...(!handoff && settings?.reasoningEffort?.binding !== undefined ? {reasoningBinding:settings.reasoningEffort.binding} : {}), collaborationMode, approvalMode,
           },
         });
         contextCursor = dispatched.revision;

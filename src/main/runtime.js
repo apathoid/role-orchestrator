@@ -187,3 +187,19 @@ export async function openRuntime(options, onStoreOpen) {
 export async function openOrchestrator(options) {
   return (await openRuntime(options)).api;
 }
+
+/** Read the same user descriptors without acquiring a State Store writer.
+ * @param {string} configuration @param {string} directory @param {string} cwd @param {string} [controllerProfile]
+ */
+export async function readUserSettings(configuration,directory,cwd,controllerProfile) {
+  const config=await decodeConfiguration(configuration);
+  if(config.kind==='rejected')throw new RuntimeError(config.reason.code,config.reason.constraint,config.reason.path);
+  const project=await loadProjectPreferences({cwd});
+  if(project.kind==='unavailable')throw new RuntimeError('INVALID_CONFIGURATION','Cannot read project preferences',project.path);
+  const registry=await loadExtensions(config.value,{directory,clock:{now:Date.now,monotonicNow:()=>performance.now()},ids:{newId:randomUUID},projectText:project.kind==='available'?project.text:undefined});
+  try {
+    if(registry.selection.kind==='rejected')throw new RuntimeError('INVALID_CONFIGURATION',registry.selection.constraint,registry.selection.path);
+    const authority=createAuthorityGrant({reference:'local-user',origin:'user',profileIds:Object.keys(config.value.profiles)});
+    return await describeUserSettings(registry.selection.value,registry.catalog,authority,registry.providerFor,controllerProfile);
+  }finally{await registry.close();}
+}
