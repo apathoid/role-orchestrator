@@ -7,7 +7,7 @@ import { eventFindings, findingRef } from '../core/finding.js';
 import { observation } from '../core/observation.js';
 /** @import {FieldError} from '../core/decode.js' */
 /** @import {LookupStatus} from './recovery.js' */
-import { pendingControllerReasoning, resourceSnapshot } from '../core/operation.js';
+import { pendingControllerReasoning, acceptedSettingsFor, resourceSnapshot } from '../core/operation.js';
 /** @import {Operation} from '../core/operation.js' */
 
 export const controllerInstructions = [
@@ -439,6 +439,7 @@ export function controllerContext(state, catalog, correction, lookups, maxBytes 
       limits: state.limits, resources: resourceSnapshot(state),
       attachments: state.request.attachments,
       controllerReasoning: {
+        ...(acceptedSettingsFor(state)?.reasoningEffort && {default: {level:acceptedSettingsFor(state)?.reasoningEffort?.id,source:acceptedSettingsFor(state)?.reasoningEffort?.source}}),
         current: (() => {
           const current = state.attempts.findLast(attempt => attempt.attemptId === attempt.actionId)?.route?.reasoning;
           return !current ? 'not_recorded' : current.mode === 'native' ? {mode: 'native', ...(current.level && {level: current.level, selectionSource: current.selectionSource})} : {

@@ -14,9 +14,9 @@ import {createHash} from 'node:crypto';
  *
  * @param {{handoff: Handoff, action: Action, context: readonly ContextItem[],
  *   instructions: readonly string[], skillInstructions: readonly SkillInstructions[],
- *   attachments: Handoff['attachments'], requiredCapabilities: readonly string[]}} input
+ *   attachments: Handoff['attachments'], requiredCapabilities: readonly string[],approvalMode?:import('../core/ports.js').NativeSetting}} input
  */
-export function workerRequestHash({handoff, action, context, instructions, skillInstructions, attachments, requiredCapabilities}) {
+export function workerRequestHash({handoff, action, context, instructions, skillInstructions, attachments, requiredCapabilities, approvalMode}) {
   const {actionId, retryOf, retryBasis, ...semanticAction} = action;
   const payload = {
     // Earlier hashes covered loaded skill text that the built-in renderer did
@@ -25,7 +25,7 @@ export function workerRequestHash({handoff, action, context, instructions, skill
     semanticAction, objective: handoff.objective, expectedResult: handoff.expectedResult,
     continuationReference: handoff.continuationReference, instructions, skillInstructions,
     context, userConstraints: handoff.userConstraints, workspaceContext: handoff.workspaceContext,
-    attachments, requiredCapabilities: [...requiredCapabilities].sort(),
+    attachments, requiredCapabilities: [...requiredCapabilities].sort(), ...(approvalMode && {approvalMode}),
     authorityRef: handoff.authorityRef, profileId: handoff.profile.profileId,
     providerId: handoff.profile.providerId, model: handoff.profile.model,
   };
