@@ -1102,3 +1102,65 @@ test('C24 mixed ACP wire blocks survive acceptance, follow-up, selected Worker a
       assert.equal(replay[6].resource.text,'embedded text');
     }finally{await reopened.close();}
   }));
+
+test('C24 native settings selectors apply exact opaque IDs and scope Controller and Worker settings', {timeout:30_000}, ()=>
+  withOwnedRun('C24-native-settings',async cwd=>{
+    const native=fileURLToPath(new URL('../fixtures/c24-native-agent.js',import.meta.url));
+    const config=await fixture(cwd,{
+      providers:{
+        test:{adapter:'acp',launch:{command:process.execPath,args:[native,'controller']},
+          featureBindings:{reasoningEffort:{kind:'configOption',id:'arbitrary-thought-id'},
+            collaborationMode:{kind:'configOption',id:'opaque-collaboration'},
+            approvalMode:{kind:'configOption',id:'opaque-approval'}}},
+        worker:{adapter:'acp',launch:{command:process.execPath,args:[native,'worker']},
+          featureBindings:{approvalMode:{kind:'sessionMode'}}},
+      },
+      features:{
+        reasoningEffort:{shared:{default:'low',options:[{id:'native'},{id:'low',nativeValue:'native-low'},{id:'high',nativeValue:'native-high'}]}},
+        collaborationMode:{plans:{default:'default',options:[{id:'default',nativeValue:'native-default'},{id:'plan',nativeValue:'native-plan'}]}},
+        approvalMode:{first:{default:'review',options:[{id:'native'},{id:'review',nativeValue:'native-review'},{id:'open',nativeValue:'native-open'}]},
+          second:{default:'review',options:[{id:'review',nativeValue:'worker-review'},{id:'open',nativeValue:'worker-open'}]}},
+      },
+      profiles:{primary:{provider:'test',model:'fixture',features:{reasoningEffort:'shared',collaborationMode:'plans',approvalMode:'first'}},
+        worker:{provider:'worker',model:'fixture',features:{reasoningEffort:'shared',approvalMode:'second'}},
+        plain:{provider:'worker',model:'fixture'}},plugins:[],
+    });
+    const host=launch(cwd,config);
+    try{
+      await initialize(host.agent);
+      const created=await host.agent.request(a.session.new,{cwd,mcpServers:[]});
+      const sessionId=created.sessionId;
+      const current=(result,id)=>result.configOptions?.find(item=>item.id===id)?.currentValue;
+      const select=(configId,value)=>host.agent.request(a.session.setConfigOption,{sessionId,configId,value});
+      assert.equal(current(created,'reasoningEffort'),'low');
+      assert.equal(current(created,'collaborationMode'),'default');
+      assert.equal(current(created,'approvalMode'),'review');
+      await assert.rejects(readFile(join(cwd,'c24-wire.jsonl')), {code:'ENOENT'});
+      await select('reasoningEffort','high');
+      await select('collaborationMode','plan');
+      await select('approvalMode','open');
+      await assert.rejects(select('approvalMode','missing'));
+      const worker=await select('controllerProfile','worker');
+      assert.equal(current(worker,'reasoningEffort'),'high');
+      assert.equal(current(worker,'approvalMode'),'open');
+      assert.equal(current(worker,'collaborationMode'),undefined);
+      const plain=await select('controllerProfile','plain');
+      assert.equal(current(plain,'reasoningEffort'),undefined);
+      const back=await select('controllerProfile','primary');
+      assert.equal(current(back,'reasoningEffort'),'low');
+      assert.equal(current(back,'approvalMode'),'review');
+      await select('reasoningEffort','high');await select('collaborationMode','plan');await select('approvalMode','open');
+      const input=[{type:'image',mimeType:'image/png',data:'AQID'},{type:'text',text:'delegate selected image'}];
+      assert.equal((await host.agent.request(a.session.prompt,{sessionId,prompt:input})).stopReason,'end_turn');
+      const records=(await readFile(join(cwd,'c24-wire.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+      const controller=records.find(x=>x.kind==='controller');
+      const delegated=records.find(x=>x.kind==='delegate');
+      assert.equal(controller.settings['arbitrary-thought-id'],'native-high');
+      assert.equal(controller.settings['opaque-collaboration'],'native-plan');
+      assert.equal(controller.settings['opaque-approval'],'native-open');
+      assert.equal(delegated.settings['arbitrary-thought-id'],'native-low','Controller user default must not leak to Worker');
+      assert.equal(delegated.settings['opaque-collaboration'],'native-default');
+      assert.equal(delegated.mode,'worker-open','Worker receives its own mapping of the logical approval option');
+      assert.equal(delegated.blocks.length,1);
+    }finally{await host.close();}
+  }));

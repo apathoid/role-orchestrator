@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { defaultUserContentMaxBytes } from '../application/user-content.js';
 import { decodeConfiguration } from '../application/configuration/decode-config.js';
 import { HostError } from '../hosts/commands.js';
 
@@ -46,5 +47,5 @@ export async function cliConfiguration(file, override) {
   const parsed = await decodeConfiguration(configuration);
   if (parsed.kind === 'rejected') throw new HostError(parsed.reason.code, parsed.reason.path + ' ' + parsed.reason.constraint);
   const configurationDirectory = dirname(path);
-  return { path, configuration, configurationDirectory, ...cliStoreSelection(path, override, parsed.value.storage?.directory), providers: parsed.value.providers };
+  return { path, configuration, configurationDirectory, ...cliStoreSelection(path, override, parsed.value.storage?.directory), providers: parsed.value.providers, userContentMaxBytes:parsed.value.input?.maxBytes??defaultUserContentMaxBytes };
 }

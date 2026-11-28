@@ -16,6 +16,7 @@
  *   controllerProfile: string,
  *   roles?: Record<string, {purpose?: string, instructions: string, preferredProfiles?: string[]}>,
  *   resources?: ResourceConfig,
+ *   input?: {maxBytes?:number},
  *   context?: {maxBytes?: number, controllerMaxBytes?: number, handoffMaxBytes?: number, fetchMaxBytes?: number,
  *     captureMaxBytes?: number, skillInstructionsMaxBytes?: number, toolOutputMaxBytes?: number},
  *   storage?: {directory: string, artifactRetention?: import('../../core/ports.js').ArtifactRetention},

@@ -8,6 +8,7 @@ import { dispatchCommand, hostError, HostError } from '../hosts/commands.js';
 import { openControl } from '../hosts/local-control.js';
 import { cliConfiguration, executionControlRef } from './cli-config.js';
 import { controlStreams } from '../hosts/control-streams.js';
+import { userContentFrameBytes } from '../application/user-content.js';
 import { renderOrderedTurn } from '../adapters/acp/input.js';
 import { openRuntime } from './runtime.js';
 
@@ -57,7 +58,7 @@ export async function runAcpStdio(args) {
         return undefined;
       });
       host = serveAcp(runtime.api, runtime.directory,
-        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: 24 * 1024 * 1024 }), mode, progressDisplay,
+        ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), { maxMessageBytes: userContentFrameBytes(options.userContentMaxBytes) }), mode, progressDisplay,
         (operationId,turn,signal)=>renderOrderedTurn(turn,ref=>runtime.api.readUserPayload(operationId,ref),undefined,signal));
       const { connection } = host;
       const interrupt = () => {

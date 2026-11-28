@@ -1,3 +1,4 @@
+import { defaultUserContentMaxBytes, userContentFrameBytes } from '../../application/user-content.js';
 import { randomUUID } from 'node:crypto';
 import { addAbortListener } from 'node:events';
 import { resolve } from 'node:path';
@@ -24,7 +25,7 @@ import { attachmentBlocks, configureReasoning, configureSession, modelOption, su
 /** @typedef {{profile: Profile, call?: Call, closing?: Promise<void>}} Session */
 
 const maxOutputBytes = 1024 * 1024;
-const maxInputFrameBytes = 24 * 1024 * 1024;
+
 const closeGraceMs = 300;
 const maxStderrBytes = 64 * 1024;
 const maxErrorBytes = 4 * 1024;
@@ -127,6 +128,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
   async function run(invocation, signal, observe, activity) {
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const required = invocation.requiredCapabilities ?? [];
+    const maxInputFrameBytes=userContentFrameBytes(invocation.userContentMaxBytes??defaultUserContentMaxBytes);
     const { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, CreateElicitationRequest, CreateElicitationResponse } = await import('@agentclientprotocol/sdk');
     if (signal.aborted) return resultFor(invocation, 'CANCELLED', 'cancelled');
     const supported = new Set(['input.text', 'output.decision', 'cancel']);
@@ -525,7 +527,7 @@ export function createAcpProvider({ providerId, configuration, defaultCwd = proc
         });
       }
       connection = app.connect(ndJsonStream(Writable.toWeb(owner.pipes.stdin), Readable.toWeb(owner.pipes.stdout),
-        { maxMessageBytes: orderedContent ? maxInputFrameBytes : maxOutputBytes }));
+        { maxMessageBytes: invocation.userContentMaxBytes!==undefined ? maxInputFrameBytes : maxOutputBytes }));
       const agent = connection.agent;
       /** @type {InitializeResponse} */
       const initialized = await agent.request(a.initialize, {

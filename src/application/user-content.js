@@ -3,13 +3,16 @@ import { createHash } from 'node:crypto';
 /** @import {Operation} from '../core/operation.js' */
 /** @import {ContentSegment} from '../core/contracts.js' */
 /** @import {StateStore,UserAttachment,OrderedTurn} from '../core/ports.js' */
-export const maxUserContentBytes=16*1024*1024;
+export const defaultUserContentMaxBytes=16*1024*1024;
+export const maximumUserContentMaxBytes=64*1024*1024;
+/** @param {number} bytes */
+export const userContentFrameBytes=bytes=>Math.ceil(bytes/3)*4+2*1024*1024;
 /** @typedef {{ref:string,size:number,originalSize:number,truncated:false}} PayloadRef */
 /** @typedef {{kind:'accepted',input:unknown,payloads:{bytes:Uint8Array,reference:PayloadRef}[]}|{kind:'rejected',path:string,reason:string}} Prepared */
 /** @param {unknown} v @returns {v is Record<string,unknown>} */
 const object=v=>!!v&&typeof v==='object'&&!Array.isArray(v)&&[Object.prototype,null].includes(Object.getPrototypeOf(v));
-/** @param {unknown} input @returns {Prepared} */
-export function prepareUserContent(input){
+/** @param {unknown} input @param {number} [maxBytes] @returns {Prepared} */
+export function prepareUserContent(input,maxBytes=defaultUserContentMaxBytes){
   if(!object(input)||input.content===undefined)return {kind:'accepted',input,payloads:[]};
   /** @param {string} path @param {string} reason @returns {Prepared} */
   const reject=(path,reason)=>({kind:'rejected',path,reason});
@@ -24,6 +27,9 @@ export function prepareUserContent(input){
     const allowed=block.kind==='text'?['kind','text','metadata']:['kind','data','encoding','mediaType','uri','metadata'];
     if(Object.keys(block).some(key=>!allowed.includes(key)))return reject(path,'Unknown content field');
     const metadata=block.metadata;
+    if(metadata!==undefined){
+      try {total+=Buffer.byteLength(JSON.stringify(metadata));}catch{return reject(path+'.metadata','Expected JSON metadata');}
+    }
     if(block.kind==='text'){
       if(typeof block.text!=='string')return reject(path+'.text','Expected text');
       const start=text.length;text+=block.text;total+=Buffer.byteLength(block.text);
@@ -43,7 +49,7 @@ export function prepareUserContent(input){
         if(typeof block.data!=='string'||(block.encoding!=='utf8'&&block.encoding!=='binary'))return reject(path,'Expected embedded data and encoding');
         encoding=block.encoding;
         if(kind!=='resource'&&encoding!=='binary')return reject(path,'Image/audio require binary encoding');
-        if(encoding==='binary'&&block.data.length>Math.ceil(maxUserContentBytes/3)*4)return reject(path+'.data','Oversized base64');
+        if(encoding==='binary'&&block.data.length>Math.ceil(maxBytes/3)*4)return reject(path+'.data','Oversized base64');
         const bytes=Buffer.from(block.data,encoding==='binary'?'base64':'utf8');
         if(encoding==='binary'&&bytes.toString('base64')!==block.data)return reject(path+'.data','Invalid base64');
         total+=bytes.length;
@@ -53,7 +59,7 @@ export function prepareUserContent(input){
       const ref='user-content:'+createHash('sha256').update(JSON.stringify([input.requestId,index])).digest('hex');
       content.push({kind,ref,mediaType,uri,payload,encoding,metadata});
     }
-    if(total>maxUserContentBytes)return reject(path,'User content exceeds 16 MiB decoded limit');
+    if(total>maxBytes)return reject(path,'User content exceeds '+maxBytes+' decoded bytes');
   }
   return {kind:'accepted',input:{...input,...('schemaVersion' in input&&{attachments:[]}),text,content},payloads};
 }

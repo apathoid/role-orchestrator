@@ -1,4 +1,4 @@
-import { prepareUserContent, persistUserContent, userAttachments, orderedTurns } from './user-content.js';
+import { prepareUserContent, persistUserContent, userAttachments, orderedTurns, defaultUserContentMaxBytes, maximumUserContentMaxBytes } from './user-content.js';
 import { executionFact } from './execution-facts.js';
 import { admitFindings, checkAssessment, evidenceRefs, eventFindings, findings, recordObservationRefs } from '../core/finding.js';
 import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/contracts.js';
@@ -40,6 +40,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
  * @typedef {(workspace: Operation['request']['workspaceContext'], controllerProfile?: string, input?: import('../core/ports.js').SettingsInput) => Promise<Execution>} ResolveExecution
  * @typedef {{
  *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
+ *   userContentMaxBytes?:number,
  *   context?: {maxBytes?: number, controllerMaxBytes?: number, handoffMaxBytes?: number, fetchMaxBytes?: number,
  *     captureMaxBytes?: number, skillInstructionsMaxBytes?: number, toolOutputMaxBytes?: number}, allowContextShare?: ContextShare,
  *   providerFor?: (profile: Profile) => ProviderPort | undefined,
@@ -100,6 +101,8 @@ export function createOrchestrator(deps) {
       deps.invocationTimeoutMs > 2_147_483_647)) {
     throw new RangeError('invocationTimeoutMs must be null or an integer from 1 to 2147483647');
   }
+  const userContentMaxBytes=deps.userContentMaxBytes??defaultUserContentMaxBytes;
+  if(!Number.isSafeInteger(userContentMaxBytes)||userContentMaxBytes<1||userContentMaxBytes>maximumUserContentMaxBytes)throw new RangeError('Invalid userContentMaxBytes');
   const activity = createActivityStream();
   const suppliedBudgets = deps.context ?? {};
   if (suppliedBudgets.maxBytes !== undefined && suppliedBudgets.controllerMaxBytes !== undefined) {
@@ -341,7 +344,7 @@ export function createOrchestrator(deps) {
 
   /** @param {unknown} input @param {(id: string) => void} [accepted] @returns {Promise<Submission>} */
   async function submit(input, accepted) {
-    const prepared = prepareUserContent(input);
+    const prepared = prepareUserContent(input,userContentMaxBytes);
     if(prepared.kind==='rejected')throw new OrchestrationError('INVALID_PROPOSAL',prepared.reason,prepared.path);
     const parsed = decodeRequest(prepared.input);
     if (parsed.kind === 'rejected') {
@@ -400,7 +403,7 @@ export function createOrchestrator(deps) {
         return launch(next, execution, true);
       });
     }
-    const prepared = prepareUserContent(input);
+    const prepared = prepareUserContent(input,userContentMaxBytes);
     if(prepared.kind==='rejected')throw new OrchestrationError('INVALID_PROPOSAL',prepared.reason,prepared.path);
     const parsed = decode(followup, prepared.input);
     if (parsed.kind === 'rejected') {
@@ -1087,6 +1090,7 @@ export function createOrchestrator(deps) {
           if (!handoff) trace(dispatched, 'controller.requested', 'DISPATCH_STARTED', attemptId);
           return executor.invoke(owned, {
           ...context, reasoning, collaborationMode, approvalMode,
+          ...(turns?.length||attachments.some(item=>'kind' in item)?{userContentMaxBytes}:{}),
           ...(turns?.length&&{orderedTurns:turns}),
           ...(attachments.some(item=>'payload' in item&&item.payload)&&{readUserPayload:async (/** @type {string} */ ref)=>{
             if(!isActive())return;

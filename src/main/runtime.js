@@ -9,7 +9,7 @@ import { createInteractionBroker } from '../application/interactions.js';
 import { createPermissionBroker } from '../application/configuration/permissions.js';
 import { createOrchestrator } from '../application/orchestrator.js';
 import { describeUserSettings, resolveFeatureChoices, workerApproval, approvalMappingsRef } from '../application/configuration/user-settings.js';
-import { userAttachments } from '../application/user-content.js';
+import { defaultUserContentMaxBytes, userAttachments } from '../application/user-content.js';
 import { sameRecord } from '../core/operation.js';
 import { createEventStream } from '../application/events.js';
 import { operationTrace } from '../hosts/commands.js';
@@ -149,6 +149,7 @@ export async function openRuntime(options, onStoreOpen) {
     const coordinator = createOrchestrator({
       store, resolveExecution, providerFor: registry.providerFor,
       clock, ids, authority, permissions, interactions: options.interactions ? interactions : undefined, configurationRef, diagnostics, committedDiagnostic:diagnostics.emit, tools: registry.tools,
+      userContentMaxBytes:config.value.input?.maxBytes??defaultUserContentMaxBytes,
       context: base.context, limits: {
         maxInvocations: base.resources.maxInvocationsPerOperation,
         maxConcurrentInvocations: base.resources.maxConcurrentInvocations,
