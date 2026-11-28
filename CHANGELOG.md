@@ -8,6 +8,7 @@
 - C24-R2: preserve literal/native block identity and explicit context priority; persist per-admitted-Worker approval compatibility and CLI skill selector identity; align capabilities, recovery/replay and current-result diagnostics. Verification status is recorded separately.
 - C24-R3: preserve literal follow-ups and text fallback boundaries, remove the estimated ACP outgoing frame gate, retain URI and omission provenance, unify Controller selection recovery, validate recorded approval mapping and allow exact read-only request redelivery under changed trusted settings.
 - C24 final corrections: explicit history cannot displace complete literal user text; separate external ACP receive ceiling from decoded admission, keep unavailable known project profiles selectable via authorized alternatives, and label canonical text ranges.
+- C24 final review: exact native ref/block attribution for selected Worker attachments and consistent decoded input size accounting at admission and historical projection.
 
 
 ### C23 — Configuration-scoped State & Concurrent Runtime Support (C23-R engineering PASS at 0c519ebf; native UNVERIFIED)

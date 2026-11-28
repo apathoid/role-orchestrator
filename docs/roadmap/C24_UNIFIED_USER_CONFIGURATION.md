@@ -287,3 +287,7 @@ Scope: current literal input/default workMap and bounded attachment previews; pr
 ### Final local corrective patch after C24-R3 review
 
 T30–T36 supplement existing A132–A142: keep mandatory literal user records despite explicitly requested byte ranges/excerpts/unavailable whole-record retrieval; keep range failures distinct; external ACP fixed finite receive limit independent of current decoded admission; known unavailable project preference permits explicit authorized selection without fallback; mark canonical UTF-16 text ranges separately from projected text and ContextPort byte ranges. No persistent sessions, general context-limit redesign, Store optimization or native-client presentation changes. Engineering evidence is recorded in STATUS; real native acceptance remains separate.
+
+### Final review — two local follow-up fixes
+
+T37–T40: extend the existing ACP native block attribution to standalone attachments (Worker handoff included), with actual indexes and no invented user turn; share normalized decoded body/metadata accounting between admission and historical projection. Missing metadata costs zero, explicit null remains JSON null, and original text blocks are counted individually. No selection/order changes, new limits, registry, persistent sessions or additional instructions. Exact engineering evidence in STATUS; native client/model checks remain separate.
