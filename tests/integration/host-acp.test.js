@@ -1015,10 +1015,17 @@ test('C24 ACP exposes and persists Controller profile selection before prompting
       await assert.rejects(first.agent.request(a.session.setConfigOption, {
         sessionId, configId: 'controllerProfile', value: 'missing',
       }));
+      const meta = { roleOrchestrator: { requestId: 'c24-profile-selected' } };
+      assert.equal((await prompt(first.agent, sessionId, 'settings', meta)).stopReason, 'end_turn');
+      const answer = () => JSON.parse(first.messages.filter(item => item.sessionId === sessionId &&
+        item.update.sessionUpdate === 'agent_message_chunk').at(-1).update.content.text)[0];
+      assert.equal(answer(), 'secondary');
+      await first.agent.request(a.session.setConfigOption, { sessionId, configId: 'controllerProfile', value: 'primary' });
+      assert.equal((await prompt(first.agent, sessionId, 'settings', meta)).stopReason, 'end_turn');
+      assert.equal(answer(), 'secondary', 'redelivery uses the accepted selection');
       assert.equal((await prompt(first.agent, sessionId, 'settings')).stopReason, 'end_turn');
-      const message = first.messages.filter(item => item.sessionId === sessionId &&
-        item.update.sessionUpdate === 'agent_message_chunk').at(-1);
-      assert.equal(JSON.parse(message.update.content.text)[0], 'secondary');
+      assert.equal(answer(), 'primary', 'new continuation uses the new selection');
+      await first.agent.request(a.session.setConfigOption, { sessionId, configId: 'controllerProfile', value: 'secondary' });
     } finally { await first.close(); }
 
     const reopened = launch(cwd, config);

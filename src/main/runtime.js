@@ -81,12 +81,35 @@ export async function openRuntime(options, onStoreOpen) {
     }
     const base = requireConfiguration(selection);
     /** @param {import('../core/contracts.js').Request['workspaceContext']} workspace */
-    async function resolveExecution(workspace) {
+    async function workspaceConfiguration(workspace) {
       const project = await loadProjectPreferences(options.project?.path !== undefined
         ? options.project : { cwd: workspace?.cwd ?? options.project?.cwd });
       if (project.kind === 'unavailable') throw new RuntimeError('INVALID_CONFIGURATION', 'Cannot read project preferences', project.path);
-      const selectedConfig = project.kind === 'available' ? requireConfiguration(registry.resolveProject(project.text)) : base;
-      const selected = await registry.selectController(selectedConfig.controllerProfile);
+      return project.kind === 'available' ? requireConfiguration(registry.resolveProject(project.text)) : base;
+    }
+    /** Logical user settings; no native process is opened to describe them.
+     * @param {import('../core/contracts.js').Request['workspaceContext']} workspace
+     * @param {string} [controllerProfile]
+     */
+    async function settings(workspace, controllerProfile) {
+      const selectedConfig = await workspaceConfiguration(workspace);
+      const entries = await catalog.list();
+      const profiles = entries.flatMap(entry => entry.kind === 'profile' && !entry.value.unavailable &&
+        registry.providerFor(entry.value) &&
+        authority.authorize(authority.reference, entry.value.profileId) === 'ALLOWED'
+        ? [{ id: entry.value.profileId, name: entry.value.profileId }] : []);
+      const requested = controllerProfile ?? selectedConfig.controllerProfile;
+      const current = profiles.some(item => item.id === requested) ? requested : undefined;
+      return { controllerProfile: { current, options: profiles, ...(current === undefined && { unavailable: requested }) } };
+    }
+    /** @param {import('../core/contracts.js').Request['workspaceContext']} workspace @param {string} [controllerProfile] */
+    async function resolveExecution(workspace, controllerProfile) {
+      const selectedConfig = await workspaceConfiguration(workspace);
+      if (controllerProfile !== undefined) {
+        const decision = authority.authorize(authority.reference, controllerProfile);
+        if (decision !== 'ALLOWED') throw new RuntimeError(decision, 'Controller profile is outside the active grant', '/controllerProfile');
+      }
+      const selected = await registry.selectController(controllerProfile ?? selectedConfig.controllerProfile);
       if (selected.kind === 'unavailable') {
         throw new RuntimeError('CAPABILITY_UNAVAILABLE', selected.reason, '/controllerProfile');
       }
@@ -131,7 +154,7 @@ export async function openRuntime(options, onStoreOpen) {
     const { submit, resume, inspect, inspectFinding, findRequest, cancel, subscribeActivity } = coordinator;
     /** @param {string} operationId */
     const trace = async operationId => operationTrace(await inspect(operationId), redaction);
-    const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel,
+    const api = Object.freeze({ submit, resume, inspect, inspectFinding, findRequest, cancel, settings,
       trace,
       subscribe: diagnostics.subscribe, subscribeExecution: (/** @type {import('../core/ports.js').ActivityScope} */ scope, /** @type {import('../application/events.js').EventListener} */ listener) => diagnostics.subscribe(listener, scope), subscribeActivity, pendingInteractions: interactions.pending,
       respondInteraction: interactions.respond, configurationRef, close });

@@ -145,6 +145,14 @@ export function workspaceContextFor(operation) {
   return latest?.kind === 'operation.continued' ? latest.input.workspaceContext : operation.request.workspaceContext;
 }
 
+/** The explicit user selection is durable input, not a mutation of the catalog.
+ * @param {Operation} operation
+ */
+export function controllerProfileFor(operation) {
+  const latest = operation.events.findLast(event => event.kind === 'operation.continued' && event.input.controllerProfile !== undefined);
+  return latest?.kind === 'operation.continued' ? latest.input.controllerProfile : operation.request.controllerProfile;
+}
+
 /**
  * Resolve terminal evidence against the current ledger. A late report can
  * fill unknown fields, but cannot replace an earlier incompatible fact.

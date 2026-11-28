@@ -16,7 +16,7 @@ const workspaceContext = optional(record({ cwd: optional(id) }));
 export const request = record({
   schemaVersion: version, requestId: id, text,
   attachments: arrayOf(record({ ref: id, mediaType: id })),
-  workspaceContext,
+  workspaceContext, controllerProfile: optional(id),
   userConstraints: arrayOf(text), configurationRef: id,
 });
 
@@ -45,7 +45,7 @@ export const assessment = record({
   observationRefs: ids, findingRefs: ids, unresolvedQuestions: arrayOf(text), answer: text,
 });
 
-export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext });
+export const followup = record({ requestId: id, text, questionId: optional(id), workspaceContext, controllerProfile: optional(id) });
 /** A Controller continuation is an instruction for the next invocation, not a new Action kind. */
 const contextPositionFields = { revision: count, index: count };
 // These are annotations of the existing object-branch error, not new

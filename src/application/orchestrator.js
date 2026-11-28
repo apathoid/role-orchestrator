@@ -4,7 +4,7 @@ import { decodeDecision, decodeOutcome, decodeRequest, followup } from '../core/
 import { materializeControllerIntent } from './controller-intent.js';
 import { boundedFieldError, decode, jsonValue } from '../core/decode.js';
 import { emitDiagnostic, noopDiagnostics } from '../core/diagnostics.js';
-import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, validRejectedResult, workspaceContextFor } from '../core/operation.js';
+import { acceptedWorkerAllowed, applyEvent, controllerFailureWaiting, createOperation, pendingControllerReasoning, resourceSnapshot, sameRecord, validRejectedResult, workspaceContextFor, controllerProfileFor } from '../core/operation.js';
 import { admitActions } from '../core/action-graph.js';
 import { controllerContext, controllerInstructions, pendingControllerHistoryRequest } from './controller-context.js';
 import { decisionRecovery } from './decision-recovery.js';
@@ -36,7 +36,7 @@ import { decodeSummaryReport, observation, receiveProviderObservation } from '..
 
 /**
  * @typedef {{provider: ProviderPort, catalog: Catalog, profile: Profile, limits: Limits, invocationTimeoutMs: number | null, defaultedLimits?: {maxInvocations: boolean, maxConcurrentInvocations: boolean}}} Execution
- * @typedef {(workspace: Operation['request']['workspaceContext']) => Promise<Execution>} ResolveExecution
+ * @typedef {(workspace: Operation['request']['workspaceContext'], controllerProfile?: string) => Promise<Execution>} ResolveExecution
  * @typedef {{
  *   store: StateStore, clock: Clock, ids: IdFactory, limits: Limits,
  *   context?: {maxBytes?: number, controllerMaxBytes?: number, handoffMaxBytes?: number, fetchMaxBytes?: number,
@@ -369,7 +369,7 @@ export function createOrchestrator(deps) {
       if (entries.some(item => 'kind' in item && item.requestMatch === 'unknown')) {
         throw new OrchestrationError('STORE_UNAVAILABLE', 'An unreadable snapshot lacks a request reference');
       }
-      const execution = await resolveExecution(request.workspaceContext);
+      const execution = await resolveExecution(request.workspaceContext, request.controllerProfile);
       requireRunning();
       const state = createOperation(ids.newId(), request, authority.reference, execution.limits, clock.now());
       const failure = await commit(state, null);
@@ -388,7 +388,7 @@ export function createOrchestrator(deps) {
         const state = await inspect(operationId);
         if (running.has(operationId) || (state.status !== 'active' &&
             !(controllerFailureWaiting(state) && hasRecoverableWorkers(state)))) return activeSubmission(state);
-        const execution = await resolveExecution(workspaceContextFor(state));
+        const execution = await resolveExecution(workspaceContextFor(state), controllerProfileFor(state));
         requireRunning();
         const next = await transition(state, { kind: 'operation.recovered', trusted: trusted(execution, state) });
         notifyAccepted(accepted, operationId);
@@ -419,7 +419,7 @@ export function createOrchestrator(deps) {
       if (follow.questionId !== question?.questionId) {
         throw new OrchestrationError('INVALID_PROPOSAL', 'Question is missing, closed or belongs to another operation', '$.questionId');
       }
-      const execution = await resolveExecution(follow.workspaceContext ?? workspaceContextFor(state));
+      const execution = await resolveExecution(follow.workspaceContext ?? workspaceContextFor(state), follow.controllerProfile ?? controllerProfileFor(state));
       requireRunning();
       const next = await transition(state, { kind: 'operation.continued', input: follow, trusted: trusted(execution, state) });
       notifyAccepted(accepted, operationId);

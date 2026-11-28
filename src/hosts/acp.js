@@ -9,12 +9,12 @@ import { acpActivity, acpExecutionNotices, acpExecutionInline, acpAccepted, acpP
 import { operationRequestId, operationReply, responseBoundary, historicalReply, replayHistory, turnRange } from './acp-history.js';
 import { createBoundedDelivery } from '../application/delivery.js';
 
-/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, SessionUpdate} from '@agentclientprotocol/sdk' */
+/** @import {AgentContext, AgentConnection, ClientCapabilities, Stream, SessionUpdate, SessionConfigOption} from '@agentclientprotocol/sdk' */
 /** @import {ActivityListener, ActivityScope} from '../core/ports.js' */
 /** @import {PresentationMode, ProgressDisplay} from './presentation.js' */
 /** @import {Session} from './acp-history.js' */
 /** @import {HostApi} from './commands.js' */
-/** @typedef {HostApi & {findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
+/** @typedef {HostApi & {settings: (workspace: import('../core/contracts.js').Request['workspaceContext'], controllerProfile?: string) => Promise<{controllerProfile: {current?: string, options: {id: string, name: string}[], unavailable?: string}}>, findRequest: import('./commands.js').Coordinator['findRequest'], subscribeActivity: (scope: ActivityScope, listener: ActivityListener) => (() => void) & {finish?: () => Promise<number>}, subscribeExecution?: (scope: ActivityScope, listener: import('../application/events.js').EventListener) => (() => void) & {finish?:()=>Promise<number>}}} AcpApi */
 /** @typedef {{operationId?: string, cancelled: boolean, settled: Promise<void>, stopDisplay?:()=>void}} Turn */
 
 const a = methods.agent;
@@ -35,6 +35,9 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
   /** @type {Map<string, Turn>} */
   const turns = new Map();
   const loading = new Set();
+  const changingSettings = new Set();
+  /** @type {Map<string, Promise<void>>} */
+  const sessionWrites = new Map();
   let initialized = false;
   /** @type {ClientCapabilities} */
   let capabilities = {};
@@ -65,16 +68,44 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
     return join(directory, 'client-session-' + sessionId + '.json');
   }
 
-  /** @param {Session} session */
-  async function save(session) {
-    const file = sessionPath(session.sessionId);
-    const temporary = file + '.' + randomUUID();
-    try {
-      await writeFile(temporary, JSON.stringify(session), { mode: 0o600, flag: 'wx', flush: true });
-      await rename(temporary, file);
-      const handle = await open(directory, 'r');
-      try { await handle.sync(); } finally { await handle.close(); }
-    } finally { await rm(temporary, { force: true }); }
+  /** Serialize the existing session journal writes, including preference updates.
+   * The new preference becomes visible only after the write succeeds.
+   * @param {Session} session @param {string} [controllerProfile]
+   */
+  async function save(session, controllerProfile) {
+    const previous = sessionWrites.get(session.sessionId) ?? Promise.resolve();
+    const writing = previous.catch(() => {}).then(async () => {
+      const file = sessionPath(session.sessionId);
+      const temporary = file + '.' + randomUUID();
+      try {
+        await writeFile(temporary, JSON.stringify(controllerProfile === undefined ? session : { ...session, controllerProfile }), { mode: 0o600, flag: 'wx', flush: true });
+        await rename(temporary, file);
+        const handle = await open(directory, 'r');
+        try { await handle.sync(); } finally { await handle.close(); }
+        if (controllerProfile !== undefined) session.controllerProfile = controllerProfile;
+      } finally { await rm(temporary, { force: true }); }
+    });
+    sessionWrites.set(session.sessionId, writing);
+    try { await writing; }
+    finally { if (sessionWrites.get(session.sessionId) === writing) sessionWrites.delete(session.sessionId); }
+  }
+
+  /** @param {Session} session @returns {Promise<SessionConfigOption[]>} */
+  async function configOptions(session) {
+    const { controllerProfile } = await api.settings({ cwd: session.cwd }, session.controllerProfile);
+    const { current, options, unavailable } = controllerProfile;
+    if (current === undefined) {
+      // An unavailable saved selection is not an execution fallback. Show the
+      // eligible default only to allow a future explicit replacement.
+      if (session.controllerProfile === undefined) return [];
+      const fallback = (await api.settings({ cwd: session.cwd })).controllerProfile;
+      if (fallback.current === undefined) return [];
+      return [{ id: 'controllerProfile', name: 'Controller profile', category: 'model', type: 'select',
+        description: 'Saved selection is unavailable: ' + unavailable + '. Select a profile before prompting.',
+        currentValue: fallback.current, options: options.map(item => ({ value: item.id, name: item.name })) }];
+    }
+    return [{ id: 'controllerProfile', name: 'Controller profile', category: 'model', type: 'select',
+      currentValue: current, options: options.map(item => ({ value: item.id, name: item.name })) }];
   }
 
   /** @param {string} cwd @param {readonly unknown[]} servers */
@@ -132,14 +163,15 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
     .onRequest(a.session.new, async ({ params }) => {
       checkSession(params.cwd, params.mcpServers);
       const session = { sessionId: randomUUID(), cwd: params.cwd, operations: [], requests: [] };
+      const options = await configOptions(session);
       await save(session);
       sessions.set(session.sessionId, session);
-      return { sessionId: session.sessionId };
+      return { sessionId: session.sessionId, configOptions: options };
     })
     .onRequest(a.session.load, async ({ params, client }) => {
       const { sessionId, cwd } = params;
       checkSession(cwd, params.mcpServers);
-      if (turns.has(sessionId) || loading.has(sessionId)) throw invalid('Session is busy');
+      if (turns.has(sessionId) || loading.has(sessionId) || changingSettings.has(sessionId)) throw invalid('Session is busy');
       loading.add(sessionId);
       try {
         const file = sessionPath(sessionId);
@@ -147,8 +179,10 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
         const session = await readFile(file, 'utf8').then(JSON.parse).catch(() => { throw invalid('Unknown session'); });
         if (session.sessionId !== sessionId || !Array.isArray(session.operations) ||
             !session.operations.every(id => typeof id === 'string')) throw invalid('Invalid stored session');
+        if (session.controllerProfile !== undefined && typeof session.controllerProfile !== 'string') throw invalid('Invalid stored profile selection');
         session.requests ??= [];
         if(!Array.isArray(session.requests)||session.requests.some(request=>!request||typeof request.requestId!=='string'||typeof request.fingerprint!=='string'||
+          (request.controllerProfile!==undefined&&typeof request.controllerProfile!=='string')||
           (request.operationId!==undefined&&!session.operations.includes(request.operationId))))throw invalid('Invalid stored session requests');
         for (const request of session.requests) {
           if (request.operationId) continue;
@@ -156,11 +190,26 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
           if (operation&&turnRange(operation,operationRequestId(sessionId,request.requestId))) attach(session, request, operation.operationId);
         }
         session.cwd = cwd;
+        const options = await configOptions(session);
         await save(session);
         await replayHistory(session,id=>api.inspect(id),update=>sendUpdate(client,sessionId,update),mode,progressDisplay,connection.signal);
         sessions.set(sessionId, session);
-        return {};
+        return { configOptions: options };
       } finally { loading.delete(sessionId); }
+    })
+    .onRequest(a.session.setConfigOption, async ({ params }) => {
+      const { sessionId, configId, value } = params;
+      const session = sessions.get(sessionId);
+      if (!session || loading.has(sessionId) || changingSettings.has(sessionId)) throw invalid('Session is unavailable or settings are busy');
+      if (configId !== 'controllerProfile' || typeof value !== 'string') throw invalid('Unknown Controller setting');
+      changingSettings.add(sessionId);
+      try {
+        const options = await configOptions({ ...session, controllerProfile: value });
+        const selected = options.find(option => option.id === configId && option.type === 'select');
+        if (!selected || selected.currentValue !== value) throw invalid('Unavailable Controller profile');
+        await save(session, value);
+        return { configOptions: options };
+      } finally { changingSettings.delete(sessionId); }
     })
     .onRequest(a.session.prompt, async ({ params, client }) => {
       const { sessionId, prompt } = params;
@@ -177,6 +226,8 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
       }
       const durableRequestId = operationRequestId(sessionId, requestId);
       const fingerprint = createHash('sha256').update(JSON.stringify([text, continueOperationId, supersedeOperationId, newOperation])).digest('hex');
+      // Snapshot the committed UI preference before any asynchronous work.
+      const selectedProfile = session.controllerProfile;
       let request = session.requests.find(item => item.requestId === requestId);
       if (request && request.fingerprint !== fingerprint) throw invalid('Request id reused');
       const previous = turns.get(sessionId);
@@ -208,7 +259,9 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
       connection.signal.addEventListener('abort',stopDisplay,{once:true});
       try {
         if (!request) {
-          request = { requestId, fingerprint };
+          const selection = (await api.settings({ cwd: session.cwd }, selectedProfile)).controllerProfile;
+          if (selection.current === undefined && selectedProfile !== undefined) throw invalid('Selected Controller profile is unavailable');
+          request = { requestId, fingerprint, controllerProfile: selection.current };
           session.requests.push(request);
           await save(session);
         }
@@ -254,11 +307,11 @@ export function serveAcp(api, directory, stream, mode = 'compact', progressDispl
             });
           };
           const submission = prior && (continueOperationId || prior.status === 'waiting' || prior.status === 'finished')
-            ? await api.resume(prior.operationId, { requestId: durableRequestId, text, workspaceContext,
+            ? await api.resume(prior.operationId, { requestId: durableRequestId, text, workspaceContext, controllerProfile: request.controllerProfile,
               questionId: prior.waiting?.kind === 'question' ? prior.waiting.questionId : undefined }, accepted)
             : await api.submit({
               schemaVersion: 1, requestId: durableRequestId, text, attachments: [], userConstraints: [],
-              configurationRef: api.configurationRef, workspaceContext,
+              configurationRef: api.configurationRef, workspaceContext, controllerProfile: request.controllerProfile,
             }, accepted);
           accepted(submission.operation.operationId);
           if (turn.cancelled) await cancel(sessionId);
